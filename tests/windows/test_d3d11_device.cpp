@@ -220,6 +220,8 @@ void test_recoverable_session(TestContext &test)
             std::string::npos,
         "Manifest persists canonical frame rate");
 
+    manifest.close();
+
     test.expect(
         session.update_state(
             RecoverySessionState::Ready).ok(),
