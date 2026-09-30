@@ -87,6 +87,11 @@ if(WIN32)
         src/app/source_catalog.cpp
         src/app/windows_main.cpp
     )
+    target_compile_definitions(arssyut PRIVATE
+        UNICODE
+        _UNICODE
+    )
+
     target_link_libraries(arssyut PRIVATE
         arssyut_windows
         comctl32
