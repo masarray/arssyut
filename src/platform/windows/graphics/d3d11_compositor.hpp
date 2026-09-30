@@ -6,6 +6,7 @@
 #include "core/result/result.hpp"
 #include "core/result/status.hpp"
 #include "core/video/frame_geometry.hpp"
+#include "presentation/presentation_state.hpp"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -18,6 +19,7 @@ namespace arssyut::windows {
 
 class D3D11Compositor final {
 public:
+    ~D3D11Compositor();
     D3D11Compositor(const D3D11Compositor &) = delete;
     D3D11Compositor &operator=(const D3D11Compositor &) = delete;
 
@@ -29,7 +31,8 @@ public:
         ID3D11DeviceContext *context,
         ID3D11Texture2D *source,
         arssyut::core::CropRect crop,
-        arssyut::core::FrameSize output_size) noexcept;
+        arssyut::core::FrameSize output_size,
+        const arssyut::presentation::PresentationFrameState *presentation = nullptr) noexcept;
 
     [[nodiscard]] ID3D11Texture2D *output_texture() const noexcept
     {
@@ -70,6 +73,13 @@ private:
     [[nodiscard]] arssyut::core::Status ensure_output(
         arssyut::core::FrameSize output_size) noexcept;
 
+    [[nodiscard]] arssyut::core::Status initialize_keyboard_overlay() noexcept;
+    [[nodiscard]] arssyut::core::Status update_keyboard_overlay(
+        ID3D11DeviceContext *context,
+        const arssyut::presentation::KeyboardOverlayFrame &keyboard) noexcept;
+    void rasterize_keyboard_keycaps(
+        const wchar_t *text) noexcept;
+
     void resolve_gpu_queries(ID3D11DeviceContext *context) noexcept;
     [[nodiscard]] std::size_t begin_gpu_query(
         ID3D11DeviceContext *context) noexcept;
@@ -94,6 +104,15 @@ private:
     Microsoft::WRL::ComPtr<ID3D11PixelShader> pixel_shader_;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler_;
     Microsoft::WRL::ComPtr<ID3D11Buffer> crop_constant_buffer_;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> keyboard_texture_;
+    Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> keyboard_srv_;
+    HDC keyboard_dc_ = nullptr;
+    HBITMAP keyboard_bitmap_ = nullptr;
+    HGDIOBJ keyboard_old_bitmap_ = nullptr;
+    HFONT keyboard_font_ = nullptr;
+    void *keyboard_bits_ = nullptr;
+    std::uint32_t keyboard_generation_ = 0;
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> input_copy_;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> input_srv_;
