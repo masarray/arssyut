@@ -9,6 +9,7 @@
 
 #include <d3d11.h>
 #include <mfidl.h>
+#include <mfreadwrite.h>
 #include <wrl/client.h>
 
 #include <array>
