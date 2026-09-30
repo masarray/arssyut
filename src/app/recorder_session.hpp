@@ -58,6 +58,8 @@ struct RecorderSnapshot {
     std::uint64_t video_skipped = 0;
     std::uint64_t encoder_submitted = 0;
     std::uint64_t encoder_backpressure = 0;
+    std::uint32_t encoder_sample_buffer_length = 0;
+    std::uint32_t encoder_sample_buffer_max_length = 0;
 
     std::uint32_t capture_p95_us = 0;
     std::uint32_t compositor_cpu_p95_us = 0;
@@ -129,6 +131,9 @@ private:
     std::atomic<std::uint32_t> error_detail_{0};
     std::atomic<arssyut::windows::MfWriterStage>
         encoder_failure_stage_{arssyut::windows::MfWriterStage::None};
+
+    std::atomic<std::uint32_t> encoder_sample_buffer_length_{0};
+    std::atomic<std::uint32_t> encoder_sample_buffer_max_length_{0};
 
     std::atomic<std::uint32_t> capture_p95_us_{0};
     std::atomic<std::uint32_t> compositor_cpu_p95_us_{0};

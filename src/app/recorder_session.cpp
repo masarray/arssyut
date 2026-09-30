@@ -52,6 +52,23 @@ using arssyut::windows::WgcCaptureSource;
         counters.PrivateUsage);
 }
 
+
+void observe_memory_peak(
+    std::atomic<std::uint64_t> &peak,
+    std::uint64_t value) noexcept
+{
+    std::uint64_t current =
+        peak.load(std::memory_order_relaxed);
+
+    while (value > current &&
+           !peak.compare_exchange_weak(
+               current,
+               value,
+               std::memory_order_relaxed,
+               std::memory_order_relaxed)) {
+    }
+}
+
 [[nodiscard]] std::string utf8(
     const std::wstring &value)
 {
@@ -157,6 +174,12 @@ Status RecorderSession::start(
     encoder_failure_stage_.store(
         arssyut::windows::MfWriterStage::None,
         std::memory_order_release);
+    encoder_sample_buffer_length_.store(
+        0,
+        std::memory_order_release);
+    encoder_sample_buffer_max_length_.store(
+        0,
+        std::memory_order_release);
     state_.store(
         RecorderState::Preparing,
         std::memory_order_release);
@@ -238,6 +261,12 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
     result.encoder_backpressure =
         diagnostics_.load(
             DiagnosticMetric::EncoderFramesBackpressured);
+    result.encoder_sample_buffer_length =
+        encoder_sample_buffer_length_.load(
+            std::memory_order_relaxed);
+    result.encoder_sample_buffer_max_length =
+        encoder_sample_buffer_max_length_.load(
+            std::memory_order_relaxed);
 
     result.capture_p95_us =
         capture_p95_us_.load(
@@ -362,6 +391,16 @@ void RecorderSession::worker_main() noexcept
         memory_private_bytes_.store(
             memory_end,
             std::memory_order_relaxed);
+        observe_memory_peak(
+            memory_private_max_bytes_,
+            memory_end);
+
+        encoder_sample_buffer_length_.store(
+            writer.last_sample_buffer_length(),
+            std::memory_order_relaxed);
+        encoder_sample_buffer_max_length_.store(
+            writer.last_sample_buffer_max_length(),
+            std::memory_order_relaxed);
 
         write_diagnostics(
             0,
@@ -402,6 +441,16 @@ void RecorderSession::worker_main() noexcept
         memory_private_bytes_.store(
             memory_end,
             std::memory_order_relaxed);
+        observe_memory_peak(
+            memory_private_max_bytes_,
+            memory_end);
+
+        encoder_sample_buffer_length_.store(
+            writer.last_sample_buffer_length(),
+            std::memory_order_relaxed);
+        encoder_sample_buffer_max_length_.store(
+            writer.last_sample_buffer_max_length(),
+            std::memory_order_relaxed);
 
         write_diagnostics(
             0,
@@ -432,6 +481,16 @@ void RecorderSession::worker_main() noexcept
             private_bytes();
         memory_private_bytes_.store(
             memory_end,
+            std::memory_order_relaxed);
+        observe_memory_peak(
+            memory_private_max_bytes_,
+            memory_end);
+
+        encoder_sample_buffer_length_.store(
+            writer.last_sample_buffer_length(),
+            std::memory_order_relaxed);
+        encoder_sample_buffer_max_length_.store(
+            writer.last_sample_buffer_max_length(),
             std::memory_order_relaxed);
 
         write_diagnostics(
@@ -506,6 +565,13 @@ void RecorderSession::worker_main() noexcept
                     relative_pts,
                     frame_duration);
 
+        encoder_sample_buffer_length_.store(
+            writer.last_sample_buffer_length(),
+            std::memory_order_relaxed);
+        encoder_sample_buffer_max_length_.store(
+            writer.last_sample_buffer_max_length(),
+            std::memory_order_relaxed);
+
             if (write_status.code ==
                 StatusCode::EncoderBackpressure) {
                 diagnostics_.increment(
@@ -567,17 +633,9 @@ void RecorderSession::worker_main() noexcept
                 current_memory,
                 std::memory_order_relaxed);
 
-            std::uint64_t max_memory =
-                memory_private_max_bytes_.load(
-                    std::memory_order_relaxed);
-            while (current_memory > max_memory &&
-                   !memory_private_max_bytes_.
-                       compare_exchange_weak(
-                           max_memory,
-                           current_memory,
-                           std::memory_order_relaxed,
-                           std::memory_order_relaxed)) {
-            }
+            observe_memory_peak(
+                memory_private_max_bytes_,
+                current_memory);
 
             next_telemetry = {
                 now.ticks_100ns +
@@ -628,6 +686,16 @@ void RecorderSession::worker_main() noexcept
         private_bytes();
     memory_private_bytes_.store(
         memory_end,
+        std::memory_order_relaxed);
+    observe_memory_peak(
+        memory_private_max_bytes_,
+        memory_end);
+
+    encoder_sample_buffer_length_.store(
+        writer.last_sample_buffer_length(),
+        std::memory_order_relaxed);
+    encoder_sample_buffer_max_length_.store(
+        writer.last_sample_buffer_max_length(),
         std::memory_order_relaxed);
 
     std::uint64_t output_bytes = 0;
@@ -717,6 +785,10 @@ void RecorderSession::write_diagnostics(
             << writer_submitted << ",\n"
             << "  \"encoder_backpressure\": "
             << writer_backpressure << ",\n"
+            << "  \"encoder_sample_buffer_length\": "
+            << snapshot_value.encoder_sample_buffer_length << ",\n"
+            << "  \"encoder_sample_buffer_max_length\": "
+            << snapshot_value.encoder_sample_buffer_max_length << ",\n"
             << "  \"capture_p95_us\": "
             << snapshot_value.capture_p95_us << ",\n"
             << "  \"compositor_cpu_p95_us\": "

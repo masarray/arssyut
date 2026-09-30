@@ -36,6 +36,7 @@ enum class MfWriterStage : std::uint16_t {
     ConvertToNv12,
     CreateTrackedSample,
     CreateDxgiBuffer,
+    SetBufferLength,
     ConfigureSample,
     WriteSample,
     Finalize,
@@ -90,6 +91,16 @@ public:
     }
 
     [[nodiscard]] std::uint32_t in_flight_surfaces() const noexcept;
+
+    [[nodiscard]] std::uint32_t last_sample_buffer_length() const noexcept
+    {
+        return sample_buffer_length_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] std::uint32_t last_sample_buffer_max_length() const noexcept
+    {
+        return sample_buffer_max_length_.load(std::memory_order_relaxed);
+    }
 
     [[nodiscard]] MfWriterStage failure_stage() const noexcept
     {
@@ -153,6 +164,8 @@ private:
 
     std::atomic<std::uint64_t> submitted_frames_{0};
     std::atomic<std::uint64_t> backpressure_events_{0};
+    std::atomic<std::uint32_t> sample_buffer_length_{0};
+    std::atomic<std::uint32_t> sample_buffer_max_length_{0};
     std::atomic<MfWriterStage> failure_stage_{MfWriterStage::None};
 };
 

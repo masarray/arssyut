@@ -7,6 +7,7 @@
 #include <codecapi.h>
 #include <mfapi.h>
 #include <mferror.h>
+#include <mfobjects.h>
 #include <mfreadwrite.h>
 
 #include <algorithm>
@@ -120,6 +121,8 @@ const char *mf_writer_stage_name(
         return "create_tracked_sample";
     case MfWriterStage::CreateDxgiBuffer:
         return "create_dxgi_buffer";
+    case MfWriterStage::SetBufferLength:
+        return "set_dxgi_buffer_length";
     case MfWriterStage::ConfigureSample:
         return "configure_sample";
     case MfWriterStage::WriteSample:
@@ -468,6 +471,8 @@ Status MfH264Mp4Writer::open(
 
     submitted_frames_.store(0, std::memory_order_release);
     backpressure_events_.store(0, std::memory_order_release);
+    sample_buffer_length_.store(0, std::memory_order_release);
+    sample_buffer_max_length_.store(0, std::memory_order_release);
     failure_stage_.store(
         MfWriterStage::None,
         std::memory_order_release);
@@ -829,6 +834,61 @@ Status MfH264Mp4Writer::write_frame(
         release_surface(slot);
         return mf_failure(hr);
     }
+
+    // MFCreateDXGISurfaceBuffer wraps the surface, but the media buffer's
+    // current length starts at zero. Sink Writer treats a zero-length sample
+    // as invalid even though the D3D11 surface contains a complete NV12 frame.
+    // Use IMF2DBuffer to obtain the actual contiguous byte count (including any
+    // driver-defined pitch) and explicitly mark that payload as valid.
+    Microsoft::WRL::ComPtr<IMF2DBuffer> buffer_2d;
+    hr = buffer.As(&buffer_2d);
+    if (FAILED(hr) || !buffer_2d) {
+        failure_stage_.store(
+            MfWriterStage::SetBufferLength,
+            std::memory_order_release);
+        release_surface(slot);
+        return mf_failure(FAILED(hr) ? hr : E_NOINTERFACE);
+    }
+
+    DWORD contiguous_length = 0;
+    hr = buffer_2d->GetContiguousLength(
+        &contiguous_length);
+    if (FAILED(hr) || contiguous_length == 0) {
+        failure_stage_.store(
+            MfWriterStage::SetBufferLength,
+            std::memory_order_release);
+        release_surface(slot);
+        return mf_failure(FAILED(hr) ? hr : E_INVALIDARG);
+    }
+
+    DWORD max_length = 0;
+    hr = buffer->GetMaxLength(&max_length);
+    if (FAILED(hr) ||
+        max_length == 0 ||
+        contiguous_length > max_length) {
+        failure_stage_.store(
+            MfWriterStage::SetBufferLength,
+            std::memory_order_release);
+        release_surface(slot);
+        return mf_failure(FAILED(hr) ? hr : E_INVALIDARG);
+    }
+
+    hr = buffer->SetCurrentLength(
+        contiguous_length);
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::SetBufferLength,
+            std::memory_order_release);
+        release_surface(slot);
+        return mf_failure(hr);
+    }
+
+    sample_buffer_length_.store(
+        contiguous_length,
+        std::memory_order_relaxed);
+    sample_buffer_max_length_.store(
+        max_length,
+        std::memory_order_relaxed);
 
     hr = sample->AddBuffer(buffer.Get());
     if (FAILED(hr)) {
