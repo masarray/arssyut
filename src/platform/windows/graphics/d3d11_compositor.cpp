@@ -563,7 +563,7 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
 
         const int width =
             std::clamp(
-                extent.cx + 38,
+                static_cast<int>(extent.cx) + 38,
                 74,
                 190);
 
