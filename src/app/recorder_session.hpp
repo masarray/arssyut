@@ -9,6 +9,7 @@
 #include "core/video/frame_scheduler.hpp"
 #include "platform/windows/capture/wgc_capture_source.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
+#include "presentation/presentation_controller.hpp"
 
 #include <Windows.h>
 
@@ -44,6 +45,7 @@ struct RecorderConfig {
     arssyut::core::FrameSize output_size{1920, 1080};
     arssyut::core::FrameRate frame_rate{60, 1};
     std::uint32_t bitrate_bps = 12'000'000;
+    arssyut::presentation::PresentationSettings presentation{};
 };
 
 struct RecorderSnapshot {

@@ -6,9 +6,12 @@
 #include "platform/windows/capture/latest_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
+#include "platform/windows/input/presentation_input_worker.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
+#include "presentation/presentation_controller.hpp"
 
 #include <Psapi.h>
+#include <dwmapi.h>
 
 #include <algorithm>
 #include <chrono>
@@ -33,6 +36,9 @@ using arssyut::windows::LatestFrameSlot;
 using arssyut::windows::MfH264Mp4Writer;
 using arssyut::windows::MfVideoWriterConfig;
 using arssyut::windows::NativeVideoPipeline;
+using arssyut::windows::PresentationInputWorker;
+using arssyut::presentation::PresentationController;
+using arssyut::presentation::PresentationFrameState;
 using arssyut::windows::VideoSlotAction;
 using arssyut::windows::WgcCaptureSource;
 
@@ -105,6 +111,92 @@ void observe_memory_peak(
     return written == required
         ? result
         : std::string{};
+}
+
+[[nodiscard]] bool target_screen_rect(
+    const RecorderTarget &target,
+    RECT &rect) noexcept
+{
+    rect = {};
+
+    if (target.kind ==
+        arssyut::windows::CaptureTargetKind::Monitor) {
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
+
+        if (!target.monitor ||
+            !GetMonitorInfoW(
+                target.monitor,
+                &info)) {
+            return false;
+        }
+
+        rect = info.rcMonitor;
+        return rect.right > rect.left &&
+               rect.bottom > rect.top;
+    }
+
+    if (!target.window ||
+        !IsWindow(target.window)) {
+        return false;
+    }
+
+    if (SUCCEEDED(DwmGetWindowAttribute(
+            target.window,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &rect,
+            sizeof(rect))) &&
+        rect.right > rect.left &&
+        rect.bottom > rect.top) {
+        return true;
+    }
+
+    if (!GetWindowRect(
+            target.window,
+            &rect)) {
+        return false;
+    }
+
+    return rect.right > rect.left &&
+           rect.bottom > rect.top;
+}
+
+[[nodiscard]] bool screen_to_content(
+    const RECT &rect,
+    LONG screen_x,
+    LONG screen_y,
+    float &content_x,
+    float &content_y) noexcept
+{
+    const LONG width =
+        rect.right - rect.left;
+    const LONG height =
+        rect.bottom - rect.top;
+
+    if (width <= 0 || height <= 0)
+        return false;
+
+    content_x =
+        static_cast<float>(
+            screen_x - rect.left) /
+        static_cast<float>(width);
+    content_y =
+        static_cast<float>(
+            screen_y - rect.top) /
+        static_cast<float>(height);
+
+    const bool inside =
+        content_x >= 0.0f &&
+        content_x <= 1.0f &&
+        content_y >= 0.0f &&
+        content_y <= 1.0f;
+
+    content_x =
+        std::clamp(content_x, 0.0f, 1.0f);
+    content_y =
+        std::clamp(content_y, 0.0f, 1.0f);
+
+    return inside;
 }
 
 [[nodiscard]] std::string json_escape(
@@ -466,6 +558,48 @@ void RecorderSession::worker_main() noexcept
         return;
     }
 
+    PresentationInputWorker presentation_input;
+    PresentationController presentation_controller;
+    presentation_controller.reset();
+    presentation_controller.set_settings(
+        config_.presentation);
+
+    const bool presentation_enabled =
+        config_.presentation.smart_zoom ||
+        config_.presentation.click_visual ||
+        config_.presentation.shortcut_keys;
+
+    if (presentation_enabled) {
+        status = presentation_input.start();
+        if (!status.ok()) {
+            fail(status);
+            capture.stop();
+            (void)writer.finalize();
+
+            const std::uint64_t memory_end =
+                private_bytes();
+            memory_private_bytes_.store(
+                memory_end,
+                std::memory_order_relaxed);
+            observe_memory_peak(
+                memory_private_max_bytes_,
+                memory_end);
+
+            write_diagnostics(
+                0,
+                memory_start,
+                memory_end,
+                writer.submitted_frames(),
+                writer.backpressure_events(),
+                pipeline->compositor().resource_generation());
+
+            state_.store(
+                RecorderState::Failed,
+                std::memory_order_release);
+            return;
+        }
+    }
+
     const TimePoint start =
         MonotonicClock::now();
 
@@ -474,6 +608,7 @@ void RecorderSession::worker_main() noexcept
         config_.frame_rate);
     if (!status.ok()) {
         fail(status);
+        presentation_input.stop();
         capture.stop();
         (void)writer.finalize();
 
@@ -526,6 +661,18 @@ void RecorderSession::worker_main() noexcept
         MonotonicClock::ticks_per_second / 4
     };
 
+    TimePoint next_presentation = start;
+    TimePoint previous_presentation = start;
+    TimePoint next_target_rect_refresh = start;
+
+    RECT presentation_target_rect{};
+    bool presentation_target_valid =
+        target_screen_rect(
+            config_.target,
+            presentation_target_rect);
+
+    PresentationFrameState presentation_state{};
+
     bool failed = false;
 
     while (!stop_requested_.load(
@@ -533,12 +680,102 @@ void RecorderSession::worker_main() noexcept
         const TimePoint now =
             MonotonicClock::now();
 
+        if (presentation_enabled &&
+            !(now < next_target_rect_refresh)) {
+            presentation_target_valid =
+                target_screen_rect(
+                    config_.target,
+                    presentation_target_rect);
+
+            next_target_rect_refresh = {
+                now.ticks_100ns +
+                MonotonicClock::ticks_per_second / 4
+            };
+        }
+
+        if (presentation_enabled &&
+            !(now < next_presentation)) {
+            arssyut::windows::MouseClickEvent click_event;
+            while (presentation_input.try_pop_click(
+                click_event)) {
+                float click_x = 0.5f;
+                float click_y = 0.5f;
+
+                if (presentation_target_valid &&
+                    screen_to_content(
+                        presentation_target_rect,
+                        click_event.screen_x,
+                        click_event.screen_y,
+                        click_x,
+                        click_y)) {
+                    presentation_controller.on_click(
+                        click_event.kind,
+                        click_x,
+                        click_y,
+                        click_event.time);
+                }
+            }
+
+            arssyut::windows::ShortcutEvent shortcut_event;
+            while (presentation_input.try_pop_shortcut(
+                shortcut_event)) {
+                presentation_controller.on_shortcut(
+                    shortcut_event.chord,
+                    shortcut_event.time);
+            }
+
+            const auto pointer =
+                presentation_input.pointer();
+
+            float cursor_x = 0.5f;
+            float cursor_y = 0.5f;
+            const bool cursor_valid =
+                pointer.valid &&
+                presentation_target_valid &&
+                screen_to_content(
+                    presentation_target_rect,
+                    pointer.screen_x,
+                    pointer.screen_y,
+                    cursor_x,
+                    cursor_y);
+
+            const auto delta_ticks =
+                MonotonicClock::duration_ticks(
+                    previous_presentation,
+                    now);
+            const float presentation_dt =
+                std::clamp(
+                    static_cast<float>(delta_ticks) /
+                        static_cast<float>(
+                            MonotonicClock::ticks_per_second),
+                    0.0f,
+                    0.10f);
+
+            presentation_state =
+                presentation_controller.step(
+                    presentation_dt,
+                    cursor_x,
+                    cursor_y,
+                    cursor_valid,
+                    now,
+                    pointer.last_activity);
+
+            previous_presentation = now;
+            next_presentation = {
+                now.ticks_100ns +
+                MonotonicClock::ticks_per_second / 120
+            };
+        }
+
         auto frame_result =
             pipeline->process_due(
                 device->immediate_context(),
                 now,
                 {},
-                config_.output_size);
+                config_.output_size,
+                presentation_enabled
+                    ? &presentation_state
+                    : nullptr);
 
         if (!frame_result) {
             fail(frame_result.status());
@@ -651,6 +888,7 @@ void RecorderSession::worker_main() noexcept
         RecorderState::Stopping,
         std::memory_order_release);
 
+    presentation_input.stop();
     capture.stop();
 
     state_.store(

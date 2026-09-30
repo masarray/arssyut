@@ -9,6 +9,7 @@
 #include "core/video/frame_scheduler.hpp"
 #include "platform/windows/capture/latest_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_compositor.hpp"
+#include "presentation/presentation_state.hpp"
 
 #include <d3d11.h>
 
@@ -52,7 +53,8 @@ public:
         ID3D11DeviceContext *context,
         arssyut::core::TimePoint now,
         arssyut::core::CropRect crop,
-        arssyut::core::FrameSize output_size) noexcept;
+        arssyut::core::FrameSize output_size,
+        const arssyut::presentation::PresentationFrameState *presentation = nullptr) noexcept;
 
     [[nodiscard]] ID3D11Texture2D *output_texture() const noexcept
     {

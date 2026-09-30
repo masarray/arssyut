@@ -7,6 +7,7 @@
 #include <d3dcompiler.h>
 
 #include <algorithm>
+#include <cwchar>
 #include <limits>
 #include <new>
 #include <utility>
@@ -24,12 +25,20 @@ using arssyut::core::StatusCode;
 using arssyut::core::TimePoint;
 
 constexpr char shader_source[] = R"(
-cbuffer CropConstants : register(b0)
+cbuffer PresentationConstants : register(b0)
 {
     float4 uv_rect;
+    float4 camera_keyboard;
+    float4 output_info;
+    float4 keyboard_rect;
+    float4 click0;
+    float4 click1;
+    float4 click2;
+    float4 click3;
 };
 
 Texture2D source_texture : register(t0);
+Texture2D keyboard_texture : register(t1);
 SamplerState source_sampler : register(s0);
 
 struct VertexOutput
@@ -51,19 +60,140 @@ VertexOutput vs_main(uint vertex_id : SV_VertexID)
     return output;
 }
 
+float click_alpha(float2 uv, float4 click_value, float2 camera_center,
+                  float zoom, float aspect)
+{
+    if (click_value.w <= 0.0f)
+        return 0.0f;
+
+    const float2 projected =
+        0.5f + (click_value.xy - camera_center) * zoom;
+
+    const float2 delta =
+        float2((uv.x - projected.x) * aspect,
+               uv.y - projected.y);
+
+    const float distance = length(delta);
+    const float progress = saturate(click_value.z);
+    const float radius = lerp(0.010f, 0.040f, progress);
+    const float thickness = lerp(0.0050f, 0.0025f, progress);
+
+    const float ring =
+        1.0f - smoothstep(
+            thickness,
+            thickness + 0.0020f,
+            abs(distance - radius));
+
+    const float center =
+        (1.0f - smoothstep(
+            0.0f,
+            0.010f,
+            distance)) * (1.0f - progress);
+
+    return saturate((ring + 0.28f * center) * (1.0f - progress));
+}
+
+float3 click_color(float kind)
+{
+    if (kind < 1.5f)
+        return float3(1.00f, 0.26f, 0.23f);
+    if (kind < 2.5f)
+        return float3(0.26f, 0.72f, 1.00f);
+    return float3(0.95f, 0.72f, 0.22f);
+}
+
+float4 apply_click(float4 color, float2 uv, float4 click_value,
+                   float2 camera_center, float zoom, float aspect)
+{
+    const float alpha =
+        click_alpha(uv, click_value, camera_center, zoom, aspect);
+
+    if (alpha <= 0.0001f)
+        return color;
+
+    const float3 tint = click_color(click_value.w);
+    color.rgb = lerp(color.rgb, tint, saturate(alpha * 0.90f));
+    return color;
+}
+
 float4 ps_main(VertexOutput input) : SV_Target
 {
-    float2 uv = lerp(uv_rect.xy, uv_rect.zw, input.uv);
-    return source_texture.Sample(source_sampler, uv);
+    const float2 camera_center = camera_keyboard.xy;
+    const float zoom = max(camera_keyboard.z, 1.0f);
+
+    const float2 camera_uv =
+        camera_center + (input.uv - 0.5f) / zoom;
+    const float2 uv =
+        lerp(uv_rect.xy, uv_rect.zw, camera_uv);
+
+    float4 color =
+        source_texture.Sample(source_sampler, uv);
+
+    const float aspect = max(output_info.x, 0.1f);
+
+    color = apply_click(
+        color, input.uv, click0, camera_center, zoom, aspect);
+    color = apply_click(
+        color, input.uv, click1, camera_center, zoom, aspect);
+    color = apply_click(
+        color, input.uv, click2, camera_center, zoom, aspect);
+    color = apply_click(
+        color, input.uv, click3, camera_center, zoom, aspect);
+
+    const float keyboard_opacity =
+        saturate(camera_keyboard.w);
+
+    if (keyboard_opacity > 0.001f &&
+        input.uv.x >= keyboard_rect.x &&
+        input.uv.x <= keyboard_rect.z &&
+        input.uv.y >= keyboard_rect.y &&
+        input.uv.y <= keyboard_rect.w) {
+        const float2 keyboard_uv =
+            (input.uv - keyboard_rect.xy) /
+            max(keyboard_rect.zw - keyboard_rect.xy, 0.0001f);
+
+        float4 overlay =
+            keyboard_texture.Sample(
+                source_sampler,
+                keyboard_uv);
+
+        const float alpha =
+            saturate(overlay.a * keyboard_opacity);
+
+        color.rgb =
+            lerp(color.rgb, overlay.rgb, alpha);
+    }
+
+    return color;
 }
 )";
 
-struct CropConstants {
-    float left;
-    float top;
-    float right;
-    float bottom;
+struct PresentationConstants {
+    float uv_left;
+    float uv_top;
+    float uv_right;
+    float uv_bottom;
+
+    float camera_center_x;
+    float camera_center_y;
+    float camera_zoom;
+    float keyboard_opacity;
+
+    float output_aspect;
+    float reserved0;
+    float reserved1;
+    float reserved2;
+
+    float keyboard_left;
+    float keyboard_top;
+    float keyboard_right;
+    float keyboard_bottom;
+
+    float clicks[16]{};
 };
+
+constexpr UINT kKeyboardWidth = 640;
+constexpr UINT kKeyboardHeight = 112;
 
 [[nodiscard]] std::uint32_t hresult_detail(HRESULT hr) noexcept
 {
@@ -127,6 +257,29 @@ compile_shader(const char *entry, const char *target) noexcept
 }
 
 } // namespace
+
+D3D11Compositor::~D3D11Compositor()
+{
+    if (keyboard_dc_) {
+        if (keyboard_old_bitmap_)
+            SelectObject(keyboard_dc_, keyboard_old_bitmap_);
+        DeleteDC(keyboard_dc_);
+        keyboard_dc_ = nullptr;
+    }
+
+    if (keyboard_font_) {
+        DeleteObject(keyboard_font_);
+        keyboard_font_ = nullptr;
+    }
+
+    if (keyboard_bitmap_) {
+        DeleteObject(keyboard_bitmap_);
+        keyboard_bitmap_ = nullptr;
+    }
+
+    keyboard_old_bitmap_ = nullptr;
+    keyboard_bits_ = nullptr;
+}
 
 Result<std::unique_ptr<D3D11Compositor>>
 D3D11Compositor::create(ID3D11Device *device) noexcept
@@ -194,7 +347,7 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
         return d3d_failure(hr);
 
     D3D11_BUFFER_DESC constant_desc{};
-    constant_desc.ByteWidth = sizeof(CropConstants);
+    constant_desc.ByteWidth = sizeof(PresentationConstants);
     constant_desc.Usage = D3D11_USAGE_DEFAULT;
     constant_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
@@ -204,6 +357,11 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
         crop_constant_buffer_.GetAddressOf());
     if (FAILED(hr))
         return d3d_failure(hr);
+
+    const Status keyboard_status =
+        initialize_keyboard_overlay();
+    if (!keyboard_status.ok())
+        return keyboard_status;
 
     for (auto &slot : gpu_queries_) {
         D3D11_QUERY_DESC disjoint_desc{};
@@ -230,6 +388,289 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
         if (FAILED(hr))
             return d3d_failure(hr);
     }
+
+    return Status::success();
+}
+
+Status D3D11Compositor::initialize_keyboard_overlay() noexcept
+{
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = kKeyboardWidth;
+    desc.Height = kKeyboardHeight;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    HRESULT hr = device_->CreateTexture2D(
+        &desc,
+        nullptr,
+        keyboard_texture_.GetAddressOf());
+    if (FAILED(hr))
+        return d3d_failure(hr);
+
+    hr = device_->CreateShaderResourceView(
+        keyboard_texture_.Get(),
+        nullptr,
+        keyboard_srv_.GetAddressOf());
+    if (FAILED(hr))
+        return d3d_failure(hr);
+
+    keyboard_dc_ = CreateCompatibleDC(nullptr);
+    if (!keyboard_dc_) {
+        return Status::failure(
+            StatusCode::PlatformFailure,
+            GetLastError());
+    }
+
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth =
+        static_cast<LONG>(kKeyboardWidth);
+    info.bmiHeader.biHeight =
+        -static_cast<LONG>(kKeyboardHeight);
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+
+    keyboard_bitmap_ = CreateDIBSection(
+        keyboard_dc_,
+        &info,
+        DIB_RGB_COLORS,
+        &keyboard_bits_,
+        nullptr,
+        0);
+    if (!keyboard_bitmap_ || !keyboard_bits_) {
+        return Status::failure(
+            StatusCode::PlatformFailure,
+            GetLastError());
+    }
+
+    keyboard_old_bitmap_ =
+        SelectObject(
+            keyboard_dc_,
+            keyboard_bitmap_);
+
+    keyboard_font_ = CreateFontW(
+        -30,
+        0,
+        0,
+        0,
+        FW_SEMIBOLD,
+        FALSE,
+        FALSE,
+        FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY,
+        DEFAULT_PITCH,
+        L"Segoe UI");
+    if (!keyboard_font_) {
+        return Status::failure(
+            StatusCode::PlatformFailure,
+            GetLastError());
+    }
+
+    return Status::success();
+}
+
+void D3D11Compositor::rasterize_keyboard_keycaps(
+    const wchar_t *text) noexcept
+{
+    if (!keyboard_dc_ ||
+        !keyboard_bits_ ||
+        !text)
+        return;
+
+    auto *pixels =
+        static_cast<std::uint32_t *>(keyboard_bits_);
+    std::fill(
+        pixels,
+        pixels +
+            static_cast<std::size_t>(kKeyboardWidth) *
+                static_cast<std::size_t>(kKeyboardHeight),
+        0u);
+
+    RECT client{
+        0,
+        0,
+        static_cast<LONG>(kKeyboardWidth),
+        static_cast<LONG>(kKeyboardHeight)
+    };
+
+    HBRUSH background =
+        CreateSolidBrush(RGB(22, 25, 30));
+    HPEN border =
+        CreatePen(PS_SOLID, 2, RGB(78, 84, 94));
+
+    HGDIOBJ old_brush =
+        SelectObject(keyboard_dc_, background);
+    HGDIOBJ old_pen =
+        SelectObject(keyboard_dc_, border);
+
+    RoundRect(
+        keyboard_dc_,
+        1,
+        1,
+        client.right - 1,
+        client.bottom - 1,
+        24,
+        24);
+
+    SelectObject(
+        keyboard_dc_,
+        keyboard_font_);
+    SetBkMode(
+        keyboard_dc_,
+        TRANSPARENT);
+    SetTextColor(
+        keyboard_dc_,
+        RGB(244, 246, 249));
+
+    std::array<wchar_t, 64> copy{};
+    wcsncpy_s(
+        copy.data(),
+        copy.size(),
+        text,
+        _TRUNCATE);
+
+    constexpr wchar_t separator[] = L"  +  ";
+    wchar_t *context = nullptr;
+    wchar_t *token = wcstok_s(
+        copy.data(),
+        separator,
+        &context);
+
+    struct Token {
+        wchar_t *text = nullptr;
+        int width = 0;
+    };
+
+    std::array<Token, 8> tokens{};
+    std::size_t count = 0;
+    int total_width = 0;
+
+    while (token && count < tokens.size()) {
+        SIZE extent{};
+        GetTextExtentPoint32W(
+            keyboard_dc_,
+            token,
+            static_cast<int>(wcslen(token)),
+            &extent);
+
+        const int width =
+            std::clamp(
+                static_cast<int>(extent.cx) + 38,
+                74,
+                190);
+
+        tokens[count++] = {token, width};
+        total_width += width;
+
+        token = wcstok_s(
+            nullptr,
+            separator,
+            &context);
+    }
+
+    if (count > 1)
+        total_width +=
+            static_cast<int>(count - 1) * 14;
+
+    int x =
+        std::max(
+            18,
+            (static_cast<int>(kKeyboardWidth) -
+             total_width) / 2);
+
+    HBRUSH key_brush =
+        CreateSolidBrush(RGB(50, 55, 64));
+    HPEN key_pen =
+        CreatePen(PS_SOLID, 1, RGB(93, 100, 112));
+
+    SelectObject(keyboard_dc_, key_brush);
+    SelectObject(keyboard_dc_, key_pen);
+
+    for (std::size_t i = 0; i < count; ++i) {
+        RECT key{
+            x,
+            24,
+            x + tokens[i].width,
+            88
+        };
+
+        RoundRect(
+            keyboard_dc_,
+            key.left,
+            key.top,
+            key.right,
+            key.bottom,
+            14,
+            14);
+
+        DrawTextW(
+            keyboard_dc_,
+            tokens[i].text,
+            -1,
+            &key,
+            DT_CENTER |
+                DT_VCENTER |
+                DT_SINGLELINE |
+                DT_NOPREFIX);
+
+        x = key.right + 14;
+    }
+
+    SelectObject(keyboard_dc_, old_pen);
+    SelectObject(keyboard_dc_, old_brush);
+
+    DeleteObject(key_pen);
+    DeleteObject(key_brush);
+    DeleteObject(border);
+    DeleteObject(background);
+
+    // GDI does not preserve alpha in a 32-bit DIB. Promote every painted
+    // pixel to an opaque source pixel; the shader applies temporal opacity.
+    for (std::size_t i = 0;
+         i <
+         static_cast<std::size_t>(kKeyboardWidth) *
+             static_cast<std::size_t>(kKeyboardHeight);
+         ++i) {
+        if ((pixels[i] & 0x00FFFFFFu) != 0)
+            pixels[i] |= 0xFF000000u;
+    }
+}
+
+Status D3D11Compositor::update_keyboard_overlay(
+    ID3D11DeviceContext *context,
+    const arssyut::presentation::KeyboardOverlayFrame &keyboard) noexcept
+{
+    if (!context ||
+        !keyboard_texture_)
+        return Status::failure(
+            StatusCode::InvalidArgument);
+
+    if (keyboard.generation == 0 ||
+        keyboard.generation == keyboard_generation_) {
+        return Status::success();
+    }
+
+    rasterize_keyboard_keycaps(
+        keyboard.text.data());
+
+    context->UpdateSubresource(
+        keyboard_texture_.Get(),
+        0,
+        nullptr,
+        keyboard_bits_,
+        kKeyboardWidth * 4,
+        0);
+
+    keyboard_generation_ =
+        keyboard.generation;
 
     return Status::success();
 }
@@ -435,7 +876,8 @@ Status D3D11Compositor::render(
     ID3D11DeviceContext *context,
     ID3D11Texture2D *source,
     CropRect crop,
-    FrameSize output_size) noexcept
+    FrameSize output_size,
+    const arssyut::presentation::PresentationFrameState *presentation) noexcept
 {
     if (!context || !source)
         return Status::failure(StatusCode::InvalidArgument);
@@ -463,16 +905,104 @@ Status D3D11Compositor::render(
 
     context->CopyResource(input_copy_.Get(), source);
 
-    const CropConstants constants{
+    arssyut::presentation::PresentationFrameState neutral{};
+    const auto &state =
+        presentation ? *presentation : neutral;
+
+    const Status keyboard_status =
+        update_keyboard_overlay(
+            context,
+            state.keyboard);
+    if (!keyboard_status.ok())
+        return keyboard_status;
+
+    PresentationConstants constants{};
+    constants.uv_left =
         static_cast<float>(crop.left) /
-            static_cast<float>(source_size.width),
+        static_cast<float>(source_size.width);
+    constants.uv_top =
         static_cast<float>(crop.top) /
-            static_cast<float>(source_size.height),
+        static_cast<float>(source_size.height);
+    constants.uv_right =
         static_cast<float>(crop.right) /
-            static_cast<float>(source_size.width),
+        static_cast<float>(source_size.width);
+    constants.uv_bottom =
         static_cast<float>(crop.bottom) /
-            static_cast<float>(source_size.height),
-    };
+        static_cast<float>(source_size.height);
+
+    constants.camera_center_x =
+        std::clamp(
+            state.camera_center_x,
+            0.0f,
+            1.0f);
+    constants.camera_center_y =
+        std::clamp(
+            state.camera_center_y,
+            0.0f,
+            1.0f);
+    constants.camera_zoom =
+        std::clamp(
+            state.camera_zoom,
+            1.0f,
+            4.0f);
+    constants.keyboard_opacity =
+        std::clamp(
+            state.keyboard.opacity,
+            0.0f,
+            1.0f);
+
+    constants.output_aspect =
+        static_cast<float>(output_size.width) /
+        static_cast<float>(output_size.height);
+
+    constexpr float keyboard_width = 0.36f;
+    const float keyboard_height =
+        keyboard_width *
+        (static_cast<float>(kKeyboardHeight) /
+         static_cast<float>(kKeyboardWidth)) *
+        constants.output_aspect;
+
+    constants.keyboard_left =
+        0.5f - keyboard_width * 0.5f;
+    constants.keyboard_right =
+        0.5f + keyboard_width * 0.5f;
+    constants.keyboard_bottom = 0.94f;
+    constants.keyboard_top =
+        constants.keyboard_bottom -
+        keyboard_height;
+
+    for (std::size_t i = 0;
+         i < state.clicks.size();
+         ++i) {
+        const auto &click =
+            state.clicks[i];
+
+        const float lifetime =
+            std::max(
+                click.lifetime_seconds,
+                0.0001f);
+
+        const float progress =
+            click.kind ==
+                    arssyut::presentation::ClickKind::None
+                ? 1.0f
+                : std::clamp(
+                      click.age_seconds / lifetime,
+                      0.0f,
+                      1.0f);
+
+        const std::size_t base = i * 4;
+        constants.clicks[base + 0] =
+            click.content_x;
+        constants.clicks[base + 1] =
+            click.content_y;
+        constants.clicks[base + 2] =
+            progress;
+        constants.clicks[base + 3] =
+            static_cast<float>(
+                static_cast<std::uint8_t>(
+                    click.kind));
+    }
 
     context->UpdateSubresource(
         crop_constant_buffer_.Get(),
@@ -505,13 +1035,19 @@ Status D3D11Compositor::render(
     ID3D11SamplerState *sampler = sampler_.Get();
     context->PSSetSamplers(0, 1, &sampler);
 
-    ID3D11ShaderResourceView *srv = input_srv_.Get();
-    context->PSSetShaderResources(0, 1, &srv);
+    ID3D11ShaderResourceView *srvs[2] = {
+        input_srv_.Get(),
+        keyboard_srv_.Get()
+    };
+    context->PSSetShaderResources(0, 2, srvs);
 
     context->Draw(3, 0);
 
-    ID3D11ShaderResourceView *null_srv = nullptr;
-    context->PSSetShaderResources(0, 1, &null_srv);
+    ID3D11ShaderResourceView *null_srvs[2] = {
+        nullptr,
+        nullptr
+    };
+    context->PSSetShaderResources(0, 2, null_srvs);
 
     ID3D11RenderTargetView *null_rtv = nullptr;
     context->OMSetRenderTargets(1, &null_rtv, nullptr);

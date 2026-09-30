@@ -55,7 +55,8 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
     ID3D11DeviceContext *context,
     arssyut::core::TimePoint now,
     arssyut::core::CropRect crop,
-    arssyut::core::FrameSize output_size) noexcept
+    arssyut::core::FrameSize output_size,
+    const arssyut::presentation::PresentationFrameState *presentation) noexcept
 {
     if (!context || !frame_slot_ || !diagnostics_ || !compositor_) {
         return Result<VideoSlotResult>::failure(
@@ -103,7 +104,8 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
         context,
         texture.value().Get(),
         crop,
-        output_size);
+        output_size,
+        presentation);
     if (!render_status.ok())
         return Result<VideoSlotResult>::failure(render_status);
 
