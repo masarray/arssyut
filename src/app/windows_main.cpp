@@ -567,6 +567,12 @@ LRESULT CALLBACK window_proc(
             &dark,
             sizeof(dark));
 
+        // Keep the recorder controls out of monitor captures where the
+        // operating system supports capture exclusion.
+        (void)SetWindowDisplayAffinity(
+            window,
+            WDA_EXCLUDEFROMCAPTURE);
+
         app->background_brush =
             CreateSolidBrush(
                 RGB(24, 25, 28));
