@@ -40,6 +40,9 @@ endif()
 
 if(WIN32)
     add_library(arssyut_windows STATIC
+        src/platform/windows/capture/captured_frame.cpp
+        src/platform/windows/capture/wgc_capture_source.cpp
+        src/platform/windows/graphics/d3d11_compositor.cpp
         src/platform/windows/graphics/d3d11_device.cpp
     )
 
@@ -51,6 +54,8 @@ if(WIN32)
     target_compile_definitions(arssyut_windows PRIVATE
         WIN32_LEAN_AND_MEAN
         NOMINMAX
+        _WIN32_WINNT=0x0A00
+        WINVER=0x0A00
     )
 
     if(MSVC)
@@ -66,7 +71,9 @@ if(WIN32)
         PUBLIC
             arssyut_core
             d3d11
+            d3dcompiler
             dxgi
+            windowsapp
     )
 endif()
 
