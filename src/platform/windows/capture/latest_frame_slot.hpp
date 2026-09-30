@@ -196,15 +196,21 @@ public:
         }
     }
 
-    [[nodiscard]] bool has_in_flight() const noexcept
+    [[nodiscard]] std::size_t in_flight_count() const noexcept
     {
+        std::size_t count = 0;
         for (const auto &slot : slots_) {
             if (slot.state.load(std::memory_order_acquire) !=
                 SlotState::Free) {
-                return true;
+                ++count;
             }
         }
-        return false;
+        return count;
+    }
+
+    [[nodiscard]] bool has_in_flight() const noexcept
+    {
+        return in_flight_count() != 0;
     }
 
     [[nodiscard]] FrameLease try_acquire_latest() noexcept
