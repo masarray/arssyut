@@ -169,6 +169,44 @@ public:
             : PublishResult::Published;
     }
 
+    /*
+     * Producer-side resize/stop helper. Prevents a stale unread WGC frame from
+     * keeping a frame-pool surface alive while the capture backend reconfigures.
+     * A frame already held by the consumer is never force-released.
+     */
+    void producer_discard_unread() noexcept
+    {
+        const std::size_t index = published_.exchange(
+            invalid_index,
+            std::memory_order_acq_rel);
+
+        if (index == invalid_index || index >= slot_count)
+            return;
+
+        SlotState expected = SlotState::Ready;
+        if (slots_[index].state.compare_exchange_strong(
+                expected,
+                SlotState::Writing,
+                std::memory_order_acq_rel,
+                std::memory_order_relaxed)) {
+            slots_[index].frame = {};
+            slots_[index].state.store(
+                SlotState::Free,
+                std::memory_order_release);
+        }
+    }
+
+    [[nodiscard]] bool has_in_flight() const noexcept
+    {
+        for (const auto &slot : slots_) {
+            if (slot.state.load(std::memory_order_acquire) !=
+                SlotState::Free) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     [[nodiscard]] FrameLease try_acquire_latest() noexcept
     {
         const std::size_t index =
