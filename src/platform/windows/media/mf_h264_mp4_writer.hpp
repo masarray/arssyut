@@ -17,7 +17,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <memory>
 
 namespace arssyut::windows {
 
@@ -80,11 +79,20 @@ private:
 
     struct SurfaceSlot {
         Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+        Microsoft::WRL::ComPtr<ID3D11VideoProcessorOutputView> output_view;
         std::atomic<bool> in_use{false};
     };
 
+    [[nodiscard]] arssyut::core::Status create_video_processor(
+        ID3D11Device *device) noexcept;
+
     [[nodiscard]] arssyut::core::Status create_surface_pool(
         ID3D11Device *device) noexcept;
+
+    [[nodiscard]] arssyut::core::Status convert_to_nv12(
+        ID3D11DeviceContext *context,
+        ID3D11Texture2D *source,
+        std::size_t output_slot) noexcept;
 
     [[nodiscard]] std::size_t acquire_surface() noexcept;
 
@@ -98,6 +106,14 @@ private:
     Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> dxgi_manager_;
     Microsoft::WRL::ComPtr<IMFSinkWriter> writer_;
     Microsoft::WRL::ComPtr<IMFAsyncCallback> release_callback_;
+
+    Microsoft::WRL::ComPtr<ID3D11VideoDevice> video_device_;
+    Microsoft::WRL::ComPtr<ID3D11VideoContext> video_context_;
+    Microsoft::WRL::ComPtr<ID3D11VideoProcessorEnumerator> video_enumerator_;
+    Microsoft::WRL::ComPtr<ID3D11VideoProcessor> video_processor_;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> input_copy_;
+    Microsoft::WRL::ComPtr<ID3D11VideoProcessorInputView> input_view_;
 
     std::array<SurfaceSlot, max_surface_count> surfaces_{};
 
