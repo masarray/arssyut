@@ -9,7 +9,10 @@ struct TimePoint {
 
     [[nodiscard]] friend constexpr bool operator==(
         TimePoint lhs,
-        TimePoint rhs) noexcept = default;
+        TimePoint rhs) noexcept
+    {
+        return lhs.ticks_100ns == rhs.ticks_100ns;
+    }
 
     [[nodiscard]] friend constexpr bool operator<(
         TimePoint lhs,
