@@ -1,0 +1,186 @@
+name: P1 Soak
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Validation mode
+        required: true
+        type: choice
+        default: hosted-regression
+        options:
+          - hosted-regression
+          - interactive-wgc
+      duration_minutes:
+        description: Interactive WGC soak duration in minutes
+        required: true
+        default: "30"
+        type: string
+      fps:
+        description: Output cadence for interactive WGC soak
+        required: true
+        type: choice
+        default: "60"
+        options:
+          - "30"
+          - "60"
+      lifecycle_cycles:
+        description: Repeated start/stop cycles after primary validation
+        required: true
+        default: "100"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p1-soak-${{ github.ref }}-${{ inputs.mode }}
+  cancel-in-progress: false
+
+jobs:
+  hosted-regression:
+    if: inputs.mode == 'hosted-regression'
+    name: Hosted bounded regression soak
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset windows-x64
+
+      - name: Build
+        run: cmake --build --preset windows-release --parallel
+
+      - name: Deterministic tests
+        run: ctest --preset windows-release
+
+      - name: Repeated Windows lifecycle regression
+        shell: pwsh
+        run: |
+          $cycles = [Math]::Max(1, [int]"${{ inputs.lifecycle_cycles }}")
+          $exe = Join-Path $PWD "build/windows-x64/Release/arssyut_windows_tests.exe"
+          $log = Join-Path $PWD "p1-hosted-regression.log"
+
+          "mode=hosted-regression" | Set-Content $log
+          "cycles=$cycles" | Add-Content $log
+
+          for ($i = 1; $i -le $cycles; $i++) {
+            & $exe 2>&1 | Add-Content $log
+            if ($LASTEXITCODE -ne 0) {
+              throw "arssyut_windows_tests failed at lifecycle cycle $i"
+            }
+            if (($i % 10) -eq 0) {
+              Write-Host "Completed $i / $cycles cycles"
+            }
+          }
+
+          "result=PASS" | Add-Content $log
+
+      - name: Upload hosted regression log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-hosted-regression-${{ github.run_id }}
+          path: p1-hosted-regression.log
+          if-no-files-found: warn
+          retention-days: 90
+
+  interactive-wgc:
+    if: inputs.mode == 'interactive-wgc'
+    name: Interactive WGC soak
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+      - arssyut-interactive
+    timeout-minutes: 180
+
+    steps:
+      - name: Verify interactive Windows session
+        shell: pwsh
+        run: |
+          $sessionId = (Get-Process -Id $PID).SessionId
+          Write-Host "Runner process session id: $sessionId"
+
+          if ($sessionId -eq 0) {
+            throw "WGC soak cannot run from Windows Session 0. Start the GitHub runner interactively with run.cmd after signing in; do not run this validation job as a Windows service."
+          }
+
+          $explorer = Get-Process explorer -ErrorAction SilentlyContinue |
+            Where-Object { $_.SessionId -eq $sessionId } |
+            Select-Object -First 1
+
+          if (-not $explorer) {
+            throw "No Explorer desktop exists in the runner session. The WGC soak requires an active signed-in interactive desktop."
+          }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake --preset windows-x64
+
+      - name: Build
+        run: cmake --build --preset windows-release --parallel
+
+      - name: Deterministic tests
+        run: ctest --preset windows-release
+
+      - name: Run interactive WGC soak
+        shell: pwsh
+        run: |
+          $minutes = [Math]::Max(1, [int]"${{ inputs.duration_minutes }}")
+          $fps = [int]"${{ inputs.fps }}"
+          $seconds = $minutes * 60
+          $exe = Join-Path $PWD "build/windows-x64/Release/arssyut_p1_probe.exe"
+          $log = Join-Path $PWD "p1-wgc-soak.log"
+
+          "mode=interactive-wgc" | Set-Content $log
+          "duration_minutes=$minutes" | Add-Content $log
+          "fps=$fps" | Add-Content $log
+          "commit=$env:GITHUB_SHA" | Add-Content $log
+
+          & $exe $seconds $fps 2>&1 | Tee-Object -FilePath $log -Append
+          $probeExit = $LASTEXITCODE
+
+          if ($probeExit -ne 0) {
+            throw "P1 WGC soak failed with exit code $probeExit"
+          }
+
+      - name: Run repeated WGC start-stop lifecycle
+        shell: pwsh
+        run: |
+          $cycles = [Math]::Max(1, [int]"${{ inputs.lifecycle_cycles }}")
+          $fps = [int]"${{ inputs.fps }}"
+          $exe = Join-Path $PWD "build/windows-x64/Release/arssyut_p1_probe.exe"
+          $log = Join-Path $PWD "p1-wgc-lifecycle.log"
+
+          "cycles=$cycles" | Set-Content $log
+
+          for ($i = 1; $i -le $cycles; $i++) {
+            "cycle=$i" | Add-Content $log
+            & $exe 1 $fps 2>&1 | Add-Content $log
+            if ($LASTEXITCODE -ne 0) {
+              throw "P1 WGC lifecycle probe failed at cycle $i"
+            }
+            if (($i % 10) -eq 0) {
+              Write-Host "Completed $i / $cycles WGC start-stop cycles"
+            }
+          }
+
+          "result=PASS" | Add-Content $log
+
+      - name: Upload interactive soak evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-interactive-wgc-soak-${{ github.run_id }}
+          path: |
+            p1-wgc-soak.log
+            p1-wgc-lifecycle.log
+            build/windows-x64/Release/arssyut_p1_probe.exe
+          if-no-files-found: warn
+          retention-days: 90
