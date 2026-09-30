@@ -6,6 +6,7 @@
 #include "platform/windows/video/native_video_pipeline.hpp"
 
 #include <Windows.h>
+#include <Psapi.h>
 
 #include <algorithm>
 #include <chrono>
@@ -27,6 +28,21 @@ int parse_int(const wchar_t *value, int fallback)
         return fallback;
 
     return static_cast<int>(parsed);
+}
+
+std::uint64_t private_bytes()
+{
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    counters.cb = sizeof(counters);
+
+    if (!GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&counters),
+            sizeof(counters))) {
+        return 0;
+    }
+
+    return static_cast<std::uint64_t>(counters.PrivateUsage);
 }
 
 void print_histogram(
@@ -112,6 +128,9 @@ int wmain(int argc, wchar_t **argv)
         return 5;
     }
 
+    const std::uint64_t memory_start = private_bytes();
+    std::uint64_t memory_max = memory_start;
+
     const TimePoint start = MonotonicClock::now();
     const Status timeline_status =
         pipeline.reset_timeline(
@@ -154,12 +173,17 @@ int wmain(int argc, wchar_t **argv)
         if (capture.source_closed())
             break;
 
+        memory_max = std::max(memory_max, private_bytes());
+
         // Validation-tool pacing only. Production output pacing remains owned
         // by FrameScheduler; this sleep does not participate in engine timing.
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     capture.stop();
+
+    const std::uint64_t memory_end = private_bytes();
+    memory_max = std::max(memory_max, memory_end);
 
     const auto received =
         diagnostics.load(DiagnosticMetric::CaptureFramesReceived);
@@ -187,7 +211,14 @@ int wmain(int argc, wchar_t **argv)
         << "video.unavailable=" << unavailable << "\n"
         << "video.skipped_intervals=" << skipped << "\n"
         << "compositor.resource_generation="
-        << pipeline.compositor().resource_generation() << "\n";
+        << pipeline.compositor().resource_generation() << "\n"
+        << "memory.private_start_bytes=" << memory_start << "\n"
+        << "memory.private_end_bytes=" << memory_end << "\n"
+        << "memory.private_max_bytes=" << memory_max << "\n"
+        << "memory.private_delta_bytes="
+        << static_cast<std::int64_t>(memory_end) -
+               static_cast<std::int64_t>(memory_start)
+        << "\n";
 
     print_histogram(
         "capture.callback",
@@ -195,6 +226,9 @@ int wmain(int argc, wchar_t **argv)
     print_histogram(
         "compositor.cpu_submit",
         pipeline.compositor().cpu_submit_latency());
+    print_histogram(
+        "compositor.gpu_execution",
+        pipeline.compositor().gpu_execution_latency());
 
     if (pipeline_failed)
         return 7;
