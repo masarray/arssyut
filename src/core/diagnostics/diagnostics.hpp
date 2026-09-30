@@ -10,7 +10,13 @@ namespace arssyut::core {
 enum class DiagnosticMetric : std::uint8_t {
     CaptureFramesReceived = 0,
     CaptureFramesReplaced,
+    CaptureFramesDroppedBusy,
+    CaptureSourceResizes,
+    CaptureSourceClosed,
+    CaptureCallbackFailures,
     VideoFramesRendered,
+    VideoFramesReused,
+    VideoFramesUnavailable,
     VideoFramesSkipped,
     InputEventsDropped,
     AudioUnderflows,

@@ -1,9 +1,12 @@
 #include "core/concurrency/latest_atomic.hpp"
 #include "core/concurrency/spsc_ring.hpp"
 #include "core/diagnostics/diagnostics.hpp"
+#include "core/diagnostics/latency_histogram.hpp"
 #include "core/result/result.hpp"
 #include "core/session/session_state_machine.hpp"
 #include "core/time/monotonic_clock.hpp"
+#include "core/video/frame_geometry.hpp"
+#include "core/video/frame_scheduler.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -122,6 +125,91 @@ void test_clock(TestContext &test)
         "Monotonic duration is non-negative");
 }
 
+void test_frame_geometry(TestContext &test)
+{
+    using namespace arssyut::core;
+
+    const FrameSize source{1920, 1080};
+    test.expect(
+        full_frame_crop(source) == CropRect{0, 0, 1920, 1080},
+        "Full-frame crop matches source");
+
+    const CropRect clamped =
+        clamp_crop({1800, 1000, 2400, 1400}, source);
+    test.expect(
+        clamped == CropRect{1800, 1000, 1920, 1080},
+        "Crop is bounded to source");
+
+    const CropRect invalid =
+        clamp_crop({100, 100, 50, 50}, source);
+    test.expect(
+        invalid == full_frame_crop(source),
+        "Invalid crop fails safe to full frame");
+}
+
+void test_frame_scheduler(TestContext &test)
+{
+    using namespace arssyut::core;
+
+    FrameScheduler scheduler;
+    test.expect(
+        scheduler.reset({1'000'000}, {60, 1}).ok(),
+        "60 fps scheduler initializes");
+
+    auto first = scheduler.poll({1'000'000});
+    test.expect(first.emit, "Scheduler emits frame zero at start");
+    test.expect(first.frame_index == 0, "First frame index is zero");
+    test.expect(first.skipped_intervals == 0, "First frame skips none");
+
+    auto early = scheduler.poll({1'100'000});
+    test.expect(!early.emit, "Scheduler does not emit before next deadline");
+
+    auto second = scheduler.poll({1'166'667});
+    test.expect(second.emit, "Scheduler emits next 60 fps frame");
+    test.expect(second.frame_index == 1, "Second frame index is one");
+
+    auto late = scheduler.poll({1'700'000});
+    test.expect(late.emit, "Late scheduler still emits one bounded decision");
+    test.expect(
+        late.skipped_intervals >= 2,
+        "Late scheduler reports coalesced intervals");
+
+    FrameScheduler exact;
+    test.expect(
+        exact.reset({0}, {60, 1}).ok(),
+        "Exact scheduler initializes");
+    test.expect(
+        exact.pts_for_index(60).ticks_100ns == 10'000'000,
+        "60 fps index 60 lands exactly at one second");
+    test.expect(
+        exact.pts_for_index(30).ticks_100ns == 5'000'000,
+        "60 fps index 30 lands exactly at half second");
+}
+
+void test_latency_histogram(TestContext &test)
+{
+    arssyut::core::LatencyHistogram histogram;
+
+    for (int i = 0; i < 50; ++i)
+        histogram.observe(40);
+    for (int i = 0; i < 45; ++i)
+        histogram.observe(200);
+    for (int i = 0; i < 5; ++i)
+        histogram.observe(1500);
+
+    const auto snapshot = histogram.snapshot();
+    test.expect(snapshot.total == 100, "Latency histogram counts samples");
+    test.expect(
+        snapshot.quantile_upper_bound(50, 100) == 50,
+        "Latency histogram p50 is bounded correctly");
+    test.expect(
+        snapshot.quantile_upper_bound(95, 100) == 250,
+        "Latency histogram p95 is bounded correctly");
+    test.expect(
+        snapshot.quantile_upper_bound(99, 100) == 2'000,
+        "Latency histogram p99 is bounded correctly");
+}
+
 void test_session_state_machine(TestContext &test)
 {
     using namespace arssyut::core;
@@ -178,6 +266,9 @@ int main()
     test_latest_atomic(test);
     test_diagnostics(test);
     test_clock(test);
+    test_frame_geometry(test);
+    test_frame_scheduler(test);
+    test_latency_histogram(test);
     test_session_state_machine(test);
 
     if (test.failures != 0) {

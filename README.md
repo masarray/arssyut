@@ -96,8 +96,15 @@ See `docs/P0_FOUNDATION.md` for ownership and acceptance gates.
 
 ## Status
 
-**P0 accepted.** Windows x64 Release builds successfully on Visual Studio 2026,
-all deterministic CTest checks pass, and the merged `main` workflow is green.
+**P0 accepted. P1 implementation is in validation.**
 
-Next milestone: **P1 — Windows Graphics Capture + canonical frame scheduling +
-bounded GPU frame handoff + recoverable video skeleton.**
+P1 adds the real Windows Graphics Capture path, a fixed three-slot latest-frame
+handoff, canonical 30/60 FPS scheduling, GPU-only crop/scale compositing,
+non-blocking CPU/GPU latency instrumentation, and the recoverable session
+manifest boundary.
+
+CI also publishes `arssyut_p1_probe.exe` for direct desktop validation. See
+`docs/P1_NATIVE_CAPTURE.md`.
+
+P2 (audio/encoder/MP4) begins only after the P1 capture path is accepted on a
+real interactive Windows desktop.
