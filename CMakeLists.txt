@@ -44,6 +44,8 @@ if(WIN32)
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
         src/platform/windows/graphics/d3d11_device.cpp
+        src/platform/windows/storage/recoverable_session.cpp
+        src/platform/windows/video/native_video_pipeline.cpp
     )
 
     target_include_directories(arssyut_windows
