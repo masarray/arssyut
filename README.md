@@ -96,5 +96,8 @@ See `docs/P0_FOUNDATION.md` for ownership and acceptance gates.
 
 ## Status
 
-**P0 implementation submitted for CI validation.** P1 starts only after the
-Windows Release build and deterministic tests are green.
+**P0 accepted.** Windows x64 Release builds successfully on Visual Studio 2026,
+all deterministic CTest checks pass, and the merged `main` workflow is green.
+
+Next milestone: **P1 — Windows Graphics Capture + canonical frame scheduling +
+bounded GPU frame handoff + recoverable video skeleton.**
