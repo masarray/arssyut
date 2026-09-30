@@ -5,8 +5,6 @@
 #include "platform/windows/graphics/d3d11_device.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
 
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
 #include <Windows.h>
 
 #include <algorithm>
