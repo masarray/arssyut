@@ -875,7 +875,8 @@ Status D3D11Compositor::render(
     ID3D11DeviceContext *context,
     ID3D11Texture2D *source,
     CropRect crop,
-    FrameSize output_size) noexcept
+    FrameSize output_size,
+    const arssyut::presentation::PresentationFrameState *presentation) noexcept
 {
     if (!context || !source)
         return Status::failure(StatusCode::InvalidArgument);
@@ -903,16 +904,104 @@ Status D3D11Compositor::render(
 
     context->CopyResource(input_copy_.Get(), source);
 
-    const CropConstants constants{
+    arssyut::presentation::PresentationFrameState neutral{};
+    const auto &state =
+        presentation ? *presentation : neutral;
+
+    const Status keyboard_status =
+        update_keyboard_overlay(
+            context,
+            state.keyboard);
+    if (!keyboard_status.ok())
+        return keyboard_status;
+
+    PresentationConstants constants{};
+    constants.uv_left =
         static_cast<float>(crop.left) /
-            static_cast<float>(source_size.width),
+        static_cast<float>(source_size.width);
+    constants.uv_top =
         static_cast<float>(crop.top) /
-            static_cast<float>(source_size.height),
+        static_cast<float>(source_size.height);
+    constants.uv_right =
         static_cast<float>(crop.right) /
-            static_cast<float>(source_size.width),
+        static_cast<float>(source_size.width);
+    constants.uv_bottom =
         static_cast<float>(crop.bottom) /
-            static_cast<float>(source_size.height),
-    };
+        static_cast<float>(source_size.height);
+
+    constants.camera_center_x =
+        std::clamp(
+            state.camera_center_x,
+            0.0f,
+            1.0f);
+    constants.camera_center_y =
+        std::clamp(
+            state.camera_center_y,
+            0.0f,
+            1.0f);
+    constants.camera_zoom =
+        std::clamp(
+            state.camera_zoom,
+            1.0f,
+            4.0f);
+    constants.keyboard_opacity =
+        std::clamp(
+            state.keyboard.opacity,
+            0.0f,
+            1.0f);
+
+    constants.output_aspect =
+        static_cast<float>(output_size.width) /
+        static_cast<float>(output_size.height);
+
+    constexpr float keyboard_width = 0.36f;
+    const float keyboard_height =
+        keyboard_width *
+        (static_cast<float>(kKeyboardHeight) /
+         static_cast<float>(kKeyboardWidth)) *
+        constants.output_aspect;
+
+    constants.keyboard_left =
+        0.5f - keyboard_width * 0.5f;
+    constants.keyboard_right =
+        0.5f + keyboard_width * 0.5f;
+    constants.keyboard_bottom = 0.94f;
+    constants.keyboard_top =
+        constants.keyboard_bottom -
+        keyboard_height;
+
+    for (std::size_t i = 0;
+         i < state.clicks.size();
+         ++i) {
+        const auto &click =
+            state.clicks[i];
+
+        const float lifetime =
+            std::max(
+                click.lifetime_seconds,
+                0.0001f);
+
+        const float progress =
+            click.kind ==
+                    arssyut::presentation::ClickKind::None
+                ? 1.0f
+                : std::clamp(
+                      click.age_seconds / lifetime,
+                      0.0f,
+                      1.0f);
+
+        const std::size_t base = i * 4;
+        constants.clicks[base + 0] =
+            click.content_x;
+        constants.clicks[base + 1] =
+            click.content_y;
+        constants.clicks[base + 2] =
+            progress;
+        constants.clicks[base + 3] =
+            static_cast<float>(
+                static_cast<std::uint8_t>(
+                    click.kind));
+    }
 
     context->UpdateSubresource(
         crop_constant_buffer_.Get(),
@@ -945,13 +1034,19 @@ Status D3D11Compositor::render(
     ID3D11SamplerState *sampler = sampler_.Get();
     context->PSSetSamplers(0, 1, &sampler);
 
-    ID3D11ShaderResourceView *srv = input_srv_.Get();
-    context->PSSetShaderResources(0, 1, &srv);
+    ID3D11ShaderResourceView *srvs[2] = {
+        input_srv_.Get(),
+        keyboard_srv_.Get()
+    };
+    context->PSSetShaderResources(0, 2, srvs);
 
     context->Draw(3, 0);
 
-    ID3D11ShaderResourceView *null_srv = nullptr;
-    context->PSSetShaderResources(0, 1, &null_srv);
+    ID3D11ShaderResourceView *null_srvs[2] = {
+        nullptr,
+        nullptr
+    };
+    context->PSSetShaderResources(0, 2, null_srvs);
 
     ID3D11RenderTargetView *null_rtv = nullptr;
     context->OMSetRenderTargets(1, &null_rtv, nullptr);
