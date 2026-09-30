@@ -383,6 +383,10 @@ void test_media_foundation_mp4(
         open_status.ok(),
         "Media Foundation H.264 writer opens");
     if (!open_status.ok()) {
+        std::cerr << "MF open status="
+                  << static_cast<unsigned>(open_status.code)
+                  << " detail=0x" << std::hex
+                  << open_status.detail << std::dec << '\n';
         std::filesystem::remove_all(root, ec);
         return;
     }
@@ -417,6 +421,11 @@ void test_media_foundation_mp4(
         }
 
         if (!status.ok()) {
+            std::cerr << "MF write status="
+                      << static_cast<unsigned>(status.code)
+                      << " detail=0x" << std::hex
+                      << status.detail << std::dec
+                      << " frame=" << frame << '\n';
             write_ok = false;
             break;
         }
@@ -432,6 +441,12 @@ void test_media_foundation_mp4(
     test.expect(
         finalize_status.ok(),
         "Media Foundation finalizes MP4");
+    if (!finalize_status.ok()) {
+        std::cerr << "MF finalize status="
+                  << static_cast<unsigned>(finalize_status.code)
+                  << " detail=0x" << std::hex
+                  << finalize_status.detail << std::dec << '\n';
+    }
 
     const auto size =
         std::filesystem::file_size(
