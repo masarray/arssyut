@@ -78,9 +78,9 @@ D3D11Device::create(
             Status::failure(StatusCode::InternalError));
     }
 
-    UINT flags =
-        D3D11_CREATE_DEVICE_BGRA_SUPPORT |
-        D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
+    UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+    if (preference == D3D11DevicePreference::HardwareOnly)
+        flags |= D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
     if (enable_debug_layer)
         flags |= D3D11_CREATE_DEVICE_DEBUG;
 
