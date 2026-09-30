@@ -701,8 +701,12 @@ Status MfH264Mp4Writer::convert_to_nv12(
             1,
             &stream);
 
-    if (FAILED(hr))
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConvertToNv12,
+            std::memory_order_release);
         return mf_failure(hr);
+    }
 
     return Status::success();
 }
@@ -794,6 +798,9 @@ Status MfH264Mp4Writer::write_frame(
     HRESULT hr = MFCreateTrackedSample(
         tracked.GetAddressOf());
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateTrackedSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -801,8 +808,11 @@ Status MfH264Mp4Writer::write_frame(
     Microsoft::WRL::ComPtr<IMFSample> sample;
     hr = tracked.As(&sample);
     if (FAILED(hr) || !sample) {
+        failure_stage_.store(
+            MfWriterStage::CreateTrackedSample,
+            std::memory_order_release);
         release_surface(slot);
-        return mf_failure(hr);
+        return mf_failure(FAILED(hr) ? hr : E_NOINTERFACE);
     }
 
     Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
@@ -813,12 +823,18 @@ Status MfH264Mp4Writer::write_frame(
         FALSE,
         buffer.GetAddressOf());
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateDxgiBuffer,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
 
     hr = sample->AddBuffer(buffer.Get());
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -827,6 +843,9 @@ Status MfH264Mp4Writer::write_frame(
         kArssyutSurfaceSlot,
         static_cast<UINT32>(slot));
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -834,6 +853,9 @@ Status MfH264Mp4Writer::write_frame(
     hr = sample->SetSampleTime(
         relative_pts.ticks_100ns);
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -841,6 +863,9 @@ Status MfH264Mp4Writer::write_frame(
     hr = sample->SetSampleDuration(
         duration_ticks);
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -849,6 +874,9 @@ Status MfH264Mp4Writer::write_frame(
         release_callback_.Get(),
         nullptr);
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -856,8 +884,13 @@ Status MfH264Mp4Writer::write_frame(
     hr = writer_->WriteSample(
         stream_index_,
         sample.Get());
-    if (FAILED(hr))
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::WriteSample,
+            std::memory_order_release);
+        release_surface(slot);
         return mf_failure(hr);
+    }
 
     submitted_frames_.fetch_add(
         1,
@@ -901,8 +934,12 @@ Status MfH264Mp4Writer::finalize() noexcept
 
     teardown();
 
-    if (FAILED(hr))
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::Finalize,
+            std::memory_order_release);
         return mf_failure(hr);
+    }
 
     return Status::success();
 }
