@@ -309,11 +309,31 @@ void test_empty_video_pipeline(
         "Unavailable output slot is observable");
 }
 
-void test_media_foundation_mp4(
-    TestContext &test,
-    arssyut::windows::D3D11Device &owner)
+void test_media_foundation_mp4(TestContext &test)
 {
     using namespace arssyut::windows;
+
+    // D3D11 video processing is intentionally a hardware-only production
+    // capability. Microsoft documents that WARP does not expose
+    // ID3D11VideoDevice, so CI may legitimately lack this integration path.
+    auto hardware_result =
+        D3D11Device::create(
+            D3D11DevicePreference::HardwareOnly,
+            false);
+
+    if (!hardware_result) {
+        std::cout
+            << "SKIP: hardware Media Foundation integration unavailable; "
+            << "D3D11 status="
+            << static_cast<unsigned>(
+                   hardware_result.status().code)
+            << " detail=0x" << std::hex
+            << hardware_result.status().detail
+            << std::dec << '\n';
+        return;
+    }
+
+    auto &owner = *hardware_result.value();
 
     constexpr std::uint32_t width = 64;
     constexpr std::uint32_t height = 64;
@@ -379,6 +399,17 @@ void test_media_foundation_mp4(
             output,
             config);
 
+    if (open_status.code ==
+        arssyut::core::StatusCode::Unsupported) {
+        std::cout
+            << "SKIP: hosted GPU exposes D3D11 but not required "
+            << "video-processor capability; detail=0x"
+            << std::hex << open_status.detail
+            << std::dec << '\n';
+        std::filesystem::remove_all(root, ec);
+        return;
+    }
+
     test.expect(
         open_status.ok(),
         "Media Foundation H.264 writer opens");
@@ -433,7 +464,7 @@ void test_media_foundation_mp4(
 
     test.expect(
         write_ok,
-        "Media Foundation accepts bounded DXGI samples");
+        "Media Foundation accepts bounded NV12 DXGI samples");
 
     const auto finalize_status =
         writer.finalize();
@@ -578,7 +609,7 @@ int main()
     test_latest_frame_slot(test);
     test_recoverable_session(test);
     test_empty_video_pipeline(test, device);
-    test_media_foundation_mp4(test, device);
+    test_media_foundation_mp4(test);
     test_compositor(test, device);
 
     if (test.failures != 0) {
