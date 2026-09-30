@@ -356,6 +356,21 @@ void RecorderSession::worker_main() noexcept
             writer.failure_stage(),
             std::memory_order_release);
         fail(status);
+
+        const std::uint64_t memory_end =
+            private_bytes();
+        memory_private_bytes_.store(
+            memory_end,
+            std::memory_order_relaxed);
+
+        write_diagnostics(
+            0,
+            memory_start,
+            memory_end,
+            writer.submitted_frames(),
+            writer.backpressure_events(),
+            pipeline->compositor().resource_generation());
+
         state_.store(
             RecorderState::Failed,
             std::memory_order_release);
@@ -381,6 +396,21 @@ void RecorderSession::worker_main() noexcept
     if (!status.ok()) {
         fail(status);
         (void)writer.finalize();
+
+        const std::uint64_t memory_end =
+            private_bytes();
+        memory_private_bytes_.store(
+            memory_end,
+            std::memory_order_relaxed);
+
+        write_diagnostics(
+            0,
+            memory_start,
+            memory_end,
+            writer.submitted_frames(),
+            writer.backpressure_events(),
+            pipeline->compositor().resource_generation());
+
         state_.store(
             RecorderState::Failed,
             std::memory_order_release);
@@ -397,6 +427,21 @@ void RecorderSession::worker_main() noexcept
         fail(status);
         capture.stop();
         (void)writer.finalize();
+
+        const std::uint64_t memory_end =
+            private_bytes();
+        memory_private_bytes_.store(
+            memory_end,
+            std::memory_order_relaxed);
+
+        write_diagnostics(
+            0,
+            memory_start,
+            memory_end,
+            writer.submitted_frames(),
+            writer.backpressure_events(),
+            pipeline->compositor().resource_generation());
+
         state_.store(
             RecorderState::Failed,
             std::memory_order_release);
