@@ -1,12 +1,17 @@
 #include "platform/windows/capture/latest_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_compositor.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
+#include "platform/windows/storage/recoverable_session.hpp"
+#include "platform/windows/video/native_video_pipeline.hpp"
 
 #include <d3d11.h>
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
 
 namespace {
 
@@ -155,6 +160,128 @@ void test_latest_frame_slot(TestContext &test)
     test.expect(!slot.has_in_flight(), "All frame slots drain deterministically");
 }
 
+void test_recoverable_session(TestContext &test)
+{
+    using namespace arssyut::windows;
+
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arssyut-p1-" + std::to_string(GetCurrentProcessId()));
+
+    std::error_code cleanup_ec;
+    std::filesystem::remove_all(root, cleanup_ec);
+
+    RecoverySessionMetadata metadata;
+    metadata.session_id = "session-test";
+    metadata.intended_output = root / "capture.mp4";
+    metadata.output_size = {1920, 1080};
+    metadata.frame_rate = {60, 1};
+
+    auto session_result =
+        RecoverableSession::create(root, metadata);
+
+    test.expect(
+        static_cast<bool>(session_result),
+        "Recoverable session creates atomically");
+    if (!session_result)
+        return;
+
+    auto &session = *session_result.value();
+
+    test.expect(
+        std::filesystem::exists(session.manifest_path()),
+        "Recoverable manifest exists");
+
+    test.expect(
+        session.update_state(
+            RecoverySessionState::Recording).ok(),
+        "Recoverable state advances to recording");
+
+    test.expect(
+        session.update_state(
+            RecoverySessionState::Stopped).ok(),
+        "Recoverable state advances to stopped");
+
+    std::ifstream manifest(session.manifest_path());
+    const std::string content(
+        (std::istreambuf_iterator<char>(manifest)),
+        std::istreambuf_iterator<char>());
+
+    test.expect(
+        content.find("format=arssyut-session-v1") !=
+            std::string::npos,
+        "Manifest carries stable format identifier");
+    test.expect(
+        content.find("state=stopped") !=
+            std::string::npos,
+        "Manifest atomically persists latest state");
+    test.expect(
+        content.find("fps_num=60") !=
+            std::string::npos,
+        "Manifest persists canonical frame rate");
+
+    test.expect(
+        session.update_state(
+            RecoverySessionState::Ready).ok(),
+        "Recoverable state can be marked ready");
+
+    test.expect(
+        session.update_state(
+            RecoverySessionState::Recording).code ==
+            arssyut::core::StatusCode::InvalidStateTransition,
+        "Ready recovery session is terminal");
+
+    std::filesystem::remove_all(root, cleanup_ec);
+}
+
+void test_empty_video_pipeline(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    arssyut::windows::LatestFrameSlot slot;
+    arssyut::core::Diagnostics diagnostics;
+
+    auto pipeline_result =
+        arssyut::windows::NativeVideoPipeline::create(
+            owner.device(),
+            slot,
+            diagnostics);
+
+    test.expect(
+        static_cast<bool>(pipeline_result),
+        "Native video pipeline initializes");
+    if (!pipeline_result)
+        return;
+
+    auto &pipeline = *pipeline_result.value();
+    test.expect(
+        pipeline.reset_timeline({1'000'000}, {60, 1}).ok(),
+        "Native video timeline initializes");
+
+    auto result = pipeline.process_due(
+        owner.immediate_context(),
+        {1'000'000},
+        {0, 0, 1920, 1080},
+        {1280, 720});
+
+    test.expect(
+        static_cast<bool>(result),
+        "Empty pipeline returns a controlled decision");
+    if (result) {
+        test.expect(
+            result.value().action ==
+                arssyut::windows::VideoSlotAction::
+                    NoFrameAvailable,
+            "Empty pipeline reports no frame without blocking");
+    }
+
+    test.expect(
+        diagnostics.load(
+            arssyut::core::DiagnosticMetric::
+                VideoFramesUnavailable) == 1,
+        "Unavailable output slot is observable");
+}
+
 void test_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -252,6 +379,8 @@ int main()
         "D3D11 feature level meets baseline");
 
     test_latest_frame_slot(test);
+    test_recoverable_session(test);
+    test_empty_video_pipeline(test, device);
     test_compositor(test, device);
 
     if (test.failures != 0) {
