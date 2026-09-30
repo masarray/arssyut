@@ -1,0 +1,687 @@
+#include "app/recorder_session.hpp"
+
+#ifdef _WIN32
+
+#include "core/result/status.hpp"
+#include "platform/windows/capture/latest_frame_slot.hpp"
+#include "platform/windows/graphics/d3d11_device.hpp"
+#include "platform/windows/media/mf_h264_mp4_writer.hpp"
+#include "platform/windows/video/native_video_pipeline.hpp"
+
+#include <Psapi.h>
+
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <system_error>
+#include <utility>
+
+namespace arssyut::app {
+
+namespace {
+
+using arssyut::core::DiagnosticMetric;
+using arssyut::core::MonotonicClock;
+using arssyut::core::Status;
+using arssyut::core::StatusCode;
+using arssyut::core::TimePoint;
+using arssyut::windows::D3D11Device;
+using arssyut::windows::D3D11DevicePreference;
+using arssyut::windows::LatestFrameSlot;
+using arssyut::windows::MfH264Mp4Writer;
+using arssyut::windows::MfVideoWriterConfig;
+using arssyut::windows::NativeVideoPipeline;
+using arssyut::windows::VideoSlotAction;
+using arssyut::windows::WgcCaptureSource;
+
+[[nodiscard]] std::uint64_t private_bytes() noexcept
+{
+    PROCESS_MEMORY_COUNTERS_EX counters{};
+    counters.cb = sizeof(counters);
+
+    if (!GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&counters),
+            sizeof(counters))) {
+        return 0;
+    }
+
+    return static_cast<std::uint64_t>(
+        counters.PrivateUsage);
+}
+
+[[nodiscard]] std::string utf8(
+    const std::wstring &value)
+{
+    if (value.empty())
+        return {};
+
+    const int required = WideCharToMultiByte(
+        CP_UTF8,
+        WC_ERR_INVALID_CHARS,
+        value.data(),
+        static_cast<int>(value.size()),
+        nullptr,
+        0,
+        nullptr,
+        nullptr);
+
+    if (required <= 0)
+        return {};
+
+    std::string result(
+        static_cast<std::size_t>(required),
+        '\0');
+
+    const int written = WideCharToMultiByte(
+        CP_UTF8,
+        WC_ERR_INVALID_CHARS,
+        value.data(),
+        static_cast<int>(value.size()),
+        result.data(),
+        required,
+        nullptr,
+        nullptr);
+
+    return written == required
+        ? result
+        : std::string{};
+}
+
+[[nodiscard]] std::string json_escape(
+    const std::string &value)
+{
+    std::string result;
+    result.reserve(value.size() + 16);
+
+    for (char c : value) {
+        switch (c) {
+        case '\\':
+            result += "\\\\";
+            break;
+        case '"':
+            result += "\\\"";
+            break;
+        case '\n':
+            result += "\\n";
+            break;
+        case '\r':
+            result += "\\r";
+            break;
+        case '\t':
+            result += "\\t";
+            break;
+        default:
+            result += c;
+            break;
+        }
+    }
+
+    return result;
+}
+
+} // namespace
+
+RecorderSession::~RecorderSession()
+{
+    request_stop();
+    wait();
+}
+
+Status RecorderSession::start(
+    RecorderConfig config)
+{
+    if (worker_.joinable() ||
+        state_.load(std::memory_order_acquire) !=
+            RecorderState::Idle ||
+        config.output_path.empty() ||
+        !config.output_size.valid() ||
+        !config.frame_rate.valid()) {
+        return Status::failure(
+            StatusCode::InvalidArgument);
+    }
+
+    config_ = std::move(config);
+    stop_requested_.store(
+        false,
+        std::memory_order_release);
+    error_code_.store(
+        static_cast<std::uint32_t>(
+            StatusCode::Ok),
+        std::memory_order_release);
+    error_detail_.store(
+        0,
+        std::memory_order_release);
+    state_.store(
+        RecorderState::Preparing,
+        std::memory_order_release);
+
+    try {
+        worker_ = std::thread(
+            [this]() noexcept {
+                worker_main();
+            });
+    } catch (...) {
+        state_.store(
+            RecorderState::Failed,
+            std::memory_order_release);
+        return Status::failure(
+            StatusCode::InternalError);
+    }
+
+    return Status::success();
+}
+
+void RecorderSession::request_stop() noexcept
+{
+    stop_requested_.store(
+        true,
+        std::memory_order_release);
+}
+
+void RecorderSession::wait() noexcept
+{
+    if (worker_.joinable())
+        worker_.join();
+}
+
+RecorderSnapshot RecorderSession::snapshot() const noexcept
+{
+    RecorderSnapshot result;
+    result.state =
+        state_.load(std::memory_order_acquire);
+
+    const std::int64_t started =
+        started_at_ticks_.load(
+            std::memory_order_acquire);
+    std::int64_t stopped =
+        stopped_at_ticks_.load(
+            std::memory_order_acquire);
+
+    if (started > 0) {
+        if (stopped <= 0) {
+            stopped =
+                MonotonicClock::now().ticks_100ns;
+        }
+        result.elapsed_ticks =
+            std::max<std::int64_t>(
+                0,
+                stopped - started);
+    }
+
+    result.capture_received =
+        diagnostics_.load(
+            DiagnosticMetric::CaptureFramesReceived);
+    result.capture_replaced =
+        diagnostics_.load(
+            DiagnosticMetric::CaptureFramesReplaced);
+    result.capture_busy_drops =
+        diagnostics_.load(
+            DiagnosticMetric::CaptureFramesDroppedBusy);
+    result.video_rendered =
+        diagnostics_.load(
+            DiagnosticMetric::VideoFramesRendered);
+    result.video_reused =
+        diagnostics_.load(
+            DiagnosticMetric::VideoFramesReused);
+    result.video_skipped =
+        diagnostics_.load(
+            DiagnosticMetric::VideoFramesSkipped);
+    result.encoder_submitted =
+        diagnostics_.load(
+            DiagnosticMetric::EncoderFramesSubmitted);
+    result.encoder_backpressure =
+        diagnostics_.load(
+            DiagnosticMetric::EncoderFramesBackpressured);
+
+    result.capture_p95_us =
+        capture_p95_us_.load(
+            std::memory_order_relaxed);
+    result.compositor_cpu_p95_us =
+        compositor_cpu_p95_us_.load(
+            std::memory_order_relaxed);
+    result.compositor_gpu_p95_us =
+        compositor_gpu_p95_us_.load(
+            std::memory_order_relaxed);
+
+    result.memory_private_bytes =
+        memory_private_bytes_.load(
+            std::memory_order_relaxed);
+    result.memory_private_max_bytes =
+        memory_private_max_bytes_.load(
+            std::memory_order_relaxed);
+
+    result.last_error = Status::failure(
+        static_cast<StatusCode>(
+            error_code_.load(
+                std::memory_order_acquire)),
+        error_detail_.load(
+            std::memory_order_acquire));
+
+    return result;
+}
+
+void RecorderSession::fail(Status status) noexcept
+{
+    error_code_.store(
+        static_cast<std::uint32_t>(status.code),
+        std::memory_order_release);
+    error_detail_.store(
+        status.detail,
+        std::memory_order_release);
+}
+
+void RecorderSession::worker_main() noexcept
+{
+    std::error_code file_ec;
+    std::filesystem::create_directories(
+        config_.output_path.parent_path(),
+        file_ec);
+
+    if (file_ec) {
+        fail(Status::failure(
+            StatusCode::StorageFailure,
+            static_cast<std::uint32_t>(
+                file_ec.value())));
+        state_.store(
+            RecorderState::Failed,
+            std::memory_order_release);
+        return;
+    }
+
+    const std::uint64_t memory_start =
+        private_bytes();
+    memory_private_bytes_.store(
+        memory_start,
+        std::memory_order_release);
+    memory_private_max_bytes_.store(
+        memory_start,
+        std::memory_order_release);
+
+    auto device_result =
+        D3D11Device::create(
+            D3D11DevicePreference::HardwareOnly,
+            false);
+    if (!device_result) {
+        fail(device_result.status());
+        state_.store(
+            RecorderState::Failed,
+            std::memory_order_release);
+        return;
+    }
+
+    auto device =
+        std::move(device_result).value();
+
+    LatestFrameSlot frame_slot;
+
+    auto pipeline_result =
+        NativeVideoPipeline::create(
+            device->device(),
+            frame_slot,
+            diagnostics_);
+    if (!pipeline_result) {
+        fail(pipeline_result.status());
+        state_.store(
+            RecorderState::Failed,
+            std::memory_order_release);
+        return;
+    }
+
+    auto pipeline =
+        std::move(pipeline_result).value();
+
+    MfH264Mp4Writer writer;
+    MfVideoWriterConfig writer_config;
+    writer_config.size = config_.output_size;
+    writer_config.frame_rate =
+        config_.frame_rate;
+    writer_config.bitrate_bps =
+        config_.bitrate_bps;
+
+    Status status = writer.open(
+        device->device(),
+        config_.output_path,
+        writer_config);
+    if (!status.ok()) {
+        fail(status);
+        state_.store(
+            RecorderState::Failed,
+            std::memory_order_release);
+        return;
+    }
+
+    WgcCaptureSource capture;
+    if (config_.target.kind ==
+        arssyut::windows::CaptureTargetKind::Window) {
+        status = capture.start_window(
+            device->device(),
+            config_.target.window,
+            frame_slot,
+            diagnostics_);
+    } else {
+        status = capture.start_monitor(
+            device->device(),
+            config_.target.monitor,
+            frame_slot,
+            diagnostics_);
+    }
+
+    if (!status.ok()) {
+        fail(status);
+        (void)writer.finalize();
+        state_.store(
+            RecorderState::Failed,
+            std::memory_order_release);
+        return;
+    }
+
+    const TimePoint start =
+        MonotonicClock::now();
+
+    status = pipeline->reset_timeline(
+        start,
+        config_.frame_rate);
+    if (!status.ok()) {
+        fail(status);
+        capture.stop();
+        (void)writer.finalize();
+        state_.store(
+            RecorderState::Failed,
+            std::memory_order_release);
+        return;
+    }
+
+    started_at_ticks_.store(
+        start.ticks_100ns,
+        std::memory_order_release);
+    state_.store(
+        RecorderState::Recording,
+        std::memory_order_release);
+
+    const std::int64_t frame_duration =
+        (MonotonicClock::ticks_per_second *
+         static_cast<std::int64_t>(
+             config_.frame_rate.denominator)) /
+        static_cast<std::int64_t>(
+            config_.frame_rate.numerator);
+
+    TimePoint next_telemetry = {
+        start.ticks_100ns +
+        MonotonicClock::ticks_per_second / 4
+    };
+
+    bool failed = false;
+
+    while (!stop_requested_.load(
+        std::memory_order_acquire)) {
+        const TimePoint now =
+            MonotonicClock::now();
+
+        auto frame_result =
+            pipeline->process_due(
+                device->immediate_context(),
+                now,
+                {},
+                config_.output_size);
+
+        if (!frame_result) {
+            fail(frame_result.status());
+            failed = true;
+            break;
+        }
+
+        const auto &frame =
+            frame_result.value();
+
+        if (frame.action ==
+                VideoSlotAction::RenderedNewFrame ||
+            frame.action ==
+                VideoSlotAction::ReusePreviousOutput) {
+            const TimePoint relative_pts{
+                frame.pts.ticks_100ns -
+                start.ticks_100ns
+            };
+
+            const Status write_status =
+                writer.write_frame(
+                    device->immediate_context(),
+                    pipeline->output_texture(),
+                    relative_pts,
+                    frame_duration);
+
+            if (write_status.code ==
+                StatusCode::EncoderBackpressure) {
+                diagnostics_.increment(
+                    DiagnosticMetric::
+                        EncoderFramesBackpressured);
+            } else if (!write_status.ok()) {
+                diagnostics_.increment(
+                    DiagnosticMetric::
+                        EncoderWriteFailures);
+                fail(write_status);
+                failed = true;
+                break;
+            } else {
+                diagnostics_.increment(
+                    DiagnosticMetric::
+                        EncoderFramesSubmitted);
+            }
+        }
+
+        if (capture.source_closed()) {
+            fail(Status::failure(
+                StatusCode::PlatformFailure));
+            failed = true;
+            break;
+        }
+
+        if (!(now < next_telemetry)) {
+            const auto capture_latency =
+                capture.capture_callback_latency();
+            const auto cpu_latency =
+                pipeline->compositor().
+                    cpu_submit_latency();
+            const auto gpu_latency =
+                pipeline->compositor().
+                    gpu_execution_latency();
+
+            capture_p95_us_.store(
+                capture_latency.quantile_upper_bound(
+                    95,
+                    100),
+                std::memory_order_relaxed);
+            compositor_cpu_p95_us_.store(
+                cpu_latency.quantile_upper_bound(
+                    95,
+                    100),
+                std::memory_order_relaxed);
+            compositor_gpu_p95_us_.store(
+                gpu_latency.quantile_upper_bound(
+                    95,
+                    100),
+                std::memory_order_relaxed);
+
+            const std::uint64_t current_memory =
+                private_bytes();
+            memory_private_bytes_.store(
+                current_memory,
+                std::memory_order_relaxed);
+
+            std::uint64_t max_memory =
+                memory_private_max_bytes_.load(
+                    std::memory_order_relaxed);
+            while (current_memory > max_memory &&
+                   !memory_private_max_bytes_.
+                       compare_exchange_weak(
+                           max_memory,
+                           current_memory,
+                           std::memory_order_relaxed,
+                           std::memory_order_relaxed)) {
+            }
+
+            next_telemetry = {
+                now.ticks_100ns +
+                MonotonicClock::ticks_per_second / 4
+            };
+        }
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(1));
+    }
+
+    state_.store(
+        RecorderState::Stopping,
+        std::memory_order_release);
+
+    capture.stop();
+
+    state_.store(
+        RecorderState::Finalizing,
+        std::memory_order_release);
+
+    const std::uint64_t writer_submitted =
+        writer.submitted_frames();
+    const std::uint64_t writer_backpressure =
+        writer.backpressure_events();
+    const std::uint64_t resource_generation =
+        pipeline->compositor().
+            resource_generation();
+
+    const Status finalize_status =
+        writer.finalize();
+
+    if (!finalize_status.ok() && !failed) {
+        fail(finalize_status);
+        failed = true;
+    }
+
+    const TimePoint stopped =
+        MonotonicClock::now();
+    stopped_at_ticks_.store(
+        stopped.ticks_100ns,
+        std::memory_order_release);
+
+    const std::uint64_t memory_end =
+        private_bytes();
+    memory_private_bytes_.store(
+        memory_end,
+        std::memory_order_relaxed);
+
+    std::uint64_t output_bytes = 0;
+    const auto bytes =
+        std::filesystem::file_size(
+            config_.output_path,
+            file_ec);
+    if (!file_ec)
+        output_bytes =
+            static_cast<std::uint64_t>(bytes);
+
+    write_diagnostics(
+        output_bytes,
+        memory_start,
+        memory_end,
+        writer_submitted,
+        writer_backpressure,
+        resource_generation);
+
+    state_.store(
+        failed
+            ? RecorderState::Failed
+            : RecorderState::Ready,
+        std::memory_order_release);
+}
+
+void RecorderSession::write_diagnostics(
+    std::uint64_t output_bytes,
+    std::uint64_t memory_start,
+    std::uint64_t memory_end,
+    std::uint64_t writer_submitted,
+    std::uint64_t writer_backpressure,
+    std::uint64_t resource_generation) noexcept
+{
+    try {
+        const auto snapshot_value =
+            snapshot();
+
+        std::ofstream out(
+            diagnostics_path(),
+            std::ios::binary |
+            std::ios::trunc);
+        if (!out)
+            return;
+
+        const std::string output =
+            json_escape(
+                utf8(
+                    config_.output_path.wstring()));
+        const std::string source =
+            json_escape(
+                utf8(
+                    config_.target.label));
+
+        out
+            << "{\n"
+            << "  \"schema\": \"arssyut-diagnostics-v1\",\n"
+            << "  \"result\": \""
+            << (snapshot_value.last_error.code ==
+                        StatusCode::Ok
+                    ? "ready"
+                    : "failed")
+            << "\",\n"
+            << "  \"source\": \"" << source << "\",\n"
+            << "  \"output\": \"" << output << "\",\n"
+            << "  \"output_bytes\": " << output_bytes << ",\n"
+            << "  \"width\": " << config_.output_size.width << ",\n"
+            << "  \"height\": " << config_.output_size.height << ",\n"
+            << "  \"fps_num\": " << config_.frame_rate.numerator << ",\n"
+            << "  \"fps_den\": " << config_.frame_rate.denominator << ",\n"
+            << "  \"bitrate_bps\": " << config_.bitrate_bps << ",\n"
+            << "  \"elapsed_ticks_100ns\": "
+            << snapshot_value.elapsed_ticks << ",\n"
+            << "  \"capture_received\": "
+            << snapshot_value.capture_received << ",\n"
+            << "  \"capture_replaced\": "
+            << snapshot_value.capture_replaced << ",\n"
+            << "  \"capture_busy_drops\": "
+            << snapshot_value.capture_busy_drops << ",\n"
+            << "  \"video_rendered\": "
+            << snapshot_value.video_rendered << ",\n"
+            << "  \"video_reused\": "
+            << snapshot_value.video_reused << ",\n"
+            << "  \"video_skipped\": "
+            << snapshot_value.video_skipped << ",\n"
+            << "  \"encoder_submitted\": "
+            << writer_submitted << ",\n"
+            << "  \"encoder_backpressure\": "
+            << writer_backpressure << ",\n"
+            << "  \"capture_p95_us\": "
+            << snapshot_value.capture_p95_us << ",\n"
+            << "  \"compositor_cpu_p95_us\": "
+            << snapshot_value.compositor_cpu_p95_us << ",\n"
+            << "  \"compositor_gpu_p95_us\": "
+            << snapshot_value.compositor_gpu_p95_us << ",\n"
+            << "  \"memory_private_start\": "
+            << memory_start << ",\n"
+            << "  \"memory_private_end\": "
+            << memory_end << ",\n"
+            << "  \"memory_private_max\": "
+            << snapshot_value.memory_private_max_bytes << ",\n"
+            << "  \"resource_generation\": "
+            << resource_generation << ",\n"
+            << "  \"status_code\": "
+            << static_cast<std::uint32_t>(
+                   snapshot_value.last_error.code)
+            << ",\n"
+            << "  \"status_detail\": "
+            << snapshot_value.last_error.detail << "\n"
+            << "}\n";
+    } catch (...) {
+    }
+}
+
+} // namespace arssyut::app
+
+#endif

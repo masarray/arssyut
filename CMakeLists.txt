@@ -44,6 +44,7 @@ if(WIN32)
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
         src/platform/windows/graphics/d3d11_device.cpp
+        src/platform/windows/media/mf_h264_mp4_writer.cpp
         src/platform/windows/storage/recoverable_session.cpp
         src/platform/windows/video/native_video_pipeline.cpp
     )
@@ -75,8 +76,39 @@ if(WIN32)
             d3d11
             d3dcompiler
             dxgi
+            mfplat
+            mfreadwrite
+            mfuuid
             windowsapp
     )
+
+    add_executable(arssyut WIN32
+        src/app/recorder_session.cpp
+        src/app/source_catalog.cpp
+        src/app/windows_main.cpp
+    )
+    target_compile_definitions(arssyut PRIVATE
+        UNICODE
+        _UNICODE
+    )
+
+    target_link_libraries(arssyut PRIVATE
+        arssyut_windows
+        comctl32
+        dwmapi
+        ole32
+        psapi
+        shell32
+        uxtheme
+    )
+    if(MSVC)
+        target_compile_options(arssyut PRIVATE
+            /W4
+            /permissive-
+            /utf-8
+            /Zc:__cplusplus
+        )
+    endif()
 
     add_executable(arssyut_p1_probe
         tools/p1_capture_probe.cpp

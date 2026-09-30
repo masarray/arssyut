@@ -1,17 +1,21 @@
 #include "platform/windows/capture/latest_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_compositor.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
+#include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "platform/windows/storage/recoverable_session.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
 
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace {
 
@@ -305,6 +309,188 @@ void test_empty_video_pipeline(
         "Unavailable output slot is observable");
 }
 
+void test_media_foundation_mp4(TestContext &test)
+{
+    using namespace arssyut::windows;
+
+    // D3D11 video processing is intentionally a hardware-only production
+    // capability. Microsoft documents that WARP does not expose
+    // ID3D11VideoDevice, so CI may legitimately lack this integration path.
+    auto hardware_result =
+        D3D11Device::create(
+            D3D11DevicePreference::HardwareOnly,
+            false);
+
+    if (!hardware_result) {
+        std::cout
+            << "SKIP: hardware Media Foundation integration unavailable; "
+            << "D3D11 status="
+            << static_cast<unsigned>(
+                   hardware_result.status().code)
+            << " detail=0x" << std::hex
+            << hardware_result.status().detail
+            << std::dec << '\n';
+        return;
+    }
+
+    auto &owner = *hardware_result.value();
+
+    constexpr std::uint32_t width = 64;
+    constexpr std::uint32_t height = 64;
+    constexpr std::uint32_t bgra = 0xFF3050A0u;
+
+    std::vector<std::uint32_t> pixels(
+        static_cast<std::size_t>(width) *
+            static_cast<std::size_t>(height),
+        bgra);
+
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags =
+        D3D11_BIND_SHADER_RESOURCE |
+        D3D11_BIND_RENDER_TARGET;
+
+    D3D11_SUBRESOURCE_DATA initial{};
+    initial.pSysMem = pixels.data();
+    initial.SysMemPitch =
+        width * sizeof(std::uint32_t);
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> source;
+    const HRESULT texture_hr =
+        owner.device()->CreateTexture2D(
+            &desc,
+            &initial,
+            source.GetAddressOf());
+
+    test.expect(
+        SUCCEEDED(texture_hr) && source,
+        "MF test source texture created");
+    if (FAILED(texture_hr) || !source)
+        return;
+
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        ("arssyut-mf-" +
+         std::to_string(GetCurrentProcessId()));
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root, ec);
+
+    const auto output =
+        root / "synthetic.mp4";
+
+    MfH264Mp4Writer writer;
+    MfVideoWriterConfig config;
+    config.size = {width, height};
+    config.frame_rate = {30, 1};
+    config.bitrate_bps = 500'000;
+    config.surface_count = 4;
+
+    const auto open_status =
+        writer.open(
+            owner.device(),
+            output,
+            config);
+
+    if (open_status.code ==
+        arssyut::core::StatusCode::Unsupported) {
+        std::cout
+            << "SKIP: hosted GPU exposes D3D11 but not required "
+            << "video-processor capability; detail=0x"
+            << std::hex << open_status.detail
+            << std::dec << '\n';
+        std::filesystem::remove_all(root, ec);
+        return;
+    }
+
+    test.expect(
+        open_status.ok(),
+        "Media Foundation H.264 writer opens");
+    if (!open_status.ok()) {
+        std::cerr << "MF open status="
+                  << static_cast<unsigned>(open_status.code)
+                  << " detail=0x" << std::hex
+                  << open_status.detail << std::dec << '\n';
+        std::filesystem::remove_all(root, ec);
+        return;
+    }
+
+    bool write_ok = true;
+    constexpr std::int64_t duration =
+        arssyut::core::MonotonicClock::
+            ticks_per_second / 30;
+
+    for (int frame = 0; frame < 12; ++frame) {
+        arssyut::core::Status status;
+
+        for (int retry = 0; retry < 200; ++retry) {
+            status = writer.write_frame(
+                owner.immediate_context(),
+                source.Get(),
+                {static_cast<std::int64_t>(
+                    frame) * duration},
+                duration);
+
+            if (status.ok())
+                break;
+
+            if (status.code !=
+                arssyut::core::StatusCode::
+                    EncoderBackpressure) {
+                break;
+            }
+
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(1));
+        }
+
+        if (!status.ok()) {
+            std::cerr << "MF write status="
+                      << static_cast<unsigned>(status.code)
+                      << " detail=0x" << std::hex
+                      << status.detail << std::dec
+                      << " frame=" << frame << '\n';
+            write_ok = false;
+            break;
+        }
+    }
+
+    test.expect(
+        write_ok,
+        "Media Foundation accepts bounded NV12 DXGI samples");
+
+    const auto finalize_status =
+        writer.finalize();
+
+    test.expect(
+        finalize_status.ok(),
+        "Media Foundation finalizes MP4");
+    if (!finalize_status.ok()) {
+        std::cerr << "MF finalize status="
+                  << static_cast<unsigned>(finalize_status.code)
+                  << " detail=0x" << std::hex
+                  << finalize_status.detail << std::dec << '\n';
+    }
+
+    const auto size =
+        std::filesystem::file_size(
+            output,
+            ec);
+
+    test.expect(
+        !ec && size > 512,
+        "Finalized MP4 is non-empty");
+
+    std::filesystem::remove_all(root, ec);
+}
+
 void test_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -423,6 +609,7 @@ int main()
     test_latest_frame_slot(test);
     test_recoverable_session(test);
     test_empty_video_pipeline(test, device);
+    test_media_foundation_mp4(test);
     test_compositor(test, device);
 
     if (test.failures != 0) {
