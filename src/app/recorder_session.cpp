@@ -154,6 +154,9 @@ Status RecorderSession::start(
     error_detail_.store(
         0,
         std::memory_order_release);
+    encoder_failure_stage_.store(
+        arssyut::windows::MfWriterStage::None,
+        std::memory_order_release);
     state_.store(
         RecorderState::Preparing,
         std::memory_order_release);
@@ -259,6 +262,9 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
                 std::memory_order_acquire)),
         error_detail_.load(
             std::memory_order_acquire));
+    result.encoder_failure_stage =
+        encoder_failure_stage_.load(
+            std::memory_order_acquire);
 
     return result;
 }
@@ -346,6 +352,9 @@ void RecorderSession::worker_main() noexcept
         config_.output_path,
         writer_config);
     if (!status.ok()) {
+        encoder_failure_stage_.store(
+            writer.failure_stage(),
+            std::memory_order_release);
         fail(status);
         state_.store(
             RecorderState::Failed,
@@ -461,6 +470,9 @@ void RecorderSession::worker_main() noexcept
                 diagnostics_.increment(
                     DiagnosticMetric::
                         EncoderWriteFailures);
+                encoder_failure_stage_.store(
+                    writer.failure_stage(),
+                    std::memory_order_release);
                 fail(write_status);
                 failed = true;
                 break;
@@ -554,6 +566,9 @@ void RecorderSession::worker_main() noexcept
         writer.finalize();
 
     if (!finalize_status.ok() && !failed) {
+        encoder_failure_stage_.store(
+            writer.failure_stage(),
+            std::memory_order_release);
         fail(finalize_status);
         failed = true;
     }
@@ -676,7 +691,11 @@ void RecorderSession::write_diagnostics(
                    snapshot_value.last_error.code)
             << ",\n"
             << "  \"status_detail\": "
-            << snapshot_value.last_error.detail << "\n"
+            << snapshot_value.last_error.detail << ",\n"
+            << "  \"encoder_failure_stage\": \""
+            << arssyut::windows::mf_writer_stage_name(
+                   snapshot_value.encoder_failure_stage)
+            << "\"\n"
             << "}\n";
     } catch (...) {
     }
