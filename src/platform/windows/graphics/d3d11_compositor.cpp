@@ -257,6 +257,29 @@ compile_shader(const char *entry, const char *target) noexcept
 
 } // namespace
 
+D3D11Compositor::~D3D11Compositor()
+{
+    if (keyboard_dc_) {
+        if (keyboard_old_bitmap_)
+            SelectObject(keyboard_dc_, keyboard_old_bitmap_);
+        DeleteDC(keyboard_dc_);
+        keyboard_dc_ = nullptr;
+    }
+
+    if (keyboard_font_) {
+        DeleteObject(keyboard_font_);
+        keyboard_font_ = nullptr;
+    }
+
+    if (keyboard_bitmap_) {
+        DeleteObject(keyboard_bitmap_);
+        keyboard_bitmap_ = nullptr;
+    }
+
+    keyboard_old_bitmap_ = nullptr;
+    keyboard_bits_ = nullptr;
+}
+
 Result<std::unique_ptr<D3D11Compositor>>
 D3D11Compositor::create(ID3D11Device *device) noexcept
 {
@@ -323,7 +346,7 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
         return d3d_failure(hr);
 
     D3D11_BUFFER_DESC constant_desc{};
-    constant_desc.ByteWidth = sizeof(CropConstants);
+    constant_desc.ByteWidth = sizeof(PresentationConstants);
     constant_desc.Usage = D3D11_USAGE_DEFAULT;
     constant_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 
@@ -333,6 +356,11 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
         crop_constant_buffer_.GetAddressOf());
     if (FAILED(hr))
         return d3d_failure(hr);
+
+    const Status keyboard_status =
+        initialize_keyboard_overlay();
+    if (!keyboard_status.ok())
+        return keyboard_status;
 
     for (auto &slot : gpu_queries_) {
         D3D11_QUERY_DESC disjoint_desc{};
@@ -359,6 +387,289 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
         if (FAILED(hr))
             return d3d_failure(hr);
     }
+
+    return Status::success();
+}
+
+Status D3D11Compositor::initialize_keyboard_overlay() noexcept
+{
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = kKeyboardWidth;
+    desc.Height = kKeyboardHeight;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    HRESULT hr = device_->CreateTexture2D(
+        &desc,
+        nullptr,
+        keyboard_texture_.GetAddressOf());
+    if (FAILED(hr))
+        return d3d_failure(hr);
+
+    hr = device_->CreateShaderResourceView(
+        keyboard_texture_.Get(),
+        nullptr,
+        keyboard_srv_.GetAddressOf());
+    if (FAILED(hr))
+        return d3d_failure(hr);
+
+    keyboard_dc_ = CreateCompatibleDC(nullptr);
+    if (!keyboard_dc_) {
+        return Status::failure(
+            StatusCode::PlatformFailure,
+            GetLastError());
+    }
+
+    BITMAPINFO info{};
+    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    info.bmiHeader.biWidth =
+        static_cast<LONG>(kKeyboardWidth);
+    info.bmiHeader.biHeight =
+        -static_cast<LONG>(kKeyboardHeight);
+    info.bmiHeader.biPlanes = 1;
+    info.bmiHeader.biBitCount = 32;
+    info.bmiHeader.biCompression = BI_RGB;
+
+    keyboard_bitmap_ = CreateDIBSection(
+        keyboard_dc_,
+        &info,
+        DIB_RGB_COLORS,
+        &keyboard_bits_,
+        nullptr,
+        0);
+    if (!keyboard_bitmap_ || !keyboard_bits_) {
+        return Status::failure(
+            StatusCode::PlatformFailure,
+            GetLastError());
+    }
+
+    keyboard_old_bitmap_ =
+        SelectObject(
+            keyboard_dc_,
+            keyboard_bitmap_);
+
+    keyboard_font_ = CreateFontW(
+        -30,
+        0,
+        0,
+        0,
+        FW_SEMIBOLD,
+        FALSE,
+        FALSE,
+        FALSE,
+        DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,
+        CLIP_DEFAULT_PRECIS,
+        ANTIALIASED_QUALITY,
+        DEFAULT_PITCH,
+        L"Segoe UI");
+    if (!keyboard_font_) {
+        return Status::failure(
+            StatusCode::PlatformFailure,
+            GetLastError());
+    }
+
+    return Status::success();
+}
+
+void D3D11Compositor::rasterize_keyboard_keycaps(
+    const wchar_t *text) noexcept
+{
+    if (!keyboard_dc_ ||
+        !keyboard_bits_ ||
+        !text)
+        return;
+
+    auto *pixels =
+        static_cast<std::uint32_t *>(keyboard_bits_);
+    std::fill(
+        pixels,
+        pixels +
+            static_cast<std::size_t>(kKeyboardWidth) *
+                static_cast<std::size_t>(kKeyboardHeight),
+        0u);
+
+    RECT client{
+        0,
+        0,
+        static_cast<LONG>(kKeyboardWidth),
+        static_cast<LONG>(kKeyboardHeight)
+    };
+
+    HBRUSH background =
+        CreateSolidBrush(RGB(22, 25, 30));
+    HPEN border =
+        CreatePen(PS_SOLID, 2, RGB(78, 84, 94));
+
+    HGDIOBJ old_brush =
+        SelectObject(keyboard_dc_, background);
+    HGDIOBJ old_pen =
+        SelectObject(keyboard_dc_, border);
+
+    RoundRect(
+        keyboard_dc_,
+        1,
+        1,
+        client.right - 1,
+        client.bottom - 1,
+        24,
+        24);
+
+    SelectObject(
+        keyboard_dc_,
+        keyboard_font_);
+    SetBkMode(
+        keyboard_dc_,
+        TRANSPARENT);
+    SetTextColor(
+        keyboard_dc_,
+        RGB(244, 246, 249));
+
+    std::array<wchar_t, 64> copy{};
+    wcsncpy_s(
+        copy.data(),
+        copy.size(),
+        text,
+        _TRUNCATE);
+
+    constexpr wchar_t separator[] = L"  +  ";
+    wchar_t *context = nullptr;
+    wchar_t *token = wcstok_s(
+        copy.data(),
+        separator,
+        &context);
+
+    struct Token {
+        wchar_t *text = nullptr;
+        int width = 0;
+    };
+
+    std::array<Token, 8> tokens{};
+    std::size_t count = 0;
+    int total_width = 0;
+
+    while (token && count < tokens.size()) {
+        SIZE extent{};
+        GetTextExtentPoint32W(
+            keyboard_dc_,
+            token,
+            static_cast<int>(wcslen(token)),
+            &extent);
+
+        const int width =
+            std::clamp(
+                extent.cx + 38,
+                74,
+                190);
+
+        tokens[count++] = {token, width};
+        total_width += width;
+
+        token = wcstok_s(
+            nullptr,
+            separator,
+            &context);
+    }
+
+    if (count > 1)
+        total_width +=
+            static_cast<int>(count - 1) * 14;
+
+    int x =
+        std::max(
+            18,
+            (static_cast<int>(kKeyboardWidth) -
+             total_width) / 2);
+
+    HBRUSH key_brush =
+        CreateSolidBrush(RGB(50, 55, 64));
+    HPEN key_pen =
+        CreatePen(PS_SOLID, 1, RGB(93, 100, 112));
+
+    SelectObject(keyboard_dc_, key_brush);
+    SelectObject(keyboard_dc_, key_pen);
+
+    for (std::size_t i = 0; i < count; ++i) {
+        RECT key{
+            x,
+            24,
+            x + tokens[i].width,
+            88
+        };
+
+        RoundRect(
+            keyboard_dc_,
+            key.left,
+            key.top,
+            key.right,
+            key.bottom,
+            14,
+            14);
+
+        DrawTextW(
+            keyboard_dc_,
+            tokens[i].text,
+            -1,
+            &key,
+            DT_CENTER |
+                DT_VCENTER |
+                DT_SINGLELINE |
+                DT_NOPREFIX);
+
+        x = key.right + 14;
+    }
+
+    SelectObject(keyboard_dc_, old_pen);
+    SelectObject(keyboard_dc_, old_brush);
+
+    DeleteObject(key_pen);
+    DeleteObject(key_brush);
+    DeleteObject(border);
+    DeleteObject(background);
+
+    // GDI does not preserve alpha in a 32-bit DIB. Promote every painted
+    // pixel to an opaque source pixel; the shader applies temporal opacity.
+    for (std::size_t i = 0;
+         i <
+         static_cast<std::size_t>(kKeyboardWidth) *
+             static_cast<std::size_t>(kKeyboardHeight);
+         ++i) {
+        if ((pixels[i] & 0x00FFFFFFu) != 0)
+            pixels[i] |= 0xFF000000u;
+    }
+}
+
+Status D3D11Compositor::update_keyboard_overlay(
+    ID3D11DeviceContext *context,
+    const arssyut::presentation::KeyboardOverlayFrame &keyboard) noexcept
+{
+    if (!context ||
+        !keyboard_texture_)
+        return Status::failure(
+            StatusCode::InvalidArgument);
+
+    if (keyboard.generation == 0 ||
+        keyboard.generation == keyboard_generation_) {
+        return Status::success();
+    }
+
+    rasterize_keyboard_keycaps(
+        keyboard.text.data());
+
+    context->UpdateSubresource(
+        keyboard_texture_.Get(),
+        0,
+        nullptr,
+        keyboard_bits_,
+        kKeyboardWidth * 4,
+        0);
+
+    keyboard_generation_ =
+        keyboard.generation;
 
     return Status::success();
 }
