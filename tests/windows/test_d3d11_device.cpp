@@ -8,6 +8,7 @@
 #include <d3d11.h>
 #include <wrl/client.h>
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
