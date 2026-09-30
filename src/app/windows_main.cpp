@@ -784,7 +784,7 @@ LRESULT CALLBACK window_proc(
         app->output_text =
             create_label(
                 *app,
-                L"Videos\Arssyut\…",
+                L"Videos\\Arssyut\\…",
                 24,
                 248,
                 572,
@@ -1091,9 +1091,9 @@ int WINAPI wWinMain(
     cls.lpfnWndProc = window_proc;
     cls.hInstance = instance;
     cls.hCursor =
-        LoadCursorW(nullptr, IDC_ARROW);
+        LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
     cls.hIcon =
-        LoadIconW(nullptr, IDI_APPLICATION);
+        LoadIconW(nullptr, MAKEINTRESOURCEW(32512));
     cls.hbrBackground =
         reinterpret_cast<HBRUSH>(
             COLOR_WINDOW + 1);
