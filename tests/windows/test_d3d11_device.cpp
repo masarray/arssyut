@@ -158,6 +158,27 @@ void test_latest_frame_slot(TestContext &test)
     latest.release();
     lease.release();
     test.expect(!slot.has_in_flight(), "All frame slots drain deterministically");
+
+    bool churn_ok = true;
+    for (std::uint64_t sequence = 4; sequence < 2'004; ++sequence) {
+        CapturedFrame frame;
+        frame.sequence = sequence;
+        if (slot.publish(std::move(frame)) ==
+            LatestFrameSlot::PublishResult::DroppedBusy) {
+            churn_ok = false;
+            break;
+        }
+
+        auto current = slot.try_acquire_latest();
+        if (!current || current->sequence != sequence) {
+            churn_ok = false;
+            break;
+        }
+    }
+
+    test.expect(
+        churn_ok && !slot.has_in_flight(),
+        "Frame slot remains bounded across repeated publish/acquire churn");
 }
 
 void test_recoverable_session(TestContext &test)
@@ -340,6 +361,25 @@ void test_compositor(
     test.expect(
         compositor.resource_generation() == generation,
         "Steady-state render performs no resource rebuild");
+
+    bool steady_ok = true;
+    for (int i = 0; i < 256; ++i) {
+        if (!compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 4, 4},
+                {8, 6}).ok()) {
+            steady_ok = false;
+            break;
+        }
+    }
+
+    test.expect(
+        steady_ok,
+        "Compositor survives repeated steady-state renders");
+    test.expect(
+        compositor.resource_generation() == generation,
+        "Steady-state render loop creates no new frame resources");
 
     test.expect(
         compositor.render(
