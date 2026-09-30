@@ -29,3 +29,11 @@ jobs:
 
       - name: Test
         run: ctest --preset windows-release
+
+      - name: Upload P1 capture probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-p1-probe-windows-x64
+          path: build/windows-x64/Release/arssyut_p1_probe.exe
+          if-no-files-found: error
+          retention-days: 14
