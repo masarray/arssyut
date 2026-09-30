@@ -1,6 +1,9 @@
 #include "presentation/presentation_controller.hpp"
 
+#include <Windows.h>
+
 #include <algorithm>
+#include <iterator>
 #include <cwchar>
 
 namespace arssyut::presentation {
