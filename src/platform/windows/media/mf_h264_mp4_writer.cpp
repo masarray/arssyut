@@ -10,7 +10,6 @@
 
 #include <algorithm>
 #include <chrono>
-#include <limits>
 #include <new>
 #include <thread>
 
@@ -30,6 +29,13 @@ inline constexpr GUID kArssyutSurfaceSlot = {
 {
     return Status::failure(
         StatusCode::MediaFoundationFailure,
+        static_cast<std::uint32_t>(hr));
+}
+
+[[nodiscard]] Status unsupported(HRESULT hr = E_NOINTERFACE) noexcept
+{
+    return Status::failure(
+        StatusCode::Unsupported,
         static_cast<std::uint32_t>(hr));
 }
 
@@ -208,9 +214,15 @@ Status MfH264Mp4Writer::open(
     config_ = config;
     path_ = path;
 
+    Status status = create_video_processor(device);
+    if (!status.ok())
+        return status;
+
     HRESULT hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
-    if (FAILED(hr))
+    if (FAILED(hr)) {
+        teardown();
         return mf_failure(hr);
+    }
     mf_started_ = true;
 
     hr = MFCreateDXGIDeviceManager(
@@ -288,7 +300,7 @@ Status MfH264Mp4Writer::open(
         return mf_failure(hr);
     }
 
-    Status status =
+    status =
         set_common_video_attributes(
             output_type.Get(),
             config_);
@@ -340,7 +352,7 @@ Status MfH264Mp4Writer::open(
 
     hr = input_type->SetGUID(
         MF_MT_SUBTYPE,
-        MFVideoFormat_ARGB32);
+        MFVideoFormat_NV12);
     if (FAILED(hr)) {
         teardown();
         return mf_failure(hr);
@@ -348,7 +360,7 @@ Status MfH264Mp4Writer::open(
 
     hr = input_type->SetUINT32(
         MF_MT_DEFAULT_STRIDE,
-        config_.size.width * 4U);
+        config_.size.width);
     if (FAILED(hr)) {
         teardown();
         return mf_failure(hr);
@@ -389,36 +401,234 @@ Status MfH264Mp4Writer::open(
     return Status::success();
 }
 
+Status MfH264Mp4Writer::create_video_processor(
+    ID3D11Device *device) noexcept
+{
+    if (!device)
+        return Status::failure(StatusCode::InvalidArgument);
+
+    HRESULT hr = device->QueryInterface(
+        IID_PPV_ARGS(video_device_.GetAddressOf()));
+    if (FAILED(hr) || !video_device_)
+        return unsupported(hr);
+
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> immediate;
+    device->GetImmediateContext(immediate.GetAddressOf());
+    if (!immediate)
+        return Status::failure(StatusCode::GraphicsDeviceUnavailable);
+
+    hr = immediate->QueryInterface(
+        IID_PPV_ARGS(video_context_.GetAddressOf()));
+    if (FAILED(hr) || !video_context_)
+        return unsupported(hr);
+
+    D3D11_VIDEO_PROCESSOR_CONTENT_DESC content{};
+    content.InputFrameFormat =
+        D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+    content.InputFrameRate.Numerator =
+        config_.frame_rate.numerator;
+    content.InputFrameRate.Denominator =
+        config_.frame_rate.denominator;
+    content.InputWidth = config_.size.width;
+    content.InputHeight = config_.size.height;
+    content.OutputFrameRate.Numerator =
+        config_.frame_rate.numerator;
+    content.OutputFrameRate.Denominator =
+        config_.frame_rate.denominator;
+    content.OutputWidth = config_.size.width;
+    content.OutputHeight = config_.size.height;
+    content.Usage = D3D11_VIDEO_USAGE_PLAYBACK_NORMAL;
+
+    hr = video_device_->CreateVideoProcessorEnumerator(
+        &content,
+        video_enumerator_.GetAddressOf());
+    if (FAILED(hr) || !video_enumerator_)
+        return unsupported(hr);
+
+    UINT input_support = 0;
+    hr = video_enumerator_->CheckVideoProcessorFormat(
+        DXGI_FORMAT_B8G8R8A8_UNORM,
+        &input_support);
+    if (FAILED(hr) ||
+        (input_support &
+         D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT) == 0) {
+        return unsupported(FAILED(hr) ? hr : E_NOTIMPL);
+    }
+
+    UINT output_support = 0;
+    hr = video_enumerator_->CheckVideoProcessorFormat(
+        DXGI_FORMAT_NV12,
+        &output_support);
+    if (FAILED(hr) ||
+        (output_support &
+         D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT) == 0) {
+        return unsupported(FAILED(hr) ? hr : E_NOTIMPL);
+    }
+
+    D3D11_VIDEO_PROCESSOR_CAPS caps{};
+    hr = video_enumerator_->GetVideoProcessorCaps(&caps);
+    if (FAILED(hr) || caps.RateConversionCapsCount == 0)
+        return unsupported(FAILED(hr) ? hr : E_NOTIMPL);
+
+    hr = video_device_->CreateVideoProcessor(
+        video_enumerator_.Get(),
+        0,
+        video_processor_.GetAddressOf());
+    if (FAILED(hr) || !video_processor_)
+        return unsupported(hr);
+
+    RECT rect{
+        0,
+        0,
+        static_cast<LONG>(config_.size.width),
+        static_cast<LONG>(config_.size.height)
+    };
+
+    video_context_->VideoProcessorSetStreamFrameFormat(
+        video_processor_.Get(),
+        0,
+        D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
+    video_context_->VideoProcessorSetStreamSourceRect(
+        video_processor_.Get(),
+        0,
+        TRUE,
+        &rect);
+    video_context_->VideoProcessorSetStreamDestRect(
+        video_processor_.Get(),
+        0,
+        TRUE,
+        &rect);
+    video_context_->VideoProcessorSetOutputTargetRect(
+        video_processor_.Get(),
+        TRUE,
+        &rect);
+
+    return Status::success();
+}
+
 Status MfH264Mp4Writer::create_surface_pool(
     ID3D11Device *device) noexcept
 {
-    D3D11_TEXTURE2D_DESC desc{};
-    desc.Width = config_.size.width;
-    desc.Height = config_.size.height;
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    desc.SampleDesc.Count = 1;
-    desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags =
-        D3D11_BIND_SHADER_RESOURCE |
-        D3D11_BIND_RENDER_TARGET;
+    D3D11_TEXTURE2D_DESC input_desc{};
+    input_desc.Width = config_.size.width;
+    input_desc.Height = config_.size.height;
+    input_desc.MipLevels = 1;
+    input_desc.ArraySize = 1;
+    input_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    input_desc.SampleDesc.Count = 1;
+    input_desc.Usage = D3D11_USAGE_DEFAULT;
+    input_desc.BindFlags = 0;
+
+    HRESULT hr = device->CreateTexture2D(
+        &input_desc,
+        nullptr,
+        input_copy_.GetAddressOf());
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC input_view_desc{};
+    input_view_desc.FourCC = 0;
+    input_view_desc.ViewDimension =
+        D3D11_VPIV_DIMENSION_TEXTURE2D;
+    input_view_desc.Texture2D.MipSlice = 0;
+    input_view_desc.Texture2D.ArraySlice = 0;
+
+    hr = video_device_->CreateVideoProcessorInputView(
+        input_copy_.Get(),
+        video_enumerator_.Get(),
+        &input_view_desc,
+        input_view_.GetAddressOf());
+    if (FAILED(hr) || !input_view_)
+        return mf_failure(hr);
+
+    D3D11_TEXTURE2D_DESC output_desc{};
+    output_desc.Width = config_.size.width;
+    output_desc.Height = config_.size.height;
+    output_desc.MipLevels = 1;
+    output_desc.ArraySize = 1;
+    output_desc.Format = DXGI_FORMAT_NV12;
+    output_desc.SampleDesc.Count = 1;
+    output_desc.Usage = D3D11_USAGE_DEFAULT;
+    output_desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+
+    D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC output_view_desc{};
+    output_view_desc.ViewDimension =
+        D3D11_VPOV_DIMENSION_TEXTURE2D;
+    output_view_desc.Texture2D.MipSlice = 0;
 
     for (std::size_t i = 0;
          i < config_.surface_count;
          ++i) {
-        const HRESULT hr = device->CreateTexture2D(
-            &desc,
+        hr = device->CreateTexture2D(
+            &output_desc,
             nullptr,
             surfaces_[i].texture.GetAddressOf());
-
         if (FAILED(hr))
+            return mf_failure(hr);
+
+        hr = video_device_->CreateVideoProcessorOutputView(
+            surfaces_[i].texture.Get(),
+            video_enumerator_.Get(),
+            &output_view_desc,
+            surfaces_[i].output_view.GetAddressOf());
+        if (FAILED(hr) || !surfaces_[i].output_view)
             return mf_failure(hr);
 
         surfaces_[i].in_use.store(
             false,
             std::memory_order_release);
     }
+
+    return Status::success();
+}
+
+Status MfH264Mp4Writer::convert_to_nv12(
+    ID3D11DeviceContext *context,
+    ID3D11Texture2D *source,
+    std::size_t output_slot) noexcept
+{
+    if (!context ||
+        !source ||
+        output_slot >= config_.surface_count ||
+        !input_copy_ ||
+        !input_view_ ||
+        !surfaces_[output_slot].output_view ||
+        !video_context_ ||
+        !video_processor_) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    D3D11_TEXTURE2D_DESC source_desc{};
+    source->GetDesc(&source_desc);
+    if (source_desc.Width != config_.size.width ||
+        source_desc.Height != config_.size.height ||
+        source_desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM ||
+        source_desc.SampleDesc.Count != 1) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    context->CopyResource(
+        input_copy_.Get(),
+        source);
+
+    D3D11_VIDEO_PROCESSOR_STREAM stream{};
+    stream.Enable = TRUE;
+    stream.OutputIndex = 0;
+    stream.InputFrameOrField = 0;
+    stream.PastFrames = 0;
+    stream.FutureFrames = 0;
+    stream.pInputSurface = input_view_.Get();
+
+    const HRESULT hr =
+        video_context_->VideoProcessorBlt(
+            video_processor_.Get(),
+            surfaces_[output_slot].output_view.Get(),
+            0,
+            1,
+            &stream);
+
+    if (FAILED(hr))
+        return mf_failure(hr);
 
     return Status::success();
 }
@@ -496,9 +706,15 @@ Status MfH264Mp4Writer::write_frame(
             StatusCode::EncoderBackpressure);
     }
 
-    context->CopyResource(
-        surfaces_[slot].texture.Get(),
-        source);
+    const Status convert_status =
+        convert_to_nv12(
+            context,
+            source,
+            slot);
+    if (!convert_status.ok()) {
+        release_surface(slot);
+        return convert_status;
+    }
 
     Microsoft::WRL::ComPtr<IMFTrackedSample> tracked;
     HRESULT hr = MFCreateTrackedSample(
@@ -629,12 +845,21 @@ void MfH264Mp4Writer::teardown() noexcept
     }
     release_callback_.Reset();
 
+    input_view_.Reset();
+    input_copy_.Reset();
+
     for (auto &slot : surfaces_) {
+        slot.output_view.Reset();
         slot.texture.Reset();
         slot.in_use.store(
             false,
             std::memory_order_release);
     }
+
+    video_processor_.Reset();
+    video_enumerator_.Reset();
+    video_context_.Reset();
+    video_device_.Reset();
 
     dxgi_manager_.Reset();
 
