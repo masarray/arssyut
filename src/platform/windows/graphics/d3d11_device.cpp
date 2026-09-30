@@ -4,6 +4,7 @@
 
 #include "core/result/status.hpp"
 
+#include <iterator>
 #include <new>
 
 namespace arssyut::windows {
