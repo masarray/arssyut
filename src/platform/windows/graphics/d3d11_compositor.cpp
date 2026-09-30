@@ -205,7 +205,126 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
     if (FAILED(hr))
         return d3d_failure(hr);
 
+    for (auto &slot : gpu_queries_) {
+        D3D11_QUERY_DESC disjoint_desc{};
+        disjoint_desc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+
+        hr = device_->CreateQuery(
+            &disjoint_desc,
+            slot.disjoint.GetAddressOf());
+        if (FAILED(hr))
+            return d3d_failure(hr);
+
+        D3D11_QUERY_DESC timestamp_desc{};
+        timestamp_desc.Query = D3D11_QUERY_TIMESTAMP;
+
+        hr = device_->CreateQuery(
+            &timestamp_desc,
+            slot.start.GetAddressOf());
+        if (FAILED(hr))
+            return d3d_failure(hr);
+
+        hr = device_->CreateQuery(
+            &timestamp_desc,
+            slot.end.GetAddressOf());
+        if (FAILED(hr))
+            return d3d_failure(hr);
+    }
+
     return Status::success();
+}
+
+void D3D11Compositor::resolve_gpu_queries(
+    ID3D11DeviceContext *context) noexcept
+{
+    if (!context)
+        return;
+
+    for (auto &slot : gpu_queries_) {
+        if (!slot.pending)
+            continue;
+
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disjoint{};
+        UINT64 start = 0;
+        UINT64 end = 0;
+
+        const HRESULT disjoint_hr = context->GetData(
+            slot.disjoint.Get(),
+            &disjoint,
+            sizeof(disjoint),
+            D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (disjoint_hr != S_OK)
+            continue;
+
+        const HRESULT start_hr = context->GetData(
+            slot.start.Get(),
+            &start,
+            sizeof(start),
+            D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (start_hr != S_OK)
+            continue;
+
+        const HRESULT end_hr = context->GetData(
+            slot.end.Get(),
+            &end,
+            sizeof(end),
+            D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (end_hr != S_OK)
+            continue;
+
+        if (!disjoint.Disjoint &&
+            disjoint.Frequency > 0 &&
+            end >= start) {
+            const std::uint64_t elapsed =
+                end - start;
+            const std::uint64_t microseconds =
+                (elapsed * 1'000'000ULL) /
+                disjoint.Frequency;
+
+            gpu_latency_.observe(
+                static_cast<std::uint32_t>(
+                    std::min<std::uint64_t>(
+                        microseconds,
+                        std::numeric_limits<std::uint32_t>::max())));
+        }
+
+        slot.pending = false;
+    }
+}
+
+std::size_t D3D11Compositor::begin_gpu_query(
+    ID3D11DeviceContext *context) noexcept
+{
+    if (!context)
+        return invalid_query_slot;
+
+    for (std::size_t i = 0; i < gpu_queries_.size(); ++i) {
+        auto &slot = gpu_queries_[i];
+        if (slot.pending)
+            continue;
+
+        context->Begin(slot.disjoint.Get());
+        context->End(slot.start.Get());
+        return i;
+    }
+
+    return invalid_query_slot;
+}
+
+void D3D11Compositor::end_gpu_query(
+    ID3D11DeviceContext *context,
+    std::size_t index) noexcept
+{
+    if (!context ||
+        index == invalid_query_slot ||
+        index >= gpu_queries_.size()) {
+        return;
+    }
+
+    auto &slot = gpu_queries_[index];
+    context->End(slot.end.Get());
+    context->End(slot.disjoint.Get());
+    slot.pending = true;
 }
 
 Status D3D11Compositor::ensure_input(
@@ -323,6 +442,8 @@ Status D3D11Compositor::render(
 
     const TimePoint started = MonotonicClock::now();
 
+    resolve_gpu_queries(context);
+
     const Status input_status = ensure_input(source);
     if (!input_status.ok())
         return input_status;
@@ -336,6 +457,9 @@ Status D3D11Compositor::render(
         input_desc_.Height
     };
     crop = arssyut::core::clamp_crop(crop, source_size);
+
+    const std::size_t gpu_query =
+        begin_gpu_query(context);
 
     context->CopyResource(input_copy_.Get(), source);
 
@@ -391,6 +515,8 @@ Status D3D11Compositor::render(
 
     ID3D11RenderTargetView *null_rtv = nullptr;
     context->OMSetRenderTargets(1, &null_rtv, nullptr);
+
+    end_gpu_query(context, gpu_query);
 
     cpu_latency_.observe(
         elapsed_microseconds(started, MonotonicClock::now()));
