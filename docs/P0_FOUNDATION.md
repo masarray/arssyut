@@ -1,6 +1,6 @@
 # P0 Foundation Baseline
 
-Status: implementation branch baseline.
+Status: **Accepted baseline — 2026-09-30.**
 
 P0 exists to make every later recorder milestone use the same production
 ownership model from the beginning. It deliberately does **not** implement a
@@ -80,3 +80,14 @@ P0 is accepted only when:
 
 Performance measurements that require capture/render/encode begin in P1/P2;
 P0 itself contains no frame hot path yet.
+
+
+## Acceptance evidence
+
+- PR: #2 — `P0: establish production recorder foundation`
+- Squash merge: `9cf1e1cd770cefb17b4dbbb3ee76efcad4a3c1af`
+- Windows CI: Release configure/build succeeded with MSVC 19.51 / VS 2026.
+- CTest: 2/2 tests passed.
+- Post-merge `main` workflow: success.
+- Intentional speculative cache-line padding was removed after MSVC warning;
+  it may return only if later benchmark evidence justifies it.
