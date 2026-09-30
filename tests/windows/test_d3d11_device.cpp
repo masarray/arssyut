@@ -6,6 +6,8 @@
 #include "platform/windows/video/native_video_pipeline.hpp"
 
 #include <d3d11.h>
+#include <mfapi.h>
+#include <mfobjects.h>
 #include <wrl/client.h>
 
 #include <chrono>
@@ -121,6 +123,84 @@ bool verify_solid_texture(
 
     context->Unmap(staging.Get(), 0);
     return valid;
+}
+
+void test_dxgi_media_buffer_length(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    auto texture = create_solid_texture(
+        owner.device(),
+        4,
+        4,
+        0xFF204060u);
+
+    test.expect(
+        texture != nullptr,
+        "DXGI media-buffer test texture created");
+    if (!texture)
+        return;
+
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+    HRESULT hr = MFCreateDXGISurfaceBuffer(
+        __uuidof(ID3D11Texture2D),
+        texture.Get(),
+        0,
+        FALSE,
+        buffer.GetAddressOf());
+
+    test.expect(
+        SUCCEEDED(hr) && buffer,
+        "MF wraps D3D11 texture as DXGI media buffer");
+    if (FAILED(hr) || !buffer)
+        return;
+
+    Microsoft::WRL::ComPtr<IMF2DBuffer> buffer_2d;
+    hr = buffer.As(&buffer_2d);
+
+    test.expect(
+        SUCCEEDED(hr) && buffer_2d,
+        "DXGI media buffer exposes IMF2DBuffer");
+    if (FAILED(hr) || !buffer_2d)
+        return;
+
+    DWORD contiguous_length = 0;
+    hr = buffer_2d->GetContiguousLength(
+        &contiguous_length);
+
+    test.expect(
+        SUCCEEDED(hr) && contiguous_length > 0,
+        "DXGI media buffer reports non-zero contiguous length");
+    if (FAILED(hr) || contiguous_length == 0)
+        return;
+
+    DWORD max_length = 0;
+    hr = buffer->GetMaxLength(&max_length);
+
+    test.expect(
+        SUCCEEDED(hr) &&
+            max_length >= contiguous_length,
+        "DXGI buffer max length covers contiguous payload");
+    if (FAILED(hr) || max_length < contiguous_length)
+        return;
+
+    hr = buffer->SetCurrentLength(
+        contiguous_length);
+
+    test.expect(
+        SUCCEEDED(hr),
+        "DXGI media buffer accepts valid current length");
+    if (FAILED(hr))
+        return;
+
+    DWORD current_length = 0;
+    hr = buffer->GetCurrentLength(
+        &current_length);
+
+    test.expect(
+        SUCCEEDED(hr) &&
+            current_length == contiguous_length,
+        "DXGI media buffer publishes non-zero valid payload length");
 }
 
 void test_latest_frame_slot(TestContext &test)
@@ -606,6 +686,7 @@ int main()
         device.feature_level() >= D3D_FEATURE_LEVEL_10_0,
         "D3D11 feature level meets baseline");
 
+    test_dxgi_media_buffer_length(test, device);
     test_latest_frame_slot(test);
     test_recoverable_session(test);
     test_empty_video_pipeline(test, device);
