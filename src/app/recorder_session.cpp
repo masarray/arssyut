@@ -6,9 +6,12 @@
 #include "platform/windows/capture/latest_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
+#include "platform/windows/input/presentation_input_worker.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
+#include "presentation/presentation_controller.hpp"
 
 #include <Psapi.h>
+#include <dwmapi.h>
 
 #include <algorithm>
 #include <chrono>
@@ -33,6 +36,9 @@ using arssyut::windows::LatestFrameSlot;
 using arssyut::windows::MfH264Mp4Writer;
 using arssyut::windows::MfVideoWriterConfig;
 using arssyut::windows::NativeVideoPipeline;
+using arssyut::windows::PresentationInputWorker;
+using arssyut::presentation::PresentationController;
+using arssyut::presentation::PresentationFrameState;
 using arssyut::windows::VideoSlotAction;
 using arssyut::windows::WgcCaptureSource;
 
@@ -105,6 +111,92 @@ void observe_memory_peak(
     return written == required
         ? result
         : std::string{};
+}
+
+[[nodiscard]] bool target_screen_rect(
+    const RecorderTarget &target,
+    RECT &rect) noexcept
+{
+    rect = {};
+
+    if (target.kind ==
+        arssyut::windows::CaptureTargetKind::Monitor) {
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
+
+        if (!target.monitor ||
+            !GetMonitorInfoW(
+                target.monitor,
+                &info)) {
+            return false;
+        }
+
+        rect = info.rcMonitor;
+        return rect.right > rect.left &&
+               rect.bottom > rect.top;
+    }
+
+    if (!target.window ||
+        !IsWindow(target.window)) {
+        return false;
+    }
+
+    if (SUCCEEDED(DwmGetWindowAttribute(
+            target.window,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &rect,
+            sizeof(rect))) &&
+        rect.right > rect.left &&
+        rect.bottom > rect.top) {
+        return true;
+    }
+
+    if (!GetWindowRect(
+            target.window,
+            &rect)) {
+        return false;
+    }
+
+    return rect.right > rect.left &&
+           rect.bottom > rect.top;
+}
+
+[[nodiscard]] bool screen_to_content(
+    const RECT &rect,
+    LONG screen_x,
+    LONG screen_y,
+    float &content_x,
+    float &content_y) noexcept
+{
+    const LONG width =
+        rect.right - rect.left;
+    const LONG height =
+        rect.bottom - rect.top;
+
+    if (width <= 0 || height <= 0)
+        return false;
+
+    content_x =
+        static_cast<float>(
+            screen_x - rect.left) /
+        static_cast<float>(width);
+    content_y =
+        static_cast<float>(
+            screen_y - rect.top) /
+        static_cast<float>(height);
+
+    const bool inside =
+        content_x >= 0.0f &&
+        content_x <= 1.0f &&
+        content_y >= 0.0f &&
+        content_y <= 1.0f;
+
+    content_x =
+        std::clamp(content_x, 0.0f, 1.0f);
+    content_y =
+        std::clamp(content_y, 0.0f, 1.0f);
+
+    return inside;
 }
 
 [[nodiscard]] std::string json_escape(
