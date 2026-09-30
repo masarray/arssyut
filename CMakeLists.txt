@@ -49,7 +49,9 @@ if(WIN32)
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
         src/platform/windows/graphics/d3d11_device.cpp
+        src/platform/windows/input/presentation_input_worker.cpp
         src/platform/windows/media/mf_h264_mp4_writer.cpp
+        src/presentation/presentation_controller.cpp
         src/platform/windows/storage/recoverable_session.cpp
         src/platform/windows/video/native_video_pipeline.cpp
     )
@@ -81,6 +83,8 @@ if(WIN32)
             d3d11
             d3dcompiler
             dxgi
+            gdi32
+            user32
             mfplat
             mfreadwrite
             mfuuid
