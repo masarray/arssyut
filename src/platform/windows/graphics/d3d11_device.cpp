@@ -4,6 +4,8 @@
 
 #include "core/result/status.hpp"
 
+#include <d3d10.h>
+
 #include <iterator>
 #include <new>
 
@@ -76,7 +78,9 @@ D3D11Device::create(
             Status::failure(StatusCode::InternalError));
     }
 
-    UINT flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+    UINT flags =
+        D3D11_CREATE_DEVICE_BGRA_SUPPORT |
+        D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
     if (enable_debug_layer)
         flags |= D3D11_CREATE_DEVICE_DEBUG;
 
@@ -97,6 +101,11 @@ D3D11Device::create(
             Status::failure(
                 StatusCode::GraphicsDeviceUnavailable,
                 static_cast<std::uint32_t>(hr)));
+    }
+
+    Microsoft::WRL::ComPtr<ID3D10Multithread> multithread;
+    if (SUCCEEDED(owner->device_.As(&multithread)) && multithread) {
+        multithread->SetMultithreadProtected(TRUE);
     }
 
     return Result<std::unique_ptr<D3D11Device>>::success(
