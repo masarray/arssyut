@@ -452,6 +452,11 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
                         frame_slot_->publish(std::move(captured));
 
                     if (diagnostics_) {
+                        diagnostics_->observe_max(
+                            DiagnosticMetric::MaxVideoQueueDepth,
+                            static_cast<std::uint64_t>(
+                                frame_slot_->in_flight_count()));
+
                         if (publish_result ==
                             LatestFrameSlot::PublishResult::
                                 ReplacedUnread) {
