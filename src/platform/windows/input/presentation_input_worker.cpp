@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include <algorithm>
+#include <iterator>
 
 namespace arssyut::windows {
 
