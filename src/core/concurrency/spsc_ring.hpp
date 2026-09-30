@@ -44,7 +44,8 @@ public:
     }
 
     [[nodiscard]] bool try_pop(T &out) noexcept(
-        std::is_nothrow_move_assignable_v<T>)
+        std::is_nothrow_move_assignable_v<T> &&
+        std::is_nothrow_default_constructible_v<T>)
     {
         const std::size_t tail = tail_.load(std::memory_order_relaxed);
         const std::size_t head = head_.load(std::memory_order_acquire);
@@ -96,9 +97,9 @@ private:
         return true;
     }
 
-    alignas(64) std::array<T, storage_size> slots_{};
-    alignas(64) std::atomic<std::size_t> head_{0};
-    alignas(64) std::atomic<std::size_t> tail_{0};
+    std::array<T, storage_size> slots_{};
+    std::atomic<std::size_t> head_{0};
+    std::atomic<std::size_t> tail_{0};
 };
 
 } // namespace arssyut::core
