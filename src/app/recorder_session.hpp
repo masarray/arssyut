@@ -8,6 +8,7 @@
 #include "core/video/frame_geometry.hpp"
 #include "core/video/frame_scheduler.hpp"
 #include "platform/windows/capture/wgc_capture_source.hpp"
+#include "platform/windows/media/mf_h264_mp4_writer.hpp"
 
 #include <Windows.h>
 
@@ -66,6 +67,8 @@ struct RecorderSnapshot {
     std::uint64_t memory_private_max_bytes = 0;
 
     arssyut::core::Status last_error{};
+    arssyut::windows::MfWriterStage encoder_failure_stage =
+        arssyut::windows::MfWriterStage::None;
 };
 
 class RecorderSession final {
@@ -124,6 +127,8 @@ private:
 
     std::atomic<std::uint32_t> error_code_{0};
     std::atomic<std::uint32_t> error_detail_{0};
+    std::atomic<arssyut::windows::MfWriterStage>
+        encoder_failure_stage_{arssyut::windows::MfWriterStage::None};
 
     std::atomic<std::uint32_t> capture_p95_us_{0};
     std::atomic<std::uint32_t> compositor_cpu_p95_us_{0};

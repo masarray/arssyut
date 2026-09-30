@@ -4,6 +4,7 @@
 
 #include "core/result/status.hpp"
 
+#include <codecapi.h>
 #include <mfapi.h>
 #include <mferror.h>
 #include <mfreadwrite.h>
@@ -84,6 +85,51 @@ inline constexpr GUID kArssyutSurfaceSlot = {
 }
 
 } // namespace
+
+const char *mf_writer_stage_name(
+    MfWriterStage stage) noexcept
+{
+    switch (stage) {
+    case MfWriterStage::None:
+        return "none";
+    case MfWriterStage::CreateVideoProcessor:
+        return "create_video_processor";
+    case MfWriterStage::MediaFoundationStartup:
+        return "mf_startup";
+    case MfWriterStage::CreateDxgiManager:
+        return "create_dxgi_manager";
+    case MfWriterStage::ResetDxgiDevice:
+        return "reset_dxgi_device";
+    case MfWriterStage::CreateSinkWriter:
+        return "create_sink_writer";
+    case MfWriterStage::ConfigureOutputType:
+        return "configure_h264_output";
+    case MfWriterStage::AddOutputStream:
+        return "add_output_stream";
+    case MfWriterStage::ConfigureInputType:
+        return "configure_nv12_input";
+    case MfWriterStage::SetInputMediaType:
+        return "set_input_media_type";
+    case MfWriterStage::CreateSurfacePool:
+        return "create_surface_pool";
+    case MfWriterStage::BeginWriting:
+        return "begin_writing";
+    case MfWriterStage::ConvertToNv12:
+        return "video_processor_blt";
+    case MfWriterStage::CreateTrackedSample:
+        return "create_tracked_sample";
+    case MfWriterStage::CreateDxgiBuffer:
+        return "create_dxgi_buffer";
+    case MfWriterStage::ConfigureSample:
+        return "configure_sample";
+    case MfWriterStage::WriteSample:
+        return "write_sample";
+    case MfWriterStage::Finalize:
+        return "finalize";
+    default:
+        return "unknown";
+    }
+}
 
 class MfH264Mp4Writer::ReleaseCallback final
     : public IMFAsyncCallback {
@@ -195,14 +241,34 @@ Status MfH264Mp4Writer::open(
     const std::filesystem::path &path,
     MfVideoWriterConfig config) noexcept
 {
+    failure_stage_.store(
+        MfWriterStage::None,
+        std::memory_order_release);
+
     if (open_ ||
         !device ||
         path.empty() ||
         !config.size.valid() ||
+        (config.size.width & 1U) != 0 ||
+        (config.size.height & 1U) != 0 ||
         !config.frame_rate.valid() ||
         config.bitrate_bps == 0) {
         return Status::failure(StatusCode::InvalidArgument);
     }
+
+    auto fail_hr =
+        [this](MfWriterStage stage, HRESULT hr) noexcept -> Status {
+            failure_stage_.store(stage, std::memory_order_release);
+            teardown();
+            return mf_failure(hr);
+        };
+
+    auto fail_status =
+        [this](MfWriterStage stage, Status status) noexcept -> Status {
+            failure_stage_.store(stage, std::memory_order_release);
+            teardown();
+            return status;
+        };
 
     config.surface_count =
         std::clamp<std::uint32_t>(
@@ -216,187 +282,195 @@ Status MfH264Mp4Writer::open(
 
     Status status = create_video_processor(device);
     if (!status.ok())
-        return status;
+        return fail_status(
+            MfWriterStage::CreateVideoProcessor,
+            status);
 
     HRESULT hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::MediaFoundationStartup,
+            hr);
     mf_started_ = true;
 
     hr = MFCreateDXGIDeviceManager(
         &dxgi_reset_token_,
         dxgi_manager_.GetAddressOf());
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::CreateDxgiManager,
+            hr);
 
     hr = dxgi_manager_->ResetDevice(
         device,
         dxgi_reset_token_);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::ResetDxgiDevice,
+            hr);
 
     Microsoft::WRL::ComPtr<IMFAttributes> attributes;
     hr = MFCreateAttributes(
         attributes.GetAddressOf(),
         6);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::CreateSinkWriter,
+            hr);
 
     hr = attributes->SetUINT32(
         MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS,
         TRUE);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::CreateSinkWriter,
+            hr);
 
     hr = attributes->SetUINT32(
         MF_SINK_WRITER_DISABLE_THROTTLING,
         TRUE);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::CreateSinkWriter,
+            hr);
 
     hr = attributes->SetUINT32(
         MF_LOW_LATENCY,
         TRUE);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::CreateSinkWriter,
+            hr);
 
     hr = attributes->SetUnknown(
         MF_SINK_WRITER_D3D_MANAGER,
         dxgi_manager_.Get());
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::CreateSinkWriter,
+            hr);
 
     hr = MFCreateSinkWriterFromURL(
         path_.c_str(),
         nullptr,
         attributes.Get(),
         writer_.GetAddressOf());
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::CreateSinkWriter,
+            hr);
 
     Microsoft::WRL::ComPtr<IMFMediaType> output_type;
     hr = MFCreateMediaType(
         output_type.GetAddressOf());
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::ConfigureOutputType,
+            hr);
 
-    status =
-        set_common_video_attributes(
-            output_type.Get(),
-            config_);
-    if (!status.ok()) {
-        teardown();
-        return status;
-    }
+    status = set_common_video_attributes(
+        output_type.Get(),
+        config_);
+    if (!status.ok())
+        return fail_status(
+            MfWriterStage::ConfigureOutputType,
+            status);
 
     hr = output_type->SetGUID(
         MF_MT_SUBTYPE,
         MFVideoFormat_H264);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::ConfigureOutputType,
+            hr);
 
     hr = output_type->SetUINT32(
         MF_MT_AVG_BITRATE,
         config_.bitrate_bps);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::ConfigureOutputType,
+            hr);
+
+    // Microsoft H.264 encoder documents MF_MT_MPEG2_PROFILE as a required
+    // output attribute. Main is the recommended broadly-supported default.
+    hr = output_type->SetUINT32(
+        MF_MT_MPEG2_PROFILE,
+        eAVEncH264VProfile_Main);
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::ConfigureOutputType,
+            hr);
 
     hr = writer_->AddStream(
         output_type.Get(),
         &stream_index_);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::AddOutputStream,
+            hr);
 
     Microsoft::WRL::ComPtr<IMFMediaType> input_type;
     hr = MFCreateMediaType(
         input_type.GetAddressOf());
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::ConfigureInputType,
+            hr);
 
-    status =
-        set_common_video_attributes(
-            input_type.Get(),
-            config_);
-    if (!status.ok()) {
-        teardown();
-        return status;
-    }
+    status = set_common_video_attributes(
+        input_type.Get(),
+        config_);
+    if (!status.ok())
+        return fail_status(
+            MfWriterStage::ConfigureInputType,
+            status);
 
     hr = input_type->SetGUID(
         MF_MT_SUBTYPE,
         MFVideoFormat_NV12);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::ConfigureInputType,
+            hr);
 
-    hr = input_type->SetUINT32(
-        MF_MT_DEFAULT_STRIDE,
-        config_.size.width);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
-
+    // MF_MT_DEFAULT_STRIDE is optional when the contiguous stride equals the
+    // width in bytes (NV12 luma plane here). Omitting it avoids over-
+    // constraining hardware encoder negotiation on some drivers.
     hr = writer_->SetInputMediaType(
         stream_index_,
         input_type.Get(),
         nullptr);
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::SetInputMediaType,
+            hr);
 
     status = create_surface_pool(device);
-    if (!status.ok()) {
-        teardown();
-        return status;
-    }
+    if (!status.ok())
+        return fail_status(
+            MfWriterStage::CreateSurfacePool,
+            status);
 
     auto *callback =
         new (std::nothrow) ReleaseCallback(this);
-    if (!callback) {
-        teardown();
-        return Status::failure(StatusCode::InternalError);
-    }
+    if (!callback)
+        return fail_status(
+            MfWriterStage::CreateSurfacePool,
+            Status::failure(StatusCode::InternalError));
     release_callback_.Attach(callback);
 
     hr = writer_->BeginWriting();
-    if (FAILED(hr)) {
-        teardown();
-        return mf_failure(hr);
-    }
+    if (FAILED(hr))
+        return fail_hr(
+            MfWriterStage::BeginWriting,
+            hr);
 
     submitted_frames_.store(0, std::memory_order_release);
     backpressure_events_.store(0, std::memory_order_release);
+    failure_stage_.store(
+        MfWriterStage::None,
+        std::memory_order_release);
     open_ = true;
     return Status::success();
 }
@@ -627,8 +701,12 @@ Status MfH264Mp4Writer::convert_to_nv12(
             1,
             &stream);
 
-    if (FAILED(hr))
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConvertToNv12,
+            std::memory_order_release);
         return mf_failure(hr);
+    }
 
     return Status::success();
 }
@@ -720,6 +798,9 @@ Status MfH264Mp4Writer::write_frame(
     HRESULT hr = MFCreateTrackedSample(
         tracked.GetAddressOf());
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateTrackedSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -727,8 +808,11 @@ Status MfH264Mp4Writer::write_frame(
     Microsoft::WRL::ComPtr<IMFSample> sample;
     hr = tracked.As(&sample);
     if (FAILED(hr) || !sample) {
+        failure_stage_.store(
+            MfWriterStage::CreateTrackedSample,
+            std::memory_order_release);
         release_surface(slot);
-        return mf_failure(hr);
+        return mf_failure(FAILED(hr) ? hr : E_NOINTERFACE);
     }
 
     Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
@@ -739,12 +823,18 @@ Status MfH264Mp4Writer::write_frame(
         FALSE,
         buffer.GetAddressOf());
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateDxgiBuffer,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
 
     hr = sample->AddBuffer(buffer.Get());
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -753,6 +843,9 @@ Status MfH264Mp4Writer::write_frame(
         kArssyutSurfaceSlot,
         static_cast<UINT32>(slot));
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -760,6 +853,9 @@ Status MfH264Mp4Writer::write_frame(
     hr = sample->SetSampleTime(
         relative_pts.ticks_100ns);
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -767,6 +863,9 @@ Status MfH264Mp4Writer::write_frame(
     hr = sample->SetSampleDuration(
         duration_ticks);
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -775,6 +874,9 @@ Status MfH264Mp4Writer::write_frame(
         release_callback_.Get(),
         nullptr);
     if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureSample,
+            std::memory_order_release);
         release_surface(slot);
         return mf_failure(hr);
     }
@@ -782,8 +884,13 @@ Status MfH264Mp4Writer::write_frame(
     hr = writer_->WriteSample(
         stream_index_,
         sample.Get());
-    if (FAILED(hr))
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::WriteSample,
+            std::memory_order_release);
+        release_surface(slot);
         return mf_failure(hr);
+    }
 
     submitted_frames_.fetch_add(
         1,
@@ -827,8 +934,12 @@ Status MfH264Mp4Writer::finalize() noexcept
 
     teardown();
 
-    if (FAILED(hr))
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::Finalize,
+            std::memory_order_release);
         return mf_failure(hr);
+    }
 
     return Status::success();
 }
