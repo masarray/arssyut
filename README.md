@@ -64,6 +64,37 @@ Audio --------+--------> bounded mux writer
 - `docs/ROADMAP.md` — gated implementation strategy and validation milestones.
 - `docs/RESEARCH.md` — ArZoom/ArVisual audit plus Microsoft/GitHub/GitLab research.
 
+## Build the P0 foundation
+
+Windows x64:
+
+```powershell
+cmake --preset windows-x64
+cmake --build --preset windows-release --parallel
+ctest --preset windows-release
+```
+
+P0 builds the production core primitives and deterministic tests. It does not
+include a temporary screenshot recorder.
+
+## P0 foundation
+
+Implemented on the production path:
+
+- canonical 100-ns monotonic clock backed by QPC on Windows;
+- compact `Status/Result` failure contracts;
+- fixed-capacity SPSC event ring;
+- lock-free latest-wins primitive for small replaceable state;
+- bounded diagnostic counters;
+- canonical recording session state machine;
+- RAII D3D11 device/immediate-context ownership;
+- deterministic core and D3D11 WARP CI tests;
+- source provenance and third-party dependency ledgers;
+- Windows x64 GitHub CI.
+
+See `docs/P0_FOUNDATION.md` for ownership and acceptance gates.
+
 ## Status
 
-**Foundation / Phase 0.** Architecture and contracts are established before implementation so the codebase does not begin as a prototype that must later be rewritten.
+**P0 implementation submitted for CI validation.** P1 starts only after the
+Windows Release build and deterministic tests are green.
