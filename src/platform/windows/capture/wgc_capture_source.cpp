@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <utility>
 
 namespace arssyut::windows {
@@ -69,7 +70,9 @@ using winrt::Windows::Graphics::DirectX::DirectXPixelFormat;
 }
 
 [[nodiscard]] Status create_capture_item(
-    const WgcCaptureSource::StartRequest &request,
+    CaptureTargetKind kind,
+    HWND window,
+    HMONITOR monitor,
     GraphicsCaptureItem &item) noexcept
 {
     try {
@@ -79,20 +82,20 @@ using winrt::Windows::Graphics::DirectX::DirectXPixelFormat;
 
         HRESULT hr = E_INVALIDARG;
 
-        if (request.kind == CaptureTargetKind::Window) {
-            if (!request.window)
+        if (kind == CaptureTargetKind::Window) {
+            if (!window)
                 return Status::failure(StatusCode::InvalidArgument);
 
             hr = interop->CreateForWindow(
-                request.window,
+                window,
                 winrt::guid_of<GraphicsCaptureItem>(),
                 winrt::put_abi(item));
         } else {
-            if (!request.monitor)
+            if (!monitor)
                 return Status::failure(StatusCode::InvalidArgument);
 
             hr = interop->CreateForMonitor(
-                request.monitor,
+                monitor,
                 winrt::guid_of<GraphicsCaptureItem>(),
                 winrt::put_abi(item));
         }
@@ -323,7 +326,11 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
 
         GraphicsCaptureItem item{nullptr};
         const Status item_status =
-            create_capture_item(request, item);
+            create_capture_item(
+                request.kind,
+                request.window,
+                request.monitor,
+                item);
         if (!item_status.ok()) {
             signal_startup(item_status);
             startup_signaled = true;
