@@ -7,6 +7,7 @@
 #include <d3dcompiler.h>
 
 #include <algorithm>
+#include <cwchar>
 #include <limits>
 #include <new>
 #include <utility>
