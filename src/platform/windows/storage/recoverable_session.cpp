@@ -9,6 +9,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <limits>
 #include <new>
 #include <sstream>
 #include <string>
