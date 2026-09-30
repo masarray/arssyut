@@ -36,4 +36,4 @@ jobs:
           name: arssyut-p1-probe-windows-x64
           path: build/windows-x64/Release/arssyut_p1_probe.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90
