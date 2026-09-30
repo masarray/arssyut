@@ -24,12 +24,20 @@ using arssyut::core::StatusCode;
 using arssyut::core::TimePoint;
 
 constexpr char shader_source[] = R"(
-cbuffer CropConstants : register(b0)
+cbuffer PresentationConstants : register(b0)
 {
     float4 uv_rect;
+    float4 camera_keyboard;
+    float4 output_info;
+    float4 keyboard_rect;
+    float4 click0;
+    float4 click1;
+    float4 click2;
+    float4 click3;
 };
 
 Texture2D source_texture : register(t0);
+Texture2D keyboard_texture : register(t1);
 SamplerState source_sampler : register(s0);
 
 struct VertexOutput
@@ -51,19 +59,140 @@ VertexOutput vs_main(uint vertex_id : SV_VertexID)
     return output;
 }
 
+float click_alpha(float2 uv, float4 click_value, float2 camera_center,
+                  float zoom, float aspect)
+{
+    if (click_value.w <= 0.0f)
+        return 0.0f;
+
+    const float2 projected =
+        0.5f + (click_value.xy - camera_center) * zoom;
+
+    const float2 delta =
+        float2((uv.x - projected.x) * aspect,
+               uv.y - projected.y);
+
+    const float distance = length(delta);
+    const float progress = saturate(click_value.z);
+    const float radius = lerp(0.010f, 0.040f, progress);
+    const float thickness = lerp(0.0050f, 0.0025f, progress);
+
+    const float ring =
+        1.0f - smoothstep(
+            thickness,
+            thickness + 0.0020f,
+            abs(distance - radius));
+
+    const float center =
+        (1.0f - smoothstep(
+            0.0f,
+            0.010f,
+            distance)) * (1.0f - progress);
+
+    return saturate((ring + 0.28f * center) * (1.0f - progress));
+}
+
+float3 click_color(float kind)
+{
+    if (kind < 1.5f)
+        return float3(1.00f, 0.26f, 0.23f);
+    if (kind < 2.5f)
+        return float3(0.26f, 0.72f, 1.00f);
+    return float3(0.95f, 0.72f, 0.22f);
+}
+
+float4 apply_click(float4 color, float2 uv, float4 click_value,
+                   float2 camera_center, float zoom, float aspect)
+{
+    const float alpha =
+        click_alpha(uv, click_value, camera_center, zoom, aspect);
+
+    if (alpha <= 0.0001f)
+        return color;
+
+    const float3 tint = click_color(click_value.w);
+    color.rgb = lerp(color.rgb, tint, saturate(alpha * 0.90f));
+    return color;
+}
+
 float4 ps_main(VertexOutput input) : SV_Target
 {
-    float2 uv = lerp(uv_rect.xy, uv_rect.zw, input.uv);
-    return source_texture.Sample(source_sampler, uv);
+    const float2 camera_center = camera_keyboard.xy;
+    const float zoom = max(camera_keyboard.z, 1.0f);
+
+    const float2 camera_uv =
+        camera_center + (input.uv - 0.5f) / zoom;
+    const float2 uv =
+        lerp(uv_rect.xy, uv_rect.zw, camera_uv);
+
+    float4 color =
+        source_texture.Sample(source_sampler, uv);
+
+    const float aspect = max(output_info.x, 0.1f);
+
+    color = apply_click(
+        color, input.uv, click0, camera_center, zoom, aspect);
+    color = apply_click(
+        color, input.uv, click1, camera_center, zoom, aspect);
+    color = apply_click(
+        color, input.uv, click2, camera_center, zoom, aspect);
+    color = apply_click(
+        color, input.uv, click3, camera_center, zoom, aspect);
+
+    const float keyboard_opacity =
+        saturate(camera_keyboard.w);
+
+    if (keyboard_opacity > 0.001f &&
+        input.uv.x >= keyboard_rect.x &&
+        input.uv.x <= keyboard_rect.z &&
+        input.uv.y >= keyboard_rect.y &&
+        input.uv.y <= keyboard_rect.w) {
+        const float2 keyboard_uv =
+            (input.uv - keyboard_rect.xy) /
+            max(keyboard_rect.zw - keyboard_rect.xy, 0.0001f);
+
+        float4 overlay =
+            keyboard_texture.Sample(
+                source_sampler,
+                keyboard_uv);
+
+        const float alpha =
+            saturate(overlay.a * keyboard_opacity);
+
+        color.rgb =
+            lerp(color.rgb, overlay.rgb, alpha);
+    }
+
+    return color;
 }
 )";
 
-struct CropConstants {
-    float left;
-    float top;
-    float right;
-    float bottom;
+struct PresentationConstants {
+    float uv_left;
+    float uv_top;
+    float uv_right;
+    float uv_bottom;
+
+    float camera_center_x;
+    float camera_center_y;
+    float camera_zoom;
+    float keyboard_opacity;
+
+    float output_aspect;
+    float reserved0;
+    float reserved1;
+    float reserved2;
+
+    float keyboard_left;
+    float keyboard_top;
+    float keyboard_right;
+    float keyboard_bottom;
+
+    float clicks[16]{};
 };
+
+constexpr UINT kKeyboardWidth = 640;
+constexpr UINT kKeyboardHeight = 112;
 
 [[nodiscard]] std::uint32_t hresult_detail(HRESULT hr) noexcept
 {
