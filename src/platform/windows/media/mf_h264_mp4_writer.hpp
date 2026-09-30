@@ -20,6 +20,30 @@
 
 namespace arssyut::windows {
 
+enum class MfWriterStage : std::uint16_t {
+    None = 0,
+    CreateVideoProcessor,
+    MediaFoundationStartup,
+    CreateDxgiManager,
+    ResetDxgiDevice,
+    CreateSinkWriter,
+    ConfigureOutputType,
+    AddOutputStream,
+    ConfigureInputType,
+    SetInputMediaType,
+    CreateSurfacePool,
+    BeginWriting,
+    ConvertToNv12,
+    CreateTrackedSample,
+    CreateDxgiBuffer,
+    ConfigureSample,
+    WriteSample,
+    Finalize,
+};
+
+[[nodiscard]] const char *mf_writer_stage_name(
+    MfWriterStage stage) noexcept;
+
 struct MfVideoWriterConfig {
     arssyut::core::FrameSize size{1920, 1080};
     arssyut::core::FrameRate frame_rate{60, 1};
@@ -66,6 +90,11 @@ public:
     }
 
     [[nodiscard]] std::uint32_t in_flight_surfaces() const noexcept;
+
+    [[nodiscard]] MfWriterStage failure_stage() const noexcept
+    {
+        return failure_stage_.load(std::memory_order_acquire);
+    }
 
     [[nodiscard]] const std::filesystem::path &path() const noexcept
     {
@@ -124,6 +153,7 @@ private:
 
     std::atomic<std::uint64_t> submitted_frames_{0};
     std::atomic<std::uint64_t> backpressure_events_{0};
+    std::atomic<MfWriterStage> failure_stage_{MfWriterStage::None};
 };
 
 } // namespace arssyut::windows
