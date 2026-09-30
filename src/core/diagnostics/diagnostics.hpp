@@ -15,6 +15,8 @@ enum class DiagnosticMetric : std::uint8_t {
     CaptureSourceClosed,
     CaptureCallbackFailures,
     VideoFramesRendered,
+    VideoFramesReused,
+    VideoFramesUnavailable,
     VideoFramesSkipped,
     InputEventsDropped,
     AudioUnderflows,
