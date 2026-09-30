@@ -16,6 +16,13 @@ struct PresentationSettings {
     float zoom = 2.0f;
 };
 
+enum ShortcutModifier : std::uint8_t {
+    ShortcutCtrl = 1u << 0,
+    ShortcutShift = 1u << 1,
+    ShortcutAlt = 1u << 2,
+    ShortcutWin = 1u << 3,
+};
+
 struct ShortcutChord {
     std::uint16_t key = 0;
     std::uint8_t modifiers = 0;
