@@ -30,10 +30,18 @@ jobs:
       - name: Test
         run: ctest --preset windows-release
 
-      - name: Upload P1 capture probe
+      - name: Prepare P1 validation package
+        shell: pwsh
+        run: |
+          $package = Join-Path $PWD "dist/p1-probe"
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item "build/windows-x64/Release/arssyut_p1_probe.exe" $package
+          Copy-Item "tools/p1_probe_package/*" $package
+
+      - name: Upload P1 capture probe package
         uses: actions/upload-artifact@v4
         with:
-          name: arssyut-p1-probe-windows-x64
-          path: build/windows-x64/Release/arssyut_p1_probe.exe
+          name: arssyut-p1-validation-windows-x64
+          path: dist/p1-probe/*
           if-no-files-found: error
           retention-days: 90
