@@ -4,6 +4,7 @@
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "platform/windows/storage/recoverable_session.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
+#include "presentation/presentation_controller.hpp"
 
 #include <d3d11.h>
 #include <mfapi.h>
@@ -201,6 +202,106 @@ void test_dxgi_media_buffer_length(
         SUCCEEDED(hr) &&
             current_length == contiguous_length,
         "DXGI media buffer publishes non-zero valid payload length");
+}
+
+void test_presentation_controller(TestContext &test)
+{
+    using namespace arssyut::presentation;
+    using arssyut::core::TimePoint;
+
+    PresentationController controller;
+    controller.reset();
+
+    PresentationSettings settings;
+    settings.smart_zoom = true;
+    settings.click_visual = true;
+    settings.shortcut_keys = true;
+    settings.zoom = 2.0f;
+    controller.set_settings(settings);
+
+    TimePoint now{1'000'000};
+    controller.on_click(
+        ClickKind::Left,
+        0.75f,
+        0.50f,
+        now);
+
+    PresentationFrameState frame{};
+    for (int i = 0; i < 90; ++i) {
+        now.ticks_100ns +=
+            arssyut::core::MonotonicClock::ticks_per_second / 120;
+
+        frame = controller.step(
+            1.0f / 120.0f,
+            0.75f,
+            0.50f,
+            true,
+            now,
+            now);
+    }
+
+    test.expect(
+        frame.camera_zoom > 1.50f &&
+            frame.camera_zoom <= 2.01f,
+        "Click-triggered Smart Zoom reaches configured magnification");
+
+    bool click_visible = false;
+    for (const auto &click : frame.clicks) {
+        click_visible =
+            click_visible ||
+            click.kind != ClickKind::None;
+    }
+    test.expect(
+        !click_visible,
+        "Click pulse lifetime remains bounded");
+
+    ShortcutChord chord;
+    chord.key = static_cast<std::uint16_t>('C');
+    chord.modifiers = ShortcutCtrl;
+    controller.on_shortcut(chord, now);
+
+    frame = controller.step(
+        1.0f / 120.0f,
+        0.75f,
+        0.50f,
+        true,
+        now,
+        now);
+
+    test.expect(
+        frame.keyboard.generation != 0 &&
+            frame.keyboard.opacity > 0.0f,
+        "Shortcut produces bounded keyboard overlay state");
+
+    const std::wstring keyboard(
+        frame.keyboard.text.data());
+    test.expect(
+        keyboard.find(L"Ctrl") != std::wstring::npos &&
+            keyboard.find(L"C") != std::wstring::npos,
+        "Shortcut keycap text preserves canonical modifier order");
+
+    now.ticks_100ns +=
+        arssyut::core::MonotonicClock::ticks_per_second * 4;
+
+    for (int i = 0; i < 120; ++i) {
+        now.ticks_100ns +=
+            arssyut::core::MonotonicClock::ticks_per_second / 120;
+
+        frame = controller.step(
+            1.0f / 120.0f,
+            0.50f,
+            0.50f,
+            false,
+            now,
+            {});
+    }
+
+    test.expect(
+        frame.camera_zoom < 1.02f,
+        "Smart Zoom deterministically returns to full frame");
+    test.expect(
+        frame.keyboard.opacity == 0.0f,
+        "Shortcut overlay expires without history growth");
 }
 
 void test_latest_frame_slot(TestContext &test)
@@ -687,6 +788,7 @@ int main()
         "D3D11 feature level meets baseline");
 
     test_dxgi_media_buffer_length(test, device);
+    test_presentation_controller(test);
     test_latest_frame_slot(test);
     test_recoverable_session(test);
     test_empty_video_pipeline(test, device);
