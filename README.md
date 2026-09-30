@@ -57,13 +57,12 @@ Audio --------+--------> bounded mux writer
 
 ## Foundation documents
 
-The initial engineering foundation is being defined in:
-
-- `AGENTS.md` — non-naive production engineering contract.
+- `AGENTS.md` — non-naive production realtime engineering contract.
+- `docs/CONCEPT.md` — product/UX concept and presentation behavior.
 - `docs/PRD.md` — product requirements and acceptance criteria.
 - `docs/ARCHITECTURE.md` — capture/render/input/audio/encoding architecture and invariants.
-- `docs/ROADMAP.md` — milestone strategy and validation gates.
-- `docs/RESEARCH.md` — source audit and external research notes.
+- `docs/ROADMAP.md` — gated implementation strategy and validation milestones.
+- `docs/RESEARCH.md` — ArZoom/ArVisual audit plus Microsoft/GitHub/GitLab research.
 
 ## Status
 
