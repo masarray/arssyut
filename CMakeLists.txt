@@ -53,7 +53,7 @@ if(WIN32)
             ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
 
-    target_compile_definitions(arssyut_windows PRIVATE
+    target_compile_definitions(arssyut_windows PUBLIC
         WIN32_LEAN_AND_MEAN
         NOMINMAX
         _WIN32_WINNT=0x0A00
