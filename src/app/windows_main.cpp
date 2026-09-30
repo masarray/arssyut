@@ -45,6 +45,9 @@ enum ControlId : int {
     IdRecord,
     IdOpen,
     IdOpenDiagnostics,
+    IdSmartZoom,
+    IdClickVisual,
+    IdShortcutKeys,
 };
 
 struct AppWindow {
@@ -73,6 +76,9 @@ struct AppWindow {
     HWND output_text = nullptr;
     HWND open_button = nullptr;
     HWND diagnostics_button = nullptr;
+    HWND zoom_checkbox = nullptr;
+    HWND click_checkbox = nullptr;
+    HWND keys_checkbox = nullptr;
 
     HFONT title_font = nullptr;
     HFONT normal_font = nullptr;
@@ -350,6 +356,9 @@ void layout_idle(AppWindow &app)
     show(app.diagnostics_button, true);
     show(app.output_text, true);
     show(app.metrics_text, true);
+    show(app.zoom_checkbox, true);
+    show(app.click_checkbox, true);
+    show(app.keys_checkbox, true);
 
     move(app.title_text, 22, 12, 260, 28);
     move(app.subtitle_text, 22, 39, 420, 20);
@@ -369,7 +378,10 @@ void layout_idle(AppWindow &app)
 
     move(app.record_button, 695, 69, 96, 96);
 
-    move(app.status_text, 32, 190, 250, 24);
+    move(app.status_text, 32, 190, 220, 24);
+    move(app.zoom_checkbox, 270, 188, 112, 26);
+    move(app.click_checkbox, 386, 188, 94, 26);
+    move(app.keys_checkbox, 484, 188, 94, 26);
     move(app.timer_text, 676, 190, 104, 24);
     move(app.metrics_text, 32, 216, 515, 22);
     move(app.output_text, 32, 239, 510, 20);
@@ -419,12 +431,14 @@ void layout_recording(AppWindow &app)
     show(app.open_button, false);
     show(app.diagnostics_button, false);
     show(app.output_text, false);
-    show(app.metrics_text, true);
+    show(app.metrics_text, false);
+    show(app.zoom_checkbox, false);
+    show(app.click_checkbox, false);
+    show(app.keys_checkbox, false);
 
-    move(app.status_text, 28, 25, 170, 24);
-    move(app.timer_text, 28, 53, 110, 28);
-    move(app.metrics_text, 150, 34, 260, 42);
-    move(app.record_button, 430, 11, 86, 86);
+    move(app.status_text, 28, 27, 92, 28);
+    move(app.timer_text, 118, 23, 102, 34);
+    move(app.record_button, 236, 7, 74, 74);
 
     MONITORINFO info{};
     info.cbSize = sizeof(info);
@@ -438,7 +452,7 @@ void layout_recording(AppWindow &app)
     int y = 32;
 
     if (GetMonitorInfoW(monitor, &info)) {
-        const int width = 550;
+        const int width = 330;
         x = info.rcWork.left +
             ((info.rcWork.right - info.rcWork.left) - width) / 2;
         y = info.rcWork.top + 36;
@@ -449,8 +463,8 @@ void layout_recording(AppWindow &app)
         HWND_TOPMOST,
         x,
         y,
-        550,
-        126,
+        330,
+        94,
         SWP_SHOWWINDOW);
 
     app.compact_mode = true;
@@ -464,6 +478,9 @@ void set_recording_controls(
     EnableWindow(app.source_combo, !recording);
     EnableWindow(app.refresh_button, !recording);
     EnableWindow(app.fps_combo, !recording);
+    EnableWindow(app.zoom_checkbox, !recording);
+    EnableWindow(app.click_checkbox, !recording);
+    EnableWindow(app.keys_checkbox, !recording);
     EnableWindow(app.record_button, TRUE);
 
     InvalidateRect(app.record_button, nullptr, TRUE);
@@ -515,6 +532,26 @@ void start_recording(AppWindow &app)
     config.frame_rate = {fps, 1};
     config.bitrate_bps =
         fps == 60 ? 12'000'000U : 8'000'000U;
+
+    config.presentation.smart_zoom =
+        SendMessageW(
+            app.zoom_checkbox,
+            BM_GETCHECK,
+            0,
+            0) == BST_CHECKED;
+    config.presentation.click_visual =
+        SendMessageW(
+            app.click_checkbox,
+            BM_GETCHECK,
+            0,
+            0) == BST_CHECKED;
+    config.presentation.shortcut_keys =
+        SendMessageW(
+            app.keys_checkbox,
+            BM_GETCHECK,
+            0,
+            0) == BST_CHECKED;
+    config.presentation.zoom = 2.0f;
 
     auto session =
         std::make_unique<RecorderSession>();
@@ -598,17 +635,8 @@ void update_ui(AppWindow &app)
         SetWindowTextW(app.timer_text, L"");
     }
 
-    wchar_t metrics[384]{};
-    if (app.compact_mode) {
-        swprintf_s(
-            metrics,
-            L"Frames %llu   Encoded %llu\r\nDrop %llu   p95 %u us",
-            snapshot.capture_received,
-            snapshot.encoder_submitted,
-            snapshot.capture_busy_drops +
-                snapshot.encoder_backpressure,
-            snapshot.capture_p95_us);
-    } else {
+    if (!app.compact_mode) {
+        wchar_t metrics[384]{};
         swprintf_s(
             metrics,
             L"Frames %llu  ·  Encoded %llu  ·  Coalesced %llu  ·  Drop %llu  ·  Capture p95 %u us",
@@ -618,8 +646,8 @@ void update_ui(AppWindow &app)
             snapshot.capture_busy_drops +
                 snapshot.encoder_backpressure,
             snapshot.capture_p95_us);
+        SetWindowTextW(app.metrics_text, metrics);
     }
-    SetWindowTextW(app.metrics_text, metrics);
 
     if ((snapshot.state == RecorderState::Recording ||
          snapshot.state == RecorderState::Stopping ||
@@ -1101,6 +1129,66 @@ LRESULT CALLBACK window_proc(
         apply_dark_theme(app->diagnostics_button);
         EnableWindow(app->diagnostics_button, FALSE);
 
+        app->zoom_checkbox =
+            CreateWindowExW(
+                0,
+                L"BUTTON",
+                L"Smart zoom",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                    BS_AUTOCHECKBOX,
+                270, 188, 112, 26,
+                window,
+                reinterpret_cast<HMENU>(IdSmartZoom),
+                GetModuleHandleW(nullptr),
+                nullptr);
+        set_font(app->zoom_checkbox, app->tiny_font);
+        apply_dark_theme(app->zoom_checkbox);
+        SendMessageW(
+            app->zoom_checkbox,
+            BM_SETCHECK,
+            BST_CHECKED,
+            0);
+
+        app->click_checkbox =
+            CreateWindowExW(
+                0,
+                L"BUTTON",
+                L"Clicks",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                    BS_AUTOCHECKBOX,
+                386, 188, 94, 26,
+                window,
+                reinterpret_cast<HMENU>(IdClickVisual),
+                GetModuleHandleW(nullptr),
+                nullptr);
+        set_font(app->click_checkbox, app->tiny_font);
+        apply_dark_theme(app->click_checkbox);
+        SendMessageW(
+            app->click_checkbox,
+            BM_SETCHECK,
+            BST_CHECKED,
+            0);
+
+        app->keys_checkbox =
+            CreateWindowExW(
+                0,
+                L"BUTTON",
+                L"Keys",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                    BS_AUTOCHECKBOX,
+                484, 188, 94, 26,
+                window,
+                reinterpret_cast<HMENU>(IdShortcutKeys),
+                GetModuleHandleW(nullptr),
+                nullptr);
+        set_font(app->keys_checkbox, app->tiny_font);
+        apply_dark_theme(app->keys_checkbox);
+        SendMessageW(
+            app->keys_checkbox,
+            BM_SETCHECK,
+            BST_CHECKED,
+            0);
+
         refresh_sources(*app);
 
         GetWindowRect(app->window, &app->idle_window_rect);
@@ -1188,7 +1276,8 @@ LRESULT CALLBACK window_proc(
         } else if (control == app->audio_value ||
                    control == app->mic_value) {
             SetTextColor(dc, RGB(116, 124, 135));
-        } else if (control == app->timer_text &&
+        } else if ((control == app->timer_text ||
+                    control == app->status_text) &&
                    app->compact_mode) {
             SetTextColor(dc, kAccent);
         } else {
