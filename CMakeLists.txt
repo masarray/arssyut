@@ -81,7 +81,7 @@ if(WIN32)
     add_executable(arssyut_p1_probe
         tools/p1_capture_probe.cpp
     )
-    target_link_libraries(arssyut_p1_probe PRIVATE arssyut_windows)
+    target_link_libraries(arssyut_p1_probe PRIVATE arssyut_windows psapi)
     if(MSVC)
         target_compile_options(arssyut_p1_probe PRIVATE
             /W4
