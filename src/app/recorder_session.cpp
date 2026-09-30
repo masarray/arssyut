@@ -558,6 +558,48 @@ void RecorderSession::worker_main() noexcept
         return;
     }
 
+    PresentationInputWorker presentation_input;
+    PresentationController presentation_controller;
+    presentation_controller.reset();
+    presentation_controller.set_settings(
+        config_.presentation);
+
+    const bool presentation_enabled =
+        config_.presentation.smart_zoom ||
+        config_.presentation.click_visual ||
+        config_.presentation.shortcut_keys;
+
+    if (presentation_enabled) {
+        status = presentation_input.start();
+        if (!status.ok()) {
+            fail(status);
+            capture.stop();
+            (void)writer.finalize();
+
+            const std::uint64_t memory_end =
+                private_bytes();
+            memory_private_bytes_.store(
+                memory_end,
+                std::memory_order_relaxed);
+            observe_memory_peak(
+                memory_private_max_bytes_,
+                memory_end);
+
+            write_diagnostics(
+                0,
+                memory_start,
+                memory_end,
+                writer.submitted_frames(),
+                writer.backpressure_events(),
+                pipeline->compositor().resource_generation());
+
+            state_.store(
+                RecorderState::Failed,
+                std::memory_order_release);
+            return;
+        }
+    }
+
     const TimePoint start =
         MonotonicClock::now();
 
@@ -566,6 +608,7 @@ void RecorderSession::worker_main() noexcept
         config_.frame_rate);
     if (!status.ok()) {
         fail(status);
+        presentation_input.stop();
         capture.stop();
         (void)writer.finalize();
 
@@ -618,6 +661,18 @@ void RecorderSession::worker_main() noexcept
         MonotonicClock::ticks_per_second / 4
     };
 
+    TimePoint next_presentation = start;
+    TimePoint previous_presentation = start;
+    TimePoint next_target_rect_refresh = start;
+
+    RECT presentation_target_rect{};
+    bool presentation_target_valid =
+        target_screen_rect(
+            config_.target,
+            presentation_target_rect);
+
+    PresentationFrameState presentation_state{};
+
     bool failed = false;
 
     while (!stop_requested_.load(
@@ -625,12 +680,102 @@ void RecorderSession::worker_main() noexcept
         const TimePoint now =
             MonotonicClock::now();
 
+        if (presentation_enabled &&
+            !(now < next_target_rect_refresh)) {
+            presentation_target_valid =
+                target_screen_rect(
+                    config_.target,
+                    presentation_target_rect);
+
+            next_target_rect_refresh = {
+                now.ticks_100ns +
+                MonotonicClock::ticks_per_second / 4
+            };
+        }
+
+        if (presentation_enabled &&
+            !(now < next_presentation)) {
+            arssyut::windows::MouseClickEvent click_event;
+            while (presentation_input.try_pop_click(
+                click_event)) {
+                float click_x = 0.5f;
+                float click_y = 0.5f;
+
+                if (presentation_target_valid &&
+                    screen_to_content(
+                        presentation_target_rect,
+                        click_event.screen_x,
+                        click_event.screen_y,
+                        click_x,
+                        click_y)) {
+                    presentation_controller.on_click(
+                        click_event.kind,
+                        click_x,
+                        click_y,
+                        click_event.time);
+                }
+            }
+
+            arssyut::windows::ShortcutEvent shortcut_event;
+            while (presentation_input.try_pop_shortcut(
+                shortcut_event)) {
+                presentation_controller.on_shortcut(
+                    shortcut_event.chord,
+                    shortcut_event.time);
+            }
+
+            const auto pointer =
+                presentation_input.pointer();
+
+            float cursor_x = 0.5f;
+            float cursor_y = 0.5f;
+            const bool cursor_valid =
+                pointer.valid &&
+                presentation_target_valid &&
+                screen_to_content(
+                    presentation_target_rect,
+                    pointer.screen_x,
+                    pointer.screen_y,
+                    cursor_x,
+                    cursor_y);
+
+            const auto delta_ticks =
+                MonotonicClock::duration_ticks(
+                    previous_presentation,
+                    now);
+            const float presentation_dt =
+                std::clamp(
+                    static_cast<float>(delta_ticks) /
+                        static_cast<float>(
+                            MonotonicClock::ticks_per_second),
+                    0.0f,
+                    0.10f);
+
+            presentation_state =
+                presentation_controller.step(
+                    presentation_dt,
+                    cursor_x,
+                    cursor_y,
+                    cursor_valid,
+                    now,
+                    pointer.last_activity);
+
+            previous_presentation = now;
+            next_presentation = {
+                now.ticks_100ns +
+                MonotonicClock::ticks_per_second / 120
+            };
+        }
+
         auto frame_result =
             pipeline->process_due(
                 device->immediate_context(),
                 now,
                 {},
-                config_.output_size);
+                config_.output_size,
+                presentation_enabled
+                    ? &presentation_state
+                    : nullptr);
 
         if (!frame_result) {
             fail(frame_result.status());
@@ -743,6 +888,7 @@ void RecorderSession::worker_main() noexcept
         RecorderState::Stopping,
         std::memory_order_release);
 
+    presentation_input.stop();
     capture.stop();
 
     state_.store(
