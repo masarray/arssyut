@@ -11,6 +11,7 @@ enum class StatusCode : std::uint16_t {
     CapacityExceeded,
     PlatformFailure,
     GraphicsDeviceUnavailable,
+    StorageFailure,
     Unsupported,
     InternalError,
 };
