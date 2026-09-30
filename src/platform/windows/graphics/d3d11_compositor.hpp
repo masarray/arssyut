@@ -52,6 +52,12 @@ public:
         return cpu_latency_.snapshot();
     }
 
+    [[nodiscard]] arssyut::core::LatencyHistogram::Snapshot
+    gpu_execution_latency() const noexcept
+    {
+        return gpu_latency_.snapshot();
+    }
+
 private:
     D3D11Compositor() = default;
 
@@ -63,6 +69,24 @@ private:
 
     [[nodiscard]] arssyut::core::Status ensure_output(
         arssyut::core::FrameSize output_size) noexcept;
+
+    void resolve_gpu_queries(ID3D11DeviceContext *context) noexcept;
+    [[nodiscard]] std::size_t begin_gpu_query(
+        ID3D11DeviceContext *context) noexcept;
+    void end_gpu_query(
+        ID3D11DeviceContext *context,
+        std::size_t index) noexcept;
+
+    struct GpuQuerySlot {
+        Microsoft::WRL::ComPtr<ID3D11Query> disjoint;
+        Microsoft::WRL::ComPtr<ID3D11Query> start;
+        Microsoft::WRL::ComPtr<ID3D11Query> end;
+        bool pending = false;
+    };
+
+    static constexpr std::size_t gpu_query_slots = 4;
+    static constexpr std::size_t invalid_query_slot =
+        static_cast<std::size_t>(-1);
 
     Microsoft::WRL::ComPtr<ID3D11Device> device_;
 
@@ -80,7 +104,9 @@ private:
     arssyut::core::FrameSize output_size_{};
 
     std::uint64_t resource_generation_ = 0;
+    std::array<GpuQuerySlot, gpu_query_slots> gpu_queries_{};
     arssyut::core::LatencyHistogram cpu_latency_;
+    arssyut::core::LatencyHistogram gpu_latency_;
 };
 
 } // namespace arssyut::windows
