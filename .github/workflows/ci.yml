@@ -30,25 +30,31 @@ jobs:
       - name: Test
         run: ctest --preset windows-release
 
+      - name: GUI launch smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "build/windows-x64/Release/arssyut.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 2
+
+          if ($process.HasExited) {
+            throw "arssyut.exe exited during GUI launch smoke with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
       - name: Prepare application package
         shell: pwsh
         run: |
           $package = Join-Path $PWD "dist/arssyut"
           New-Item -ItemType Directory -Force -Path $package | Out-Null
           Copy-Item "build/windows-x64/Release/arssyut.exe" $package
+          Copy-Item "tools/app_package/README.txt" $package
 
       - name: Upload Arssyut GUI recorder
         uses: actions/upload-artifact@v4
         with:
           name: arssyut-recorder-windows-x64
           path: dist/arssyut/*
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Upload P1 capture probe
-        uses: actions/upload-artifact@v4
-        with:
-          name: arssyut-p1-probe-windows-x64
-          path: build/windows-x64/Release/arssyut_p1_probe.exe
           if-no-files-found: error
           retention-days: 90
