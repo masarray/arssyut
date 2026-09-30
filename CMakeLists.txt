@@ -77,6 +77,19 @@ if(WIN32)
             dxgi
             windowsapp
     )
+
+    add_executable(arssyut_p1_probe
+        tools/p1_capture_probe.cpp
+    )
+    target_link_libraries(arssyut_p1_probe PRIVATE arssyut_windows)
+    if(MSVC)
+        target_compile_options(arssyut_p1_probe PRIVATE
+            /W4
+            /permissive-
+            /utf-8
+            /Zc:__cplusplus
+        )
+    endif()
 endif()
 
 if(ARSSYUT_BUILD_TESTS)
