@@ -89,7 +89,7 @@ jobs:
           retention-days: 90
 
   interactive-wgc:
-    if: inputs.mode == 'interactive-wgc'
+    if: inputs.mode == 'interactive-wgc' && github.ref == 'refs/heads/main'
     name: Interactive WGC soak
     runs-on:
       - self-hosted
