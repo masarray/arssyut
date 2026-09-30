@@ -13,6 +13,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if(MSVC)
+    # Portable validation/release binaries should not require a separately
+    # installed MSVC runtime on the user's test machine.
+    set(CMAKE_MSVC_RUNTIME_LIBRARY
+        "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 add_library(arssyut_core STATIC
     src/core/session/session_state_machine.cpp
     src/core/time/monotonic_clock.cpp
