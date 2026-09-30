@@ -36,14 +36,14 @@ void append_token(
 
     if (used != 0) {
         const wchar_t plus[] = L"  +  ";
-        std::wcsncat_s(
+        wcsncat_s(
             buffer,
             capacity,
             plus,
             _TRUNCATE);
     }
 
-    std::wcsncat_s(
+    wcsncat_s(
         buffer,
         capacity,
         token,
