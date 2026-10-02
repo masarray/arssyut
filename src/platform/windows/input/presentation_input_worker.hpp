@@ -20,9 +20,7 @@ namespace arssyut::windows {
 struct PointerSnapshot {
     LONG screen_x = 0;
     LONG screen_y = 0;
-    HCURSOR cursor_handle = nullptr;
     bool valid = false;
-    bool cursor_visible = false;
     arssyut::core::TimePoint last_activity{};
 };
 
@@ -111,8 +109,6 @@ private:
     std::atomic<LONG> pointer_x_{0};
     std::atomic<LONG> pointer_y_{0};
     std::atomic<bool> pointer_valid_{false};
-    std::atomic<std::uintptr_t> cursor_handle_{0};
-    std::atomic<bool> cursor_visible_{false};
     std::atomic<std::int64_t> pointer_activity_ticks_{0};
 
     std::array<std::atomic<bool>, 256> pressed_{};
