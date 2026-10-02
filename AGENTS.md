@@ -317,6 +317,28 @@ Do not persist a keylogger-style transcript.
 
 Secrets typed into password fields must not become recoverable from normal session metadata.
 
+### P4R keyboard-visualizer lock
+
+After the first shortcut-overlay audit:
+
+- runtime keyboard state is a fixed structured keycap array, never a formatted
+  transcript string that another layer must parse;
+- at most four canonical modifiers plus one action key are retained;
+- modifier order is always Ctrl, Shift, Alt, Win, action;
+- ordinary unmodified printable input is hidden by default;
+- modified printable input may be shown as an action chord, but never with
+  clipboard/text contents;
+- Raw Input remains the primary backend; a low-level hook may be added only
+  after a concrete direct-validation gap is demonstrated;
+- keycap texture, DIB, font, brushes and pens are retained resources;
+- shortcut generation changes may update the retained texture, but must not
+  create per-frame GPU/GDI resources;
+- keycap rendering is content-sized and transparent; do not reintroduce a
+  large fixed background panel around a small shortcut;
+- the supplied keyboard-button artwork is design direction, not a reason to
+  parse or rasterize a large traced SVG in the realtime path.
+
+
 ---
 
 ## 12. Audio contract
