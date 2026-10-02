@@ -60,35 +60,27 @@ VertexOutput vs_main(uint vertex_id : SV_VertexID)
     return output;
 }
 
-/* ArZoom upstream click appearance, ported 1:1 from
- * data/effects/arzoom.effect @ ada8f5269246c64429d7aceb6cc72f81e72120ba.
- * Camera projection is supplied by Arssyut but all click choreography,
- * pixel geometry, colors, timing and bright-surface support remain upstream. */
-float minimum_jerk(float t)
+/* Arssyut presentation click skin.
+ * Camera/content anchoring remains the P3R ArZoom parity path, but click
+ * appearance intentionally uses a single larger satisfying ring requested
+ * during direct visual validation. */
+float smooth_out(float t)
 {
     t = saturate(t);
-    return t * t * t * (10.0 + t * (-15.0 + 6.0 * t));
+    const float inv = 1.0 - t;
+    return 1.0 - inv * inv * inv;
 }
 
-float vector_ring(float distance_px, float radius_px, float half_width_px)
-{
-    const float edge = abs(distance_px - radius_px);
-    return 1.0 - smoothstep(
-        half_width_px,
-        half_width_px + 1.0,
-        edge);
-}
-
-float vector_halo(
+float vector_ring(
     float distance_px,
     float radius_px,
-    float half_width_px,
-    float spread_px)
+    float half_width_px)
 {
-    const float edge = abs(distance_px - radius_px);
+    const float edge =
+        abs(distance_px - radius_px);
     return 1.0 - smoothstep(
-        half_width_px + 0.8,
-        half_width_px + spread_px,
+        half_width_px,
+        half_width_px + 1.25,
         edge);
 }
 
@@ -115,138 +107,110 @@ float2 event_delta_px(
     return (output_uv - center) * safe_viewport;
 }
 
-float4 left_click_masks(float2 delta_px, float age)
+float3 click_color(float type)
 {
-    const float distance_px = length(delta_px);
-
-    const float p1 = saturate(age / 0.44);
-    const float e1 = minimum_jerk(p1);
-    const float radius1 = 7.5 + 23.0 * e1;
-    const float appear1 = smoothstep(0.0, 0.055, p1);
-    const float fade1 = 1.0 - smoothstep(0.58, 1.0, p1);
-    const float ring1 = vector_ring(distance_px, radius1, 1.25) *
-                        appear1 * fade1;
-
-    const float p2 = saturate((age - 0.045) / 0.355);
-    const float e2 = minimum_jerk(p2);
-    const float radius2 = 10.5 + 39.5 * e2;
-    const float active2 = age > 0.045 ? 1.0 : 0.0;
-    const float appear2 = smoothstep(0.0, 0.060, p2) * active2;
-    const float fade2 = 1.0 - smoothstep(0.55, 1.0, p2);
-    const float ring2 = vector_ring(distance_px, radius2, 1.05) *
-                        appear2 * fade2;
-
-    const float halo =
-        vector_halo(distance_px, radius1, 1.25, 5.2) * 0.40 * fade1 +
-        vector_halo(distance_px, radius2, 1.05, 5.8) * 0.52 * fade2 * active2;
-
-    const float support = max(
-        vector_ring(distance_px, radius1, 2.35) * fade1,
-        vector_ring(distance_px, radius2, 2.15) * fade2 * active2);
-
-    return float4(ring1, ring2, saturate(halo), support);
+    if (type < 1.5)
+        return float3(0.196, 0.722, 1.000); // #32B8FF
+    if (type < 2.5)
+        return float3(1.000, 0.361, 0.541); // #FF5C8A
+    return float3(1.000, 0.784, 0.341);     // #FFC857
 }
 
-float4 right_click_masks(float2 delta_px, float age)
-{
-    const float distance_px = length(delta_px);
-
-    const float p1 = saturate(age / 0.50);
-    const float e1 = minimum_jerk(p1);
-    const float radius1 = 8.0 + 22.0 * e1;
-    const float appear1 = smoothstep(0.0, 0.055, p1);
-    const float fade1 = 1.0 - smoothstep(0.60, 1.0, p1);
-    const float ring1 = vector_ring(distance_px, radius1, 1.25) *
-                        appear1 * fade1;
-
-    const float p2 = saturate((age - 0.060) / 0.390);
-    const float e2 = minimum_jerk(p2);
-    const float radius2 = 11.0 + 41.0 * e2;
-    const float active2 = age > 0.060 ? 1.0 : 0.0;
-    const float appear2 = smoothstep(0.0, 0.060, p2) * active2;
-    const float fade2 = 1.0 - smoothstep(0.57, 1.0, p2);
-    const float ring2 = vector_ring(distance_px, radius2, 1.05) *
-                        appear2 * fade2;
-
-    const float halo =
-        vector_halo(distance_px, radius1, 1.25, 5.2) * 0.38 * fade1 +
-        vector_halo(distance_px, radius2, 1.05, 6.0) * 0.50 * fade2 * active2;
-
-    const float support = max(
-        vector_ring(distance_px, radius1, 2.35) * fade1,
-        vector_ring(distance_px, radius2, 2.15) * fade2 * active2);
-
-    return float4(ring1, ring2, saturate(halo), support);
-}
-
-float4 middle_click_masks(float2 delta_px, float age)
-{
-    const float distance_px = length(delta_px);
-    const float p = saturate(age / 0.32);
-    const float e = minimum_jerk(p);
-    const float appear = smoothstep(0.0, 0.06, p);
-    const float fade = 1.0 - smoothstep(0.56, 1.0, p);
-
-    const float radius1 = 6.5 + 17.0 * e;
-    const float radius2 = 9.5 + 27.0 * e;
-    const float ring1 = vector_ring(distance_px, radius1, 1.20) *
-                        appear * fade;
-    const float ring2 = vector_ring(distance_px, radius2, 1.00) *
-                        appear * fade * 0.84;
-    const float halo =
-        vector_halo(distance_px, radius2, 1.0, 4.8) * fade * 0.34;
-    const float support = max(
-        vector_ring(distance_px, radius1, 2.20),
-        vector_ring(distance_px, radius2, 2.05)) * fade;
-
-    return float4(ring1, ring2, halo, support);
-}
-
-float3 composite_dual_ring(
+float3 composite_single_ring(
     float3 base,
-    float4 masks,
-    float3 color1,
-    float3 color2)
+    float2 delta_px,
+    float progress,
+    float type,
+    float2 safe_viewport)
 {
-    const float luminance = dot(
-        base,
-        float3(0.2126, 0.7152, 0.0722));
-    const float bright_surface =
-        smoothstep(0.55, 0.88, luminance);
+    progress = saturate(progress);
 
-    const float3 visible1 =
-        lerp(color1, color1 * 0.52, bright_surface);
-    const float3 visible2 =
-        lerp(color2, color2 * 0.54, bright_surface);
+    const float scale = clamp(
+        min(safe_viewport.x, safe_viewport.y) / 1080.0,
+        0.85,
+        1.60);
+
+    const float expansion =
+        smooth_out(progress);
+
+    const float radius_px =
+        lerp(11.0, 54.0, expansion) * scale;
+
+    const float half_width_px =
+        lerp(2.55, 1.65, progress) * scale;
+
+    const float distance_px =
+        length(delta_px);
+
+    const float appear =
+        smoothstep(0.0, 0.055, progress);
+    const float fade =
+        1.0 - smoothstep(0.34, 1.0, progress);
+    const float alpha =
+        appear * fade;
+
+    const float ring =
+        vector_ring(
+            distance_px,
+            radius_px,
+            half_width_px) * alpha;
+
+    const float support =
+        vector_ring(
+            distance_px,
+            radius_px,
+            half_width_px + 1.75 * scale) *
+        alpha;
+
+    const float halo =
+        1.0 -
+        smoothstep(
+            half_width_px + 1.0 * scale,
+            half_width_px + 7.0 * scale,
+            abs(distance_px - radius_px));
+
+    const float3 tint =
+        click_color(type);
+
+    const float luminance =
+        dot(
+            base,
+            float3(0.2126, 0.7152, 0.0722));
+    const float bright_surface =
+        smoothstep(0.60, 0.90, luminance);
+
+    const float3 visible =
+        lerp(
+            tint,
+            tint * 0.62,
+            bright_surface);
 
     const float3 support_color =
         lerp(
-            color1 * 0.16,
-            float3(0.035, 0.050, 0.075),
+            tint * 0.20,
+            float3(0.03, 0.04, 0.06),
             bright_surface);
-    const float support_alpha =
-        masks.w * (0.055 + 0.20 * bright_surface);
+
     base = lerp(
         base,
         support_color,
-        saturate(support_alpha));
+        saturate(
+            support *
+            (0.055 + 0.18 * bright_surface)));
 
     base = lerp(
         base,
-        visible1,
-        saturate(masks.x * 0.88));
-    base = lerp(
-        base,
-        visible2,
-        saturate(masks.y * 0.82));
+        visible,
+        saturate(ring * 0.96));
 
-    const float3 halo_color =
-        (color1 + color2) * 0.5;
-    const float halo_alpha =
-        masks.z * 0.060 * (1.0 - 0.82 * bright_surface);
+    base +=
+        tint *
+        halo *
+        alpha *
+        0.055 *
+        (1.0 - 0.70 * bright_surface);
 
-    return saturate(
-        base + halo_color * halo_alpha);
+    return saturate(base);
 }
 
 float3 apply_click(
@@ -269,27 +233,12 @@ float3 apply_click(
             safe_zoom,
             safe_viewport);
 
-    if (type < 1.5) {
-        return composite_dual_ring(
-            base,
-            left_click_masks(delta_px, event_data.z),
-            float3(0.00, 0.66, 1.00),
-            float3(0.00, 0.86, 0.78));
-    }
-
-    if (type < 2.5) {
-        return composite_dual_ring(
-            base,
-            right_click_masks(delta_px, event_data.z),
-            float3(0.55, 0.32, 0.98),
-            float3(0.88, 0.38, 0.82));
-    }
-
-    return composite_dual_ring(
+    return composite_single_ring(
         base,
-        middle_click_masks(delta_px, event_data.z),
-        float3(1.00, 0.64, 0.08),
-        float3(1.00, 0.82, 0.25));
+        delta_px,
+        event_data.z,
+        type,
+        safe_viewport);
 }
 
 float4 ps_main(VertexOutput input) : SV_Target
@@ -1340,8 +1289,15 @@ Status D3D11Compositor::render_retained(
             click.content_x;
         constants.clicks[base + 1] =
             click.content_y;
+        const float lifetime =
+            std::max(
+                click.lifetime_seconds,
+                0.0001f);
         constants.clicks[base + 2] =
-            click.age_seconds;
+            std::clamp(
+                click.age_seconds / lifetime,
+                0.0f,
+                1.0f);
         constants.clicks[base + 3] =
             static_cast<float>(
                 static_cast<std::uint8_t>(
