@@ -64,6 +64,39 @@ int main()
         !is_modifier_virtual_key('A'),
         "Ordinary key is not classified as modifier");
 
+    test.expect(
+        physical_virtual_key(
+            VK_CONTROL,
+            0x1D,
+            0) == VK_LCONTROL &&
+        physical_virtual_key(
+            VK_CONTROL,
+            0x1D,
+            RI_KEY_E0) == VK_RCONTROL,
+        "Raw Ctrl sides remain physically distinct");
+
+    test.expect(
+        physical_virtual_key(
+            VK_MENU,
+            0x38,
+            0) == VK_LMENU &&
+        physical_virtual_key(
+            VK_MENU,
+            0x38,
+            RI_KEY_E0) == VK_RMENU,
+        "Raw Alt sides remain physically distinct");
+
+    test.expect(
+        physical_virtual_key(
+            VK_SHIFT,
+            0x2A,
+            0) == VK_LSHIFT &&
+        physical_virtual_key(
+            VK_SHIFT,
+            0x36,
+            0) == VK_RSHIFT,
+        "Raw Shift make codes remain physically distinct");
+
     if (test.failures != 0) {
         std::cerr
             << test.failures
