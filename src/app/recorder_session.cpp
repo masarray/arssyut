@@ -762,8 +762,7 @@ void RecorderSession::worker_main() noexcept
 
             previous_presentation = now;
             next_presentation = {
-                now.ticks_100ns +
-                MonotonicClock::ticks_per_second / 120
+                now.ticks_100ns + frame_duration
             };
         }
 
