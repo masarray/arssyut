@@ -87,11 +87,15 @@ void test_canonical_keycaps(TestContext &test)
 
     test.expect(
         label(frame.keycaps[0]) == L"Ctrl" &&
+        frame.keycaps[0].size == KeycapSize::Unit125 &&
         label(frame.keycaps[1]) == L"Shift" &&
+        frame.keycaps[1].size == KeycapSize::Unit150 &&
         frame.keycaps[2].glyph == KeycapGlyph::WindowsLogo &&
+        frame.keycaps[2].size == KeycapSize::Unit1 &&
         label(frame.keycaps[2]).empty() &&
-        label(frame.keycaps[3]) == L"S",
-        "Modifier order is canonical and Windows uses a logo glyph");
+        label(frame.keycaps[3]) == L"S" &&
+        frame.keycaps[3].size == KeycapSize::Unit1,
+        "Keycaps use canonical realistic keyboard units");
 
     bool all_text_or_windows_logo = true;
     for (std::size_t i = 0; i < frame.keycap_count; ++i) {
@@ -103,6 +107,20 @@ void test_canonical_keycaps(TestContext &test)
     test.expect(
         all_text_or_windows_logo,
         "Keycaps use one uniform light surface language");
+
+    const auto wide =
+        build_keyboard_overlay(
+            {
+                ShortcutKey::Backspace,
+                ShortcutCtrl
+            },
+            9);
+
+    test.expect(
+        wide.keycap_count == 2 &&
+            wide.keycaps[0].size == KeycapSize::Unit125 &&
+            wide.keycaps[1].size == KeycapSize::Unit200,
+        "Long physical keys retain wider keyboard proportions");
 
     const auto maximum =
         build_keyboard_overlay(
