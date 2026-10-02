@@ -340,10 +340,19 @@ See `docs/P5A_ARVISUAL_STANDALONE.md`.
 
 ### P5B — asynchronous analysis
 
-- downsampled scene surface;
-- low analysis cadence;
-- double-buffer/read-later behavior;
-- never wait for analysis on video frame render.
+Implemented scope:
+- fixed 64x36 GPU downsample surface;
+- 5 Hz maximum analysis cadence on fresh WGC frames only;
+- exactly two retained staging textures and EVENT queries;
+- DONOTFLUSH readiness polling with map-only-after-ready behavior;
+- safe busy-skip when both staging slots are occupied;
+- pinned ArVisual luma/saturation percentile statistics;
+- 0.65 s time-domain EMA;
+- adaptive exposure/pop/highlight/shadow/strength/chroma/clean/separation;
+- soft fallback to P5A static grade if analysis is unavailable;
+- recorder diagnostics for analysis availability and backpressure.
+
+See `docs/P5B_ARVISUAL_ASYNC_ANALYSIS.md`.
 
 ### P5C — product modes
 
