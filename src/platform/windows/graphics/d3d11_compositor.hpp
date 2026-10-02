@@ -19,6 +19,7 @@
 namespace arssyut::windows {
 
 class CursorShapeCache;
+class D3D11ArVisualSceneAnalyzer;
 
 class D3D11Compositor final {
 public:
@@ -37,6 +38,11 @@ public:
     [[nodiscard]] arssyut::core::Status update_cursor_shape(
         ID3D11DeviceContext *context,
         HCURSOR cursor) noexcept;
+
+    [[nodiscard]] arssyut::core::Status submit_scene_analysis(
+        ID3D11DeviceContext *context,
+        arssyut::core::TimePoint now,
+        const arssyut::visual::ArVisualGradeSettings *visual) noexcept;
 
     [[nodiscard]] arssyut::core::Status render_retained(
         ID3D11DeviceContext *context,
@@ -72,6 +78,13 @@ public:
     {
         return resource_generation_;
     }
+
+    [[nodiscard]] bool scene_analysis_available() const noexcept;
+
+    [[nodiscard]] std::uint64_t scene_analysis_submitted() const noexcept;
+    [[nodiscard]] std::uint64_t scene_analysis_completed() const noexcept;
+    [[nodiscard]] std::uint64_t scene_analysis_busy_skips() const noexcept;
+    [[nodiscard]] std::uint64_t scene_analysis_map_failures() const noexcept;
 
     [[nodiscard]] arssyut::core::LatencyHistogram::Snapshot
     cpu_submit_latency() const noexcept
@@ -129,6 +142,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler_;
     Microsoft::WRL::ComPtr<ID3D11Buffer> crop_constant_buffer_;
     std::unique_ptr<CursorShapeCache> cursor_cache_;
+    std::unique_ptr<D3D11ArVisualSceneAnalyzer> scene_analyzer_;
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> keyboard_texture_;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> keyboard_srv_;
