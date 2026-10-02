@@ -188,6 +188,33 @@ if(ARSSYUT_BUILD_TESTS)
         COMMAND arssyut_shortcut_tests
     )
 
+    add_executable(arssyut_arvisual_scene_tests
+        tests/test_arvisual_scene_analysis.cpp
+    )
+    target_link_libraries(
+        arssyut_arvisual_scene_tests
+        PRIVATE
+            arssyut_core
+    )
+    if(MSVC)
+        target_compile_options(arssyut_arvisual_scene_tests PRIVATE
+            /W4
+            /permissive-
+            /utf-8
+            /Zc:__cplusplus
+        )
+    else()
+        target_compile_options(arssyut_arvisual_scene_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    add_test(
+        NAME arssyut_arvisual_scene_tests
+        COMMAND arssyut_arvisual_scene_tests
+    )
+
     add_executable(arssyut_arzoom_parity_tests
         tests/test_arzoom_parity.cpp
     )
