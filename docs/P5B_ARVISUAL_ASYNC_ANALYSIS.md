@@ -28,6 +28,8 @@ fresh retained WGC source
                   |                                                  |
              D3D11 EVENT query                                      |
                   |                                                  |
+             async Flush1 submit (5 Hz; no wait)                     |
+                  |                                                  |
              DONOTFLUSH poll on later output frame                   |
                   |                                                  |
              only when query says READY                             |
@@ -50,11 +52,17 @@ objects.
 A staging surface is never mapped until its corresponding query reports ready
 through `GetData(..., D3D11_ASYNC_GETDATA_DONOTFLUSH)`.
 
+A headless recorder has no swap-chain `Present` call to guarantee that a
+partially filled D3D11 command buffer is submitted promptly. At each analysis
+submission, P5B therefore uses `ID3D11DeviceContext3::Flush1` when available
+(`Flush` only as a legacy fallback). This call submits queued work
+asynchronously; it does not wait for the GPU to finish.
+
 If both slots are still pending when another low-cadence sample becomes due,
 the sample is skipped. The recorder does not:
 
-- call `Flush` to make analysis finish;
 - spin until a query becomes ready;
+- use a blocking completion wait;
 - map a pending staging texture;
 - allocate a third/unbounded staging surface;
 - delay an output slot waiting for scene statistics.
@@ -159,7 +167,7 @@ Windows/WARP integration tests cover:
 - retained analyzer resource creation;
 - exactly two pending staging slots;
 - third due submission skips rather than waits;
-- read-later completion without explicit `Flush`;
+- read-later completion after asynchronous headless command submission;
 - zero staging map failures;
 - adaptive grade differs materially from static P5A on a hot-vivid scene;
 - no compositor resource-generation growth during analysis.
