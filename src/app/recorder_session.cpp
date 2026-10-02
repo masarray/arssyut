@@ -1059,6 +1059,9 @@ void RecorderSession::write_diagnostics(
             << "  \"fps_num\": " << config_.frame_rate.numerator << ",\n"
             << "  \"fps_den\": " << config_.frame_rate.denominator << ",\n"
             << "  \"bitrate_bps\": " << config_.bitrate_bps << ",\n"
+            << "  \"arvisual_enabled\": "
+            << (config_.visual.enabled ? "true" : "false")
+            << ",\n"
             << "  \"elapsed_ticks_100ns\": "
             << snapshot_value.elapsed_ticks << ",\n"
             << "  \"capture_received\": "
