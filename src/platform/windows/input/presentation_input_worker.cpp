@@ -1,4 +1,6 @@
 #include "platform/windows/input/presentation_input_worker.hpp"
+#include "platform/windows/input/shortcut_keymap.hpp"
+#include "presentation/shortcut_visualizer.hpp"
 
 #ifdef _WIN32
 
@@ -379,15 +381,6 @@ std::uint16_t PresentationInputWorker::canonical_key(
     }
 }
 
-bool PresentationInputWorker::is_modifier(
-    std::uint16_t key) noexcept
-{
-    return key == VK_CONTROL ||
-           key == VK_SHIFT ||
-           key == VK_MENU ||
-           key == VK_LWIN;
-}
-
 std::uint8_t PresentationInputWorker::modifier_mask() const noexcept
 {
     std::uint8_t result = 0;
@@ -402,40 +395,6 @@ std::uint8_t PresentationInputWorker::modifier_mask() const noexcept
         result |= kModWin;
 
     return result;
-}
-
-bool PresentationInputWorker::should_visualize(
-    std::uint16_t key,
-    std::uint8_t modifiers) noexcept
-{
-    if (is_modifier(key))
-        return false;
-
-    if (modifiers != 0)
-        return true;
-
-    if (key >= VK_F1 && key <= VK_F12)
-        return true;
-
-    switch (key) {
-    case VK_ESCAPE:
-    case VK_TAB:
-    case VK_RETURN:
-    case VK_BACK:
-    case VK_DELETE:
-    case VK_HOME:
-    case VK_END:
-    case VK_PRIOR:
-    case VK_NEXT:
-    case VK_LEFT:
-    case VK_RIGHT:
-    case VK_UP:
-    case VK_DOWN:
-    case VK_SNAPSHOT:
-        return true;
-    default:
-        return false;
-    }
 }
 
 void PresentationInputWorker::handle_keyboard(
@@ -468,12 +427,17 @@ void PresentationInputWorker::handle_keyboard(
     const std::uint8_t modifiers =
         modifier_mask();
 
-    if (!should_visualize(key, modifiers))
+    arssyut::presentation::ShortcutChord chord;
+    chord.key = shortcut_key_from_virtual_key(key);
+    chord.modifiers = modifiers;
+
+    if (!arssyut::presentation::should_visualize_shortcut(
+            chord)) {
         return;
+    }
 
     ShortcutEvent event;
-    event.chord.key = key;
-    event.chord.modifiers = modifiers;
+    event.chord = chord;
     event.time = MonotonicClock::now();
 
     if (!shortcut_events_.try_push(event)) {
