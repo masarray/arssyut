@@ -1,16 +1,12 @@
-// Adapted for Arssyut on 2026-09-30.
-// Upstream: masarray/arzoom-follow-obs @ ada8f5269246c64429d7aceb6cc72f81e72120ba
-// License: GPL-2.0-or-later. See docs/PROVENANCE.md and LICENSE.
-
 #pragma once
 
-#include "presentation/arzoom/arzoom_scene_motion_synthesizer.hpp"
-#include "presentation/arzoom/arzoom_smart_zone_camera.hpp"
+#include "arzoom-scene-motion-synthesizer.hpp"
+#include "arzoom-smart-zone-camera.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace arssyut::presentation::arzoom {
+namespace arzoom {
 
 /*
  * Deterministic Scene Viewport Planner + Kinematic Camera
@@ -817,4 +813,4 @@ private:
     unsigned long long tracking_entries_ = 0;
 };
 
-} // namespace arssyut::presentation::arzoom
+} // namespace arzoom

@@ -149,6 +149,7 @@ void PresentationController::reset() noexcept
     keyboard_until_ = {};
     keyboard_ = {};
     keyboard_generation_ = 0;
+    emphasis_pending_ = false;
 }
 
 void PresentationController::set_settings(
@@ -191,6 +192,7 @@ void PresentationController::on_click(
             std::max(
                 zoom_until_.ticks_100ns,
                 time.ticks_100ns + kZoomClickHoldTicks);
+        emphasis_pending_ = true;
     }
 }
 
@@ -270,25 +272,21 @@ PresentationFrameState PresentationController::step(
                 now.ticks_100ns + kZoomMotionTailTicks);
     }
 
-    arzoom::CameraInput input;
-    input.dt = std::clamp(dt, 0.0f, 0.10f);
-    input.cursor = {
+    ArZoomCameraIntent intent;
+    intent.dt = std::clamp(dt, 0.0f, 0.10f);
+    intent.cursor = {
         std::clamp(cursor_x, 0.0f, 1.0f),
         std::clamp(cursor_y, 0.0f, 1.0f)
     };
-    input.cursor_valid = cursor_valid;
-    input.zoom_requested =
+    intent.cursor_valid = cursor_valid;
+    intent.zoom_requested =
         settings_.smart_zoom &&
         now.ticks_100ns < zoom_until_.ticks_100ns;
-    input.configured_zoom = settings_.zoom;
-    input.anchor = {0.5f, 0.45f};
-    input.safe_zone = 0.28f;
-    input.follow_policy =
-        arzoom::CameraFollowPolicy::Smart;
-    input.motion_style =
-        arzoom::CameraMotionStyle::Balanced;
+    intent.configured_zoom = settings_.zoom;
+    intent.emphasis_event = emphasis_pending_;
+    emphasis_pending_ = false;
 
-    const auto camera = camera_.step(input);
+    const auto camera = camera_.step(intent);
 
     clicks_.advance(dt);
 

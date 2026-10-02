@@ -70,6 +70,106 @@ Microsoft::WRL::ComPtr<ID3D11Texture2D> create_solid_texture(
     return texture;
 }
 
+Microsoft::WRL::ComPtr<ID3D11Texture2D> create_split_texture(
+    ID3D11Device *device,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t left_bgra,
+    std::uint32_t right_bgra)
+{
+    if (!device || width == 0 || height == 0)
+        return {};
+
+    std::vector<std::uint32_t> pixels(
+        static_cast<std::size_t>(width) *
+        static_cast<std::size_t>(height));
+
+    for (std::uint32_t y = 0; y < height; ++y) {
+        for (std::uint32_t x = 0; x < width; ++x) {
+            pixels[
+                static_cast<std::size_t>(y) * width + x] =
+                x < width / 2 ? left_bgra : right_bgra;
+        }
+    }
+
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initial{};
+    initial.pSysMem = pixels.data();
+    initial.SysMemPitch =
+        width * sizeof(std::uint32_t);
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(device->CreateTexture2D(
+            &desc,
+            &initial,
+            texture.GetAddressOf()))) {
+        return {};
+    }
+
+    return texture;
+}
+
+bool read_texture_pixel(
+    ID3D11Device *device,
+    ID3D11DeviceContext *context,
+    ID3D11Texture2D *texture,
+    std::uint32_t x,
+    std::uint32_t y,
+    std::uint32_t &pixel)
+{
+    if (!device || !context || !texture)
+        return false;
+
+    D3D11_TEXTURE2D_DESC desc{};
+    texture->GetDesc(&desc);
+    if (x >= desc.Width || y >= desc.Height)
+        return false;
+
+    D3D11_TEXTURE2D_DESC staging_desc = desc;
+    staging_desc.BindFlags = 0;
+    staging_desc.MiscFlags = 0;
+    staging_desc.Usage = D3D11_USAGE_STAGING;
+    staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> staging;
+    if (FAILED(device->CreateTexture2D(
+            &staging_desc,
+            nullptr,
+            staging.GetAddressOf()))) {
+        return false;
+    }
+
+    context->CopyResource(staging.Get(), texture);
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(context->Map(
+            staging.Get(),
+            0,
+            D3D11_MAP_READ,
+            0,
+            &mapped))) {
+        return false;
+    }
+
+    const auto *row =
+        reinterpret_cast<const std::uint32_t *>(
+            static_cast<const std::uint8_t *>(mapped.pData) +
+            static_cast<std::size_t>(y) * mapped.RowPitch);
+    pixel = row[x];
+
+    context->Unmap(staging.Get(), 0);
+    return true;
+}
+
 bool verify_solid_texture(
     ID3D11Device *device,
     ID3D11DeviceContext *context,
@@ -672,6 +772,103 @@ void test_media_foundation_mp4(TestContext &test)
     std::filesystem::remove_all(root, ec);
 }
 
+void test_retained_source_camera_cadence(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t left_bgra = 0xFF2040E0u;
+    constexpr std::uint32_t right_bgra = 0xFFE06020u;
+
+    auto source = create_split_texture(
+        owner.device(),
+        8,
+        4,
+        left_bgra,
+        right_bgra);
+
+    test.expect(
+        source != nullptr,
+        "Retained-source test texture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "Retained-source compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor = *compositor_result.value();
+
+    test.expect(
+        compositor.update_source(
+            owner.immediate_context(),
+            source.Get()).ok(),
+        "Compositor retains latest source texture");
+
+    arssyut::presentation::PresentationFrameState left_camera{};
+    left_camera.camera_center_x = 0.25f;
+    left_camera.camera_center_y = 0.50f;
+    left_camera.camera_zoom = 2.0f;
+
+    test.expect(
+        compositor.render_retained(
+            owner.immediate_context(),
+            {0, 0, 8, 4},
+            {8, 4},
+            &left_camera).ok(),
+        "First camera frame renders from retained source");
+
+    std::uint32_t left_pixel = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            4,
+            2,
+            left_pixel),
+        "First camera frame can be inspected");
+
+    arssyut::presentation::PresentationFrameState right_camera{};
+    right_camera.camera_center_x = 0.75f;
+    right_camera.camera_center_y = 0.50f;
+    right_camera.camera_zoom = 2.0f;
+
+    const auto generation =
+        compositor.resource_generation();
+
+    test.expect(
+        compositor.render_retained(
+            owner.immediate_context(),
+            {0, 0, 8, 4},
+            {8, 4},
+            &right_camera).ok(),
+        "Second camera frame re-renders without a new source frame");
+
+    std::uint32_t right_pixel = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            4,
+            2,
+            right_pixel),
+        "Second camera frame can be inspected");
+
+    test.expect(
+        left_pixel != right_pixel,
+        "Camera transform advances visually while source texture is reused");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "Retained-source camera animation allocates no new frame resources");
+}
+
 void test_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -793,6 +990,7 @@ int main()
     test_recoverable_session(test);
     test_empty_video_pipeline(test, device);
     test_media_foundation_mp4(test);
+    test_retained_source_camera_cadence(test, device);
     test_compositor(test, device);
 
     if (test.failures != 0) {

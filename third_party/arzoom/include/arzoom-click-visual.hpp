@@ -1,17 +1,13 @@
-// Adapted for Arssyut on 2026-09-30.
-// Upstream: masarray/arzoom-follow-obs @ ada8f5269246c64429d7aceb6cc72f81e72120ba
-// License: GPL-2.0-or-later. See docs/PROVENANCE.md and LICENSE.
-
 #pragma once
 
-#include "presentation/arzoom/arzoom_math.hpp"
+#include "arzoom-math.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 
-namespace arssyut::presentation::arzoom {
+namespace arzoom {
 
 enum class ClickType : uint8_t {
     None = 0,
@@ -142,4 +138,4 @@ inline Vec2 project_content_to_output(Vec2 content_position,
     };
 }
 
-} // namespace arssyut::presentation::arzoom
+} // namespace arzoom

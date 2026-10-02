@@ -251,6 +251,29 @@ The recorder must not create:
 
 Camera tests must include equivalent pointer trajectories at multiple frame rates and verify materially equivalent motion.
 
+### P3R parity lock
+
+After the first real-recording audit, ArZoom integration has stricter rules:
+
+- `third_party/arzoom/include` is an immutable vendored snapshot of the pinned
+  upstream commit; do not edit those files to customize Arssyut;
+- Arssyut-specific behavior belongs in thin adapters/intent producers;
+- the normal recorder path uses upstream `PresenterAwareSmartCamera` with
+  scene context disabled, preserving the accepted per-source SmartCamera
+  gimbal behavior;
+- the default presentation profile is Smart follow + Cinematic motion, safe
+  zone 0.28, anchor (0.50, 0.45);
+- WGC source cadence and virtual-camera cadence are independent: retain the
+  latest GPU source and re-composite camera/presentation on every scheduled
+  output frame;
+- never optimize static desktop capture by reusing an already-composited output
+  while camera/click/presentation state is moving;
+- click state and click appearance must come from the same pinned ArZoom
+  behavior contract; do not replace the premium click shader with a visually
+  approximate local effect;
+- CI must retain a frame-by-frame adapter-vs-upstream parity gate.
+
+
 ---
 
 ## 10. ArVisual transplant contract

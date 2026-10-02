@@ -163,6 +163,29 @@ Select one primary production media stack with a documented decision record.
 
 Only begin after raw recording is stable.
 
+### P3R — parity recovery after first real recording
+
+The first P3 integration proved the feature path but did not preserve the
+accepted per-source OBS ArZoom behavior closely enough. P3R therefore replaces
+partial/adapted ownership with an immutable upstream snapshot plus a thin
+Arssyut intent adapter.
+
+P3R invariants:
+
+- vendor ArZoom portable camera/click headers unchanged from the pinned commit;
+- per-source recorder uses `PresenterAwareSmartCamera` with scene context off;
+- Smart follow + Cinematic motion + 28% safe zone + (0.50, 0.45) anchor;
+- product Auto Zoom emits intent only; ArZoom owns all camera motion;
+- latest WGC source is retained while camera/presentation re-renders on every
+  CFR output slot;
+- premium click shader behavior is ported from the same pinned ArZoom effect;
+- parity tests compare Arssyut adapter output directly with upstream output;
+- P3R is not accepted until a real 1080p60 recording visually matches the
+  expected ArZoom gimbal/zoom character.
+
+See `docs/P3R_ARZOOM_PARITY.md`.
+
+
 ### P3A — portable camera transplant
 
 Extract/adapt from ArZoom:

@@ -1,13 +1,9 @@
-// Adapted for Arssyut on 2026-09-30.
-// Upstream: masarray/arzoom-follow-obs @ ada8f5269246c64429d7aceb6cc72f81e72120ba
-// License: GPL-2.0-or-later. See docs/PROVENANCE.md and LICENSE.
-
 #pragma once
 
 #include <algorithm>
 #include <cmath>
 
-namespace arssyut::presentation::arzoom {
+namespace arzoom {
 
 struct Vec2 {
     float x = 0.5f;
@@ -152,4 +148,4 @@ inline bool nearly_equal(Vec2 a, Vec2 b, float epsilon = 0.0005f)
            nearly_equal(a.y, b.y, epsilon);
 }
 
-} // namespace arssyut::presentation::arzoom
+} // namespace arzoom

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "core/time/monotonic_clock.hpp"
-#include "presentation/arzoom/arzoom_click_visual.hpp"
-#include "presentation/arzoom/arzoom_scene_viewport_planner.hpp"
+#include "arzoom-click-visual.hpp"
+#include "presentation/arzoom_camera_adapter.hpp"
 #include "presentation/presentation_state.hpp"
 
 #include <cstdint>
@@ -58,7 +58,7 @@ private:
 
     PresentationSettings settings_{};
 
-    arzoom::SceneViewportPlanner camera_;
+    ArZoomCameraAdapter camera_;
     arzoom::ClickVisualState clicks_;
 
     arssyut::core::TimePoint zoom_until_{};
@@ -66,6 +66,7 @@ private:
 
     KeyboardOverlayFrame keyboard_{};
     std::uint32_t keyboard_generation_ = 0;
+    bool emphasis_pending_ = false;
 };
 
 } // namespace arssyut::presentation

@@ -762,8 +762,7 @@ void RecorderSession::worker_main() noexcept
 
             previous_presentation = now;
             next_presentation = {
-                now.ticks_100ns +
-                MonotonicClock::ticks_per_second / 120
+                now.ticks_100ns + frame_duration
             };
         }
 
@@ -789,7 +788,7 @@ void RecorderSession::worker_main() noexcept
         if (frame.action ==
                 VideoSlotAction::RenderedNewFrame ||
             frame.action ==
-                VideoSlotAction::ReusePreviousOutput) {
+                VideoSlotAction::RenderedRetainedSource) {
             const TimePoint relative_pts{
                 frame.pts.ticks_100ns -
                 start.ticks_100ns

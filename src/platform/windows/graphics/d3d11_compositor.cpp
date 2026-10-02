@@ -60,60 +60,236 @@ VertexOutput vs_main(uint vertex_id : SV_VertexID)
     return output;
 }
 
-float click_alpha(float2 uv, float4 click_value, float2 camera_center,
-                  float zoom, float aspect)
+/* ArZoom upstream click appearance, ported 1:1 from
+ * data/effects/arzoom.effect @ ada8f5269246c64429d7aceb6cc72f81e72120ba.
+ * Camera projection is supplied by Arssyut but all click choreography,
+ * pixel geometry, colors, timing and bright-surface support remain upstream. */
+float minimum_jerk(float t)
 {
-    if (click_value.w <= 0.0f)
-        return 0.0f;
-
-    const float2 projected =
-        0.5f + (click_value.xy - camera_center) * zoom;
-
-    const float2 delta =
-        float2((uv.x - projected.x) * aspect,
-               uv.y - projected.y);
-
-    const float distance = length(delta);
-    const float progress = saturate(click_value.z);
-    const float radius = lerp(0.010f, 0.040f, progress);
-    const float thickness = lerp(0.0050f, 0.0025f, progress);
-
-    const float ring =
-        1.0f - smoothstep(
-            thickness,
-            thickness + 0.0020f,
-            abs(distance - radius));
-
-    const float center =
-        (1.0f - smoothstep(
-            0.0f,
-            0.010f,
-            distance)) * (1.0f - progress);
-
-    return saturate((ring + 0.28f * center) * (1.0f - progress));
+    t = saturate(t);
+    return t * t * t * (10.0 + t * (-15.0 + 6.0 * t));
 }
 
-float3 click_color(float kind)
+float vector_ring(float distance_px, float radius_px, float half_width_px)
 {
-    if (kind < 1.5f)
-        return float3(1.00f, 0.26f, 0.23f);
-    if (kind < 2.5f)
-        return float3(0.26f, 0.72f, 1.00f);
-    return float3(0.95f, 0.72f, 0.22f);
+    const float edge = abs(distance_px - radius_px);
+    return 1.0 - smoothstep(
+        half_width_px,
+        half_width_px + 1.0,
+        edge);
 }
 
-float4 apply_click(float4 color, float2 uv, float4 click_value,
-                   float2 camera_center, float zoom, float aspect)
+float vector_halo(
+    float distance_px,
+    float radius_px,
+    float half_width_px,
+    float spread_px)
 {
-    const float alpha =
-        click_alpha(uv, click_value, camera_center, zoom, aspect);
+    const float edge = abs(distance_px - radius_px);
+    return 1.0 - smoothstep(
+        half_width_px + 0.8,
+        half_width_px + spread_px,
+        edge);
+}
 
-    if (alpha <= 0.0001f)
-        return color;
+float2 project_content(
+    float2 content_position,
+    float2 camera_center,
+    float safe_zoom)
+{
+    return float2(0.5, 0.5) +
+           (content_position - camera_center) * safe_zoom;
+}
 
-    const float3 tint = click_color(click_value.w);
-    color.rgb = lerp(color.rgb, tint, saturate(alpha * 0.90f));
-    return color;
+float2 event_delta_px(
+    float2 output_uv,
+    float4 event_data,
+    float2 camera_center,
+    float safe_zoom,
+    float2 safe_viewport)
+{
+    const float2 center = project_content(
+        event_data.xy,
+        camera_center,
+        safe_zoom);
+    return (output_uv - center) * safe_viewport;
+}
+
+float4 left_click_masks(float2 delta_px, float age)
+{
+    const float distance_px = length(delta_px);
+
+    const float p1 = saturate(age / 0.44);
+    const float e1 = minimum_jerk(p1);
+    const float radius1 = 7.5 + 23.0 * e1;
+    const float appear1 = smoothstep(0.0, 0.055, p1);
+    const float fade1 = 1.0 - smoothstep(0.58, 1.0, p1);
+    const float ring1 = vector_ring(distance_px, radius1, 1.25) *
+                        appear1 * fade1;
+
+    const float p2 = saturate((age - 0.045) / 0.355);
+    const float e2 = minimum_jerk(p2);
+    const float radius2 = 10.5 + 39.5 * e2;
+    const float active2 = age > 0.045 ? 1.0 : 0.0;
+    const float appear2 = smoothstep(0.0, 0.060, p2) * active2;
+    const float fade2 = 1.0 - smoothstep(0.55, 1.0, p2);
+    const float ring2 = vector_ring(distance_px, radius2, 1.05) *
+                        appear2 * fade2;
+
+    const float halo =
+        vector_halo(distance_px, radius1, 1.25, 5.2) * 0.40 * fade1 +
+        vector_halo(distance_px, radius2, 1.05, 5.8) * 0.52 * fade2 * active2;
+
+    const float support = max(
+        vector_ring(distance_px, radius1, 2.35) * fade1,
+        vector_ring(distance_px, radius2, 2.15) * fade2 * active2);
+
+    return float4(ring1, ring2, saturate(halo), support);
+}
+
+float4 right_click_masks(float2 delta_px, float age)
+{
+    const float distance_px = length(delta_px);
+
+    const float p1 = saturate(age / 0.50);
+    const float e1 = minimum_jerk(p1);
+    const float radius1 = 8.0 + 22.0 * e1;
+    const float appear1 = smoothstep(0.0, 0.055, p1);
+    const float fade1 = 1.0 - smoothstep(0.60, 1.0, p1);
+    const float ring1 = vector_ring(distance_px, radius1, 1.25) *
+                        appear1 * fade1;
+
+    const float p2 = saturate((age - 0.060) / 0.390);
+    const float e2 = minimum_jerk(p2);
+    const float radius2 = 11.0 + 41.0 * e2;
+    const float active2 = age > 0.060 ? 1.0 : 0.0;
+    const float appear2 = smoothstep(0.0, 0.060, p2) * active2;
+    const float fade2 = 1.0 - smoothstep(0.57, 1.0, p2);
+    const float ring2 = vector_ring(distance_px, radius2, 1.05) *
+                        appear2 * fade2;
+
+    const float halo =
+        vector_halo(distance_px, radius1, 1.25, 5.2) * 0.38 * fade1 +
+        vector_halo(distance_px, radius2, 1.05, 6.0) * 0.50 * fade2 * active2;
+
+    const float support = max(
+        vector_ring(distance_px, radius1, 2.35) * fade1,
+        vector_ring(distance_px, radius2, 2.15) * fade2 * active2);
+
+    return float4(ring1, ring2, saturate(halo), support);
+}
+
+float4 middle_click_masks(float2 delta_px, float age)
+{
+    const float distance_px = length(delta_px);
+    const float p = saturate(age / 0.32);
+    const float e = minimum_jerk(p);
+    const float appear = smoothstep(0.0, 0.06, p);
+    const float fade = 1.0 - smoothstep(0.56, 1.0, p);
+
+    const float radius1 = 6.5 + 17.0 * e;
+    const float radius2 = 9.5 + 27.0 * e;
+    const float ring1 = vector_ring(distance_px, radius1, 1.20) *
+                        appear * fade;
+    const float ring2 = vector_ring(distance_px, radius2, 1.00) *
+                        appear * fade * 0.84;
+    const float halo =
+        vector_halo(distance_px, radius2, 1.0, 4.8) * fade * 0.34;
+    const float support = max(
+        vector_ring(distance_px, radius1, 2.20),
+        vector_ring(distance_px, radius2, 2.05)) * fade;
+
+    return float4(ring1, ring2, halo, support);
+}
+
+float3 composite_dual_ring(
+    float3 base,
+    float4 masks,
+    float3 color1,
+    float3 color2)
+{
+    const float luminance = dot(
+        base,
+        float3(0.2126, 0.7152, 0.0722));
+    const float bright_surface =
+        smoothstep(0.55, 0.88, luminance);
+
+    const float3 visible1 =
+        lerp(color1, color1 * 0.52, bright_surface);
+    const float3 visible2 =
+        lerp(color2, color2 * 0.54, bright_surface);
+
+    const float3 support_color =
+        lerp(
+            color1 * 0.16,
+            float3(0.035, 0.050, 0.075),
+            bright_surface);
+    const float support_alpha =
+        masks.w * (0.055 + 0.20 * bright_surface);
+    base = lerp(
+        base,
+        support_color,
+        saturate(support_alpha));
+
+    base = lerp(
+        base,
+        visible1,
+        saturate(masks.x * 0.88));
+    base = lerp(
+        base,
+        visible2,
+        saturate(masks.y * 0.82));
+
+    const float3 halo_color =
+        (color1 + color2) * 0.5;
+    const float halo_alpha =
+        masks.z * 0.060 * (1.0 - 0.82 * bright_surface);
+
+    return saturate(
+        base + halo_color * halo_alpha);
+}
+
+float3 apply_click(
+    float3 base,
+    float2 output_uv,
+    float4 event_data,
+    float2 camera_center,
+    float safe_zoom,
+    float2 safe_viewport)
+{
+    const float type = event_data.w;
+    if (type < 0.5)
+        return base;
+
+    const float2 delta_px =
+        event_delta_px(
+            output_uv,
+            event_data,
+            camera_center,
+            safe_zoom,
+            safe_viewport);
+
+    if (type < 1.5) {
+        return composite_dual_ring(
+            base,
+            left_click_masks(delta_px, event_data.z),
+            float3(0.00, 0.66, 1.00),
+            float3(0.00, 0.86, 0.78));
+    }
+
+    if (type < 2.5) {
+        return composite_dual_ring(
+            base,
+            right_click_masks(delta_px, event_data.z),
+            float3(0.55, 0.32, 0.98),
+            float3(0.88, 0.38, 0.82));
+    }
+
+    return composite_dual_ring(
+        base,
+        middle_click_masks(delta_px, event_data.z),
+        float3(1.00, 0.64, 0.08),
+        float3(1.00, 0.82, 0.25));
 }
 
 float4 ps_main(VertexOutput input) : SV_Target
@@ -129,16 +305,37 @@ float4 ps_main(VertexOutput input) : SV_Target
     float4 color =
         source_texture.Sample(source_sampler, uv);
 
-    const float aspect = max(output_info.x, 0.1f);
+    const float2 safe_viewport =
+        max(output_info.xy, float2(1.0f, 1.0f));
 
-    color = apply_click(
-        color, input.uv, click0, camera_center, zoom, aspect);
-    color = apply_click(
-        color, input.uv, click1, camera_center, zoom, aspect);
-    color = apply_click(
-        color, input.uv, click2, camera_center, zoom, aspect);
-    color = apply_click(
-        color, input.uv, click3, camera_center, zoom, aspect);
+    color.rgb = apply_click(
+        color.rgb,
+        input.uv,
+        click0,
+        camera_center,
+        zoom,
+        safe_viewport);
+    color.rgb = apply_click(
+        color.rgb,
+        input.uv,
+        click1,
+        camera_center,
+        zoom,
+        safe_viewport);
+    color.rgb = apply_click(
+        color.rgb,
+        input.uv,
+        click2,
+        camera_center,
+        zoom,
+        safe_viewport);
+    color.rgb = apply_click(
+        color.rgb,
+        input.uv,
+        click3,
+        camera_center,
+        zoom,
+        safe_viewport);
 
     const float keyboard_opacity =
         saturate(camera_keyboard.w);
@@ -150,9 +347,11 @@ float4 ps_main(VertexOutput input) : SV_Target
         input.uv.y <= keyboard_rect.w) {
         const float2 keyboard_uv =
             (input.uv - keyboard_rect.xy) /
-            max(keyboard_rect.zw - keyboard_rect.xy, 0.0001f);
+            max(
+                keyboard_rect.zw - keyboard_rect.xy,
+                0.0001f);
 
-        float4 overlay =
+        const float4 overlay =
             keyboard_texture.Sample(
                 source_sampler,
                 keyboard_uv);
@@ -179,10 +378,10 @@ struct PresentationConstants {
     float camera_zoom;
     float keyboard_opacity;
 
-    float output_aspect;
+    float output_width;
+    float output_height;
     float reserved0;
     float reserved1;
-    float reserved2;
 
     float keyboard_left;
     float keyboard_top;
@@ -872,23 +1071,33 @@ Status D3D11Compositor::ensure_output(FrameSize output_size) noexcept
     return Status::success();
 }
 
-Status D3D11Compositor::render(
+Status D3D11Compositor::update_source(
     ID3D11DeviceContext *context,
-    ID3D11Texture2D *source,
+    ID3D11Texture2D *source) noexcept
+{
+    if (!context || !source)
+        return Status::failure(StatusCode::InvalidArgument);
+
+    const Status input_status = ensure_input(source);
+    if (!input_status.ok())
+        return input_status;
+
+    context->CopyResource(input_copy_.Get(), source);
+    return Status::success();
+}
+
+Status D3D11Compositor::render_retained(
+    ID3D11DeviceContext *context,
     CropRect crop,
     FrameSize output_size,
     const arssyut::presentation::PresentationFrameState *presentation) noexcept
 {
-    if (!context || !source)
+    if (!context || !has_source())
         return Status::failure(StatusCode::InvalidArgument);
 
     const TimePoint started = MonotonicClock::now();
 
     resolve_gpu_queries(context);
-
-    const Status input_status = ensure_input(source);
-    if (!input_status.ok())
-        return input_status;
 
     const Status output_status = ensure_output(output_size);
     if (!output_status.ok())
@@ -902,8 +1111,6 @@ Status D3D11Compositor::render(
 
     const std::size_t gpu_query =
         begin_gpu_query(context);
-
-    context->CopyResource(input_copy_.Get(), source);
 
     arssyut::presentation::PresentationFrameState neutral{};
     const auto &state =
@@ -951,16 +1158,21 @@ Status D3D11Compositor::render(
             0.0f,
             1.0f);
 
-    constants.output_aspect =
-        static_cast<float>(output_size.width) /
+    constants.output_width =
+        static_cast<float>(output_size.width);
+    constants.output_height =
         static_cast<float>(output_size.height);
+
+    const float output_aspect =
+        constants.output_width /
+        std::max(constants.output_height, 1.0f);
 
     constexpr float keyboard_width = 0.36f;
     const float keyboard_height =
         keyboard_width *
         (static_cast<float>(kKeyboardHeight) /
          static_cast<float>(kKeyboardWidth)) *
-        constants.output_aspect;
+        output_aspect;
 
     constants.keyboard_left =
         0.5f - keyboard_width * 0.5f;
@@ -976,28 +1188,14 @@ Status D3D11Compositor::render(
          ++i) {
         const auto &click =
             state.clicks[i];
-
-        const float lifetime =
-            std::max(
-                click.lifetime_seconds,
-                0.0001f);
-
-        const float progress =
-            click.kind ==
-                    arssyut::presentation::ClickKind::None
-                ? 1.0f
-                : std::clamp(
-                      click.age_seconds / lifetime,
-                      0.0f,
-                      1.0f);
-
         const std::size_t base = i * 4;
+
         constants.clicks[base + 0] =
             click.content_x;
         constants.clicks[base + 1] =
             click.content_y;
         constants.clicks[base + 2] =
-            progress;
+            click.age_seconds;
         constants.clicks[base + 3] =
             static_cast<float>(
                 static_cast<std::uint8_t>(
@@ -1058,6 +1256,25 @@ Status D3D11Compositor::render(
         elapsed_microseconds(started, MonotonicClock::now()));
 
     return Status::success();
+}
+
+Status D3D11Compositor::render(
+    ID3D11DeviceContext *context,
+    ID3D11Texture2D *source,
+    CropRect crop,
+    FrameSize output_size,
+    const arssyut::presentation::PresentationFrameState *presentation) noexcept
+{
+    const Status update_status =
+        update_source(context, source);
+    if (!update_status.ok())
+        return update_status;
+
+    return render_retained(
+        context,
+        crop,
+        output_size,
+        presentation);
 }
 
 } // namespace arssyut::windows

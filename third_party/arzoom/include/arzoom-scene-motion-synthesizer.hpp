@@ -1,15 +1,11 @@
-// Adapted for Arssyut on 2026-09-30.
-// Upstream: masarray/arzoom-follow-obs @ ada8f5269246c64429d7aceb6cc72f81e72120ba
-// License: GPL-2.0-or-later. See docs/PROVENANCE.md and LICENSE.
-
 #pragma once
 
-#include "presentation/arzoom/arzoom_smart_zone_camera.hpp"
+#include "arzoom-smart-zone-camera.hpp"
 
 #include <algorithm>
 #include <cmath>
 
-namespace arssyut::presentation::arzoom {
+namespace arzoom {
 
 /*
  * Scene Camera kinematic motion synthesizer
@@ -280,4 +276,4 @@ private:
     Vec2 previous_target_{0.5f, 0.5f};
 };
 
-} // namespace arssyut::presentation::arzoom
+} // namespace arzoom
