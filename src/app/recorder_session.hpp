@@ -65,6 +65,7 @@ struct RecorderSnapshot {
     std::uint64_t presentation_input_dropped = 0;
     bool system_shortcut_hook_active = false;
 
+    bool visual_analysis_available = false;
     std::uint64_t visual_analysis_submitted = 0;
     std::uint64_t visual_analysis_completed = 0;
     std::uint64_t visual_analysis_busy_skips = 0;
@@ -149,6 +150,7 @@ private:
     std::atomic<std::uint64_t> presentation_input_dropped_{0};
     std::atomic<bool> system_shortcut_hook_active_{false};
 
+    std::atomic<bool> visual_analysis_available_{false};
     std::atomic<std::uint64_t> visual_analysis_submitted_{0};
     std::atomic<std::uint64_t> visual_analysis_completed_{0};
     std::atomic<std::uint64_t> visual_analysis_busy_skips_{0};
