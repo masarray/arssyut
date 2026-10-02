@@ -1,4 +1,5 @@
 #include "visual/arvisual_grade.hpp"
+#include "visual/arvisual_modes.hpp"
 #include "visual/arvisual_scene_analysis.hpp"
 
 #include <algorithm>
@@ -193,6 +194,72 @@ void test_time_based_ema(TestContext &test)
         "Adaptive output maps directly into P5A shader state");
 }
 
+void test_product_modes(TestContext &test)
+{
+    using arssyut::visual::ArVisualProductMode;
+    using arssyut::visual::grade_for_mode;
+    using arssyut::visual::product_mode_name;
+
+    const auto pixel =
+        grade_for_mode(
+            ArVisualProductMode::PixelAccurate);
+    const auto clean =
+        grade_for_mode(
+            ArVisualProductMode::CleanScreen);
+    const auto vivid =
+        grade_for_mode(
+            ArVisualProductMode::VividPresentation);
+
+    test.expect(
+        !pixel.enabled &&
+            !pixel.smart_auto,
+        "Pixel Accurate is a true grade and analysis bypass");
+
+    test.expect(
+        clean.enabled &&
+            clean.smart_auto,
+        "Clean Screen enables bounded Smart Auto grading");
+
+    test.expect(
+        vivid.enabled &&
+            vivid.smart_auto,
+        "Vivid Presentation enables bounded Smart Auto grading");
+
+    test.expect(
+        clean.clean_white > vivid.clean_white &&
+            clean.highlight_guard > vivid.highlight_guard,
+        "Clean Screen prioritizes white and highlight safety");
+
+    test.expect(
+        clean.color_pop < vivid.color_pop &&
+            clean.skin_beauty < vivid.skin_beauty &&
+            clean.toy_gloss < vivid.toy_gloss &&
+            clean.depth_pop < vivid.depth_pop,
+        "Clean Screen keeps creative dose below Vivid Presentation");
+
+    test.expect(
+        std::abs(vivid.enhance - 0.78f) < 0.00001f &&
+            std::abs(vivid.color_pop - 0.86f) < 0.00001f &&
+            std::abs(vivid.clarity - 0.68f) < 0.00001f &&
+            std::abs(vivid.depth_pop - 0.76f) < 0.00001f,
+        "Vivid Presentation retains pinned P5A creative defaults");
+
+    test.expect(
+        std::string(
+            product_mode_name(
+                ArVisualProductMode::PixelAccurate)) ==
+                "pixel_accurate" &&
+            std::string(
+                product_mode_name(
+                    ArVisualProductMode::CleanScreen)) ==
+                "clean_screen" &&
+            std::string(
+                product_mode_name(
+                    ArVisualProductMode::VividPresentation)) ==
+                "vivid_presentation",
+        "Product mode diagnostic names are stable");
+}
+
 void test_ignored_pixels(TestContext &test)
 {
     auto transparent =
@@ -232,6 +299,7 @@ int main()
     test_hot_vivid_scene(test);
     test_dark_scene(test);
     test_time_based_ema(test);
+    test_product_modes(test);
     test_ignored_pixels(test);
 
     std::cout
