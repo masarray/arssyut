@@ -14,19 +14,39 @@ namespace {
            key <= ShortcutKey::F24;
 }
 
+void copy_label(
+    wchar_t *destination,
+    std::size_t capacity,
+    const wchar_t *source) noexcept
+{
+    if (!destination || capacity == 0)
+        return;
+
+    destination[0] = L'\0';
+    if (!source)
+        return;
+
+    const std::size_t count =
+        std::min(
+            std::wcslen(source),
+            capacity - 1);
+    std::wmemcpy(
+        destination,
+        source,
+        count);
+    destination[count] = L'\0';
+}
+
 void set_label(
     KeycapFrame &keycap,
     const wchar_t *label,
     KeycapTone tone) noexcept
 {
     keycap.label.fill(L'\0');
-    if (label) {
-        wcsncpy_s(
-            keycap.label.data(),
-            keycap.label.size(),
-            label,
-            _TRUNCATE);
-    }
+    copy_label(
+        keycap.label.data(),
+        keycap.label.size(),
+        label);
     keycap.tone = tone;
 }
 
@@ -162,11 +182,27 @@ bool shortcut_key_label(
                 value -
                 static_cast<std::uint16_t>(ShortcutKey::F1) +
                 1);
-        return swprintf_s(
-                   buffer,
-                   capacity,
-                   L"F%u",
-                   number) > 0;
+        if (capacity < 3)
+            return false;
+
+        buffer[0] = L'F';
+        if (number < 10) {
+            buffer[1] =
+                static_cast<wchar_t>(
+                    L'0' + number);
+            buffer[2] = L'\0';
+        } else {
+            if (capacity < 4)
+                return false;
+            buffer[1] =
+                static_cast<wchar_t>(
+                    L'0' + (number / 10));
+            buffer[2] =
+                static_cast<wchar_t>(
+                    L'0' + (number % 10));
+            buffer[3] = L'\0';
+        }
+        return true;
     }
 
     const wchar_t *label = nullptr;
@@ -213,12 +249,11 @@ bool shortcut_key_label(
         return false;
     }
 
-    wcsncpy_s(
+    copy_label(
         buffer,
         capacity,
-        label,
-        _TRUNCATE);
-    return true;
+        label);
+    return buffer[0] != L'\0';
 }
 
 KeyboardOverlayFrame build_keyboard_overlay(
@@ -244,7 +279,7 @@ KeyboardOverlayFrame build_keyboard_overlay(
     if (!shortcut_key_label(
             chord.key,
             label,
-            std::size(label))) {
+            sizeof(label) / sizeof(label[0]))) {
         frame.keycap_count = 0;
         frame.generation = 0;
         return frame;
