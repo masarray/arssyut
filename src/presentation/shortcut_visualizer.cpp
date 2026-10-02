@@ -14,6 +14,48 @@ namespace {
            key <= ShortcutKey::F24;
 }
 
+
+[[nodiscard]] KeycapSize physical_size_for_key(
+    ShortcutKey key) noexcept
+{
+    if (is_function_key(key))
+        return KeycapSize::Unit1;
+
+    switch (key) {
+    case ShortcutKey::Tab:
+    case ShortcutKey::Delete:
+    case ShortcutKey::Insert:
+    case ShortcutKey::Home:
+    case ShortcutKey::End:
+    case ShortcutKey::PageUp:
+    case ShortcutKey::PageDown:
+    case ShortcutKey::PrintScreen:
+    case ShortcutKey::Pause:
+    case ShortcutKey::Apps:
+    case ShortcutKey::VolumeMute:
+    case ShortcutKey::VolumeDown:
+    case ShortcutKey::VolumeUp:
+    case ShortcutKey::MediaNext:
+    case ShortcutKey::MediaPrevious:
+    case ShortcutKey::MediaStop:
+    case ShortcutKey::MediaPlayPause:
+        return KeycapSize::Unit125;
+
+    case ShortcutKey::Enter:
+        return KeycapSize::Unit150;
+
+    case ShortcutKey::Backspace:
+        return KeycapSize::Unit200;
+
+    case ShortcutKey::Space:
+        return KeycapSize::Unit350;
+
+    case ShortcutKey::Unknown:
+    default:
+        return KeycapSize::Unit1;
+    }
+}
+
 void copy_label(
     wchar_t *destination,
     std::size_t capacity,
@@ -40,7 +82,8 @@ void copy_label(
 void set_keycap(
     KeycapFrame &keycap,
     const wchar_t *label,
-    KeycapGlyph glyph) noexcept
+    KeycapGlyph glyph,
+    KeycapSize size) noexcept
 {
     keycap.label.fill(L'\0');
     copy_label(
@@ -48,12 +91,14 @@ void set_keycap(
         keycap.label.size(),
         label);
     keycap.glyph = glyph;
+    keycap.size = size;
 }
 
 bool append_keycap(
     KeyboardOverlayFrame &frame,
     const wchar_t *label,
-    KeycapGlyph glyph = KeycapGlyph::Text) noexcept
+    KeycapGlyph glyph = KeycapGlyph::Text,
+    KeycapSize size = KeycapSize::Unit1) noexcept
 {
     if (frame.keycap_count >= frame.keycaps.size())
         return false;
@@ -61,7 +106,8 @@ bool append_keycap(
     set_keycap(
         frame.keycaps[frame.keycap_count],
         label,
-        glyph);
+        glyph,
+        size);
     ++frame.keycap_count;
     return true;
 }
@@ -265,16 +311,29 @@ KeyboardOverlayFrame build_keyboard_overlay(
         return frame;
 
     if ((chord.modifiers & ShortcutCtrl) != 0)
-        append_keycap(frame, L"Ctrl");
+        append_keycap(
+            frame,
+            L"Ctrl",
+            KeycapGlyph::Text,
+            KeycapSize::Unit125);
     if ((chord.modifiers & ShortcutShift) != 0)
-        append_keycap(frame, L"Shift");
+        append_keycap(
+            frame,
+            L"Shift",
+            KeycapGlyph::Text,
+            KeycapSize::Unit150);
     if ((chord.modifiers & ShortcutAlt) != 0)
-        append_keycap(frame, L"Alt");
+        append_keycap(
+            frame,
+            L"Alt",
+            KeycapGlyph::Text,
+            KeycapSize::Unit125);
     if ((chord.modifiers & ShortcutWin) != 0)
         append_keycap(
             frame,
             L"",
-            KeycapGlyph::WindowsLogo);
+            KeycapGlyph::WindowsLogo,
+            KeycapSize::Unit1);
 
     wchar_t label[16]{};
     if (!shortcut_key_label(
@@ -288,7 +347,9 @@ KeyboardOverlayFrame build_keyboard_overlay(
 
     append_keycap(
         frame,
-        label);
+        label,
+        KeycapGlyph::Text,
+        physical_size_for_key(chord.key));
 
     return frame;
 }

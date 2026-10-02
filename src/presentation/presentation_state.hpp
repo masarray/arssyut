@@ -30,20 +30,12 @@ struct KeyboardOverlayFrame {
     std::uint32_t generation = 0;
 };
 
-struct CursorFrame {
-    float content_x = 0.5f;
-    float content_y = 0.5f;
-    float scale = 1.0f;
-    float opacity = 0.0f;
-};
-
 struct PresentationFrameState {
     float camera_center_x = 0.5f;
     float camera_center_y = 0.5f;
     float camera_zoom = 1.0f;
 
     std::array<ClickFrame, 4> clicks{};
-    CursorFrame cursor{};
     KeyboardOverlayFrame keyboard{};
 };
 

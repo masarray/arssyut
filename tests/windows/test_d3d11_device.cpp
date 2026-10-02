@@ -402,27 +402,29 @@ void test_presentation_controller(TestContext &test)
             now,
             now);
 
-    test.expect(
-        frame.cursor.opacity > 0.99f &&
-            frame.cursor.scale > 1.14f &&
-            frame.cursor.scale <= 1.18f,
-        "Cursor click impact reaches bounded ballistic punch");
-
-    now.ticks_100ns +=
-        arssyut::core::MonotonicClock::ticks_per_second * 65 / 1000;
+    controller.on_click(
+        ClickKind::Left,
+        0.752f,
+        0.501f,
+        now);
 
     frame = controller.step(
-        0.065f,
-        0.75f,
-        0.50f,
+        0.010f,
+        0.752f,
+        0.501f,
         true,
         now,
         now);
 
+    std::size_t active_clicks = 0;
+    for (const auto &click : frame.clicks) {
+        if (click.kind != ClickKind::None)
+            ++active_clicks;
+    }
+
     test.expect(
-        frame.cursor.scale >= 0.94f &&
-            frame.cursor.scale < 0.99f,
-        "Cursor click impact produces controlled recoil");
+        active_clicks == 1,
+        "Rapid same-target click recharges one luminous pulse");
 
     for (int i = 0; i < 60; ++i) {
         now.ticks_100ns +=
@@ -447,7 +449,7 @@ void test_presentation_controller(TestContext &test)
         click_visible_midway,
         "Single-ring click remains visible around half a second");
 
-    for (int i = 0; i < 30; ++i) {
+    for (int i = 0; i < 50; ++i) {
         now.ticks_100ns +=
             arssyut::core::MonotonicClock::ticks_per_second / 120;
 
@@ -473,7 +475,7 @@ void test_presentation_controller(TestContext &test)
     }
     test.expect(
         !click_visible,
-        "Single-ring click pulse remains bounded after its longer lifetime");
+        "Emissive click pulse remains bounded after its long fade tail");
 
     ShortcutChord chord;
     chord.key = ShortcutKey::C;
@@ -1023,17 +1025,18 @@ void test_single_ring_click_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
 {
-    constexpr std::uint32_t solid_bgra = 0xFF20242Au;
+    constexpr std::uint32_t dark_bgra = 0xFF20242Au;
+    constexpr std::uint32_t bright_bgra = 0xFFF8F8F8u;
 
-    auto source = create_solid_texture(
+    auto dark_source = create_solid_texture(
         owner.device(),
         4,
         4,
-        solid_bgra);
+        dark_bgra);
     test.expect(
-        source != nullptr,
-        "Single-ring click source texture created");
-    if (!source)
+        dark_source != nullptr,
+        "Emissive click dark source texture created");
+    if (!dark_source)
         return;
 
     auto compositor_result =
@@ -1041,7 +1044,7 @@ void test_single_ring_click_compositor(
             owner.device());
     test.expect(
         static_cast<bool>(compositor_result),
-        "Single-ring click compositor initializes");
+        "Emissive single-ring compositor initializes");
     if (!compositor_result)
         return;
 
@@ -1050,22 +1053,23 @@ void test_single_ring_click_compositor(
     arssyut::presentation::PresentationFrameState state{};
     state.clicks[0].content_x = 0.5f;
     state.clicks[0].content_y = 0.5f;
-    state.clicks[0].age_seconds = 0.32f;
-    state.clicks[0].lifetime_seconds = 0.64f;
+    state.clicks[0].age_seconds = 0.22f;
+    state.clicks[0].lifetime_seconds = 0.88f;
     state.clicks[0].kind =
         arssyut::presentation::ClickKind::Left;
 
     test.expect(
         compositor.render(
             owner.immediate_context(),
-            source.Get(),
+            dark_source.Get(),
             {0, 0, 4, 4},
             {640, 360},
             &state).ok(),
-        "Single-ring click renders at representative output size");
+        "Emissive single-ring renders on dark content");
 
-    std::uint32_t center_pixel = 0;
-    std::uint32_t ring_pixel = 0;
+    std::uint32_t dark_center = 0;
+    std::uint32_t dark_ring = 0;
+    std::uint32_t dark_halo = 0;
 
     test.expect(
         read_texture_pixel(
@@ -1074,116 +1078,124 @@ void test_single_ring_click_compositor(
             compositor.output_texture(),
             320,
             180,
-            center_pixel),
-        "Click center pixel can be inspected");
+            dark_center),
+        "Dark click center pixel can be inspected");
 
     test.expect(
         read_texture_pixel(
             owner.device(),
             owner.immediate_context(),
             compositor.output_texture(),
-            361,
+            355,
             180,
-            ring_pixel),
-        "Click ring pixel can be inspected");
+            dark_ring),
+        "Dark click core pixel can be inspected");
 
     test.expect(
-        center_pixel == solid_bgra,
-        "Single-ring click keeps center unfilled with no center dot");
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            370,
+            180,
+            dark_halo),
+        "Dark click halo pixel can be inspected");
 
     test.expect(
-        ring_pixel != solid_bgra,
-        "Single-ring click produces a visible grown ring");
-}
+        dark_center == dark_bgra,
+        "Emissive click keeps the center unfilled with no center dot");
+    test.expect(
+        dark_ring != dark_bgra,
+        "Emissive click produces a strong visible core");
+    test.expect(
+        dark_halo != dark_bgra,
+        "Emissive click produces a diffuse halo from the same ring");
 
-void test_custom_cursor_compositor(
-    TestContext &test,
-    arssyut::windows::D3D11Device &owner)
-{
-    constexpr std::uint32_t solid_bgra = 0xFF20242Au;
-
-    auto source = create_solid_texture(
+    auto bright_source = create_solid_texture(
         owner.device(),
         4,
         4,
-        solid_bgra);
+        bright_bgra);
     test.expect(
-        source != nullptr,
-        "Custom cursor source texture created");
-    if (!source)
+        bright_source != nullptr,
+        "Emissive click bright source texture created");
+    if (!bright_source)
         return;
-
-    auto compositor_result =
-        arssyut::windows::D3D11Compositor::create(
-            owner.device());
-    test.expect(
-        static_cast<bool>(compositor_result),
-        "Custom cursor compositor initializes");
-    if (!compositor_result)
-        return;
-
-    auto &compositor =
-        *compositor_result.value();
-
-    const HCURSOR cursor =
-        LoadCursor(
-            nullptr,
-            IDC_ARROW);
-    test.expect(
-        cursor != nullptr,
-        "System arrow cursor is available");
-    if (!cursor)
-        return;
-
-    test.expect(
-        compositor.update_cursor_shape(
-            owner.immediate_context(),
-            cursor).ok(),
-        "System cursor shape enters retained cache");
-
-    arssyut::presentation::PresentationFrameState state{};
-    state.cursor.content_x = 0.5f;
-    state.cursor.content_y = 0.5f;
-    state.cursor.scale = 1.0f;
-    state.cursor.opacity = 1.0f;
 
     test.expect(
         compositor.render(
             owner.immediate_context(),
-            source.Get(),
+            bright_source.Get(),
             {0, 0, 4, 4},
             {640, 360},
             &state).ok(),
-        "Hotspot-anchored custom cursor renders");
+        "Emissive single-ring renders on bright content");
+
+    std::uint32_t bright_center = 0;
+    std::uint32_t bright_ring = 0;
+    std::uint32_t bright_halo = 0;
 
     test.expect(
-        texture_contains_non_solid_pixel(
+        read_texture_pixel(
             owner.device(),
             owner.immediate_context(),
             compositor.output_texture(),
-            solid_bgra),
-        "Custom cursor changes visible output pixels");
-
-    const auto generation =
-        compositor.resource_generation();
+            320,
+            180,
+            bright_center),
+        "Bright click center pixel can be inspected");
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            355,
+            180,
+            bright_ring),
+        "Bright click core pixel can be inspected");
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            370,
+            180,
+            bright_halo),
+        "Bright click halo pixel can be inspected");
 
     test.expect(
-        compositor.update_cursor_shape(
-            owner.immediate_context(),
-            cursor).ok(),
-        "Repeated cursor shape selection hits retained cache");
-
+        bright_center == bright_bgra,
+        "Bright-background click still keeps center transparent");
     test.expect(
-        compositor.render_retained(
+        bright_ring != bright_bgra,
+        "Chromatic core remains visible on near-white content");
+    test.expect(
+        bright_halo != bright_bgra,
+        "Chromatic support keeps the glow visible on near-white content");
+
+    state.clicks[0].age_seconds = 0.030f;
+    test.expect(
+        compositor.render(
             owner.immediate_context(),
+            dark_source.Get(),
             {0, 0, 4, 4},
             {640, 360},
             &state).ok(),
-        "Cached cursor re-renders with retained desktop source");
+        "Ignition-phase click renders");
 
+    std::uint32_t ignition_center = 0;
     test.expect(
-        compositor.resource_generation() == generation,
-        "Cursor steady state creates no new compositor resources");
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            320,
+            180,
+            ignition_center),
+        "Ignition center pixel can be inspected");
+    test.expect(
+        ignition_center == dark_bgra,
+        "Wide ignition glow never turns into a filled center");
 }
 
 void test_arvisual_grade_compositor(
@@ -1785,7 +1797,6 @@ int main()
     test_media_foundation_mp4(test);
     test_retained_source_camera_cadence(test, device);
     test_single_ring_click_compositor(test, device);
-    test_custom_cursor_compositor(test, device);
     test_arvisual_grade_compositor(test, device);
     test_arvisual_async_scene_analyzer(test, device);
     test_keyboard_overlay_compositor(test, device);

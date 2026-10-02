@@ -3,7 +3,6 @@
 #ifdef _WIN32
 
 #include "core/time/monotonic_clock.hpp"
-#include "platform/windows/graphics/cursor_shape_cache.hpp"
 #include "platform/windows/graphics/d3d11_arvisual_scene_analyzer.hpp"
 
 #include <d3dcompiler.h>
@@ -33,8 +32,6 @@ cbuffer PresentationConstants : register(b0)
     float4 camera_keyboard;
     float4 output_info;
     float4 keyboard_rect;
-    float4 cursor_data;
-    float4 cursor_geometry;
     float4 arvisual0;
     float4 arvisual1;
     float4 arvisual2;
@@ -49,7 +46,6 @@ cbuffer PresentationConstants : register(b0)
 
 Texture2D source_texture : register(t0);
 Texture2D keyboard_texture : register(t1);
-Texture2D cursor_texture : register(t2);
 SamplerState source_sampler : register(s0);
 
 struct VertexOutput
@@ -518,20 +514,22 @@ float3 composite_single_ring(
     const float expansion =
         smooth_out(progress);
     const float radius_px =
-        lerp(11.0, 62.0, expansion) * scale;
+        lerp(10.5, 64.0, expansion) * scale;
     const float half_width_px =
-        lerp(2.25, 1.00, progress) * scale;
+        lerp(3.90, 2.25, progress) * scale;
     const float distance_px =
         length(delta_px);
     const float edge =
         abs(distance_px - radius_px);
 
+    // Fast ignition, then a deliberately long luminous tail. The core fades
+    // before the halo so the pulse dissolves instead of simply disappearing.
     const float ignition =
-        smoothstep(0.0, 0.050, progress);
+        smoothstep(0.0, 0.035, progress);
     const float core_fade =
-        1.0 - smoothstep(0.28, 1.0, progress);
-    const float glow_fade =
-        1.0 - smoothstep(0.18, 1.0, progress);
+        1.0 - smoothstep(0.48, 0.94, progress);
+    const float bloom_fade =
+        1.0 - smoothstep(0.58, 1.00, progress);
 
     const float core =
         vector_ring(
@@ -541,26 +539,53 @@ float3 composite_single_ring(
         ignition *
         core_fade;
 
-    const float glow_spread_px =
-        lerp(5.0, 18.0, expansion) * scale;
+    // Both bloom zones are distance falloffs from the SAME analytic ring.
+    // They are not secondary circles and never fill the ring center.
     const float glow_distance =
         max(edge - half_width_px, 0.0);
-    const float glow_shape =
+    const float near_spread_px =
+        lerp(9.0, 16.0, expansion) * scale;
+    const float halo_spread_px =
+        lerp(18.0, 30.0, expansion) * scale;
+
+    const float near_shape =
         saturate(
             1.0 -
             glow_distance /
-                max(glow_spread_px, 0.001));
-    const float glow =
-        glow_shape *
-        glow_shape *
+                max(near_spread_px, 0.001));
+    const float halo_shape =
+        saturate(
+            1.0 -
+            glow_distance /
+                max(halo_spread_px, 0.001));
+
+    // Keep a definite empty center even during the small-radius
+    // ignition phase. Bloom may surround the ring, but it must never become
+    // a filled click disc or center dot.
+    const float center_guard =
+        smoothstep(
+            radius_px * 0.28,
+            radius_px * 0.62,
+            distance_px);
+
+    const float near_bloom =
+        near_shape *
+        near_shape *
+        center_guard *
         ignition *
-        glow_fade;
+        bloom_fade;
+    const float diffuse_halo =
+        halo_shape *
+        halo_shape *
+        center_guard *
+        ignition *
+        bloom_fade;
 
     const float support =
         vector_ring(
             distance_px,
             radius_px,
-            half_width_px + 1.75 * scale) *
+            half_width_px + 2.6 * scale) *
         ignition *
         core_fade;
 
@@ -572,17 +597,25 @@ float3 composite_single_ring(
             base,
             float3(0.2126, 0.7152, 0.0722));
     const float bright_surface =
-        smoothstep(0.60, 0.90, luminance);
+        smoothstep(0.62, 0.92, luminance);
 
-    const float3 visible =
+    // White surfaces cannot become physically brighter. On bright content,
+    // use a restrained deeper chromatic support around the same ring so the
+    // eye still reads a luminous edge instead of a thin washed-out outline.
+    const float3 core_color =
         lerp(
-            tint,
-            tint * 0.68,
+            saturate(tint * 1.10),
+            tint * 0.80,
             bright_surface);
     const float3 support_color =
         lerp(
-            tint * 0.18,
-            float3(0.025, 0.035, 0.055),
+            tint * 0.28,
+            tint * 0.50,
+            bright_surface);
+    const float3 halo_color =
+        lerp(
+            tint,
+            tint * 0.62,
             bright_surface);
 
     base = lerp(
@@ -590,26 +623,27 @@ float3 composite_single_ring(
         support_color,
         saturate(
             support *
-            (0.050 + 0.20 * bright_surface)));
+            (0.08 + 0.24 * bright_surface)));
 
     base = lerp(
         base,
-        visible,
-        saturate(core * 0.98));
-
-    base = lerp(
-        base,
-        tint,
+        halo_color,
         saturate(
-            glow *
-            (0.16 +
-             0.08 * (1.0 - bright_surface))));
+            near_bloom *
+                (0.20 + 0.08 * bright_surface) +
+            diffuse_halo *
+                (0.075 + 0.055 * bright_surface)));
+
+    base = lerp(
+        base,
+        core_color,
+        saturate(core * 0.995));
 
     base +=
         tint *
-        glow *
-        0.10 *
-        (1.0 - bright_surface);
+        (near_bloom * 0.30 +
+         diffuse_halo * 0.14) *
+        (1.0 - bright_surface * 0.78);
 
     return saturate(base);
 }
@@ -642,77 +676,6 @@ float3 apply_click(
         safe_viewport);
 }
 
-float4 composite_cursor(
-    float4 base,
-    float2 output_uv,
-    float2 camera_center,
-    float safe_zoom,
-    float2 safe_viewport)
-{
-    const float opacity =
-        saturate(cursor_data.w);
-    if (opacity <= 0.001)
-        return base;
-
-    const float2 shape_size =
-        max(
-            cursor_geometry.xy,
-            float2(1.0, 1.0));
-    const float2 hotspot =
-        cursor_geometry.zw;
-
-    const float presentation_scale =
-        max(cursor_data.z, 0.01) *
-        clamp(
-            min(safe_viewport.x, safe_viewport.y) / 1080.0,
-            0.85,
-            1.60);
-
-    const float2 hotspot_uv =
-        project_content(
-            cursor_data.xy,
-            camera_center,
-            safe_zoom);
-    const float2 hotspot_px =
-        hotspot_uv * safe_viewport;
-
-    const float2 top_left_px =
-        hotspot_px -
-        hotspot * presentation_scale;
-    const float2 size_px =
-        shape_size * presentation_scale;
-
-    const float2 pixel =
-        output_uv * safe_viewport;
-    const float2 local =
-        (pixel - top_left_px) /
-        max(size_px, float2(0.001, 0.001));
-
-    if (local.x < 0.0 ||
-        local.y < 0.0 ||
-        local.x > 1.0 ||
-        local.y > 1.0) {
-        return base;
-    }
-
-    const float2 texture_uv =
-        local *
-        (shape_size / 256.0);
-    const float4 cursor =
-        cursor_texture.Sample(
-            source_sampler,
-            texture_uv);
-
-    const float alpha =
-        saturate(cursor.a * opacity);
-
-    base.rgb =
-        lerp(
-            base.rgb,
-            cursor.rgb,
-            alpha);
-    return base;
-}
 
 float4 ps_main(VertexOutput input) : SV_Target
 {
@@ -759,13 +722,6 @@ float4 ps_main(VertexOutput input) : SV_Target
         color.rgb,
         input.uv,
         click3,
-        camera_center,
-        zoom,
-        safe_viewport);
-
-    color = composite_cursor(
-        color,
-        input.uv,
         camera_center,
         zoom,
         safe_viewport);
@@ -822,16 +778,6 @@ struct PresentationConstants {
     float keyboard_top;
     float keyboard_right;
     float keyboard_bottom;
-
-    float cursor_x;
-    float cursor_y;
-    float cursor_scale;
-    float cursor_opacity;
-
-    float cursor_width;
-    float cursor_height;
-    float cursor_hotspot_x;
-    float cursor_hotspot_y;
 
     float arvisual_enabled;
     float arvisual_master;
@@ -1049,14 +995,6 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
     if (!keyboard_status.ok())
         return keyboard_status;
 
-    auto cursor_result =
-        CursorShapeCache::create(
-            device_.Get());
-    if (!cursor_result)
-        return cursor_result.status();
-    cursor_cache_ =
-        std::move(cursor_result).value();
-
     // P5B analysis is optional infrastructure. If its resources cannot be
     // created, the P5A static grade remains fully usable with neutral
     // adaptive inputs; recording must not fail because Smart Auto is absent.
@@ -1250,7 +1188,7 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
     constexpr int kTop = 12;
     constexpr int kFaceHeight = 82;
     constexpr int kDepth = 6;
-    constexpr int kCorner = 16;
+    constexpr int kCorner = 13;
 
     int x = kPadding;
 
@@ -1267,25 +1205,25 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
             continue;
         }
 
-        SIZE extent{};
-        if (!windows_logo) {
-            GetTextExtentPoint32W(
-                keyboard_dc_,
-                keycap.label.data(),
-                static_cast<int>(
-                    wcsnlen_s(
-                        keycap.label.data(),
-                        keycap.label.size())),
-                &extent);
+        int width = kFaceHeight;
+        switch (keycap.size) {
+        case arssyut::presentation::KeycapSize::Unit125:
+            width = 103;
+            break;
+        case arssyut::presentation::KeycapSize::Unit150:
+            width = 123;
+            break;
+        case arssyut::presentation::KeycapSize::Unit200:
+            width = 164;
+            break;
+        case arssyut::presentation::KeycapSize::Unit350:
+            width = 287;
+            break;
+        case arssyut::presentation::KeycapSize::Unit1:
+        default:
+            width = kFaceHeight;
+            break;
         }
-
-        const int width =
-            windows_logo
-                ? 76
-                : std::clamp(
-                      static_cast<int>(extent.cx) + 34,
-                      64,
-                      160);
 
         RECT shadow{
             x + 2,
@@ -1677,20 +1615,6 @@ Status D3D11Compositor::ensure_output(FrameSize output_size) noexcept
     return Status::success();
 }
 
-Status D3D11Compositor::update_cursor_shape(
-    ID3D11DeviceContext *context,
-    HCURSOR cursor) noexcept
-{
-    if (!context || !cursor_cache_) {
-        return Status::failure(
-            StatusCode::InvalidArgument);
-    }
-
-    return cursor_cache_->select(
-        context,
-        cursor);
-}
-
 Status D3D11Compositor::submit_scene_analysis(
     ID3D11DeviceContext *context,
     TimePoint now,
@@ -1875,46 +1799,6 @@ Status D3D11Compositor::render_retained(
          display_height_px) /
         constants.output_height;
 
-    const auto cursor_shape =
-        cursor_cache_
-            ? cursor_cache_->active()
-            : CursorShapeView{};
-
-    constants.cursor_x =
-        std::clamp(
-            state.cursor.content_x,
-            0.0f,
-            1.0f);
-    constants.cursor_y =
-        std::clamp(
-            state.cursor.content_y,
-            0.0f,
-            1.0f);
-    constants.cursor_scale =
-        std::clamp(
-            state.cursor.scale,
-            0.80f,
-            1.30f);
-    constants.cursor_opacity =
-        cursor_shape.valid()
-            ? std::clamp(
-                  state.cursor.opacity,
-                  0.0f,
-                  1.0f)
-            : 0.0f;
-    constants.cursor_width =
-        static_cast<float>(
-            cursor_shape.width);
-    constants.cursor_height =
-        static_cast<float>(
-            cursor_shape.height);
-    constants.cursor_hotspot_x =
-        static_cast<float>(
-            cursor_shape.hotspot_x);
-    constants.cursor_hotspot_y =
-        static_cast<float>(
-            cursor_shape.hotspot_y);
-
     constants.arvisual_enabled =
         grade.enabled ? 1.0f : 0.0f;
     constants.arvisual_master =
@@ -2031,23 +1915,19 @@ Status D3D11Compositor::render_retained(
     ID3D11SamplerState *sampler = sampler_.Get();
     context->PSSetSamplers(0, 1, &sampler);
 
-    ID3D11ShaderResourceView *srvs[3] = {
+    ID3D11ShaderResourceView *srvs[2] = {
         input_srv_.Get(),
-        keyboard_srv_.Get(),
-        cursor_shape.valid()
-            ? cursor_shape.srv
-            : nullptr
+        keyboard_srv_.Get()
     };
-    context->PSSetShaderResources(0, 3, srvs);
+    context->PSSetShaderResources(0, 2, srvs);
 
     context->Draw(3, 0);
 
-    ID3D11ShaderResourceView *null_srvs[3] = {
-        nullptr,
+    ID3D11ShaderResourceView *null_srvs[2] = {
         nullptr,
         nullptr
     };
-    context->PSSetShaderResources(0, 3, null_srvs);
+    context->PSSetShaderResources(0, 2, null_srvs);
 
     ID3D11RenderTargetView *null_rtv = nullptr;
     context->OMSetRenderTargets(1, &null_rtv, nullptr);

@@ -309,8 +309,9 @@ After the first ArVisual transplant:
   and CPU scene analysis do not enter the Arssyut compositor;
 - adaptive inputs stay at deterministic neutral values until P5B provides the
   asynchronous analysis authority;
-- grading occurs on captured desktop content before click, custom cursor and
-  keyboard overlays, so presentation colors stay product-authored;
+- grading occurs on the captured desktop sample before click and keyboard
+  overlays. Since P4R.3 restores native WGC cursor capture, the native cursor
+  is part of the captured source and follows the same color/camera path;
 - grade ON/OFF and parameter changes are constant-buffer changes only and must
   not allocate textures, render targets or staging resources;
 - no synchronous GPU-to-CPU readback is permitted in the render path;
@@ -385,7 +386,7 @@ After the first shortcut-overlay audit:
 - keycap texture, DIB, font, brushes and pens are retained resources;
 - shortcut generation changes may update the retained texture, but must not
   create per-frame GPU/GDI resources;
-- keycap rendering is content-sized and transparent; do not reintroduce a
+- keycap rendering is semantic-size and transparent; do not reintroduce a
   large fixed background panel around a small shortcut;
 - all production keycaps use one light/white physical-key language; modifiers
   must not switch to dark/black surfaces;
@@ -393,29 +394,33 @@ After the first shortcut-overlay audit:
 - the supplied keyboard-button artwork is the visual design direction, not a
   reason to parse or rasterize its large traced SVG in the realtime path.
 
-### P4R.2 cursor/click motion lock
+### P4R.3 presentation reliability lock
 
-After direct validation of P4R.1, presentation cursor and click motion have
-additional non-regression rules:
+Direct 1080p60 validation on 2026-10-03 superseded the P4R.2 custom-cursor
+experiment. The authoritative rules are now:
 
-- when the presentation layer is active, native WGC cursor capture is disabled
-  so exactly one cursor authority reaches the encoded frame;
-- the Windows cursor handle/visibility is observed with pointer activity, but a
-  cursor bitmap is rasterized only on a cache miss or shape change;
-- cursor shape storage is fixed-capacity and retained. Steady-state cursor
-  rendering must not allocate GPU/GDI resources or read pixels back from the
-  output frame;
-- cursor scale is always anchored to the Windows hotspot, never the bitmap
-  center, so the indicated/pressed pixel remains truthful during animation;
-- click feedback remains one analytic ring. Glow is an emissive falloff from
-  that same ring, not a second visible ring or filled center;
-- click and cursor impact advance from the same bounded presentation clock;
-- click impact scale is bounded around the validated ballistic envelope
-  1.00 -> 1.17 -> 0.95 -> 1.025 -> 1.00 over roughly 230 ms;
-- velocity response is intentionally subtle and capped at about +5%; do not
-  introduce cursor lag, trailing position smoothing, or cartoon-like pulsing;
-- cursor and click projection must use the same ArZoom camera transform as the
-  demonstrated content.
+- native Windows/WGC cursor capture remains enabled even when presentation
+  features are active; do not add a second custom cursor compositor;
+- Raw Input pointer position remains an intent/targeting source for ArZoom and
+  click coordinates only. Cursor pixels themselves come from WGC;
+- because the native cursor is part of the retained desktop source, it follows
+  the same ArZoom sampling/scale as the captured content;
+- do not reintroduce ballistic cursor scaling, cursor trails, cursor texture
+  caches, per-frame cursor rasterization, or velocity-reactive cursor sizing;
+- ordinary alphanumeric, digit, symbol, function and Windows-logo keycaps use
+  one square 1u physical geometry; long keys use explicit keyboard units rather
+  than text-measured width;
+- Ctrl/Alt use 1.25u, Shift/Enter 1.5u, Backspace 2u and Space 3.5u;
+- click feedback remains one analytic ring with no center fill and no visible
+  second ring;
+- one ring may contain a bright core, near bloom and diffuse halo derived from
+  the same ring distance field;
+- bright-surface visibility may use restrained chromatic support around that
+  same ring because additive light alone cannot exceed white;
+- rapid same-target clicks may recharge one active pulse instead of stacking
+  concentric geometry;
+- real-recording validation outranks synthetic visual assumptions for cursor
+  stability, keycap proportions and click energy.
 
 
 ---

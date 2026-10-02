@@ -49,7 +49,6 @@ if(WIN32)
     add_library(arssyut_windows STATIC
         src/platform/windows/capture/captured_frame.cpp
         src/platform/windows/capture/wgc_capture_source.cpp
-        src/platform/windows/graphics/cursor_shape_cache.cpp
         src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
         src/platform/windows/graphics/d3d11_device.cpp

@@ -8,7 +8,7 @@ The product direction is intentionally narrower than OBS: one-click recording wi
 
 - **Lightweight by architecture** — native capture/compositing/encoding path; no CPU full-frame processing in steady state.
 - **One camera authority** — ArZoom camera/planner concepts are transplanted as a single deterministic zoom/follow engine, not duplicated across UI and renderer.
-- **GPU-first presentation** — zoom, click visuals, cursor, keycap overlay, and color treatment remain on the GPU path.
+- **GPU-first presentation** — native WGC cursor stays inside the captured GPU source while zoom, click visuals, keycap overlay, and color treatment remain on the GPU path.
 - **Bounded realtime work** — fixed-capacity queues, latest-wins coalescing for replaceable state, no session-length growth, no unbounded event history.
 - **Smooth before flashy** — time-based motion, jerk-limited transitions, stable frame pacing, no zoom jitter.
 - **Privacy-aware input visualization** — shortcut/chord visualization by default; ordinary typed text is not persisted.

@@ -30,16 +30,16 @@ ArZoom camera sampling
 ArVisual standalone grade   <-- P5A
         |
         +--> click glow
-        +--> custom cursor
         +--> keyboard keycaps
         |
         v
 encoder
 ```
 
-This ordering is deliberate. Desktop content can be enhanced, while the product
-colors of click feedback, cursor and keycaps remain authored presentation
-colors rather than being re-graded.
+This ordering is deliberate. Desktop content can be enhanced, while click and
+keycap colors remain authored presentation colors rather than being re-graded.
+After P4R.3, the native Windows cursor is part of the captured WGC source and
+therefore follows the same camera/color path as desktop content.
 
 ## Default behavior
 
@@ -130,7 +130,8 @@ Windows compositor tests verify:
 4. disabled mode returns pixel-identical output;
 5. grade ON/OFF does not increase compositor resource generation.
 
-Existing P3R/P4R retained-source, cursor, click and keycap tests remain active.
+Existing P3R/P4R retained-source, click and keycap tests remain active; native
+cursor stability is validated through real WGC recordings.
 
 ## Direct validation
 

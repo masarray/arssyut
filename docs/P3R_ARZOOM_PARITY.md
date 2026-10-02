@@ -101,6 +101,11 @@ was intentionally replaced by the Arssyut product skin:
 - Middle: warm amber;
 - no center dot and no second ring.
 
+P4R.3 direct validation on 2026-10-03 strengthens that same single-ring skin
+with a thicker core, near bloom, diffuse halo, bright-surface chromatic support,
+and a longer ~0.84-0.90 s fade tail. Rapid same-target clicks recharge one
+pulse rather than stacking concentric geometry.
+
 The click state remains fixed-capacity and session-length independent. This
 appearance change does **not** alter ArZoom camera/gimbal parity.
 
