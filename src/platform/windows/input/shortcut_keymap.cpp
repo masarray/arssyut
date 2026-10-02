@@ -106,6 +106,32 @@ ShortcutKey shortcut_key_from_virtual_key(
     }
 }
 
+arssyut::presentation::ShortcutChord
+windows_system_shortcut_chord(
+    std::uint16_t vkey,
+    bool ctrl_down,
+    bool shift_down,
+    bool alt_down) noexcept
+{
+    arssyut::presentation::ShortcutChord chord;
+    chord.key =
+        shortcut_key_from_virtual_key(vkey);
+    chord.modifiers =
+        arssyut::presentation::ShortcutWin;
+
+    if (ctrl_down)
+        chord.modifiers |=
+            arssyut::presentation::ShortcutCtrl;
+    if (shift_down)
+        chord.modifiers |=
+            arssyut::presentation::ShortcutShift;
+    if (alt_down)
+        chord.modifiers |=
+            arssyut::presentation::ShortcutAlt;
+
+    return chord;
+}
+
 bool is_modifier_virtual_key(
     std::uint16_t vkey) noexcept
 {
