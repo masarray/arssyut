@@ -67,6 +67,12 @@ public:
         return dropped_events_.load(std::memory_order_relaxed);
     }
 
+    [[nodiscard]] bool system_shortcut_hook_active() const noexcept
+    {
+        return system_shortcut_hook_active_.load(
+            std::memory_order_acquire);
+    }
+
 private:
     static LRESULT CALLBACK window_proc(
         HWND window,
@@ -120,6 +126,7 @@ private:
     arssyut::core::SpscRing<MouseClickEvent, 32> click_events_;
     arssyut::core::SpscRing<ShortcutEvent, 64> shortcut_events_;
     std::atomic<std::uint64_t> dropped_events_{0};
+    std::atomic<bool> system_shortcut_hook_active_{false};
 };
 
 } // namespace arssyut::windows
