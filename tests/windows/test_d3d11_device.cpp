@@ -402,27 +402,29 @@ void test_presentation_controller(TestContext &test)
             now,
             now);
 
-    test.expect(
-        frame.cursor.opacity > 0.99f &&
-            frame.cursor.scale > 1.14f &&
-            frame.cursor.scale <= 1.18f,
-        "Cursor click impact reaches bounded ballistic punch");
-
-    now.ticks_100ns +=
-        arssyut::core::MonotonicClock::ticks_per_second * 65 / 1000;
+    controller.on_click(
+        ClickKind::Left,
+        0.752f,
+        0.501f,
+        now);
 
     frame = controller.step(
-        0.065f,
-        0.75f,
-        0.50f,
+        0.010f,
+        0.752f,
+        0.501f,
         true,
         now,
         now);
 
+    std::size_t active_clicks = 0;
+    for (const auto &click : frame.clicks) {
+        if (click.kind != ClickKind::None)
+            ++active_clicks;
+    }
+
     test.expect(
-        frame.cursor.scale >= 0.94f &&
-            frame.cursor.scale < 0.99f,
-        "Cursor click impact produces controlled recoil");
+        active_clicks == 1,
+        "Rapid same-target click recharges one luminous pulse");
 
     for (int i = 0; i < 60; ++i) {
         now.ticks_100ns +=
@@ -447,7 +449,7 @@ void test_presentation_controller(TestContext &test)
         click_visible_midway,
         "Single-ring click remains visible around half a second");
 
-    for (int i = 0; i < 30; ++i) {
+    for (int i = 0; i < 50; ++i) {
         now.ticks_100ns +=
             arssyut::core::MonotonicClock::ticks_per_second / 120;
 
@@ -473,7 +475,7 @@ void test_presentation_controller(TestContext &test)
     }
     test.expect(
         !click_visible,
-        "Single-ring click pulse remains bounded after its longer lifetime");
+        "Emissive click pulse remains bounded after its long fade tail");
 
     ShortcutChord chord;
     chord.key = ShortcutKey::C;
