@@ -365,7 +365,7 @@ float4 ps_main(VertexOutput input) : SV_Target
 
     return color;
 }
-)"
+)";
 
 struct PresentationConstants {
     float uv_left;
