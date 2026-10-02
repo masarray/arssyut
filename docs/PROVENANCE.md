@@ -51,6 +51,19 @@ ownership, tests, and build/CI files.
 | Click projection | Content anchoring remains on the same ArZoom camera transform. After direct visual validation on 2026-10-02, click lifetime/appearance intentionally became an Arssyut product skin (bounded local slots + single analytic ring); this no longer claims visual parity with `arzoom.effect`. |
 | Parity test | `tests/test_arzoom_parity.cpp` compares adapter output frame-for-frame against the pinned upstream engine and checks Cinematic selection/frame-rate stability. Windows compositor tests prove camera transforms advance while the same source texture is retained. |
 
+## Implemented transplant — P5A ArVisual standalone grade
+
+| Field | Value |
+|---|---|
+| Local files | `src/visual/arvisual_grade.hpp`, ArVisual section inside `src/platform/windows/graphics/d3d11_compositor.cpp` |
+| Upstream repository | `masarray/arvisual-obs` |
+| Upstream commit | `d0a3f405447446e88dc56f4a50535a17257fcccf` |
+| Upstream files | `data/effects/arvisual.effect`, defaults/behavior reference from `src/arvisual-filter.cpp` |
+| License | GPL-2.0-or-later |
+| Adaptation | OBS effect uniforms are mapped to Arssyut's retained D3D11 constant buffer; OBS filter/property/texrender/stagesurface and scene-readback plumbing are excluded. The shader runs on the retained desktop sample before Arssyut presentation overlays. Adaptive inputs are neutral until P5B. |
+| Pixel-faithful path | `enabled=false` bypasses the grade and remains the recorder default. |
+| Parity/safety test | Windows D3D11 tests cover real colorful grading, neutral balance, highlight/gamut safety, pixel-identical bypass, and zero resource-generation growth when toggling the grade. |
+
 ## Required entry for every future transplant
 
 Before merging copied/adapted implementation source, add:
