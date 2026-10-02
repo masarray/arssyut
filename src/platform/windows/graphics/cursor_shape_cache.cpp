@@ -243,7 +243,9 @@ Status CursorShapeCache::rasterize(
         original_height =
             std::max(
                 1,
-                std::abs(bitmap_info.bmHeight) / 2);
+                static_cast<int>(
+                    std::abs(
+                        bitmap_info.bmHeight) / 2));
     }
 
     if (original_width <= 0)
