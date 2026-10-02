@@ -136,9 +136,18 @@ enum class KeycapGlyph : std::uint8_t {
     WindowsLogo,
 };
 
+enum class KeycapSize : std::uint8_t {
+    Unit1 = 0,
+    Unit125,
+    Unit150,
+    Unit200,
+    Unit350,
+};
+
 struct KeycapFrame {
     std::array<wchar_t, 16> label{};
     KeycapGlyph glyph = KeycapGlyph::Text;
+    KeycapSize size = KeycapSize::Unit1;
 };
 
 constexpr std::size_t kMaxShortcutKeycaps = 5;
