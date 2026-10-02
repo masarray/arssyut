@@ -27,12 +27,27 @@ public:
     static arssyut::core::Result<std::unique_ptr<D3D11Compositor>>
     create(ID3D11Device *device) noexcept;
 
+    [[nodiscard]] arssyut::core::Status update_source(
+        ID3D11DeviceContext *context,
+        ID3D11Texture2D *source) noexcept;
+
+    [[nodiscard]] arssyut::core::Status render_retained(
+        ID3D11DeviceContext *context,
+        arssyut::core::CropRect crop,
+        arssyut::core::FrameSize output_size,
+        const arssyut::presentation::PresentationFrameState *presentation = nullptr) noexcept;
+
     [[nodiscard]] arssyut::core::Status render(
         ID3D11DeviceContext *context,
         ID3D11Texture2D *source,
         arssyut::core::CropRect crop,
         arssyut::core::FrameSize output_size,
         const arssyut::presentation::PresentationFrameState *presentation = nullptr) noexcept;
+
+    [[nodiscard]] bool has_source() const noexcept
+    {
+        return input_copy_ && input_srv_;
+    }
 
     [[nodiscard]] ID3D11Texture2D *output_texture() const noexcept
     {
