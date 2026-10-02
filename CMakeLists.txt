@@ -22,6 +22,7 @@ add_library(arssyut_core STATIC
     src/core/session/session_state_machine.cpp
     src/core/time/monotonic_clock.cpp
     src/presentation/shortcut_visualizer.cpp
+    src/visual/arvisual_scene_analysis.cpp
 )
 
 target_include_directories(arssyut_core
@@ -49,6 +50,7 @@ if(WIN32)
         src/platform/windows/capture/captured_frame.cpp
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/cursor_shape_cache.cpp
+        src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
         src/platform/windows/graphics/d3d11_device.cpp
         src/platform/windows/input/presentation_input_worker.cpp
