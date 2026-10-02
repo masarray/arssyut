@@ -239,6 +239,16 @@ Port bounded click slots and content-anchored projection.
 
 ## P4 — Keyboard action visualizer
 
+### P4R — semantic/keycap recovery
+
+The initial shortcut path is replaced by a structured semantic chord model and
+content-sized physical-keycap renderer. P4R removes formatted shortcut strings
+from runtime state, keeps ordinary typing private, retains GDI/GPU resources,
+and uses Raw Input as the primary global source without adding an unproven hook
+fallback.
+
+See `docs/P4R_KEYBOARD_VISUALIZER.md`.
+
 ### Deliverables
 
 - dedicated Raw Input worker;
