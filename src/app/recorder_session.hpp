@@ -12,6 +12,7 @@
 #include "presentation/presentation_controller.hpp"
 #include "visual/arvisual_grade.hpp"
 #include "visual/arvisual_modes.hpp"
+#include "visual/arvisual_scene_analysis.hpp"
 
 #include <Windows.h>
 
@@ -131,7 +132,10 @@ private:
         std::uint64_t memory_end,
         std::uint64_t writer_submitted,
         std::uint64_t writer_backpressure,
-        std::uint64_t resource_generation) noexcept;
+        std::uint64_t resource_generation,
+        bool visual_analysis_primed,
+        const arssyut::visual::ArVisualSceneStats &visual_scene_stats,
+        const arssyut::visual::ArVisualAdaptiveState &visual_adaptive) noexcept;
 
     RecorderConfig config_{};
     std::thread worker_;
