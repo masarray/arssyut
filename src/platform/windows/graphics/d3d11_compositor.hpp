@@ -9,6 +9,7 @@
 #include "core/video/frame_geometry.hpp"
 #include "presentation/presentation_state.hpp"
 #include "visual/arvisual_grade.hpp"
+#include "visual/arvisual_scene_analysis.hpp"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -81,6 +82,12 @@ public:
     [[nodiscard]] std::uint64_t scene_analysis_completed() const noexcept;
     [[nodiscard]] std::uint64_t scene_analysis_busy_skips() const noexcept;
     [[nodiscard]] std::uint64_t scene_analysis_map_failures() const noexcept;
+
+    [[nodiscard]] bool scene_analysis_primed() const noexcept;
+    [[nodiscard]] arssyut::visual::ArVisualSceneStats
+    scene_analysis_stats() const noexcept;
+    [[nodiscard]] arssyut::visual::ArVisualAdaptiveState
+    scene_analysis_adaptive() const noexcept;
 
     [[nodiscard]] arssyut::core::LatencyHistogram::Snapshot
     cpu_submit_latency() const noexcept
