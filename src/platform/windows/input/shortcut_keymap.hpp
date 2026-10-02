@@ -19,6 +19,13 @@ shortcut_key_from_virtual_key(std::uint16_t vkey) noexcept;
 [[nodiscard]] bool is_modifier_virtual_key(
     std::uint16_t vkey) noexcept;
 
+[[nodiscard]] arssyut::presentation::ShortcutChord
+windows_system_shortcut_chord(
+    std::uint16_t vkey,
+    bool ctrl_down,
+    bool shift_down,
+    bool alt_down) noexcept;
+
 } // namespace arssyut::windows
 
 #endif
