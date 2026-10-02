@@ -7,6 +7,7 @@
 #include "core/result/status.hpp"
 #include "core/video/frame_geometry.hpp"
 #include "presentation/presentation_state.hpp"
+#include "visual/arvisual_grade.hpp"
 
 #include <d3d11.h>
 #include <wrl/client.h>
@@ -41,14 +42,16 @@ public:
         ID3D11DeviceContext *context,
         arssyut::core::CropRect crop,
         arssyut::core::FrameSize output_size,
-        const arssyut::presentation::PresentationFrameState *presentation = nullptr) noexcept;
+        const arssyut::presentation::PresentationFrameState *presentation = nullptr,
+        const arssyut::visual::ArVisualGradeSettings *visual = nullptr) noexcept;
 
     [[nodiscard]] arssyut::core::Status render(
         ID3D11DeviceContext *context,
         ID3D11Texture2D *source,
         arssyut::core::CropRect crop,
         arssyut::core::FrameSize output_size,
-        const arssyut::presentation::PresentationFrameState *presentation = nullptr) noexcept;
+        const arssyut::presentation::PresentationFrameState *presentation = nullptr,
+        const arssyut::visual::ArVisualGradeSettings *visual = nullptr) noexcept;
 
     [[nodiscard]] bool has_source() const noexcept
     {
