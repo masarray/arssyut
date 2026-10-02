@@ -9,6 +9,9 @@
 
 namespace arssyut::windows {
 
+thread_local PresentationInputWorker *
+    PresentationInputWorker::hook_owner_ = nullptr;
+
 namespace {
 
 using arssyut::core::MonotonicClock;
@@ -220,6 +223,20 @@ void PresentationInputWorker::thread_main() noexcept
         return;
     }
 
+    hook_pressed_.fill(false);
+    hook_left_win_down_ = false;
+    hook_right_win_down_ = false;
+    hook_ctrl_down_ = false;
+    hook_shift_down_ = false;
+    hook_alt_down_ = false;
+
+    hook_owner_ = this;
+    keyboard_hook_ = SetWindowsHookExW(
+        WH_KEYBOARD_LL,
+        &PresentationInputWorker::keyboard_hook_proc,
+        GetModuleHandleW(nullptr),
+        0);
+
     publish_pointer_activity();
     SetEvent(ready_event_);
 
@@ -232,6 +249,13 @@ void PresentationInputWorker::thread_main() noexcept
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
+
+    if (keyboard_hook_) {
+        UnhookWindowsHookEx(
+            keyboard_hook_);
+        keyboard_hook_ = nullptr;
+    }
+    hook_owner_ = nullptr;
 
     RAWINPUTDEVICE remove[2] = {
         devices[0],
@@ -248,6 +272,29 @@ void PresentationInputWorker::thread_main() noexcept
         sizeof(RAWINPUTDEVICE));
 
     DestroyWindow(window);
+}
+
+LRESULT CALLBACK PresentationInputWorker::keyboard_hook_proc(
+    int code,
+    WPARAM wparam,
+    LPARAM lparam)
+{
+    if (code == HC_ACTION &&
+        hook_owner_ &&
+        lparam != 0) {
+        const auto *keyboard =
+            reinterpret_cast<const KBDLLHOOKSTRUCT *>(lparam);
+
+        hook_owner_->handle_windows_key_hook(
+            wparam,
+            *keyboard);
+    }
+
+    return CallNextHookEx(
+        nullptr,
+        code,
+        wparam,
+        lparam);
 }
 
 LRESULT CALLBACK PresentationInputWorker::window_proc(
@@ -352,6 +399,24 @@ void PresentationInputWorker::handle_mouse(
     }
 }
 
+void PresentationInputWorker::publish_shortcut(
+    arssyut::presentation::ShortcutChord chord,
+    arssyut::core::TimePoint time) noexcept
+{
+    if (!arssyut::presentation::should_visualize_shortcut(chord))
+        return;
+
+    ShortcutEvent event;
+    event.chord = chord;
+    event.time = time;
+
+    if (!shortcut_events_.try_push(event)) {
+        dropped_events_.fetch_add(
+            1,
+            std::memory_order_relaxed);
+    }
+}
+
 std::uint8_t PresentationInputWorker::modifier_mask() const noexcept
 {
     std::uint8_t result = 0;
@@ -418,20 +483,102 @@ void PresentationInputWorker::handle_keyboard(
     chord.key = shortcut_key_from_virtual_key(key);
     chord.modifiers = modifiers;
 
-    if (!arssyut::presentation::should_visualize_shortcut(
-            chord)) {
+    publish_shortcut(
+        chord,
+        MonotonicClock::now());
+}
+
+void PresentationInputWorker::handle_windows_key_hook(
+    WPARAM message,
+    const KBDLLHOOKSTRUCT &keyboard) noexcept
+{
+    const bool key_down =
+        message == WM_KEYDOWN ||
+        message == WM_SYSKEYDOWN;
+    const bool key_up =
+        message == WM_KEYUP ||
+        message == WM_SYSKEYUP;
+
+    if (!key_down && !key_up)
+        return;
+
+    const std::uint16_t vkey =
+        static_cast<std::uint16_t>(keyboard.vkCode);
+
+    if (vkey >= hook_pressed_.size())
+        return;
+
+    if (vkey == VK_LWIN ||
+        vkey == VK_RWIN) {
+        const bool down = key_down;
+
+        if (vkey == VK_LWIN)
+            hook_left_win_down_ = down;
+        else
+            hook_right_win_down_ = down;
+
+        hook_pressed_[vkey] = down;
         return;
     }
 
-    ShortcutEvent event;
-    event.chord = chord;
-    event.time = MonotonicClock::now();
-
-    if (!shortcut_events_.try_push(event)) {
-        dropped_events_.fetch_add(
-            1,
-            std::memory_order_relaxed);
+    if (vkey == VK_LCONTROL ||
+        vkey == VK_RCONTROL ||
+        vkey == VK_CONTROL) {
+        hook_ctrl_down_ = key_down;
+        hook_pressed_[vkey] = key_down;
+        return;
     }
+
+    if (vkey == VK_LSHIFT ||
+        vkey == VK_RSHIFT ||
+        vkey == VK_SHIFT) {
+        hook_shift_down_ = key_down;
+        hook_pressed_[vkey] = key_down;
+        return;
+    }
+
+    if (vkey == VK_LMENU ||
+        vkey == VK_RMENU ||
+        vkey == VK_MENU) {
+        hook_alt_down_ = key_down;
+        hook_pressed_[vkey] = key_down;
+        return;
+    }
+
+    if (key_up) {
+        hook_pressed_[vkey] = false;
+        return;
+    }
+
+    if (hook_pressed_[vkey])
+        return;
+    hook_pressed_[vkey] = true;
+
+    const bool win_down =
+        hook_left_win_down_ ||
+        hook_right_win_down_;
+    if (!win_down)
+        return;
+
+    arssyut::presentation::ShortcutChord chord;
+    chord.key =
+        shortcut_key_from_virtual_key(vkey);
+    chord.modifiers =
+        arssyut::presentation::ShortcutWin;
+
+    if (hook_ctrl_down_)
+        chord.modifiers |=
+            arssyut::presentation::ShortcutCtrl;
+    if (hook_shift_down_)
+        chord.modifiers |=
+            arssyut::presentation::ShortcutShift;
+    if (hook_alt_down_)
+        chord.modifiers |=
+            arssyut::presentation::ShortcutAlt;
+
+    publish_shortcut(
+        chord,
+        MonotonicClock::now());
 }
 
 } // namespace arssyut::windows
