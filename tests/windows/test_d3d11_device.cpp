@@ -1120,7 +1120,7 @@ void test_custom_cursor_compositor(
         *compositor_result.value();
 
     const HCURSOR cursor =
-        LoadCursorW(
+        LoadCursor(
             nullptr,
             IDC_ARROW);
     test.expect(
