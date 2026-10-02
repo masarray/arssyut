@@ -559,14 +559,25 @@ float3 composite_single_ring(
             glow_distance /
                 max(halo_spread_px, 0.001));
 
+    // Keep a definite empty center even during the small-radius
+    // ignition phase. Bloom may surround the ring, but it must never become
+    // a filled click disc or center dot.
+    const float center_guard =
+        smoothstep(
+            radius_px * 0.28,
+            radius_px * 0.62,
+            distance_px);
+
     const float near_bloom =
         near_shape *
         near_shape *
+        center_guard *
         ignition *
         bloom_fade;
     const float diffuse_halo =
         halo_shape *
         halo_shape *
+        center_guard *
         ignition *
         bloom_fade;
 
