@@ -21,7 +21,7 @@ namespace arssyut::windows {
 enum class VideoSlotAction : std::uint8_t {
     NotDue = 0,
     RenderedNewFrame,
-    ReusePreviousOutput,
+    RenderedRetainedSource,
     NoFrameAvailable,
 };
 
@@ -73,7 +73,7 @@ private:
     arssyut::core::Diagnostics *diagnostics_ = nullptr;
     arssyut::core::FrameScheduler scheduler_;
     std::unique_ptr<D3D11Compositor> compositor_;
-    bool have_output_ = false;
+    bool have_source_ = false;
     std::uint64_t last_source_sequence_ = 0;
 };
 
