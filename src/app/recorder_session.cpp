@@ -1173,6 +1173,8 @@ void RecorderSession::write_diagnostics(
             << config_.visual.depth_pop << ",\n"
             << "  \"arvisual_base_highlight_guard\": "
             << config_.visual.highlight_guard << ",\n"
+            << "  \"arvisual_base_performance\": "
+            << config_.visual.performance << ",\n"
             << "  \"visual_analysis_primed\": "
             << (visual_analysis_primed ? "true" : "false")
             << ",\n"
