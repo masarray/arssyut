@@ -1100,8 +1100,8 @@ void RecorderSession::write_diagnostics(
     std::uint64_t writer_backpressure,
     std::uint64_t resource_generation,
     bool visual_analysis_primed,
-    const arssyut::visual::ArVisualSceneStats &visual_scene_stats,
-    const arssyut::visual::ArVisualAdaptiveState &visual_adaptive) noexcept
+    arssyut::visual::ArVisualSceneStats visual_scene_stats,
+    arssyut::visual::ArVisualAdaptiveState visual_adaptive) noexcept
 {
     try {
         const auto snapshot_value =
