@@ -36,17 +36,20 @@ ownership, tests, and build/CI files.
   - bounded adaptive parameters
   - grading shader behavior and visual-safety constraints
 
-## Implemented transplant — P3 ArZoom camera/click
+## Implemented transplant — P3R ArZoom parity recovery
 
 | Field | Value |
 |---|---|
-| Local files | `src/presentation/arzoom/arzoom_math.hpp`, `arzoom_smart_zone_camera.hpp`, `arzoom_scene_motion_synthesizer.hpp`, `arzoom_scene_viewport_planner.hpp`, `arzoom_click_visual.hpp` |
+| Local files | `third_party/arzoom/include/arzoom-math.hpp`, `arzoom-smart-zone-camera.hpp`, `arzoom-scene-motion-synthesizer.hpp`, `arzoom-scene-viewport-planner.hpp`, `arzoom-camera.hpp`, `arzoom-click-visual.hpp` |
 | Upstream repository | `masarray/arzoom-follow-obs` |
 | Upstream commit | `ada8f5269246c64429d7aceb6cc72f81e72120ba` |
-| Upstream files | `src/arzoom-math.hpp`, `src/arzoom-smart-zone-camera.hpp`, `src/arzoom-scene-motion-synthesizer.hpp`, `src/arzoom-scene-viewport-planner.hpp`, `src/arzoom-click-visual.hpp` |
+| Upstream files | matching `src/*.hpp` files listed above |
 | License | GPL-2.0-or-later |
-| Adaptation | Namespace/include-path adaptation only in transplanted headers. Runtime integration is Arssyut-specific and keeps OBS types/state out of the portable core. |
-| Parity test | P3 deterministic camera/click tests compile against the pinned portable algorithms and exercise camera bounds, return-to-full-frame, and click-slot projection. |
+| Adaptation | **None in vendored files.** Arssyut integration is isolated in `src/presentation/arzoom_camera_adapter.hpp` and recorder/compositor glue. The earlier namespace-adapted copies under `src/presentation/arzoom` were removed during P3R. |
+| Camera parity | Per-source recorder path uses upstream `PresenterAwareSmartCamera` with scene context disabled, Smart follow, Cinematic motion, 28% safe zone and anchor (0.50, 0.45), matching accepted OBS per-source behavior. |
+| Cadence parity | Latest source frame is retained; camera/presentation is re-composited for every output CFR slot rather than only when WGC publishes a new frame. |
+| Click parity | State/lifetimes come from upstream `ClickVisualState`; shader choreography/colors/timings are ported from pinned `data/effects/arzoom.effect`. |
+| Parity test | `tests/test_arzoom_parity.cpp` compares adapter output frame-for-frame against the pinned upstream engine and checks Cinematic selection/frame-rate stability. Windows compositor tests prove camera transforms advance while the same source texture is retained. |
 
 ## Required entry for every future transplant
 
