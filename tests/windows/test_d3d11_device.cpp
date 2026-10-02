@@ -5,6 +5,7 @@
 #include "platform/windows/storage/recoverable_session.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
 #include "presentation/presentation_controller.hpp"
+#include "presentation/shortcut_visualizer.hpp"
 
 #include <d3d11.h>
 #include <mfapi.h>
@@ -971,6 +972,52 @@ void test_compositor(
     test.expect(
         compositor.resource_generation() == generation,
         "Steady-state render loop creates no new frame resources");
+
+    arssyut::presentation::PresentationFrameState keyboard_state{};
+    keyboard_state.keyboard =
+        arssyut::presentation::build_keyboard_overlay(
+            {
+                arssyut::presentation::ShortcutKey::C,
+                arssyut::presentation::ShortcutCtrl
+            },
+            1);
+    keyboard_state.keyboard.opacity = 1.0f;
+
+    const auto keyboard_generation =
+        compositor.resource_generation();
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {8, 6},
+            &keyboard_state).ok(),
+        "Structured keycap overlay render succeeds");
+
+    keyboard_state.keyboard =
+        arssyut::presentation::build_keyboard_overlay(
+            {
+                arssyut::presentation::ShortcutKey::V,
+                static_cast<std::uint8_t>(
+                    arssyut::presentation::ShortcutCtrl |
+                    arssyut::presentation::ShortcutShift)
+            },
+            2);
+    keyboard_state.keyboard.opacity = 1.0f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {8, 6},
+            &keyboard_state).ok(),
+        "Keycap generation update reuses retained GPU resources");
+
+    test.expect(
+        compositor.resource_generation() == keyboard_generation,
+        "Shortcut changes allocate no new compositor frame resources");
 
     test.expect(
         compositor.render(
