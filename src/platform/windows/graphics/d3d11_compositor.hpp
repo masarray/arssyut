@@ -19,7 +19,6 @@
 
 namespace arssyut::windows {
 
-class CursorShapeCache;
 class D3D11ArVisualSceneAnalyzer;
 
 class D3D11Compositor final {
@@ -35,10 +34,6 @@ public:
     [[nodiscard]] arssyut::core::Status update_source(
         ID3D11DeviceContext *context,
         ID3D11Texture2D *source) noexcept;
-
-    [[nodiscard]] arssyut::core::Status update_cursor_shape(
-        ID3D11DeviceContext *context,
-        HCURSOR cursor) noexcept;
 
     [[nodiscard]] arssyut::core::Status submit_scene_analysis(
         ID3D11DeviceContext *context,
@@ -142,7 +137,6 @@ private:
     Microsoft::WRL::ComPtr<ID3D11PixelShader> pixel_shader_;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler_;
     Microsoft::WRL::ComPtr<ID3D11Buffer> crop_constant_buffer_;
-    std::unique_ptr<CursorShapeCache> cursor_cache_;
     std::unique_ptr<D3D11ArVisualSceneAnalyzer> scene_analyzer_;
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> keyboard_texture_;
