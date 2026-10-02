@@ -4,6 +4,7 @@
 #include "arzoom-click-visual.hpp"
 #include "presentation/arzoom_camera_adapter.hpp"
 #include "presentation/presentation_state.hpp"
+#include "presentation/shortcut.hpp"
 
 #include <cstdint>
 
@@ -14,18 +15,6 @@ struct PresentationSettings {
     bool click_visual = true;
     bool shortcut_keys = true;
     float zoom = 2.0f;
-};
-
-enum ShortcutModifier : std::uint8_t {
-    ShortcutCtrl = 1u << 0,
-    ShortcutShift = 1u << 1,
-    ShortcutAlt = 1u << 2,
-    ShortcutWin = 1u << 3,
-};
-
-struct ShortcutChord {
-    std::uint16_t key = 0;
-    std::uint8_t modifiers = 0;
 };
 
 class PresentationController final {
@@ -62,10 +51,14 @@ private:
     arzoom::ClickVisualState clicks_;
 
     arssyut::core::TimePoint zoom_until_{};
+    arssyut::core::TimePoint keyboard_started_{};
     arssyut::core::TimePoint keyboard_until_{};
+    arssyut::core::TimePoint last_shortcut_time_{};
 
     KeyboardOverlayFrame keyboard_{};
+    ShortcutChord last_shortcut_{};
     std::uint32_t keyboard_generation_ = 0;
+    bool have_last_shortcut_ = false;
     bool emphasis_pending_ = false;
 };
 
