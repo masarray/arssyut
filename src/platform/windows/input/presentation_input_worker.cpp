@@ -236,6 +236,9 @@ void PresentationInputWorker::thread_main() noexcept
         &PresentationInputWorker::keyboard_hook_proc,
         GetModuleHandleW(nullptr),
         0);
+    system_shortcut_hook_active_.store(
+        keyboard_hook_ != nullptr,
+        std::memory_order_release);
 
     publish_pointer_activity();
     SetEvent(ready_event_);
@@ -255,6 +258,9 @@ void PresentationInputWorker::thread_main() noexcept
             keyboard_hook_);
         keyboard_hook_ = nullptr;
     }
+    system_shortcut_hook_active_.store(
+        false,
+        std::memory_order_release);
     hook_owner_ = nullptr;
 
     RAWINPUTDEVICE remove[2] = {
