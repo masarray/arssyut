@@ -1698,7 +1698,8 @@ Status D3D11Compositor::render_retained(
     ID3D11DeviceContext *context,
     CropRect crop,
     FrameSize output_size,
-    const arssyut::presentation::PresentationFrameState *presentation) noexcept
+    const arssyut::presentation::PresentationFrameState *presentation,
+    const arssyut::visual::ArVisualGradeSettings *visual) noexcept
 {
     if (!context || !has_source())
         return Status::failure(StatusCode::InvalidArgument);
@@ -1723,6 +1724,12 @@ Status D3D11Compositor::render_retained(
     arssyut::presentation::PresentationFrameState neutral{};
     const auto &state =
         presentation ? *presentation : neutral;
+
+    const auto grade =
+        arssyut::visual::sanitize(
+            visual
+                ? *visual
+                : arssyut::visual::ArVisualGradeSettings{});
 
     const Status keyboard_status =
         update_keyboard_overlay(
@@ -1863,6 +1870,65 @@ Status D3D11Compositor::render_retained(
         static_cast<float>(
             cursor_shape.hotspot_y);
 
+    constants.arvisual_enabled =
+        grade.enabled ? 1.0f : 0.0f;
+    constants.arvisual_master =
+        grade.master;
+    constants.arvisual_enhance =
+        grade.enhance;
+    constants.arvisual_color_pop =
+        grade.color_pop;
+
+    constants.arvisual_clean_white =
+        grade.clean_white;
+    constants.arvisual_clarity =
+        grade.clarity;
+    constants.arvisual_skin_protect =
+        grade.skin_protect;
+    constants.arvisual_skin_beauty =
+        grade.skin_beauty;
+
+    constants.arvisual_healthy_tone =
+        grade.healthy_tone;
+    constants.arvisual_toy_gloss =
+        grade.toy_gloss;
+    constants.arvisual_depth_pop =
+        grade.depth_pop;
+    constants.arvisual_highlight_guard =
+        grade.highlight_guard;
+
+    constants.arvisual_performance =
+        grade.performance;
+    constants.arvisual_smart_exposure =
+        grade.smart_exposure;
+    constants.arvisual_smart_pop =
+        grade.smart_pop;
+    constants.arvisual_smart_highlight =
+        grade.smart_highlight;
+
+    constants.arvisual_smart_shadow =
+        grade.smart_shadow;
+    constants.arvisual_smart_strength =
+        grade.smart_strength;
+    constants.arvisual_smart_chroma_limit =
+        grade.smart_chroma_limit;
+    constants.arvisual_smart_clean =
+        grade.smart_clean;
+
+    constants.arvisual_smart_separation =
+        grade.smart_separation;
+    constants.arvisual_texel_x =
+        1.0f /
+        std::max(
+            static_cast<float>(source_size.width),
+            1.0f);
+    constants.arvisual_texel_y =
+        1.0f /
+        std::max(
+            static_cast<float>(source_size.height),
+            1.0f);
+    constants.arvisual_reserved = 0.0f;
+
     for (std::size_t i = 0;
          i < state.clicks.size();
          ++i) {
@@ -1954,7 +2020,8 @@ Status D3D11Compositor::render(
     ID3D11Texture2D *source,
     CropRect crop,
     FrameSize output_size,
-    const arssyut::presentation::PresentationFrameState *presentation) noexcept
+    const arssyut::presentation::PresentationFrameState *presentation,
+    const arssyut::visual::ArVisualGradeSettings *visual) noexcept
 {
     const Status update_status =
         update_source(context, source);
@@ -1965,7 +2032,8 @@ Status D3D11Compositor::render(
         context,
         crop,
         output_size,
-        presentation);
+        presentation,
+        visual);
 }
 
 } // namespace arssyut::windows
