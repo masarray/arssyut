@@ -344,6 +344,7 @@ Implemented scope:
 - fixed 64x36 GPU downsample surface;
 - 5 Hz maximum analysis cadence on fresh WGC frames only;
 - exactly two retained staging textures and EVENT queries;
+- asynchronous 5 Hz Flush1 command submission for the headless D3D11 path;
 - DONOTFLUSH readiness polling with map-only-after-ready behavior;
 - safe busy-skip when both staging slots are occupied;
 - pinned ArVisual luma/saturation percentile statistics;
