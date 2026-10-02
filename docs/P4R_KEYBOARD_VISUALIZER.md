@@ -95,7 +95,10 @@ P4R renders compact physical keycaps with retained native resources:
 - restrained border;
 - compact spacing;
 - bottom-center placement;
-- content-sized overlay instead of a fixed 36% screen-wide panel;
+- semantic physical-key sizing rather than text-measured width;
+- 1u letters/digits/symbols/function/Windows keys are square;
+- Ctrl/Alt are 1.25u, Shift/Enter 1.5u, Backspace 2u and Space 3.5u;
+- content-bounded overlay instead of a fixed 36% screen-wide panel;
 - bounded adaptive scale for 720p through 4K output.
 
 The fixed D3D11 texture is updated only when shortcut generation changes.
