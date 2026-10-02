@@ -143,7 +143,6 @@ void key_name(
 void PresentationController::reset() noexcept
 {
     camera_.reset();
-    camera_.set_scene_context(false);
     clicks_.clear();
 
     zoom_until_ = {};
@@ -273,27 +272,21 @@ PresentationFrameState PresentationController::step(
                 now.ticks_100ns + kZoomMotionTailTicks);
     }
 
-    arzoom::CameraInput input;
-    input.dt = std::clamp(dt, 0.0f, 0.10f);
-    input.cursor = {
+    ArZoomCameraIntent intent;
+    intent.dt = std::clamp(dt, 0.0f, 0.10f);
+    intent.cursor = {
         std::clamp(cursor_x, 0.0f, 1.0f),
         std::clamp(cursor_y, 0.0f, 1.0f)
     };
-    input.cursor_valid = cursor_valid;
-    input.zoom_requested =
+    intent.cursor_valid = cursor_valid;
+    intent.zoom_requested =
         settings_.smart_zoom &&
         now.ticks_100ns < zoom_until_.ticks_100ns;
-    input.configured_zoom = settings_.zoom;
-    input.anchor = {0.5f, 0.45f};
-    input.safe_zone = 0.28f;
-    input.follow_policy =
-        arzoom::CameraFollowPolicy::Smart;
-    input.motion_style =
-        arzoom::CameraMotionStyle::Cinematic;
-    input.emphasis_event = emphasis_pending_;
+    intent.configured_zoom = settings_.zoom;
+    intent.emphasis_event = emphasis_pending_;
     emphasis_pending_ = false;
 
-    const auto camera = camera_.step(input);
+    const auto camera = camera_.step(intent);
 
     clicks_.advance(dt);
 
