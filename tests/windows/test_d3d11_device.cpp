@@ -1419,9 +1419,6 @@ void test_arvisual_product_modes(
             arssyut::visual::ArVisualProductMode::
                 VividPresentation);
 
-    const auto generation =
-        compositor.resource_generation();
-
     auto render_pixel =
         [&](const arssyut::visual::ArVisualGradeSettings &grade,
             std::uint32_t &pixel) {
@@ -1453,6 +1450,9 @@ void test_arvisual_product_modes(
             pixel_grade,
             pixel_out),
         "P5C Pixel Accurate output can be inspected");
+
+    const auto generation =
+        compositor.resource_generation();
     test.expect(
         render_pixel(
             clean_grade,
