@@ -394,6 +394,23 @@ Implemented scope:
 
 See `docs/P5C_PRODUCT_MODES.md`.
 
+### P5C.1 — real visual calibration support
+
+Implemented support:
+- output filenames include the selected product-mode slug;
+- diagnostics persist the exact base grade mapping;
+- diagnostics persist the latest completed P5B scene statistics;
+- diagnostics persist the latest adaptive safety state;
+- Windows/WARP tests verify exported scene/adaptive evidence comes from a
+  completed analyzer state;
+- matched-recording protocol isolates color by disabling presentation effects.
+
+Visual calibration itself remains evidence-gated and is not declared complete
+until matched Pixel Accurate / Clean Screen / Vivid Presentation recordings
+have been reviewed.
+
+See `docs/P5C_REAL_VISUAL_CALIBRATION.md`.
+
 ### Gates
 
 Visual test scenes:
