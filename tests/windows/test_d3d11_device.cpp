@@ -55,12 +55,16 @@ Microsoft::WRL::ComPtr<ID3D11Texture2D> create_solid_texture(
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-    std::uint32_t pixels[16]{};
-    for (auto &pixel : pixels)
-        pixel = bgra;
+    if (!device || width == 0 || height == 0)
+        return {};
+
+    std::vector<std::uint32_t> pixels(
+        static_cast<std::size_t>(width) *
+        static_cast<std::size_t>(height),
+        bgra);
 
     D3D11_SUBRESOURCE_DATA initial{};
-    initial.pSysMem = pixels;
+    initial.pSysMem = pixels.data();
     initial.SysMemPitch = width * sizeof(std::uint32_t);
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
@@ -1360,6 +1364,174 @@ void test_arvisual_grade_compositor(
         "P5A grade/bypass changes create no compositor resources");
 }
 
+void test_arvisual_async_scene_analyzer(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t hot_vivid_bgra =
+        0xFFFF1408u;
+
+    auto source =
+        create_solid_texture(
+            owner.device(),
+            64,
+            36,
+            hot_vivid_bgra);
+    test.expect(
+        source != nullptr,
+        "P5B hot-vivid analysis source created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "P5B compositor initializes with optional analyzer");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    test.expect(
+        compositor.scene_analysis_available(),
+        "P5B retained scene-analysis resources are available");
+
+    arssyut::visual::ArVisualGradeSettings static_grade;
+    static_grade.enabled = true;
+    static_grade.smart_auto = false;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 64, 36},
+            {64, 36},
+            nullptr,
+            &static_grade).ok(),
+        "P5B baseline static grade renders");
+
+    std::uint32_t static_pixel = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            18,
+            static_pixel),
+        "P5B baseline static pixel can be inspected");
+
+    test.expect(
+        compositor.update_source(
+            owner.immediate_context(),
+            source.Get()).ok(),
+        "P5B retained source is ready for analysis");
+
+    arssyut::visual::ArVisualGradeSettings smart_grade;
+    smart_grade.enabled = true;
+    smart_grade.smart_auto = true;
+
+    const auto generation =
+        compositor.resource_generation();
+
+    auto now =
+        arssyut::core::MonotonicClock::now();
+
+    test.expect(
+        compositor.submit_scene_analysis(
+            owner.immediate_context(),
+            now,
+            &smart_grade).ok(),
+        "P5B first asynchronous analysis submission succeeds");
+
+    now.ticks_100ns +=
+        arssyut::core::MonotonicClock::
+            ticks_per_second / 5;
+
+    test.expect(
+        compositor.submit_scene_analysis(
+            owner.immediate_context(),
+            now,
+            &smart_grade).ok(),
+        "P5B second staging slot can be queued");
+
+    now.ticks_100ns +=
+        arssyut::core::MonotonicClock::
+            ticks_per_second / 5;
+
+    test.expect(
+        compositor.submit_scene_analysis(
+            owner.immediate_context(),
+            now,
+            &smart_grade).ok(),
+        "P5B saturated staging queue returns without failure");
+
+    test.expect(
+        compositor.scene_analysis_submitted() == 2,
+        "P5B analysis queue remains fixed at two pending slots");
+    test.expect(
+        compositor.scene_analysis_busy_skips() == 1,
+        "P5B busy analysis queue skips instead of waiting or flushing");
+
+    bool completed = false;
+    for (int i = 0; i < 250; ++i) {
+        if (!compositor.render_retained(
+                owner.immediate_context(),
+                {0, 0, 64, 36},
+                {64, 36},
+                nullptr,
+                &smart_grade).ok()) {
+            break;
+        }
+
+        if (compositor.scene_analysis_completed() > 0) {
+            completed = true;
+            break;
+        }
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(1));
+    }
+
+    test.expect(
+        completed,
+        "P5B read-later staging completes after nonblocking GPU submission");
+    test.expect(
+        compositor.scene_analysis_map_failures() == 0,
+        "P5B ready staging surfaces map without failure");
+
+    test.expect(
+        compositor.render_retained(
+            owner.immediate_context(),
+            {0, 0, 64, 36},
+            {64, 36},
+            nullptr,
+            &smart_grade).ok(),
+        "P5B latest adaptive state renders after read-later completion");
+
+    std::uint32_t smart_pixel = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            18,
+            smart_pixel),
+        "P5B adaptive pixel can be inspected");
+
+    test.expect(
+        smart_pixel != static_pixel,
+        "P5B hot-vivid scene materially changes the P5A adaptive grade");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "P5B analysis cadence creates no compositor frame resources");
+}
+
 void test_keyboard_overlay_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -1615,6 +1787,7 @@ int main()
     test_single_ring_click_compositor(test, device);
     test_custom_cursor_compositor(test, device);
     test_arvisual_grade_compositor(test, device);
+    test_arvisual_async_scene_analyzer(test, device);
     test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
 

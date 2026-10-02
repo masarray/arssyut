@@ -98,6 +98,15 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
         have_source_ = true;
         updated_source = true;
         last_source_sequence_ = lease->sequence;
+
+        // Smart Auto analysis is submitted only when a fresh WGC frame
+        // arrives. The analyzer itself enforces low cadence and never waits
+        // for either staging slot; static retained desktops need no repeated
+        // analysis work.
+        (void)compositor_->submit_scene_analysis(
+            context,
+            now,
+            visual);
     }
 
     VideoSlotResult result;

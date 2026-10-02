@@ -4,6 +4,7 @@
 
 #include "core/time/monotonic_clock.hpp"
 #include "platform/windows/graphics/cursor_shape_cache.hpp"
+#include "platform/windows/graphics/d3d11_arvisual_scene_analyzer.hpp"
 
 #include <d3dcompiler.h>
 
@@ -1056,6 +1057,17 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
     cursor_cache_ =
         std::move(cursor_result).value();
 
+    // P5B analysis is optional infrastructure. If its resources cannot be
+    // created, the P5A static grade remains fully usable with neutral
+    // adaptive inputs; recording must not fail because Smart Auto is absent.
+    auto analyzer_result =
+        D3D11ArVisualSceneAnalyzer::create(
+            device_.Get());
+    if (analyzer_result) {
+        scene_analyzer_ =
+            std::move(analyzer_result).value();
+    }
+
     for (auto &slot : gpu_queries_) {
         D3D11_QUERY_DESC disjoint_desc{};
         disjoint_desc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
@@ -1679,6 +1691,30 @@ Status D3D11Compositor::update_cursor_shape(
         cursor);
 }
 
+Status D3D11Compositor::submit_scene_analysis(
+    ID3D11DeviceContext *context,
+    TimePoint now,
+    const arssyut::visual::ArVisualGradeSettings *visual) noexcept
+{
+    if (!context) {
+        return Status::failure(
+            StatusCode::InvalidArgument);
+    }
+
+    if (!visual ||
+        !visual->enabled ||
+        !visual->smart_auto ||
+        !scene_analyzer_ ||
+        !input_srv_) {
+        return Status::success();
+    }
+
+    return scene_analyzer_->submit_if_due(
+        context,
+        input_srv_.Get(),
+        now);
+}
+
 Status D3D11Compositor::update_source(
     ID3D11DeviceContext *context,
     ID3D11Texture2D *source) noexcept
@@ -1725,11 +1761,20 @@ Status D3D11Compositor::render_retained(
     const auto &state =
         presentation ? *presentation : neutral;
 
-    const auto grade =
+    auto grade =
         arssyut::visual::sanitize(
             visual
                 ? *visual
                 : arssyut::visual::ArVisualGradeSettings{});
+
+    if (grade.enabled &&
+        grade.smart_auto &&
+        scene_analyzer_) {
+        scene_analyzer_->poll_nonblocking(
+            context);
+        (void)scene_analyzer_->apply_latest(
+            grade);
+    }
 
     const Status keyboard_status =
         update_keyboard_overlay(
@@ -2013,6 +2058,39 @@ Status D3D11Compositor::render_retained(
         elapsed_microseconds(started, MonotonicClock::now()));
 
     return Status::success();
+}
+
+bool D3D11Compositor::scene_analysis_available() const noexcept
+{
+    return scene_analyzer_ != nullptr;
+}
+
+std::uint64_t D3D11Compositor::scene_analysis_submitted() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->submitted()
+        : 0;
+}
+
+std::uint64_t D3D11Compositor::scene_analysis_completed() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->completed()
+        : 0;
+}
+
+std::uint64_t D3D11Compositor::scene_analysis_busy_skips() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->busy_skips()
+        : 0;
+}
+
+std::uint64_t D3D11Compositor::scene_analysis_map_failures() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->map_failures()
+        : 0;
 }
 
 Status D3D11Compositor::render(

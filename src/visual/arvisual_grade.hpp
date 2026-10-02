@@ -5,15 +5,16 @@
 namespace arssyut::visual {
 
 /*
- * P5A standalone ArVisual grading contract.
+ * Standalone ArVisual grading contract.
  *
- * Defaults intentionally preserve the validated upstream v0.5.9 base tuning,
- * while enabled=false keeps Arssyut Pixel Accurate by default. P5B owns
- * asynchronous scene analysis; until then adaptive inputs stay at the exact
- * neutral values expected by the upstream shader.
+ * Defaults preserve the validated upstream v0.5.9 base tuning.
+ * enabled=false keeps Arssyut Pixel Accurate by default. P5B owns
+ * asynchronous scene analysis when smart_auto=true; if analysis has not
+ * produced a sample yet, the adaptive values below remain neutral.
  */
 struct ArVisualGradeSettings {
     bool enabled = false;
+    bool smart_auto = true;
 
     float master = 1.0f;
     float enhance = 0.78f;
