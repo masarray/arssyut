@@ -56,7 +56,8 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
     arssyut::core::TimePoint now,
     arssyut::core::CropRect crop,
     arssyut::core::FrameSize output_size,
-    const arssyut::presentation::PresentationFrameState *presentation) noexcept
+    const arssyut::presentation::PresentationFrameState *presentation,
+    const arssyut::visual::ArVisualGradeSettings *visual) noexcept
 {
     if (!context || !frame_slot_ || !diagnostics_ || !compositor_) {
         return Result<VideoSlotResult>::failure(
@@ -121,7 +122,8 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
             context,
             crop,
             output_size,
-            presentation);
+            presentation,
+            visual);
     if (!render_status.ok()) {
         return Result<VideoSlotResult>::failure(
             render_status);
