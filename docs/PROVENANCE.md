@@ -48,7 +48,7 @@ ownership, tests, and build/CI files.
 | Adaptation | **None in vendored files.** Arssyut integration is isolated in `src/presentation/arzoom_camera_adapter.hpp` and recorder/compositor glue. The earlier namespace-adapted copies under `src/presentation/arzoom` were removed during P3R. |
 | Camera parity | Per-source recorder path uses upstream `PresenterAwareSmartCamera` with scene context disabled, Smart follow, Cinematic motion, 28% safe zone and anchor (0.50, 0.45), matching accepted OBS per-source behavior. |
 | Cadence parity | Latest source frame is retained; camera/presentation is re-composited for every output CFR slot rather than only when WGC publishes a new frame. |
-| Click parity | State/lifetimes come from upstream `ClickVisualState`; shader choreography/colors/timings are ported from pinned `data/effects/arzoom.effect`. |
+| Click projection | Content anchoring remains on the same ArZoom camera transform. After direct visual validation on 2026-10-02, click lifetime/appearance intentionally became an Arssyut product skin (bounded local slots + single analytic ring); this no longer claims visual parity with `arzoom.effect`. |
 | Parity test | `tests/test_arzoom_parity.cpp` compares adapter output frame-for-frame against the pinned upstream engine and checks Cinematic selection/frame-rate stability. Windows compositor tests prove camera transforms advance while the same source texture is retained. |
 
 ## Required entry for every future transplant
