@@ -218,7 +218,7 @@ struct AppWindow {
     wchar_t filename[192]{};
     swprintf_s(
         filename,
-        L"Arssyut-%04u%02u%02u-%02u%02u%02u-%s.mp4",
+        L"Arssyut-%04u%02u%02u-%02u%02u%02u-%ls.mp4",
         time.wYear,
         time.wMonth,
         time.wDay,
