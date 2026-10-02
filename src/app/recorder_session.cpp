@@ -278,6 +278,9 @@ Status RecorderSession::start(
     system_shortcut_hook_active_.store(
         false,
         std::memory_order_release);
+    visual_analysis_available_.store(
+        false,
+        std::memory_order_release);
     visual_analysis_submitted_.store(
         0,
         std::memory_order_release);
@@ -378,6 +381,9 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
         system_shortcut_hook_active_.load(
             std::memory_order_relaxed);
 
+    result.visual_analysis_available =
+        visual_analysis_available_.load(
+            std::memory_order_relaxed);
     result.visual_analysis_submitted =
         visual_analysis_submitted_.load(
             std::memory_order_relaxed);
@@ -497,6 +503,11 @@ void RecorderSession::worker_main() noexcept
 
     auto pipeline =
         std::move(pipeline_result).value();
+
+    visual_analysis_available_.store(
+        pipeline->compositor().
+            scene_analysis_available(),
+        std::memory_order_release);
 
     MfH264Mp4Writer writer;
     MfVideoWriterConfig writer_config;
@@ -1124,6 +1135,9 @@ void RecorderSession::write_diagnostics(
             << ",\n"
             << "  \"arvisual_smart_auto\": "
             << (config_.visual.smart_auto ? "true" : "false")
+            << ",\n"
+            << "  \"visual_analysis_available\": "
+            << (snapshot_value.visual_analysis_available ? "true" : "false")
             << ",\n"
             << "  \"visual_analysis_submitted\": "
             << snapshot_value.visual_analysis_submitted << ",\n"
