@@ -133,9 +133,9 @@ private:
         std::uint64_t writer_submitted,
         std::uint64_t writer_backpressure,
         std::uint64_t resource_generation,
-        bool visual_analysis_primed,
-        const arssyut::visual::ArVisualSceneStats &visual_scene_stats,
-        const arssyut::visual::ArVisualAdaptiveState &visual_adaptive) noexcept;
+        bool visual_analysis_primed = false,
+        arssyut::visual::ArVisualSceneStats visual_scene_stats = {},
+        arssyut::visual::ArVisualAdaptiveState visual_adaptive = {}) noexcept;
 
     RecorderConfig config_{};
     std::thread worker_;
