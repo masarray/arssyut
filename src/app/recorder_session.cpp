@@ -278,6 +278,18 @@ Status RecorderSession::start(
     system_shortcut_hook_active_.store(
         false,
         std::memory_order_release);
+    visual_analysis_submitted_.store(
+        0,
+        std::memory_order_release);
+    visual_analysis_completed_.store(
+        0,
+        std::memory_order_release);
+    visual_analysis_busy_skips_.store(
+        0,
+        std::memory_order_release);
+    visual_analysis_map_failures_.store(
+        0,
+        std::memory_order_release);
     state_.store(
         RecorderState::Preparing,
         std::memory_order_release);
@@ -365,6 +377,20 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
     result.system_shortcut_hook_active =
         system_shortcut_hook_active_.load(
             std::memory_order_relaxed);
+
+    result.visual_analysis_submitted =
+        visual_analysis_submitted_.load(
+            std::memory_order_relaxed);
+    result.visual_analysis_completed =
+        visual_analysis_completed_.load(
+            std::memory_order_relaxed);
+    result.visual_analysis_busy_skips =
+        visual_analysis_busy_skips_.load(
+            std::memory_order_relaxed);
+    result.visual_analysis_map_failures =
+        visual_analysis_map_failures_.load(
+            std::memory_order_relaxed);
+
     result.encoder_sample_buffer_length =
         encoder_sample_buffer_length_.load(
             std::memory_order_relaxed);
@@ -911,6 +937,23 @@ void RecorderSession::worker_main() noexcept
                 presentation_input.system_shortcut_hook_active(),
                 std::memory_order_relaxed);
 
+            visual_analysis_submitted_.store(
+                pipeline->compositor().
+                    scene_analysis_submitted(),
+                std::memory_order_relaxed);
+            visual_analysis_completed_.store(
+                pipeline->compositor().
+                    scene_analysis_completed(),
+                std::memory_order_relaxed);
+            visual_analysis_busy_skips_.store(
+                pipeline->compositor().
+                    scene_analysis_busy_skips(),
+                std::memory_order_relaxed);
+            visual_analysis_map_failures_.store(
+                pipeline->compositor().
+                    scene_analysis_map_failures(),
+                std::memory_order_relaxed);
+
             const std::uint64_t current_memory =
                 private_bytes();
             memory_private_bytes_.store(
@@ -940,6 +983,23 @@ void RecorderSession::worker_main() noexcept
         std::memory_order_relaxed);
     system_shortcut_hook_active_.store(
         presentation_input.system_shortcut_hook_active(),
+        std::memory_order_relaxed);
+
+    visual_analysis_submitted_.store(
+        pipeline->compositor().
+            scene_analysis_submitted(),
+        std::memory_order_relaxed);
+    visual_analysis_completed_.store(
+        pipeline->compositor().
+            scene_analysis_completed(),
+        std::memory_order_relaxed);
+    visual_analysis_busy_skips_.store(
+        pipeline->compositor().
+            scene_analysis_busy_skips(),
+        std::memory_order_relaxed);
+    visual_analysis_map_failures_.store(
+        pipeline->compositor().
+            scene_analysis_map_failures(),
         std::memory_order_relaxed);
 
     presentation_input.stop();
@@ -1062,6 +1122,17 @@ void RecorderSession::write_diagnostics(
             << "  \"arvisual_enabled\": "
             << (config_.visual.enabled ? "true" : "false")
             << ",\n"
+            << "  \"arvisual_smart_auto\": "
+            << (config_.visual.smart_auto ? "true" : "false")
+            << ",\n"
+            << "  \"visual_analysis_submitted\": "
+            << snapshot_value.visual_analysis_submitted << ",\n"
+            << "  \"visual_analysis_completed\": "
+            << snapshot_value.visual_analysis_completed << ",\n"
+            << "  \"visual_analysis_busy_skips\": "
+            << snapshot_value.visual_analysis_busy_skips << ",\n"
+            << "  \"visual_analysis_map_failures\": "
+            << snapshot_value.visual_analysis_map_failures << ",\n"
             << "  \"elapsed_ticks_100ns\": "
             << snapshot_value.elapsed_ticks << ",\n"
             << "  \"capture_received\": "
