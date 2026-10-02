@@ -48,7 +48,7 @@ enum ControlId : int {
     IdSmartZoom,
     IdClickVisual,
     IdShortcutKeys,
-    IdArVisual,
+    IdVisualMode,
 };
 
 struct AppWindow {
@@ -80,7 +80,7 @@ struct AppWindow {
     HWND zoom_checkbox = nullptr;
     HWND click_checkbox = nullptr;
     HWND keys_checkbox = nullptr;
-    HWND visual_checkbox = nullptr;
+    HWND visual_mode_combo = nullptr;
 
     HFONT title_font = nullptr;
     HFONT normal_font = nullptr;
@@ -361,7 +361,7 @@ void layout_idle(AppWindow &app)
     show(app.zoom_checkbox, true);
     show(app.click_checkbox, true);
     show(app.keys_checkbox, true);
-    show(app.visual_checkbox, true);
+    show(app.visual_mode_combo, true);
 
     move(app.title_text, 22, 12, 260, 28);
     move(app.subtitle_text, 22, 39, 420, 20);
@@ -381,12 +381,12 @@ void layout_idle(AppWindow &app)
 
     move(app.record_button, 695, 69, 96, 96);
 
-    move(app.status_text, 32, 190, 220, 24);
-    move(app.zoom_checkbox, 270, 188, 112, 26);
-    move(app.click_checkbox, 386, 188, 94, 26);
-    move(app.keys_checkbox, 484, 188, 78, 26);
-    move(app.visual_checkbox, 562, 188, 106, 26);
-    move(app.timer_text, 676, 190, 104, 24);
+    move(app.status_text, 32, 190, 198, 24);
+    move(app.zoom_checkbox, 236, 188, 108, 26);
+    move(app.click_checkbox, 348, 188, 84, 26);
+    move(app.keys_checkbox, 436, 188, 70, 26);
+    move(app.visual_mode_combo, 512, 185, 158, 120);
+    move(app.timer_text, 680, 190, 100, 24);
     move(app.metrics_text, 32, 216, 515, 22);
     move(app.output_text, 32, 239, 510, 20);
     move(app.open_button, 560, 216, 106, 34);
@@ -439,7 +439,7 @@ void layout_recording(AppWindow &app)
     show(app.zoom_checkbox, false);
     show(app.click_checkbox, false);
     show(app.keys_checkbox, false);
-    show(app.visual_checkbox, false);
+    show(app.visual_mode_combo, false);
 
     move(app.status_text, 28, 27, 92, 28);
     move(app.timer_text, 118, 23, 102, 34);
@@ -486,7 +486,7 @@ void set_recording_controls(
     EnableWindow(app.zoom_checkbox, !recording);
     EnableWindow(app.click_checkbox, !recording);
     EnableWindow(app.keys_checkbox, !recording);
-    EnableWindow(app.visual_checkbox, !recording);
+    EnableWindow(app.visual_mode_combo, !recording);
     EnableWindow(app.record_button, TRUE);
 
     InvalidateRect(app.record_button, nullptr, TRUE);
@@ -559,12 +559,24 @@ void start_recording(AppWindow &app)
             0) == BST_CHECKED;
     config.presentation.zoom = 2.0f;
 
-    config.visual.enabled =
-        SendMessageW(
-            app.visual_checkbox,
-            BM_GETCHECK,
-            0,
-            0) == BST_CHECKED;
+    const int visual_selection =
+        static_cast<int>(
+            SendMessageW(
+                app.visual_mode_combo,
+                CB_GETCURSEL,
+                0,
+                0));
+
+    if (visual_selection == 1) {
+        config.visual_mode =
+            arssyut::visual::ArVisualProductMode::CleanScreen;
+    } else if (visual_selection == 2) {
+        config.visual_mode =
+            arssyut::visual::ArVisualProductMode::VividPresentation;
+    } else {
+        config.visual_mode =
+            arssyut::visual::ArVisualProductMode::PixelAccurate;
+    }
 
     auto session =
         std::make_unique<RecorderSession>();
@@ -1202,24 +1214,42 @@ LRESULT CALLBACK window_proc(
             BST_CHECKED,
             0);
 
-        app->visual_checkbox =
+        app->visual_mode_combo =
             CreateWindowExW(
                 0,
-                L"BUTTON",
-                L"ArVisual",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP |
-                    BS_AUTOCHECKBOX,
-                562, 188, 106, 26,
+                WC_COMBOBOXW,
+                L"",
+                WS_CHILD |
+                    WS_VISIBLE |
+                    WS_TABSTOP |
+                    CBS_DROPDOWNLIST,
+                512, 185, 158, 120,
                 window,
-                reinterpret_cast<HMENU>(IdArVisual),
+                reinterpret_cast<HMENU>(IdVisualMode),
                 GetModuleHandleW(nullptr),
                 nullptr);
-        set_font(app->visual_checkbox, app->tiny_font);
-        apply_dark_theme(app->visual_checkbox);
+        set_font(app->visual_mode_combo, app->tiny_font);
+        apply_dark_theme(app->visual_mode_combo);
+
         SendMessageW(
-            app->visual_checkbox,
-            BM_SETCHECK,
-            BST_UNCHECKED,
+            app->visual_mode_combo,
+            CB_ADDSTRING,
+            0,
+            reinterpret_cast<LPARAM>(L"Pixel Accurate"));
+        SendMessageW(
+            app->visual_mode_combo,
+            CB_ADDSTRING,
+            0,
+            reinterpret_cast<LPARAM>(L"Clean Screen"));
+        SendMessageW(
+            app->visual_mode_combo,
+            CB_ADDSTRING,
+            0,
+            reinterpret_cast<LPARAM>(L"Vivid Presentation"));
+        SendMessageW(
+            app->visual_mode_combo,
+            CB_SETCURSEL,
+            0,
             0);
 
         refresh_sources(*app);
