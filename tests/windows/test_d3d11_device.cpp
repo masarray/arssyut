@@ -359,7 +359,10 @@ void test_presentation_controller(TestContext &test)
     ShortcutChord chord;
     chord.key = ShortcutKey::C;
     chord.modifiers = ShortcutCtrl;
-    controller.on_shortcut(chord, now);
+    const TimePoint first_shortcut_time = now;
+    controller.on_shortcut(
+        chord,
+        first_shortcut_time);
 
     now.ticks_100ns +=
         arssyut::core::MonotonicClock::ticks_per_second / 20;
@@ -389,8 +392,8 @@ void test_presentation_controller(TestContext &test)
         frame.keyboard.generation;
 
     TimePoint duplicate_time{
-        now.ticks_100ns +
-        arssyut::core::MonotonicClock::ticks_per_second / 25
+        first_shortcut_time.ticks_100ns +
+        arssyut::core::MonotonicClock::ticks_per_second * 6 / 100
     };
     controller.on_shortcut(
         chord,
