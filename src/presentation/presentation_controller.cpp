@@ -4,6 +4,7 @@
 #include "presentation/shortcut_visualizer.hpp"
 
 #include <cmath>
+#include <limits>
 
 namespace arssyut::presentation {
 
@@ -35,7 +36,8 @@ constexpr std::int64_t kShortcutCoalesceTicks =
 void PresentationController::reset() noexcept
 {
     camera_.reset();
-    clicks_.clear();
+    clicks_ = {};
+    click_generation_ = 0;
 
     zoom_until_ = {};
     keyboard_started_ = {};
@@ -55,6 +57,47 @@ void PresentationController::set_settings(
     settings_ = settings;
 }
 
+void PresentationController::push_click(
+    ClickKind kind,
+    float content_x,
+    float content_y) noexcept
+{
+    if (kind == ClickKind::None)
+        return;
+
+    std::size_t target = clicks_.size();
+    std::uint32_t oldest_generation =
+        std::numeric_limits<std::uint32_t>::max();
+
+    for (std::size_t i = 0; i < clicks_.size(); ++i) {
+        if (!clicks_[i].active()) {
+            target = i;
+            break;
+        }
+
+        if (clicks_[i].generation < oldest_generation) {
+            oldest_generation = clicks_[i].generation;
+            target = i;
+        }
+    }
+
+    if (target >= clicks_.size())
+        target = 0;
+
+    ++click_generation_;
+    if (click_generation_ == 0)
+        click_generation_ = 1;
+
+    auto &pulse = clicks_[target];
+    pulse.kind = kind;
+    pulse.content_x =
+        std::clamp(content_x, 0.0f, 1.0f);
+    pulse.content_y =
+        std::clamp(content_y, 0.0f, 1.0f);
+    pulse.age_seconds = 0.0f;
+    pulse.generation = click_generation_;
+}
+
 void PresentationController::on_click(
     ClickKind kind,
     float content_x,
@@ -62,25 +105,10 @@ void PresentationController::on_click(
     arssyut::core::TimePoint time) noexcept
 {
     if (settings_.click_visual) {
-        arzoom::ClickType type = arzoom::ClickType::None;
-        switch (kind) {
-        case ClickKind::Left:
-            type = arzoom::ClickType::Left;
-            break;
-        case ClickKind::Right:
-            type = arzoom::ClickType::Right;
-            break;
-        case ClickKind::Middle:
-            type = arzoom::ClickType::Middle;
-            break;
-        case ClickKind::None:
-        default:
-            break;
-        }
-
-        clicks_.push(
-            type,
-            {content_x, content_y});
+        push_click(
+            kind,
+            content_x,
+            content_y);
     }
 
     if (settings_.smart_zoom) {
@@ -175,7 +203,26 @@ PresentationFrameState PresentationController::step(
 
     const auto camera = camera_.step(intent);
 
-    clicks_.advance(dt);
+    constexpr float kLeftClickLifetime = 0.64f;
+    constexpr float kRightClickLifetime = 0.66f;
+    constexpr float kMiddleClickLifetime = 0.58f;
+
+    for (auto &pulse : clicks_) {
+        if (!pulse.active())
+            continue;
+
+        pulse.age_seconds +=
+            std::max(dt, 0.0f);
+
+        float lifetime = kLeftClickLifetime;
+        if (pulse.kind == ClickKind::Right)
+            lifetime = kRightClickLifetime;
+        else if (pulse.kind == ClickKind::Middle)
+            lifetime = kMiddleClickLifetime;
+
+        if (pulse.age_seconds >= lifetime)
+            pulse = {};
+    }
 
     PresentationFrameState result;
     result.camera_center_x = camera.center.x;
@@ -183,34 +230,24 @@ PresentationFrameState PresentationController::step(
     result.camera_zoom = camera.zoom;
 
     for (std::size_t i = 0;
-         i < arzoom::ClickVisualState::kSlotCount;
+         i < clicks_.size();
          ++i) {
-        const auto &event = clicks_.slot(i);
-        if (!event.active())
+        const auto &pulse = clicks_[i];
+        if (!pulse.active())
             continue;
 
         auto &out = result.clicks[i];
-        out.content_x = event.content_position.x;
-        out.content_y = event.content_position.y;
-        out.age_seconds = event.age_seconds;
-        out.lifetime_seconds =
-            arzoom::click_lifetime_seconds(event.type);
+        out.content_x = pulse.content_x;
+        out.content_y = pulse.content_y;
+        out.age_seconds = pulse.age_seconds;
+        out.kind = pulse.kind;
 
-        switch (event.type) {
-        case arzoom::ClickType::Left:
-            out.kind = ClickKind::Left;
-            break;
-        case arzoom::ClickType::Right:
-            out.kind = ClickKind::Right;
-            break;
-        case arzoom::ClickType::Middle:
-            out.kind = ClickKind::Middle;
-            break;
-        case arzoom::ClickType::None:
-        default:
-            out.kind = ClickKind::None;
-            break;
-        }
+        if (pulse.kind == ClickKind::Right)
+            out.lifetime_seconds = kRightClickLifetime;
+        else if (pulse.kind == ClickKind::Middle)
+            out.lifetime_seconds = kMiddleClickLifetime;
+        else
+            out.lifetime_seconds = kLeftClickLifetime;
     }
 
     if (settings_.shortcut_keys &&
