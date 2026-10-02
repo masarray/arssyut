@@ -75,7 +75,7 @@ ownership, tests, and build/CI files.
 | License | GPL-2.0-or-later |
 | Adaptation | OBS texrender/stagesurface staging is replaced by a retained D3D11 64x36 render target, two staging textures and two EVENT queries. Readback is polled with DONOTFLUSH and mapped only after readiness. Upstream statistics/adaptive formulas and 0.65 s EMA are preserved; EMA dt is scene-sample elapsed time because Arssyut intentionally analyzes at 5 Hz. |
 | Failure policy | Analyzer unavailability/readback failure does not fail recording; P5A static grade or last valid adaptive values continue. |
-| Parity/safety test | Portable tests cover neutral/hot-vivid/dark/EMA/exclusion behavior. Windows WARP tests cover two-slot backpressure, no explicit Flush, read-later completion, adaptive grade effect, and resource stability. |
+| Parity/safety test | Portable tests cover neutral/hot-vivid/dark/EMA/exclusion behavior. Windows WARP tests cover two-slot backpressure, asynchronous headless Flush1 submission, DONOTFLUSH read-later completion, adaptive grade effect, and resource stability. |
 
 ## Required entry for every future transplant
 
