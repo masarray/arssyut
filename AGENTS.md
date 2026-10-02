@@ -344,6 +344,30 @@ After Smart Auto analysis is introduced:
 - no analysis implementation may introduce a synchronous full-frame
   GPU-to-CPU readback.
 
+### P5C product-mode lock
+
+The public ArVisual control surface exposes exactly three product modes:
+
+- Pixel Accurate;
+- Clean Screen;
+- Vivid Presentation.
+
+Rules:
+
+- Pixel Accurate remains the default and must disable both grading and Smart
+  Auto analysis;
+- Clean Screen and Vivid Presentation are parameter mappings into the existing
+  P5A/P5B engine, never separate shaders or color engines;
+- recorder-session start canonicalizes the internal grade from the selected
+  product mode so callers cannot create undocumented hybrid presets;
+- Clean Screen must remain materially more conservative than Vivid
+  Presentation for color pop, beauty, gloss and depth;
+- Vivid Presentation retains the pinned P5A v0.5.9 creative defaults unless a
+  separately validated future milestone deliberately changes them;
+- mode switching changes constants/configuration only. It must not allocate
+  compositor textures, staging surfaces, render targets or shader resources;
+- diagnostics must persist a stable machine-readable product-mode name.
+
 ---
 
 ## 11. Input visualization and privacy contract
