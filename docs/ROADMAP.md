@@ -243,9 +243,22 @@ Port bounded click slots and content-anchored projection.
 
 The initial shortcut path is replaced by a structured semantic chord model and
 content-sized physical-keycap renderer. P4R removes formatted shortcut strings
-from runtime state, keeps ordinary typing private, retains GDI/GPU resources,
-and uses Raw Input as the primary global source without adding an unproven hook
-fallback.
+from runtime state, keeps ordinary typing private, and retains GDI/GPU
+resources.
+
+### P4R.1 — direct-validation polish
+
+A real 1080p60 recording on 2026-10-02 demonstrated that Win+R could execute
+without producing an overlay, modifier keycaps should use one white visual
+language, and the P3R dual-ring click skin was less satisfying than the earlier
+single-ring direction.
+
+P4R.1 therefore:
+- keeps Raw Input primary and adds a narrow Windows-key low-level hook
+  supplement with semantic dedupe;
+- makes every keycap white/light and renders the Windows modifier as a logo;
+- changes click feedback to one larger adaptive ring with smooth fade;
+- adds diagnostics for hook availability and presentation-input overflow.
 
 See `docs/P4R_KEYBOARD_VISUALIZER.md`.
 
