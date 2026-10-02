@@ -1,11 +1,11 @@
 #pragma once
 
 #include "core/time/monotonic_clock.hpp"
-#include "arzoom-click-visual.hpp"
 #include "presentation/arzoom_camera_adapter.hpp"
 #include "presentation/presentation_state.hpp"
 #include "presentation/shortcut.hpp"
 
+#include <array>
 #include <cstdint>
 
 namespace arssyut::presentation {
@@ -42,13 +42,31 @@ public:
         arssyut::core::TimePoint last_pointer_activity) noexcept;
 
 private:
+    struct ClickPulse {
+        ClickKind kind = ClickKind::None;
+        float content_x = 0.5f;
+        float content_y = 0.5f;
+        float age_seconds = 0.0f;
+        std::uint32_t generation = 0;
+
+        [[nodiscard]] bool active() const noexcept
+        {
+            return kind != ClickKind::None;
+        }
+    };
+
     void update_keyboard(
         ShortcutChord chord) noexcept;
+    void push_click(
+        ClickKind kind,
+        float content_x,
+        float content_y) noexcept;
 
     PresentationSettings settings_{};
 
     ArZoomCameraAdapter camera_;
-    arzoom::ClickVisualState clicks_;
+    std::array<ClickPulse, 4> clicks_{};
+    std::uint32_t click_generation_ = 0;
 
     arssyut::core::TimePoint zoom_until_{};
     arssyut::core::TimePoint keyboard_started_{};

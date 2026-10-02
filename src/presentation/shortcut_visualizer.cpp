@@ -37,33 +37,31 @@ void copy_label(
     destination[count] = L'\0';
 }
 
-void set_label(
+void set_keycap(
     KeycapFrame &keycap,
     const wchar_t *label,
-    KeycapTone tone) noexcept
+    KeycapGlyph glyph) noexcept
 {
     keycap.label.fill(L'\0');
     copy_label(
         keycap.label.data(),
         keycap.label.size(),
         label);
-    keycap.tone = tone;
+    keycap.glyph = glyph;
 }
 
 bool append_keycap(
     KeyboardOverlayFrame &frame,
     const wchar_t *label,
-    KeycapTone tone) noexcept
+    KeycapGlyph glyph = KeycapGlyph::Text) noexcept
 {
-    if (!label ||
-        frame.keycap_count >= frame.keycaps.size()) {
+    if (frame.keycap_count >= frame.keycaps.size())
         return false;
-    }
 
-    set_label(
+    set_keycap(
         frame.keycaps[frame.keycap_count],
         label,
-        tone);
+        glyph);
     ++frame.keycap_count;
     return true;
 }
@@ -267,13 +265,16 @@ KeyboardOverlayFrame build_keyboard_overlay(
         return frame;
 
     if ((chord.modifiers & ShortcutCtrl) != 0)
-        append_keycap(frame, L"Ctrl", KeycapTone::Dark);
+        append_keycap(frame, L"Ctrl");
     if ((chord.modifiers & ShortcutShift) != 0)
-        append_keycap(frame, L"Shift", KeycapTone::Dark);
+        append_keycap(frame, L"Shift");
     if ((chord.modifiers & ShortcutAlt) != 0)
-        append_keycap(frame, L"Alt", KeycapTone::Dark);
+        append_keycap(frame, L"Alt");
     if ((chord.modifiers & ShortcutWin) != 0)
-        append_keycap(frame, L"Win", KeycapTone::Dark);
+        append_keycap(
+            frame,
+            L"",
+            KeycapGlyph::WindowsLogo);
 
     wchar_t label[16]{};
     if (!shortcut_key_label(
@@ -287,8 +288,7 @@ KeyboardOverlayFrame build_keyboard_overlay(
 
     append_keycap(
         frame,
-        label,
-        KeycapTone::Light);
+        label);
 
     return frame;
 }

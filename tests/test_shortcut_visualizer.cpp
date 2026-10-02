@@ -88,16 +88,21 @@ void test_canonical_keycaps(TestContext &test)
     test.expect(
         label(frame.keycaps[0]) == L"Ctrl" &&
         label(frame.keycaps[1]) == L"Shift" &&
-        label(frame.keycaps[2]) == L"Win" &&
+        frame.keycaps[2].glyph == KeycapGlyph::WindowsLogo &&
+        label(frame.keycaps[2]).empty() &&
         label(frame.keycaps[3]) == L"S",
-        "Modifier order is canonical");
+        "Modifier order is canonical and Windows uses a logo glyph");
 
+    bool all_text_or_windows_logo = true;
+    for (std::size_t i = 0; i < frame.keycap_count; ++i) {
+        all_text_or_windows_logo =
+            all_text_or_windows_logo &&
+            (frame.keycaps[i].glyph == KeycapGlyph::Text ||
+             frame.keycaps[i].glyph == KeycapGlyph::WindowsLogo);
+    }
     test.expect(
-        frame.keycaps[0].tone == KeycapTone::Dark &&
-        frame.keycaps[1].tone == KeycapTone::Dark &&
-        frame.keycaps[2].tone == KeycapTone::Dark &&
-        frame.keycaps[3].tone == KeycapTone::Light,
-        "Modifiers and action key preserve reference tone roles");
+        all_text_or_windows_logo,
+        "Keycaps use one uniform light surface language");
 
     const auto maximum =
         build_keyboard_overlay(

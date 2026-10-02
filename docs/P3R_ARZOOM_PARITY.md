@@ -82,24 +82,28 @@ when the captured desktop changes less frequently.
 No extra full-frame CPU copy is introduced. The retained source is a D3D11
 texture and no per-output-frame texture is created.
 
-## Click parity
+## Click projection and product skin
 
-The bounded click event model remains the upstream `ClickVisualState`.
+P3R camera parity remains pinned to upstream ArZoom. Click positions still use
+the same content coordinates and camera center/zoom projection, so click
+feedback cannot drift away from the object being demonstrated.
 
-The shader now preserves the pinned ArZoom appearance:
+After direct visual validation on 2026-10-02, the upstream dual-ring appearance
+was intentionally replaced by the Arssyut product skin:
 
-- quintic minimum-jerk expansion;
-- output-pixel-constant ring geometry;
-- two staggered analytic rings;
-- restrained halo;
-- bright-surface support;
-- Left: Azure + Aqua;
-- Right: Violet + Orchid;
-- Middle: Amber + Gold;
-- upstream event lifetimes.
+- one analytic ring;
+- larger grow radius for presentation visibility;
+- smooth ease-out expansion;
+- longer bounded fade;
+- adaptive 1080p/4K pixel scale;
+- Left: electric sky blue;
+- Right: vivid rose;
+- Middle: warm amber;
+- no center dot and no second ring.
 
-Click positions stay in content coordinates and are projected with the same
-camera center/zoom used to render the source.
+The click state remains fixed-capacity and session-length independent. This
+appearance change does **not** alter ArZoom camera/gimbal parity.
+
 
 ## Automated gates
 

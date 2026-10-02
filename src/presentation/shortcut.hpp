@@ -131,14 +131,14 @@ struct ShortcutChord {
            a.modifiers == b.modifiers;
 }
 
-enum class KeycapTone : std::uint8_t {
-    Light = 0,
-    Dark,
+enum class KeycapGlyph : std::uint8_t {
+    Text = 0,
+    WindowsLogo,
 };
 
 struct KeycapFrame {
     std::array<wchar_t, 16> label{};
-    KeycapTone tone = KeycapTone::Light;
+    KeycapGlyph glyph = KeycapGlyph::Text;
 };
 
 constexpr std::size_t kMaxShortcutKeycaps = 5;

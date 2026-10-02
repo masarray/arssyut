@@ -60,6 +60,8 @@ struct RecorderSnapshot {
     std::uint64_t video_skipped = 0;
     std::uint64_t encoder_submitted = 0;
     std::uint64_t encoder_backpressure = 0;
+    std::uint64_t presentation_input_dropped = 0;
+    bool system_shortcut_hook_active = false;
     std::uint32_t encoder_sample_buffer_length = 0;
     std::uint32_t encoder_sample_buffer_max_length = 0;
 
@@ -136,6 +138,9 @@ private:
 
     std::atomic<std::uint32_t> encoder_sample_buffer_length_{0};
     std::atomic<std::uint32_t> encoder_sample_buffer_max_length_{0};
+
+    std::atomic<std::uint64_t> presentation_input_dropped_{0};
+    std::atomic<bool> system_shortcut_hook_active_{false};
 
     std::atomic<std::uint32_t> capture_p95_us_{0};
     std::atomic<std::uint32_t> compositor_cpu_p95_us_{0};

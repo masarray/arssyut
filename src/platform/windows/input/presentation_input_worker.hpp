@@ -67,6 +67,12 @@ public:
         return dropped_events_.load(std::memory_order_relaxed);
     }
 
+    [[nodiscard]] bool system_shortcut_hook_active() const noexcept
+    {
+        return system_shortcut_hook_active_.load(
+            std::memory_order_acquire);
+    }
+
 private:
     static LRESULT CALLBACK window_proc(
         HWND window,
@@ -74,12 +80,23 @@ private:
         WPARAM wparam,
         LPARAM lparam);
 
+    static LRESULT CALLBACK keyboard_hook_proc(
+        int code,
+        WPARAM wparam,
+        LPARAM lparam);
+
     void thread_main() noexcept;
     void handle_raw_input(HRAWINPUT input) noexcept;
     void handle_mouse(const RAWMOUSE &mouse) noexcept;
     void handle_keyboard(const RAWKEYBOARD &keyboard) noexcept;
+    void handle_windows_key_hook(
+        WPARAM message,
+        const KBDLLHOOKSTRUCT &keyboard) noexcept;
 
     [[nodiscard]] std::uint8_t modifier_mask() const noexcept;
+    void publish_shortcut(
+        arssyut::presentation::ShortcutChord chord,
+        arssyut::core::TimePoint time) noexcept;
 
     void publish_pointer_activity() noexcept;
 
@@ -96,9 +113,20 @@ private:
 
     std::array<std::atomic<bool>, 256> pressed_{};
 
+    HHOOK keyboard_hook_ = nullptr;
+    std::array<bool, 256> hook_pressed_{};
+    bool hook_left_win_down_ = false;
+    bool hook_right_win_down_ = false;
+    bool hook_ctrl_down_ = false;
+    bool hook_shift_down_ = false;
+    bool hook_alt_down_ = false;
+
+    static thread_local PresentationInputWorker *hook_owner_;
+
     arssyut::core::SpscRing<MouseClickEvent, 32> click_events_;
     arssyut::core::SpscRing<ShortcutEvent, 64> shortcut_events_;
     std::atomic<std::uint64_t> dropped_events_{0};
+    std::atomic<bool> system_shortcut_hook_active_{false};
 };
 
 } // namespace arssyut::windows

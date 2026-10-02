@@ -272,6 +272,12 @@ Status RecorderSession::start(
     encoder_sample_buffer_max_length_.store(
         0,
         std::memory_order_release);
+    presentation_input_dropped_.store(
+        0,
+        std::memory_order_release);
+    system_shortcut_hook_active_.store(
+        false,
+        std::memory_order_release);
     state_.store(
         RecorderState::Preparing,
         std::memory_order_release);
@@ -353,6 +359,12 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
     result.encoder_backpressure =
         diagnostics_.load(
             DiagnosticMetric::EncoderFramesBackpressured);
+    result.presentation_input_dropped =
+        presentation_input_dropped_.load(
+            std::memory_order_relaxed);
+    result.system_shortcut_hook_active =
+        system_shortcut_hook_active_.load(
+            std::memory_order_relaxed);
     result.encoder_sample_buffer_length =
         encoder_sample_buffer_length_.load(
             std::memory_order_relaxed);
@@ -598,6 +610,13 @@ void RecorderSession::worker_main() noexcept
                 std::memory_order_release);
             return;
         }
+
+        system_shortcut_hook_active_.store(
+            presentation_input.system_shortcut_hook_active(),
+            std::memory_order_relaxed);
+        presentation_input_dropped_.store(
+            presentation_input.dropped_events(),
+            std::memory_order_relaxed);
     }
 
     const TimePoint start =
@@ -863,6 +882,13 @@ void RecorderSession::worker_main() noexcept
                     100),
                 std::memory_order_relaxed);
 
+            presentation_input_dropped_.store(
+                presentation_input.dropped_events(),
+                std::memory_order_relaxed);
+            system_shortcut_hook_active_.store(
+                presentation_input.system_shortcut_hook_active(),
+                std::memory_order_relaxed);
+
             const std::uint64_t current_memory =
                 private_bytes();
             memory_private_bytes_.store(
@@ -886,6 +912,13 @@ void RecorderSession::worker_main() noexcept
     state_.store(
         RecorderState::Stopping,
         std::memory_order_release);
+
+    presentation_input_dropped_.store(
+        presentation_input.dropped_events(),
+        std::memory_order_relaxed);
+    system_shortcut_hook_active_.store(
+        presentation_input.system_shortcut_hook_active(),
+        std::memory_order_relaxed);
 
     presentation_input.stop();
     capture.stop();
@@ -1022,6 +1055,13 @@ void RecorderSession::write_diagnostics(
             << writer_submitted << ",\n"
             << "  \"encoder_backpressure\": "
             << writer_backpressure << ",\n"
+            << "  \"presentation_input_dropped\": "
+            << snapshot_value.presentation_input_dropped << ",\n"
+            << "  \"system_shortcut_hook_active\": "
+            << (snapshot_value.system_shortcut_hook_active
+                    ? "true"
+                    : "false")
+            << ",\n"
             << "  \"encoder_sample_buffer_length\": "
             << snapshot_value.encoder_sample_buffer_length << ",\n"
             << "  \"encoder_sample_buffer_max_length\": "
