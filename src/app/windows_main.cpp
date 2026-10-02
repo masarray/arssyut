@@ -48,6 +48,7 @@ enum ControlId : int {
     IdSmartZoom,
     IdClickVisual,
     IdShortcutKeys,
+    IdArVisual,
 };
 
 struct AppWindow {
@@ -79,6 +80,7 @@ struct AppWindow {
     HWND zoom_checkbox = nullptr;
     HWND click_checkbox = nullptr;
     HWND keys_checkbox = nullptr;
+    HWND visual_checkbox = nullptr;
 
     HFONT title_font = nullptr;
     HFONT normal_font = nullptr;
@@ -359,6 +361,7 @@ void layout_idle(AppWindow &app)
     show(app.zoom_checkbox, true);
     show(app.click_checkbox, true);
     show(app.keys_checkbox, true);
+    show(app.visual_checkbox, true);
 
     move(app.title_text, 22, 12, 260, 28);
     move(app.subtitle_text, 22, 39, 420, 20);
@@ -381,7 +384,8 @@ void layout_idle(AppWindow &app)
     move(app.status_text, 32, 190, 220, 24);
     move(app.zoom_checkbox, 270, 188, 112, 26);
     move(app.click_checkbox, 386, 188, 94, 26);
-    move(app.keys_checkbox, 484, 188, 94, 26);
+    move(app.keys_checkbox, 484, 188, 78, 26);
+    move(app.visual_checkbox, 562, 188, 106, 26);
     move(app.timer_text, 676, 190, 104, 24);
     move(app.metrics_text, 32, 216, 515, 22);
     move(app.output_text, 32, 239, 510, 20);
@@ -435,6 +439,7 @@ void layout_recording(AppWindow &app)
     show(app.zoom_checkbox, false);
     show(app.click_checkbox, false);
     show(app.keys_checkbox, false);
+    show(app.visual_checkbox, false);
 
     move(app.status_text, 28, 27, 92, 28);
     move(app.timer_text, 118, 23, 102, 34);
@@ -481,6 +486,7 @@ void set_recording_controls(
     EnableWindow(app.zoom_checkbox, !recording);
     EnableWindow(app.click_checkbox, !recording);
     EnableWindow(app.keys_checkbox, !recording);
+    EnableWindow(app.visual_checkbox, !recording);
     EnableWindow(app.record_button, TRUE);
 
     InvalidateRect(app.record_button, nullptr, TRUE);
@@ -552,6 +558,13 @@ void start_recording(AppWindow &app)
             0,
             0) == BST_CHECKED;
     config.presentation.zoom = 2.0f;
+
+    config.visual.enabled =
+        SendMessageW(
+            app.visual_checkbox,
+            BM_GETCHECK,
+            0,
+            0) == BST_CHECKED;
 
     auto session =
         std::make_unique<RecorderSession>();
@@ -1176,7 +1189,7 @@ LRESULT CALLBACK window_proc(
                 L"Keys",
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP |
                     BS_AUTOCHECKBOX,
-                484, 188, 94, 26,
+                484, 188, 78, 26,
                 window,
                 reinterpret_cast<HMENU>(IdShortcutKeys),
                 GetModuleHandleW(nullptr),
@@ -1187,6 +1200,26 @@ LRESULT CALLBACK window_proc(
             app->keys_checkbox,
             BM_SETCHECK,
             BST_CHECKED,
+            0);
+
+        app->visual_checkbox =
+            CreateWindowExW(
+                0,
+                L"BUTTON",
+                L"ArVisual",
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                    BS_AUTOCHECKBOX,
+                562, 188, 106, 26,
+                window,
+                reinterpret_cast<HMENU>(IdArVisual),
+                GetModuleHandleW(nullptr),
+                nullptr);
+        set_font(app->visual_checkbox, app->tiny_font);
+        apply_dark_theme(app->visual_checkbox);
+        SendMessageW(
+            app->visual_checkbox,
+            BM_SETCHECK,
+            BST_UNCHECKED,
             0);
 
         refresh_sources(*app);

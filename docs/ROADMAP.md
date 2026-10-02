@@ -324,6 +324,20 @@ Hide ordinary typed content.
 
 Port only the portable grading behavior.
 
+Implemented scope:
+- one-pass D3D11 adaptation of pinned ArVisual v0.5.9 grading math;
+- neutral/white cleanup and cast reduction;
+- bounded tone shaping and highlight shoulder;
+- headroom-based vibrance and hue-zone object separation;
+- skin classification/protection and bounded beauty/healthy-tone behavior;
+- luma-only anti-halo clarity;
+- gloss/depth shaping and luminance-preserving gamut safety;
+- adaptive parameters wired at neutral values pending P5B;
+- Pixel Accurate default with an opt-in validation toggle;
+- grading before Arssyut click/cursor/keycap presentation layers.
+
+See `docs/P5A_ARVISUAL_STANDALONE.md`.
+
 ### P5B — asynchronous analysis
 
 - downsampled scene surface;

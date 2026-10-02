@@ -34,6 +34,12 @@ cbuffer PresentationConstants : register(b0)
     float4 keyboard_rect;
     float4 cursor_data;
     float4 cursor_geometry;
+    float4 arvisual0;
+    float4 arvisual1;
+    float4 arvisual2;
+    float4 arvisual3;
+    float4 arvisual4;
+    float4 arvisual5;
     float4 click0;
     float4 click1;
     float4 click2;
@@ -63,6 +69,380 @@ VertexOutput vs_main(uint vertex_id : SV_VertexID)
         1.0f);
     return output;
 }
+
+/* ArVisual v0.5.9 portable shader behavior adapted from
+ * masarray/arvisual-obs@d0a3f405447446e88dc56f4a50535a17257fcccf.
+ * OBS plumbing and scene-readback code are intentionally excluded in P5A.
+ * Adaptive inputs are neutral until P5B owns asynchronous analysis. */
+float arvisual_luminance(float3 color)
+{
+    return dot(color, float3(0.2126, 0.7152, 0.0722));
+}
+
+float3 arvisual_rgb2hsv(float3 c)
+{
+    float4 K = float4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    float4 p = c.g < c.b ? float4(c.bg, K.wz) : float4(c.gb, K.xy);
+    float4 q = c.r < p.x ? float4(p.xyw, c.r) : float4(c.r, p.yzx);
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+float3 arvisual_hsv2rgb(float3 c)
+{
+    float4 K = float4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * lerp(K.xxx, saturate(p - K.xxx), saturate(c.y));
+}
+
+float arvisual_hue_mask(float hue, float center, float width)
+{
+    float d = abs(hue - center);
+    d = min(d, 1.0 - d);
+    return saturate(1.0 - d / width);
+}
+
+float arvisual_hue_lerp_wrap(float h, float target, float t)
+{
+    float d = target - h;
+    d -= floor(d + 0.5);
+    return frac(h + d * t + 1.0);
+}
+
+/* Move chroma toward a target luminance, then shrink chroma just enough for
+   every channel to fit a safe inner gamut. Pure source black/white can remain
+   pure, but a creative operation cannot manufacture a digital 0/1 plateau.
+   Because chroma is measured around its own luma, this preserves target luma
+   and hue without hard per-channel clipping. */
+float3 arvisual_fit_gamut_preserve_luma(float3 color, float target_luma)
+{
+    float y = saturate(target_luma);
+    float source_y = arvisual_luminance(color);
+    float3 chroma = color - float3(source_y, source_y, source_y);
+    float low_bound = min(y, 0.008);
+    float high_bound = max(y, 0.992);
+    float scale = 1.0;
+
+    if (chroma.r > 0.0)
+        scale = min(scale, (high_bound - y) / max(chroma.r, 0.000001));
+    else if (chroma.r < 0.0)
+        scale = min(scale, (y - low_bound) / max(-chroma.r, 0.000001));
+
+    if (chroma.g > 0.0)
+        scale = min(scale, (high_bound - y) / max(chroma.g, 0.000001));
+    else if (chroma.g < 0.0)
+        scale = min(scale, (y - low_bound) / max(-chroma.g, 0.000001));
+
+    if (chroma.b > 0.0)
+        scale = min(scale, (high_bound - y) / max(chroma.b, 0.000001));
+    else if (chroma.b < 0.0)
+        scale = min(scale, (y - low_bound) / max(-chroma.b, 0.000001));
+
+    return saturate(float3(y, y, y) + chroma * saturate(scale));
+}
+
+float arvisual_soft_luma_shoulder(float y, float knee, float pressure)
+{
+    float over = max(y - knee, 0.0);
+    float rolled = y - over + over / (1.0 + over * (2.6 + pressure * 3.0));
+    return min(rolled, 0.985);
+}
+
+/* Alpha-correct neighbor tap. */
+float3 arvisual_tap(float2 uv)
+{
+    float4 t = source_texture.Sample(source_sampler, uv);
+    float inv_a = (t.a > 0.0) ? (1.0 / t.a) : 0.0;
+    return saturate(t.rgb * inv_a);
+}
+
+float4 apply_arvisual(float4 px, float2 uv)
+{
+    if (arvisual0.x < 0.5)
+        return px;
+
+    const float master = arvisual0.y;
+    const float enhance = arvisual0.z;
+    const float color_pop = arvisual0.w;
+    const float clean_white = arvisual1.x;
+    const float clarity = arvisual1.y;
+    const float skin_protect = arvisual1.z;
+    const float skin_beauty = arvisual1.w;
+    const float healthy_tone = arvisual2.x;
+    const float toy_gloss = arvisual2.y;
+    const float depth_pop = arvisual2.z;
+    const float highlight_guard = arvisual2.w;
+    const float performance = arvisual3.x;
+    const float smart_exposure = arvisual3.y;
+    const float smart_pop = arvisual3.z;
+    const float smart_highlight = arvisual3.w;
+    const float smart_shadow = arvisual4.x;
+    const float smart_strength = arvisual4.y;
+    const float smart_chroma_limit = arvisual4.z;
+    const float smart_clean = arvisual4.w;
+    const float smart_separation = arvisual5.x;
+    const float2 texel_size = max(arvisual5.yz, float2(0.0000001, 0.0000001));
+
+    float alpha = px.a;
+    float3 src = saturate(px.rgb * ((alpha > 0.0) ? (1.0 / alpha) : 0.0));
+    float3 src_hsv = arvisual_rgb2hsv(src);
+    float src_y = arvisual_luminance(src);
+
+    /* Smart Auto may lower the complete creative dose on risky scenes. User
+       controls still work normally; safety controls are never weakened. */
+    float k = max(master, 0.0) * saturate(smart_strength);
+    float f_enhance = saturate(enhance * k);
+    float f_pop = saturate(color_pop * k * smart_pop);
+    float f_clarity = saturate(clarity * k);
+    float f_beauty = saturate(skin_beauty * k);
+    float f_healthy = saturate(healthy_tone * k);
+    float f_gloss = saturate(toy_gloss * k);
+    float f_depth = saturate(depth_pop * k);
+
+    /* Neutral and skin classification is based on the unmodified source. */
+    float low_sat = 1.0 - smoothstep(0.030, 0.18, src_hsv.y);
+    float neutral_luma = smoothstep(0.10, 0.36, src_y) * (1.0 - smoothstep(0.965, 1.0, src_y));
+    float neutral_mask = saturate(low_sat * neutral_luma);
+    float neutral_highlight = (1.0 - smoothstep(0.025, 0.12, src_hsv.y)) *
+                              smoothstep(0.72, 0.92, src_y);
+    float color_confidence = smoothstep(0.10, 0.34, src_hsv.y) * smoothstep(0.065, 0.20, src_y) *
+                             (1.0 - smoothstep(0.95, 1.0, src_y));
+
+    float skin_hue = max(max(arvisual_hue_mask(src_hsv.x, 0.055, 0.060), arvisual_hue_mask(src_hsv.x, 0.092, 0.070)),
+                         arvisual_hue_mask(src_hsv.x, 0.125, 0.050));
+    float skin_luma = smoothstep(0.070, 0.26, src_y) * (1.0 - smoothstep(0.90, 1.0, src_y));
+    float skin_sat = smoothstep(0.055, 0.28, src_hsv.y) * (1.0 - smoothstep(0.86, 1.0, src_hsv.y));
+    float brown_skin = smoothstep(0.08, 0.38, src_y) * smoothstep(0.16, 0.52, src_hsv.y) *
+                       arvisual_hue_mask(src_hsv.x, 0.085, 0.085);
+    float skin_mask = saturate((skin_hue * skin_luma * skin_sat + brown_skin * 0.45) * skin_protect);
+
+    float3 color = src;
+
+    /* Neutral cleanup. It can only remove a detected cast. */
+    float neutral_clean = neutral_mask * clean_white * (0.62 + smart_clean * 0.18);
+    color = lerp(color, float3(src_y, src_y, src_y), neutral_clean);
+    float green_cast = saturate((color.g - max(color.r, color.b)) * 4.0);
+    float cyan_cast = saturate((min(color.g, color.b) - color.r) * 3.0);
+    float cast_guard = neutral_mask * clean_white * (0.24 + smart_clean * 0.12) * saturate(green_cast + cyan_cast);
+    color.g = lerp(color.g, (color.r + color.b) * 0.5, cast_guard);
+    color = arvisual_fit_gamut_preserve_luma(color, arvisual_luminance(color));
+
+    /* Bounded tone shaping. Vivid highlights get almost no lift. */
+    float y = arvisual_luminance(color);
+    float mid = smoothstep(0.12, 0.38, y) * (1.0 - smoothstep(0.76, 0.94, y));
+    float upper_mid = smoothstep(0.34, 0.62, y) * (1.0 - smoothstep(0.84, 0.98, y));
+    float deep_shadow = 1.0 - smoothstep(0.035, 0.18, y);
+    float highlight = smoothstep(0.72, 0.98, y);
+    float vivid_bright = smoothstep(0.48, 0.78, src_hsv.y) * smoothstep(0.50, 0.82, y);
+    float lift_scale = 1.0 - vivid_bright * 0.90;
+    float expose_band = smoothstep(0.06, 0.23, y) * (1.0 - smoothstep(0.68, 0.90, y));
+
+    float target_y = y;
+    target_y += smart_exposure * expose_band;
+    target_y += f_enhance * 0.032 * mid * lift_scale;
+    target_y += f_enhance * f_depth * 0.022 * upper_mid * lift_scale;
+
+    float dark_vivid = smoothstep(0.30, 0.62, src_hsv.y) * smoothstep(0.09, 0.20, y) *
+                       (1.0 - smoothstep(0.30, 0.48, y));
+    target_y += f_pop * 0.012 * dark_vivid;
+    target_y -= f_depth * 0.010 * deep_shadow * (1.0 - smart_shadow * 0.78);
+    target_y += smart_shadow * 0.007 * deep_shadow;
+    float diffuse_white_guard = 1.0 - neutral_highlight * 0.88;
+    target_y -= (highlight_guard * 0.006 + smart_highlight * 0.008) * highlight * diffuse_white_guard;
+
+    /* Positive tone lift consumes real channel headroom. This prevents warm
+       skin highlights (high red, moderate luma) from landing on digital 1. */
+    float tone_delta = target_y - y;
+    float channel_lift_room = 1.0 - smoothstep(0.82, 0.985, max(max(color.r, color.g), color.b));
+    float skin_lift_guard = 1.0 - skin_mask * 0.42;
+    float neutral_lift_guard = 1.0 - neutral_mask * (0.35 + smart_clean * 0.15);
+    target_y = y + min(tone_delta, 0.0) + max(tone_delta, 0.0) * channel_lift_room * skin_lift_guard *
+               neutral_lift_guard;
+
+    /* Toe/shoulder protected contrast: dimensional midtones without crushing
+       a deliberately low-key background or dulling clean diffuse whites. */
+    float contrast = (f_enhance * 0.042 + f_depth * 0.030) * (1.0 - vivid_bright * 0.75);
+    float contrast_target = (target_y - 0.5) * (1.0 + contrast) + 0.5;
+    float contrast_band = smoothstep(0.075, 0.24, target_y) * (1.0 - smoothstep(0.80, 0.94, target_y));
+    target_y = lerp(target_y, contrast_target, contrast_band * neutral_lift_guard);
+    float tone_knee = lerp(0.84 - smart_highlight * 0.035, 0.972, neutral_highlight);
+    target_y = arvisual_soft_luma_shoulder(target_y, tone_knee, smart_highlight);
+    color = arvisual_fit_gamut_preserve_luma(color, target_y);
+
+    /* Very small warm/cool depth split, immediately gamut-mapped. */
+    y = arvisual_luminance(color);
+    float shadow_chroma_confidence = smoothstep(0.040, 0.16, src_hsv.y);
+    float cool_shadow = (1.0 - smoothstep(0.18, 0.44, y)) * (1.0 - neutral_mask * 0.90) *
+                        shadow_chroma_confidence;
+    float warm_light = smoothstep(0.42, 0.76, y) * (1.0 - smoothstep(0.90, 1.0, y)) *
+                       (1.0 - neutral_mask * 0.96);
+    color += f_depth * 0.006 * cool_shadow * float3(-0.10, 0.01, 0.15);
+    color += f_depth * 0.005 * warm_light * float3(0.14, 0.035, -0.05);
+    color = arvisual_fit_gamut_preserve_luma(color, arvisual_luminance(color));
+
+    /* Headroom-based saturation. No path can make HSV saturation negative or
+       greater than the adaptive ceiling. Colors already above that ceiling
+       are left alone instead of being destructively desaturated. */
+    float3 hsv = arvisual_rgb2hsv(color);
+    y = arvisual_luminance(color);
+    float luma_safe = smoothstep(0.055, 0.20, y) * (1.0 - smoothstep(0.86, 0.98, y));
+    float muted_colored = smoothstep(0.045, 0.18, hsv.y) * (1.0 - smoothstep(0.84, 0.98, hsv.y));
+    float vibrance = f_pop * muted_colored * color_confidence * luma_safe *
+                     (1.0 - neutral_mask * 0.98) * (1.0 - skin_mask * 0.90);
+
+    float red = arvisual_hue_mask(hsv.x, 0.000, 0.050);
+    float orange = arvisual_hue_mask(hsv.x, 0.080, 0.055);
+    float yellow = arvisual_hue_mask(hsv.x, 0.155, 0.052);
+    float green = arvisual_hue_mask(hsv.x, 0.330, 0.055);
+    float cyan = arvisual_hue_mask(hsv.x, 0.500, 0.050);
+    float blue = arvisual_hue_mask(hsv.x, 0.620, 0.064);
+    float magenta = arvisual_hue_mask(hsv.x, 0.835, 0.050);
+    float dopamine_zone = saturate(red + orange * 0.75 + yellow * 0.78 + green * 0.62 +
+                                    cyan * 0.55 + blue + magenta * 0.72);
+    float object_pop = dopamine_zone * color_confidence * (1.0 - neutral_mask) * (1.0 - skin_mask * 0.88);
+
+    float sat_ceiling = max(hsv.y, saturate(smart_chroma_limit));
+    float sat_room = max(sat_ceiling - hsv.y, 0.0);
+    float sat_request = saturate(vibrance * 0.38 + object_pop * f_pop * (0.18 + f_depth * 0.04));
+    float blue_safety = arvisual_hue_mask(hsv.x, 0.600, 0.120);
+    float blue_sat_guard = 1.0 - blue_safety * (0.34 + smart_separation * 0.28);
+    sat_request *= blue_sat_guard;
+    float sat_y = y;
+    float max_sat_gain = lerp(0.075, 0.110, saturate(smart_strength));
+    float green_teal_safety = saturate(arvisual_hue_mask(hsv.x, 0.300, 0.160) * 1.35 +
+                                        arvisual_hue_mask(hsv.x, 0.500, 0.140));
+    float violet_safety = saturate(arvisual_hue_mask(hsv.x, 0.730, 0.140) * 1.10);
+    float secondary_safety = saturate(green_teal_safety + violet_safety + blue_safety * 0.80);
+    float scene_chroma_risk = saturate((0.985 - smart_chroma_limit) * (1.0 / 0.085));
+    float secondary_gain_cap = lerp(0.058, 0.046, scene_chroma_risk);
+    max_sat_gain = lerp(max_sat_gain, secondary_gain_cap, secondary_safety);
+    hsv.y += min(sat_room * sat_request, max_sat_gain);
+
+    float weak_yellow_green = saturate((yellow + green + cyan) * (1.0 - color_confidence));
+    hsv.y *= 1.0 - weak_yellow_green * clean_white * 0.16;
+    color = arvisual_fit_gamut_preserve_luma(arvisual_hsv2rgb(hsv), sat_y);
+
+    /* Pleasure comes from separation, not neon saturation: warm hero colors
+       receive a tiny clean midtone lift, cyan/green a smaller lift, and deep
+       blue a tiny density anchor. Skin and neutrals are excluded by object_pop. */
+    y = arvisual_luminance(color);
+    float warm_hero = saturate(red * 0.55 + orange + yellow * 0.35 + magenta * 0.18);
+    float fresh_hero = saturate(cyan * 0.55 + green * 0.30);
+    float blue_hero = blue * (1.0 - cyan * 0.65);
+    float hero_band = smoothstep(0.10, 0.28, y) * (1.0 - smoothstep(0.72, 0.90, y));
+    float warm_separation = 0.012 + smart_separation * 0.012;
+    float fresh_separation = 0.005 + smart_separation * 0.004;
+    float blue_density = 0.005 + smart_separation * 0.005;
+    float hero_delta = object_pop * f_pop * hero_band *
+                       (warm_hero * warm_separation + fresh_hero * fresh_separation - blue_hero * blue_density);
+    float3 hero_hsv_before = arvisual_rgb2hsv(color);
+    color = arvisual_fit_gamut_preserve_luma(color, y + hero_delta);
+
+    /* A luma lift lowers relative HSV saturation even when absolute chroma is
+       unchanged. Restore only that loss for classified warm objects; skin is
+       already excluded by object_pop and no new saturation is manufactured. */
+    float hero_y = arvisual_luminance(color);
+    float3 hero_hsv_after = arvisual_rgb2hsv(color);
+    float synthetic_warm_object = color_confidence * smoothstep(0.68, 0.82, src_hsv.y) *
+                                  (1.0 - neutral_mask);
+    float warm_chroma_object = max(object_pop, synthetic_warm_object);
+    float warm_chroma_retention = saturate(warm_hero * warm_chroma_object * (1.25 + smart_separation * 0.35));
+    float warm_sat_floor = min(src_hsv.y, smart_chroma_limit);
+    hero_hsv_after.y += max(warm_sat_floor - hero_hsv_after.y, 0.0) * warm_chroma_retention;
+    color = arvisual_fit_gamut_preserve_luma(arvisual_hsv2rgb(hero_hsv_after), hero_y);
+
+    /* Symmetric neighborhood used for skin smoothing and luma clarity. */
+    float3 smooth_src = src;
+    float detail = 0.0;
+    if (performance >= 0.25) {
+        float3 nl = arvisual_tap(uv - float2(texel_size.x, 0.0));
+        float3 nr = arvisual_tap(uv + float2(texel_size.x, 0.0));
+        float3 nu = arvisual_tap(uv - float2(0.0, texel_size.y));
+        float3 nd = arvisual_tap(uv + float2(0.0, texel_size.y));
+        float3 cross_sum = nl + nr + nu + nd;
+
+        if (performance >= 0.75) {
+            float3 d1 = arvisual_tap(uv + float2( texel_size.x,  texel_size.y));
+            float3 d2 = arvisual_tap(uv + float2(-texel_size.x,  texel_size.y));
+            float3 d3 = arvisual_tap(uv + float2( texel_size.x, -texel_size.y));
+            float3 d4 = arvisual_tap(uv + float2(-texel_size.x, -texel_size.y));
+            smooth_src = (src * 4.0 + cross_sum * 2.0 + d1 + d2 + d3 + d4) * (1.0 / 16.0);
+        } else {
+            smooth_src = (src * 4.0 + cross_sum) * 0.125;
+        }
+
+        float blur_y = (arvisual_luminance(nl) + arvisual_luminance(nr) + arvisual_luminance(nu) + arvisual_luminance(nd)) * 0.25;
+        detail = src_y - blur_y;
+    }
+
+    /* Skin treatment follows local detail without replacing the grade with an
+       ungraded blur. Hue/saturation moves are bounded and headroom-based. */
+    float smooth_y = arvisual_luminance(smooth_src);
+    float skin_detail = abs(src_y - smooth_y);
+    float skin_smooth_gate = 1.0 - smoothstep(0.012, 0.070, skin_detail);
+    float beauty_amount = skin_mask * f_beauty * skin_smooth_gate * lerp(0.06, 0.14, skin_protect);
+    float3 beauty = color + (smooth_src - src) * beauty_amount;
+    float beauty_y = arvisual_luminance(beauty);
+    float brown_lift = smoothstep(0.07, 0.34, src_y) * (1.0 - smoothstep(0.62, 0.92, src_y));
+    float skin_lift = skin_mask * f_beauty * (0.010 + brown_lift * 0.018) *
+                      (1.0 - smoothstep(0.76, 0.94, beauty_y));
+    float skin_channel_room = 1.0 - smoothstep(0.80, 0.98, max(max(beauty.r, beauty.g), beauty.b));
+    skin_lift *= skin_channel_room;
+    beauty = arvisual_fit_gamut_preserve_luma(beauty, arvisual_soft_luma_shoulder(beauty_y + skin_lift, 0.86, smart_highlight));
+
+    float3 beauty_hsv = arvisual_rgb2hsv(beauty);
+    beauty_hsv.x = arvisual_hue_lerp_wrap(beauty_hsv.x, 0.055, skin_mask * f_healthy * f_beauty * 0.030);
+    float skin_sat_ceiling = max(beauty_hsv.y, min(smart_chroma_limit, 0.92));
+    float skin_sat_room = max(skin_sat_ceiling - beauty_hsv.y, 0.0);
+    beauty_hsv.y += min(skin_sat_room * skin_mask * f_healthy * f_beauty * 0.060, 0.012);
+    beauty = arvisual_fit_gamut_preserve_luma(arvisual_hsv2rgb(beauty_hsv), arvisual_luminance(beauty));
+    color = lerp(color, beauty, skin_mask * f_beauty * 0.72);
+    color = arvisual_fit_gamut_preserve_luma(color, arvisual_luminance(color));
+
+    /* Post-neutral cleanup. */
+    y = arvisual_luminance(color);
+    float3 post_hsv = arvisual_rgb2hsv(color);
+    float post_neutral = (1.0 - smoothstep(0.05, 0.20, post_hsv.y)) * smoothstep(0.18, 0.92, y);
+    color = lerp(color, float3(y, y, y), post_neutral * clean_white * 0.14);
+
+    /* Anti-halo clarity changes luma through the same gamut-safe path. */
+    y = arvisual_luminance(color);
+    float edge_gate = smoothstep(0.010, 0.045, abs(detail));
+    float big_edge = smoothstep(0.080, 0.18, abs(detail));
+    float halo_guard = 1.0 - big_edge * 0.92;
+    float hi_zone = smoothstep(0.70, 0.93, y);
+    float pos_detail = max(detail, 0.0) * (1.0 - hi_zone * (0.70 + smart_highlight * 0.25));
+    float guarded_detail = pos_detail + min(detail, 0.0);
+    float d_soft = guarded_detail / (1.0 + abs(guarded_detail) * 8.0);
+    float clarity_mask = edge_gate * halo_guard * (1.0 - skin_mask * 0.92) * smoothstep(0.07, 0.26, y);
+    float clarity_delta = d_soft * f_clarity * 0.10 * lerp(0.72, 1.0, performance) * clarity_mask;
+    clarity_delta += d_soft * f_depth * 0.018 * object_pop * halo_guard;
+    /* Do not shoulder the source luma when clarity contributes nothing. The
+       old unconditional 0.84 knee turned a flat diffuse white into gray. The
+       final scene-aware shoulder still constrains the actual target. */
+    color = arvisual_fit_gamut_preserve_luma(color, y + clarity_delta);
+
+    /* Perceptual punch and gloss consume luma headroom instead of adding RGB. */
+    y = arvisual_luminance(color);
+    float perceptual_punch = object_pop * f_pop * f_depth * smoothstep(0.18, 0.74, y) *
+                             (1.0 - smoothstep(0.84, 0.97, y));
+    float creative_headroom = 1.0 - smoothstep(0.80, 0.985, max(max(color.r, color.g), color.b));
+    target_y = y + perceptual_punch * 0.012 * creative_headroom;
+    float gloss_mask = smoothstep(0.58, 0.86, y) * object_pop * (1.0 - skin_mask * 0.88);
+    target_y += gloss_mask * f_gloss * 0.008 * (1.0 - smoothstep(0.82, 0.97, y)) * creative_headroom;
+
+    /* Final shoulder + gamut map is a mathematical invariant, not a rescue
+       clamp: target luma is bounded and chroma is scaled before any channel
+       can leave display gamut. */
+    float final_knee_base = 0.84 - smart_highlight * 0.045 - highlight_guard * 0.010;
+    float final_knee = lerp(final_knee_base, 0.972, neutral_highlight);
+    target_y = arvisual_soft_luma_shoulder(target_y, final_knee, smart_highlight + highlight_guard * 0.35);
+    color = arvisual_fit_gamut_preserve_luma(color, target_y);
+
+    return float4(saturate(color) * alpha, alpha);
+}
+
 
 /* Arssyut presentation click skin.
  * Camera/content anchoring remains the P3R ArZoom parity path, but click
@@ -346,6 +726,10 @@ float4 ps_main(VertexOutput input) : SV_Target
     float4 color =
         source_texture.Sample(source_sampler, uv);
 
+    color = apply_arvisual(
+        color,
+        uv);
+
     const float2 safe_viewport =
         max(output_info.xy, float2(1.0f, 1.0f));
 
@@ -447,6 +831,36 @@ struct PresentationConstants {
     float cursor_height;
     float cursor_hotspot_x;
     float cursor_hotspot_y;
+
+    float arvisual_enabled;
+    float arvisual_master;
+    float arvisual_enhance;
+    float arvisual_color_pop;
+
+    float arvisual_clean_white;
+    float arvisual_clarity;
+    float arvisual_skin_protect;
+    float arvisual_skin_beauty;
+
+    float arvisual_healthy_tone;
+    float arvisual_toy_gloss;
+    float arvisual_depth_pop;
+    float arvisual_highlight_guard;
+
+    float arvisual_performance;
+    float arvisual_smart_exposure;
+    float arvisual_smart_pop;
+    float arvisual_smart_highlight;
+
+    float arvisual_smart_shadow;
+    float arvisual_smart_strength;
+    float arvisual_smart_chroma_limit;
+    float arvisual_smart_clean;
+
+    float arvisual_smart_separation;
+    float arvisual_texel_x;
+    float arvisual_texel_y;
+    float arvisual_reserved;
 
     float clicks[16]{};
 };
@@ -1284,7 +1698,8 @@ Status D3D11Compositor::render_retained(
     ID3D11DeviceContext *context,
     CropRect crop,
     FrameSize output_size,
-    const arssyut::presentation::PresentationFrameState *presentation) noexcept
+    const arssyut::presentation::PresentationFrameState *presentation,
+    const arssyut::visual::ArVisualGradeSettings *visual) noexcept
 {
     if (!context || !has_source())
         return Status::failure(StatusCode::InvalidArgument);
@@ -1309,6 +1724,12 @@ Status D3D11Compositor::render_retained(
     arssyut::presentation::PresentationFrameState neutral{};
     const auto &state =
         presentation ? *presentation : neutral;
+
+    const auto grade =
+        arssyut::visual::sanitize(
+            visual
+                ? *visual
+                : arssyut::visual::ArVisualGradeSettings{});
 
     const Status keyboard_status =
         update_keyboard_overlay(
@@ -1449,6 +1870,65 @@ Status D3D11Compositor::render_retained(
         static_cast<float>(
             cursor_shape.hotspot_y);
 
+    constants.arvisual_enabled =
+        grade.enabled ? 1.0f : 0.0f;
+    constants.arvisual_master =
+        grade.master;
+    constants.arvisual_enhance =
+        grade.enhance;
+    constants.arvisual_color_pop =
+        grade.color_pop;
+
+    constants.arvisual_clean_white =
+        grade.clean_white;
+    constants.arvisual_clarity =
+        grade.clarity;
+    constants.arvisual_skin_protect =
+        grade.skin_protect;
+    constants.arvisual_skin_beauty =
+        grade.skin_beauty;
+
+    constants.arvisual_healthy_tone =
+        grade.healthy_tone;
+    constants.arvisual_toy_gloss =
+        grade.toy_gloss;
+    constants.arvisual_depth_pop =
+        grade.depth_pop;
+    constants.arvisual_highlight_guard =
+        grade.highlight_guard;
+
+    constants.arvisual_performance =
+        grade.performance;
+    constants.arvisual_smart_exposure =
+        grade.smart_exposure;
+    constants.arvisual_smart_pop =
+        grade.smart_pop;
+    constants.arvisual_smart_highlight =
+        grade.smart_highlight;
+
+    constants.arvisual_smart_shadow =
+        grade.smart_shadow;
+    constants.arvisual_smart_strength =
+        grade.smart_strength;
+    constants.arvisual_smart_chroma_limit =
+        grade.smart_chroma_limit;
+    constants.arvisual_smart_clean =
+        grade.smart_clean;
+
+    constants.arvisual_smart_separation =
+        grade.smart_separation;
+    constants.arvisual_texel_x =
+        1.0f /
+        std::max(
+            static_cast<float>(source_size.width),
+            1.0f);
+    constants.arvisual_texel_y =
+        1.0f /
+        std::max(
+            static_cast<float>(source_size.height),
+            1.0f);
+    constants.arvisual_reserved = 0.0f;
+
     for (std::size_t i = 0;
          i < state.clicks.size();
          ++i) {
@@ -1540,7 +2020,8 @@ Status D3D11Compositor::render(
     ID3D11Texture2D *source,
     CropRect crop,
     FrameSize output_size,
-    const arssyut::presentation::PresentationFrameState *presentation) noexcept
+    const arssyut::presentation::PresentationFrameState *presentation,
+    const arssyut::visual::ArVisualGradeSettings *visual) noexcept
 {
     const Status update_status =
         update_source(context, source);
@@ -1551,7 +2032,8 @@ Status D3D11Compositor::render(
         context,
         crop,
         output_size,
-        presentation);
+        presentation,
+        visual);
 }
 
 } // namespace arssyut::windows

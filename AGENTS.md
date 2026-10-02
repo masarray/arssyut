@@ -297,6 +297,26 @@ The color engine must never force a synchronous full-frame GPU->CPU readback.
 
 A technical/pixel-faithful recording mode must remain available because aggressive grading is inappropriate for some engineering/UI capture.
 
+### P5A standalone-grade lock
+
+After the first ArVisual transplant:
+
+- Pixel Accurate remains the default. The standalone grade must be explicitly
+  enabled by recorder configuration;
+- P5A ports only pinned portable shader behavior from
+  `masarray/arvisual-obs@d0a3f405447446e88dc56f4a50535a17257fcccf`;
+- OBS source/filter ownership, property plumbing, texrender/stagesurface logic,
+  and CPU scene analysis do not enter the Arssyut compositor;
+- adaptive inputs stay at deterministic neutral values until P5B provides the
+  asynchronous analysis authority;
+- grading occurs on captured desktop content before click, custom cursor and
+  keyboard overlays, so presentation colors stay product-authored;
+- grade ON/OFF and parameter changes are constant-buffer changes only and must
+  not allocate textures, render targets or staging resources;
+- no synchronous GPU-to-CPU readback is permitted in the render path;
+- neutral balance, highlight/gamut safety, bypass pixel accuracy and retained
+  resource behavior must remain under automated tests.
+
 ---
 
 ## 11. Input visualization and privacy contract

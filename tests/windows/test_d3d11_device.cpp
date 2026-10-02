@@ -12,8 +12,10 @@
 #include <mfobjects.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -1180,6 +1182,184 @@ void test_custom_cursor_compositor(
         "Cursor steady state creates no new compositor resources");
 }
 
+void test_arvisual_grade_compositor(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "P5A ArVisual compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    arssyut::visual::ArVisualGradeSettings grade;
+    grade.enabled = true;
+
+    constexpr std::uint32_t warm_bgra = 0xFFB06030u;
+    auto warm = create_solid_texture(
+        owner.device(),
+        4,
+        4,
+        warm_bgra);
+    test.expect(
+        warm != nullptr,
+        "P5A colorful source texture created");
+    if (!warm)
+        return;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            warm.Get(),
+            {0, 0, 4, 4},
+            {64, 64},
+            nullptr,
+            &grade).ok(),
+        "P5A colorful source renders through standalone grade");
+
+    std::uint32_t warm_out = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            warm_out),
+        "P5A colorful output can be inspected");
+    test.expect(
+        warm_out != warm_bgra,
+        "P5A portable behavior produces a real bounded grade");
+
+    const auto generation =
+        compositor.resource_generation();
+
+    constexpr std::uint32_t neutral_bgra = 0xFFC0C0C0u;
+    auto neutral = create_solid_texture(
+        owner.device(),
+        4,
+        4,
+        neutral_bgra);
+    test.expect(
+        neutral != nullptr,
+        "P5A neutral source texture created");
+    if (!neutral)
+        return;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            neutral.Get(),
+            {0, 0, 4, 4},
+            {64, 64},
+            nullptr,
+            &grade).ok(),
+        "P5A neutral source renders");
+
+    std::uint32_t neutral_out = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            neutral_out),
+        "P5A neutral output can be inspected");
+
+    const int nb =
+        static_cast<int>(neutral_out & 0xFFu);
+    const int ng =
+        static_cast<int>((neutral_out >> 8) & 0xFFu);
+    const int nr =
+        static_cast<int>((neutral_out >> 16) & 0xFFu);
+
+    test.expect(
+        std::abs(nr - ng) <= 1 &&
+            std::abs(ng - nb) <= 1,
+        "P5A preserves neutral white/gray balance without color cast");
+
+    constexpr std::uint32_t bright_bgra = 0xFFF0D060u;
+    auto bright = create_solid_texture(
+        owner.device(),
+        4,
+        4,
+        bright_bgra);
+    test.expect(
+        bright != nullptr,
+        "P5A highlight source texture created");
+    if (!bright)
+        return;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            bright.Get(),
+            {0, 0, 4, 4},
+            {64, 64},
+            nullptr,
+            &grade).ok(),
+        "P5A highlight source renders");
+
+    std::uint32_t bright_out = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            bright_out),
+        "P5A highlight output can be inspected");
+
+    const unsigned bb =
+        bright_out & 0xFFu;
+    const unsigned bg =
+        (bright_out >> 8) & 0xFFu;
+    const unsigned br =
+        (bright_out >> 16) & 0xFFu;
+
+    test.expect(
+        std::max({br, bg, bb}) < 255u,
+        "P5A highlight/gamut guard avoids manufactured digital clipping");
+
+    grade.enabled = false;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            warm.Get(),
+            {0, 0, 4, 4},
+            {64, 64},
+            nullptr,
+            &grade).ok(),
+        "P5A can return to Pixel Accurate without rebuilding pipeline");
+
+    std::uint32_t bypass_out = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            bypass_out),
+        "P5A bypass output can be inspected");
+
+    test.expect(
+        bypass_out == warm_bgra,
+        "P5A disabled path is pixel-accurate");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "P5A grade/bypass changes create no compositor resources");
+}
+
 void test_keyboard_overlay_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -1434,6 +1614,7 @@ int main()
     test_retained_source_camera_cadence(test, device);
     test_single_ring_click_compositor(test, device);
     test_custom_cursor_compositor(test, device);
+    test_arvisual_grade_compositor(test, device);
     test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
 
