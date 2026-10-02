@@ -3,7 +3,6 @@
 #ifdef _WIN32
 
 #include "core/time/monotonic_clock.hpp"
-#include "platform/windows/graphics/cursor_shape_cache.hpp"
 #include "platform/windows/graphics/d3d11_arvisual_scene_analyzer.hpp"
 
 #include <d3dcompiler.h>
@@ -33,8 +32,6 @@ cbuffer PresentationConstants : register(b0)
     float4 camera_keyboard;
     float4 output_info;
     float4 keyboard_rect;
-    float4 cursor_data;
-    float4 cursor_geometry;
     float4 arvisual0;
     float4 arvisual1;
     float4 arvisual2;
@@ -49,7 +46,6 @@ cbuffer PresentationConstants : register(b0)
 
 Texture2D source_texture : register(t0);
 Texture2D keyboard_texture : register(t1);
-Texture2D cursor_texture : register(t2);
 SamplerState source_sampler : register(s0);
 
 struct VertexOutput
@@ -642,77 +638,6 @@ float3 apply_click(
         safe_viewport);
 }
 
-float4 composite_cursor(
-    float4 base,
-    float2 output_uv,
-    float2 camera_center,
-    float safe_zoom,
-    float2 safe_viewport)
-{
-    const float opacity =
-        saturate(cursor_data.w);
-    if (opacity <= 0.001)
-        return base;
-
-    const float2 shape_size =
-        max(
-            cursor_geometry.xy,
-            float2(1.0, 1.0));
-    const float2 hotspot =
-        cursor_geometry.zw;
-
-    const float presentation_scale =
-        max(cursor_data.z, 0.01) *
-        clamp(
-            min(safe_viewport.x, safe_viewport.y) / 1080.0,
-            0.85,
-            1.60);
-
-    const float2 hotspot_uv =
-        project_content(
-            cursor_data.xy,
-            camera_center,
-            safe_zoom);
-    const float2 hotspot_px =
-        hotspot_uv * safe_viewport;
-
-    const float2 top_left_px =
-        hotspot_px -
-        hotspot * presentation_scale;
-    const float2 size_px =
-        shape_size * presentation_scale;
-
-    const float2 pixel =
-        output_uv * safe_viewport;
-    const float2 local =
-        (pixel - top_left_px) /
-        max(size_px, float2(0.001, 0.001));
-
-    if (local.x < 0.0 ||
-        local.y < 0.0 ||
-        local.x > 1.0 ||
-        local.y > 1.0) {
-        return base;
-    }
-
-    const float2 texture_uv =
-        local *
-        (shape_size / 256.0);
-    const float4 cursor =
-        cursor_texture.Sample(
-            source_sampler,
-            texture_uv);
-
-    const float alpha =
-        saturate(cursor.a * opacity);
-
-    base.rgb =
-        lerp(
-            base.rgb,
-            cursor.rgb,
-            alpha);
-    return base;
-}
 
 float4 ps_main(VertexOutput input) : SV_Target
 {
@@ -759,13 +684,6 @@ float4 ps_main(VertexOutput input) : SV_Target
         color.rgb,
         input.uv,
         click3,
-        camera_center,
-        zoom,
-        safe_viewport);
-
-    color = composite_cursor(
-        color,
-        input.uv,
         camera_center,
         zoom,
         safe_viewport);
@@ -822,16 +740,6 @@ struct PresentationConstants {
     float keyboard_top;
     float keyboard_right;
     float keyboard_bottom;
-
-    float cursor_x;
-    float cursor_y;
-    float cursor_scale;
-    float cursor_opacity;
-
-    float cursor_width;
-    float cursor_height;
-    float cursor_hotspot_x;
-    float cursor_hotspot_y;
 
     float arvisual_enabled;
     float arvisual_master;
@@ -1048,14 +956,6 @@ Status D3D11Compositor::initialize(ID3D11Device *device) noexcept
         initialize_keyboard_overlay();
     if (!keyboard_status.ok())
         return keyboard_status;
-
-    auto cursor_result =
-        CursorShapeCache::create(
-            device_.Get());
-    if (!cursor_result)
-        return cursor_result.status();
-    cursor_cache_ =
-        std::move(cursor_result).value();
 
     // P5B analysis is optional infrastructure. If its resources cannot be
     // created, the P5A static grade remains fully usable with neutral
@@ -1677,20 +1577,6 @@ Status D3D11Compositor::ensure_output(FrameSize output_size) noexcept
     return Status::success();
 }
 
-Status D3D11Compositor::update_cursor_shape(
-    ID3D11DeviceContext *context,
-    HCURSOR cursor) noexcept
-{
-    if (!context || !cursor_cache_) {
-        return Status::failure(
-            StatusCode::InvalidArgument);
-    }
-
-    return cursor_cache_->select(
-        context,
-        cursor);
-}
-
 Status D3D11Compositor::submit_scene_analysis(
     ID3D11DeviceContext *context,
     TimePoint now,
@@ -1875,46 +1761,6 @@ Status D3D11Compositor::render_retained(
          display_height_px) /
         constants.output_height;
 
-    const auto cursor_shape =
-        cursor_cache_
-            ? cursor_cache_->active()
-            : CursorShapeView{};
-
-    constants.cursor_x =
-        std::clamp(
-            state.cursor.content_x,
-            0.0f,
-            1.0f);
-    constants.cursor_y =
-        std::clamp(
-            state.cursor.content_y,
-            0.0f,
-            1.0f);
-    constants.cursor_scale =
-        std::clamp(
-            state.cursor.scale,
-            0.80f,
-            1.30f);
-    constants.cursor_opacity =
-        cursor_shape.valid()
-            ? std::clamp(
-                  state.cursor.opacity,
-                  0.0f,
-                  1.0f)
-            : 0.0f;
-    constants.cursor_width =
-        static_cast<float>(
-            cursor_shape.width);
-    constants.cursor_height =
-        static_cast<float>(
-            cursor_shape.height);
-    constants.cursor_hotspot_x =
-        static_cast<float>(
-            cursor_shape.hotspot_x);
-    constants.cursor_hotspot_y =
-        static_cast<float>(
-            cursor_shape.hotspot_y);
-
     constants.arvisual_enabled =
         grade.enabled ? 1.0f : 0.0f;
     constants.arvisual_master =
@@ -2031,23 +1877,19 @@ Status D3D11Compositor::render_retained(
     ID3D11SamplerState *sampler = sampler_.Get();
     context->PSSetSamplers(0, 1, &sampler);
 
-    ID3D11ShaderResourceView *srvs[3] = {
+    ID3D11ShaderResourceView *srvs[2] = {
         input_srv_.Get(),
-        keyboard_srv_.Get(),
-        cursor_shape.valid()
-            ? cursor_shape.srv
-            : nullptr
+        keyboard_srv_.Get()
     };
-    context->PSSetShaderResources(0, 3, srvs);
+    context->PSSetShaderResources(0, 2, srvs);
 
     context->Draw(3, 0);
 
-    ID3D11ShaderResourceView *null_srvs[3] = {
-        nullptr,
+    ID3D11ShaderResourceView *null_srvs[2] = {
         nullptr,
         nullptr
     };
-    context->PSSetShaderResources(0, 3, null_srvs);
+    context->PSSetShaderResources(0, 2, null_srvs);
 
     ID3D11RenderTargetView *null_rtv = nullptr;
     context->OMSetRenderTargets(1, &null_rtv, nullptr);
