@@ -802,16 +802,17 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
             constexpr int pane_h = 13;
             constexpr int gap = 3;
 
-            HBRUSH logo_brush =
-                CreateSolidBrush(RGB(31, 34, 39));
             HGDIOBJ old_logo_brush =
                 SelectObject(
                     keyboard_dc_,
-                    logo_brush);
+                    GetStockObject(DC_BRUSH));
             HGDIOBJ old_logo_pen =
                 SelectObject(
                     keyboard_dc_,
                     GetStockObject(NULL_PEN));
+            SetDCBrushColor(
+                keyboard_dc_,
+                RGB(31, 34, 39));
 
             const int left =
                 cx - pane_w - gap / 2;
@@ -853,7 +854,6 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
             SelectObject(
                 keyboard_dc_,
                 old_logo_brush);
-            DeleteObject(logo_brush);
         } else {
             RECT text_rect = face;
             text_rect.top -= 1;
