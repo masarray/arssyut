@@ -178,7 +178,22 @@ struct AppWindow {
     return result;
 }
 
-[[nodiscard]] std::filesystem::path default_output_path()
+[[nodiscard]] const wchar_t *visual_mode_file_suffix(
+    arssyut::visual::ArVisualProductMode mode) noexcept
+{
+    switch (mode) {
+    case arssyut::visual::ArVisualProductMode::CleanScreen:
+        return L"clean-screen";
+    case arssyut::visual::ArVisualProductMode::VividPresentation:
+        return L"vivid-presentation";
+    case arssyut::visual::ArVisualProductMode::PixelAccurate:
+    default:
+        return L"pixel-accurate";
+    }
+}
+
+[[nodiscard]] std::filesystem::path default_output_path(
+    arssyut::visual::ArVisualProductMode mode)
 {
     PWSTR videos = nullptr;
     std::filesystem::path folder;
@@ -200,16 +215,17 @@ struct AppWindow {
     SYSTEMTIME time{};
     GetLocalTime(&time);
 
-    wchar_t filename[128]{};
+    wchar_t filename[192]{};
     swprintf_s(
         filename,
-        L"Arssyut-%04u%02u%02u-%02u%02u%02u.mp4",
+        L"Arssyut-%04u%02u%02u-%02u%02u%02u-%ls.mp4",
         time.wYear,
         time.wMonth,
         time.wDay,
         time.wHour,
         time.wMinute,
-        time.wSecond);
+        time.wSecond,
+        visual_mode_file_suffix(mode));
 
     return folder / filename;
 }
@@ -529,11 +545,32 @@ void start_recording(AppWindow &app)
     const std::uint32_t fps =
         fps_selection == 0 ? 60U : 30U;
 
+    const int visual_selection =
+        static_cast<int>(
+            SendMessageW(
+                app.visual_mode_combo,
+                CB_GETCURSEL,
+                0,
+                0));
+
+    arssyut::visual::ArVisualProductMode visual_mode =
+        arssyut::visual::ArVisualProductMode::PixelAccurate;
+
+    if (visual_selection == 1) {
+        visual_mode =
+            arssyut::visual::ArVisualProductMode::CleanScreen;
+    } else if (visual_selection == 2) {
+        visual_mode =
+            arssyut::visual::ArVisualProductMode::VividPresentation;
+    }
+
     RecorderConfig config;
     config.target =
         app.targets[
             static_cast<std::size_t>(selection)];
-    config.output_path = default_output_path();
+    config.visual_mode = visual_mode;
+    config.output_path =
+        default_output_path(visual_mode);
     config.output_size = {1920, 1080};
     config.frame_rate = {fps, 1};
     config.bitrate_bps =
@@ -558,25 +595,6 @@ void start_recording(AppWindow &app)
             0,
             0) == BST_CHECKED;
     config.presentation.zoom = 2.0f;
-
-    const int visual_selection =
-        static_cast<int>(
-            SendMessageW(
-                app.visual_mode_combo,
-                CB_GETCURSEL,
-                0,
-                0));
-
-    if (visual_selection == 1) {
-        config.visual_mode =
-            arssyut::visual::ArVisualProductMode::CleanScreen;
-    } else if (visual_selection == 2) {
-        config.visual_mode =
-            arssyut::visual::ArVisualProductMode::VividPresentation;
-    } else {
-        config.visual_mode =
-            arssyut::visual::ArVisualProductMode::PixelAccurate;
-    }
 
     auto session =
         std::make_unique<RecorderSession>();

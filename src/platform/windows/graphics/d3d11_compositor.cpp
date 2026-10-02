@@ -1973,6 +1973,29 @@ std::uint64_t D3D11Compositor::scene_analysis_map_failures() const noexcept
         : 0;
 }
 
+bool D3D11Compositor::scene_analysis_primed() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->primed()
+        : false;
+}
+
+arssyut::visual::ArVisualSceneStats
+D3D11Compositor::scene_analysis_stats() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->latest_stats()
+        : arssyut::visual::ArVisualSceneStats{};
+}
+
+arssyut::visual::ArVisualAdaptiveState
+D3D11Compositor::scene_analysis_adaptive() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->latest_adaptive()
+        : arssyut::visual::ArVisualAdaptiveState{};
+}
+
 Status D3D11Compositor::render(
     ID3D11DeviceContext *context,
     ID3D11Texture2D *source,

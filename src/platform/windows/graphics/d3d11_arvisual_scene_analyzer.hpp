@@ -71,6 +71,18 @@ public:
         return model_.stats().primed;
     }
 
+    [[nodiscard]] const arssyut::visual::ArVisualSceneStats &
+    latest_stats() const noexcept
+    {
+        return model_.stats();
+    }
+
+    [[nodiscard]] const arssyut::visual::ArVisualAdaptiveState &
+    latest_adaptive() const noexcept
+    {
+        return model_.adaptive();
+    }
+
 private:
     D3D11ArVisualSceneAnalyzer() = default;
 

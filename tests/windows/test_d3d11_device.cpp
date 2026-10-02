@@ -1622,6 +1622,25 @@ void test_arvisual_async_scene_analyzer(
         "P5B ready staging surfaces map without failure");
 
     test.expect(
+        compositor.scene_analysis_primed(),
+        "P5C calibration evidence reports a primed scene model");
+
+    const auto calibration_stats =
+        compositor.scene_analysis_stats();
+    const auto calibration_adaptive =
+        compositor.scene_analysis_adaptive();
+
+    test.expect(
+        calibration_stats.mean_saturation > 0.90f &&
+            calibration_stats.hot_vivid_frac > 0.90f,
+        "P5C calibration exports real hot-vivid scene statistics");
+    test.expect(
+        calibration_adaptive.highlight > 0.95f &&
+            calibration_adaptive.pop <= 0.53f &&
+            calibration_adaptive.chroma_limit <= 0.905f,
+        "P5C calibration exports the applied adaptive safety state");
+
+    test.expect(
         compositor.render_retained(
             owner.immediate_context(),
             {0, 0, 64, 36},

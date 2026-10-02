@@ -1022,6 +1022,16 @@ void RecorderSession::worker_main() noexcept
         pipeline->compositor().
             resource_generation();
 
+    const bool visual_analysis_primed =
+        pipeline->compositor().
+            scene_analysis_primed();
+    const auto visual_scene_stats =
+        pipeline->compositor().
+            scene_analysis_stats();
+    const auto visual_adaptive =
+        pipeline->compositor().
+            scene_analysis_adaptive();
+
     const Status finalize_status =
         writer.finalize();
 
@@ -1070,7 +1080,10 @@ void RecorderSession::worker_main() noexcept
         memory_end,
         writer_submitted,
         writer_backpressure,
-        resource_generation);
+        resource_generation,
+        visual_analysis_primed,
+        visual_scene_stats,
+        visual_adaptive);
 
     state_.store(
         failed
@@ -1085,7 +1098,10 @@ void RecorderSession::write_diagnostics(
     std::uint64_t memory_end,
     std::uint64_t writer_submitted,
     std::uint64_t writer_backpressure,
-    std::uint64_t resource_generation) noexcept
+    std::uint64_t resource_generation,
+    bool visual_analysis_primed,
+    arssyut::visual::ArVisualSceneStats visual_scene_stats,
+    arssyut::visual::ArVisualAdaptiveState visual_adaptive) noexcept
 {
     try {
         const auto snapshot_value =
@@ -1134,6 +1150,74 @@ void RecorderSession::write_diagnostics(
             << "  \"arvisual_smart_auto\": "
             << (config_.visual.smart_auto ? "true" : "false")
             << ",\n"
+            << std::setprecision(6)
+            << "  \"arvisual_base_master\": "
+            << config_.visual.master << ",\n"
+            << "  \"arvisual_base_enhance\": "
+            << config_.visual.enhance << ",\n"
+            << "  \"arvisual_base_color_pop\": "
+            << config_.visual.color_pop << ",\n"
+            << "  \"arvisual_base_clean_white\": "
+            << config_.visual.clean_white << ",\n"
+            << "  \"arvisual_base_clarity\": "
+            << config_.visual.clarity << ",\n"
+            << "  \"arvisual_base_skin_protect\": "
+            << config_.visual.skin_protect << ",\n"
+            << "  \"arvisual_base_skin_beauty\": "
+            << config_.visual.skin_beauty << ",\n"
+            << "  \"arvisual_base_healthy_tone\": "
+            << config_.visual.healthy_tone << ",\n"
+            << "  \"arvisual_base_toy_gloss\": "
+            << config_.visual.toy_gloss << ",\n"
+            << "  \"arvisual_base_depth_pop\": "
+            << config_.visual.depth_pop << ",\n"
+            << "  \"arvisual_base_highlight_guard\": "
+            << config_.visual.highlight_guard << ",\n"
+            << "  \"arvisual_base_performance\": "
+            << config_.visual.performance << ",\n"
+            << "  \"visual_analysis_primed\": "
+            << (visual_analysis_primed ? "true" : "false")
+            << ",\n"
+            << "  \"visual_scene_p10_luma\": "
+            << visual_scene_stats.p10_luma << ",\n"
+            << "  \"visual_scene_median_luma\": "
+            << visual_scene_stats.median_luma << ",\n"
+            << "  \"visual_scene_p90_luma\": "
+            << visual_scene_stats.p90_luma << ",\n"
+            << "  \"visual_scene_p98_luma\": "
+            << visual_scene_stats.p98_luma << ",\n"
+            << "  \"visual_scene_mean_saturation\": "
+            << visual_scene_stats.mean_saturation << ",\n"
+            << "  \"visual_scene_p90_saturation\": "
+            << visual_scene_stats.p90_saturation << ",\n"
+            << "  \"visual_scene_shadow_frac\": "
+            << visual_scene_stats.shadow_frac << ",\n"
+            << "  \"visual_scene_near_clip_frac\": "
+            << visual_scene_stats.near_clip_frac << ",\n"
+            << "  \"visual_scene_vivid_frac\": "
+            << visual_scene_stats.vivid_frac << ",\n"
+            << "  \"visual_scene_hot_vivid_frac\": "
+            << visual_scene_stats.hot_vivid_frac << ",\n"
+            << "  \"visual_scene_neutral_frac\": "
+            << visual_scene_stats.neutral_frac << ",\n"
+            << "  \"visual_scene_colored_frac\": "
+            << visual_scene_stats.colored_frac << ",\n"
+            << "  \"visual_adaptive_exposure\": "
+            << visual_adaptive.exposure << ",\n"
+            << "  \"visual_adaptive_pop\": "
+            << visual_adaptive.pop << ",\n"
+            << "  \"visual_adaptive_highlight\": "
+            << visual_adaptive.highlight << ",\n"
+            << "  \"visual_adaptive_shadow\": "
+            << visual_adaptive.shadow << ",\n"
+            << "  \"visual_adaptive_strength\": "
+            << visual_adaptive.strength << ",\n"
+            << "  \"visual_adaptive_chroma_limit\": "
+            << visual_adaptive.chroma_limit << ",\n"
+            << "  \"visual_adaptive_clean\": "
+            << visual_adaptive.clean << ",\n"
+            << "  \"visual_adaptive_separation\": "
+            << visual_adaptive.separation << ",\n"
             << "  \"visual_analysis_available\": "
             << (snapshot_value.visual_analysis_available ? "true" : "false")
             << ",\n"
