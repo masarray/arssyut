@@ -385,7 +385,30 @@ void test_presentation_controller(TestContext &test)
         now);
 
     PresentationFrameState frame{};
-    for (int i = 0; i < 90; ++i) {
+    for (int i = 0; i < 60; ++i) {
+        now.ticks_100ns +=
+            arssyut::core::MonotonicClock::ticks_per_second / 120;
+
+        frame = controller.step(
+            1.0f / 120.0f,
+            0.75f,
+            0.50f,
+            true,
+            now,
+            now);
+    }
+
+    bool click_visible_midway = false;
+    for (const auto &click : frame.clicks) {
+        click_visible_midway =
+            click_visible_midway ||
+            click.kind != ClickKind::None;
+    }
+    test.expect(
+        click_visible_midway,
+        "Single-ring click remains visible around half a second");
+
+    for (int i = 0; i < 30; ++i) {
         now.ticks_100ns +=
             arssyut::core::MonotonicClock::ticks_per_second / 120;
 
@@ -411,7 +434,7 @@ void test_presentation_controller(TestContext &test)
     }
     test.expect(
         !click_visible,
-        "Click pulse lifetime remains bounded");
+        "Single-ring click pulse remains bounded after its longer lifetime");
 
     ShortcutChord chord;
     chord.key = ShortcutKey::C;
