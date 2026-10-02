@@ -12,8 +12,10 @@
 #include <mfobjects.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
