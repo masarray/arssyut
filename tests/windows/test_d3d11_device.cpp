@@ -1172,6 +1172,30 @@ void test_single_ring_click_compositor(
     test.expect(
         bright_halo != bright_bgra,
         "Chromatic support keeps the glow visible on near-white content");
+
+    state.clicks[0].age_seconds = 0.030f;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            dark_source.Get(),
+            {0, 0, 4, 4},
+            {640, 360},
+            &state).ok(),
+        "Ignition-phase click renders");
+
+    std::uint32_t ignition_center = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            320,
+            180,
+            ignition_center),
+        "Ignition center pixel can be inspected");
+    test.expect(
+        ignition_center == dark_bgra,
+        "Wide ignition glow never turns into a filled center");
 }
 
 void test_arvisual_grade_compositor(
