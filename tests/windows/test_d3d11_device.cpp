@@ -384,7 +384,40 @@ void test_presentation_controller(TestContext &test)
         0.50f,
         now);
 
-    PresentationFrameState frame{};
+    now.ticks_100ns +=
+        arssyut::core::MonotonicClock::ticks_per_second * 4 / 100;
+
+    PresentationFrameState frame =
+        controller.step(
+            0.040f,
+            0.75f,
+            0.50f,
+            true,
+            now,
+            now);
+
+    test.expect(
+        frame.cursor.opacity > 0.99f &&
+            frame.cursor.scale > 1.14f &&
+            frame.cursor.scale <= 1.18f,
+        "Cursor click impact reaches bounded ballistic punch");
+
+    now.ticks_100ns +=
+        arssyut::core::MonotonicClock::ticks_per_second * 65 / 1000;
+
+    frame = controller.step(
+        0.065f,
+        0.75f,
+        0.50f,
+        true,
+        now,
+        now);
+
+    test.expect(
+        frame.cursor.scale >= 0.94f &&
+            frame.cursor.scale < 0.99f,
+        "Cursor click impact produces controlled recoil");
+
     for (int i = 0; i < 60; ++i) {
         now.ticks_100ns +=
             arssyut::core::MonotonicClock::ticks_per_second / 120;
@@ -1057,6 +1090,96 @@ void test_single_ring_click_compositor(
         "Single-ring click produces a visible grown ring");
 }
 
+void test_custom_cursor_compositor(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t solid_bgra = 0xFF20242Au;
+
+    auto source = create_solid_texture(
+        owner.device(),
+        4,
+        4,
+        solid_bgra);
+    test.expect(
+        source != nullptr,
+        "Custom cursor source texture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "Custom cursor compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    const HCURSOR cursor =
+        LoadCursorW(
+            nullptr,
+            IDC_ARROW);
+    test.expect(
+        cursor != nullptr,
+        "System arrow cursor is available");
+    if (!cursor)
+        return;
+
+    test.expect(
+        compositor.update_cursor_shape(
+            owner.immediate_context(),
+            cursor).ok(),
+        "System cursor shape enters retained cache");
+
+    arssyut::presentation::PresentationFrameState state{};
+    state.cursor.content_x = 0.5f;
+    state.cursor.content_y = 0.5f;
+    state.cursor.scale = 1.0f;
+    state.cursor.opacity = 1.0f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {640, 360},
+            &state).ok(),
+        "Hotspot-anchored custom cursor renders");
+
+    test.expect(
+        texture_contains_non_solid_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            solid_bgra),
+        "Custom cursor changes visible output pixels");
+
+    const auto generation =
+        compositor.resource_generation();
+
+    test.expect(
+        compositor.update_cursor_shape(
+            owner.immediate_context(),
+            cursor).ok(),
+        "Repeated cursor shape selection hits retained cache");
+
+    test.expect(
+        compositor.render_retained(
+            owner.immediate_context(),
+            {0, 0, 4, 4},
+            {640, 360},
+            &state).ok(),
+        "Cached cursor re-renders with retained desktop source");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "Cursor steady state creates no new compositor resources");
+}
+
 void test_keyboard_overlay_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -1310,6 +1433,7 @@ int main()
     test_media_foundation_mp4(test);
     test_retained_source_camera_cadence(test, device);
     test_single_ring_click_compositor(test, device);
+    test_custom_cursor_compositor(test, device);
     test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
 
