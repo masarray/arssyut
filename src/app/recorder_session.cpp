@@ -814,7 +814,8 @@ void RecorderSession::worker_main() noexcept
                 config_.output_size,
                 presentation_enabled
                     ? &presentation_state
-                    : nullptr);
+                    : nullptr,
+                &config_.visual);
 
         if (!frame_result) {
             fail(frame_result.status());
