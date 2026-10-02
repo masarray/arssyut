@@ -356,9 +356,12 @@ void test_presentation_controller(TestContext &test)
         "Click pulse lifetime remains bounded");
 
     ShortcutChord chord;
-    chord.key = static_cast<std::uint16_t>('C');
+    chord.key = ShortcutKey::C;
     chord.modifiers = ShortcutCtrl;
     controller.on_shortcut(chord, now);
+
+    now.ticks_100ns +=
+        arssyut::core::MonotonicClock::ticks_per_second / 20;
 
     frame = controller.step(
         1.0f / 120.0f,
@@ -373,12 +376,36 @@ void test_presentation_controller(TestContext &test)
             frame.keyboard.opacity > 0.0f,
         "Shortcut produces bounded keyboard overlay state");
 
-    const std::wstring keyboard(
-        frame.keyboard.text.data());
     test.expect(
-        keyboard.find(L"Ctrl") != std::wstring::npos &&
-            keyboard.find(L"C") != std::wstring::npos,
-        "Shortcut keycap text preserves canonical modifier order");
+        frame.keyboard.keycap_count == 2 &&
+            std::wstring(
+                frame.keyboard.keycaps[0].label.data()) == L"Ctrl" &&
+            std::wstring(
+                frame.keyboard.keycaps[1].label.data()) == L"C",
+        "Shortcut keycaps preserve canonical modifier order");
+
+    const std::uint32_t generation =
+        frame.keyboard.generation;
+
+    TimePoint duplicate_time{
+        now.ticks_100ns +
+        arssyut::core::MonotonicClock::ticks_per_second / 25
+    };
+    controller.on_shortcut(
+        chord,
+        duplicate_time);
+
+    frame = controller.step(
+        1.0f / 120.0f,
+        0.75f,
+        0.50f,
+        true,
+        duplicate_time,
+        duplicate_time);
+
+    test.expect(
+        frame.keyboard.generation == generation,
+        "Duplicate shortcut inside coalescing window reuses overlay generation");
 
     now.ticks_100ns +=
         arssyut::core::MonotonicClock::ticks_per_second * 4;
