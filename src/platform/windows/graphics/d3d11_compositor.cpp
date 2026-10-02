@@ -2060,6 +2060,39 @@ Status D3D11Compositor::render_retained(
     return Status::success();
 }
 
+bool D3D11Compositor::scene_analysis_available() const noexcept
+{
+    return scene_analyzer_ != nullptr;
+}
+
+std::uint64_t D3D11Compositor::scene_analysis_submitted() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->submitted()
+        : 0;
+}
+
+std::uint64_t D3D11Compositor::scene_analysis_completed() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->completed()
+        : 0;
+}
+
+std::uint64_t D3D11Compositor::scene_analysis_busy_skips() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->busy_skips()
+        : 0;
+}
+
+std::uint64_t D3D11Compositor::scene_analysis_map_failures() const noexcept
+{
+    return scene_analyzer_
+        ? scene_analyzer_->map_failures()
+        : 0;
+}
+
 Status D3D11Compositor::render(
     ID3D11DeviceContext *context,
     ID3D11Texture2D *source,
