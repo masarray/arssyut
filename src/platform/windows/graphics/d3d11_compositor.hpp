@@ -93,7 +93,7 @@ private:
         ID3D11DeviceContext *context,
         const arssyut::presentation::KeyboardOverlayFrame &keyboard) noexcept;
     void rasterize_keyboard_keycaps(
-        const wchar_t *text) noexcept;
+        const arssyut::presentation::KeyboardOverlayFrame &keyboard) noexcept;
 
     void resolve_gpu_queries(ID3D11DeviceContext *context) noexcept;
     [[nodiscard]] std::size_t begin_gpu_query(
@@ -126,8 +126,15 @@ private:
     HBITMAP keyboard_bitmap_ = nullptr;
     HGDIOBJ keyboard_old_bitmap_ = nullptr;
     HFONT keyboard_font_ = nullptr;
+    HBRUSH keyboard_shadow_brush_ = nullptr;
+    HBRUSH keyboard_light_brush_ = nullptr;
+    HBRUSH keyboard_dark_brush_ = nullptr;
+    HPEN keyboard_light_pen_ = nullptr;
+    HPEN keyboard_dark_pen_ = nullptr;
     void *keyboard_bits_ = nullptr;
     std::uint32_t keyboard_generation_ = 0;
+    std::uint32_t keyboard_content_width_ = 1;
+    std::uint32_t keyboard_content_height_ = 1;
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> input_copy_;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> input_srv_;

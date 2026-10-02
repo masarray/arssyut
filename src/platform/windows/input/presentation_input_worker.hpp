@@ -5,8 +5,8 @@
 #include "core/concurrency/spsc_ring.hpp"
 #include "core/result/status.hpp"
 #include "core/time/monotonic_clock.hpp"
-#include "presentation/presentation_controller.hpp"
 #include "presentation/presentation_state.hpp"
+#include "presentation/shortcut.hpp"
 
 #include <Windows.h>
 
@@ -79,13 +79,7 @@ private:
     void handle_mouse(const RAWMOUSE &mouse) noexcept;
     void handle_keyboard(const RAWKEYBOARD &keyboard) noexcept;
 
-    [[nodiscard]] static std::uint16_t canonical_key(
-        const RAWKEYBOARD &keyboard) noexcept;
     [[nodiscard]] std::uint8_t modifier_mask() const noexcept;
-    [[nodiscard]] static bool is_modifier(std::uint16_t key) noexcept;
-    [[nodiscard]] static bool should_visualize(
-        std::uint16_t key,
-        std::uint8_t modifiers) noexcept;
 
     void publish_pointer_activity() noexcept;
 

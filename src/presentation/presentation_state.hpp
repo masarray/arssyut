@@ -1,6 +1,9 @@
 #pragma once
 
+#include "presentation/shortcut.hpp"
+
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace arssyut::presentation {
@@ -21,7 +24,8 @@ struct ClickFrame {
 };
 
 struct KeyboardOverlayFrame {
-    std::array<wchar_t, 64> text{};
+    std::array<KeycapFrame, kMaxShortcutKeycaps> keycaps{};
+    std::size_t keycap_count = 0;
     float opacity = 0.0f;
     std::uint32_t generation = 0;
 };

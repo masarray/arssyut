@@ -5,6 +5,7 @@
 #include "platform/windows/storage/recoverable_session.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
 #include "presentation/presentation_controller.hpp"
+#include "presentation/shortcut_visualizer.hpp"
 
 #include <d3d11.h>
 #include <mfapi.h>
@@ -226,6 +227,63 @@ bool verify_solid_texture(
     return valid;
 }
 
+bool texture_contains_non_solid_pixel(
+    ID3D11Device *device,
+    ID3D11DeviceContext *context,
+    ID3D11Texture2D *texture,
+    std::uint32_t expected)
+{
+    if (!device || !context || !texture)
+        return false;
+
+    D3D11_TEXTURE2D_DESC desc{};
+    texture->GetDesc(&desc);
+
+    D3D11_TEXTURE2D_DESC staging_desc = desc;
+    staging_desc.BindFlags = 0;
+    staging_desc.MiscFlags = 0;
+    staging_desc.Usage = D3D11_USAGE_STAGING;
+    staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> staging;
+    if (FAILED(device->CreateTexture2D(
+            &staging_desc,
+            nullptr,
+            staging.GetAddressOf()))) {
+        return false;
+    }
+
+    context->CopyResource(staging.Get(), texture);
+
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (FAILED(context->Map(
+            staging.Get(),
+            0,
+            D3D11_MAP_READ,
+            0,
+            &mapped))) {
+        return false;
+    }
+
+    bool changed = false;
+    for (std::uint32_t y = 0; y < desc.Height && !changed; ++y) {
+        const auto *row =
+            reinterpret_cast<const std::uint32_t *>(
+                static_cast<const std::uint8_t *>(mapped.pData) +
+                static_cast<std::size_t>(y) * mapped.RowPitch);
+
+        for (std::uint32_t x = 0; x < desc.Width; ++x) {
+            if (row[x] != expected) {
+                changed = true;
+                break;
+            }
+        }
+    }
+
+    context->Unmap(staging.Get(), 0);
+    return changed;
+}
+
 void test_dxgi_media_buffer_length(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -356,9 +414,15 @@ void test_presentation_controller(TestContext &test)
         "Click pulse lifetime remains bounded");
 
     ShortcutChord chord;
-    chord.key = static_cast<std::uint16_t>('C');
+    chord.key = ShortcutKey::C;
     chord.modifiers = ShortcutCtrl;
-    controller.on_shortcut(chord, now);
+    const TimePoint first_shortcut_time = now;
+    controller.on_shortcut(
+        chord,
+        first_shortcut_time);
+
+    now.ticks_100ns +=
+        arssyut::core::MonotonicClock::ticks_per_second / 20;
 
     frame = controller.step(
         1.0f / 120.0f,
@@ -373,12 +437,36 @@ void test_presentation_controller(TestContext &test)
             frame.keyboard.opacity > 0.0f,
         "Shortcut produces bounded keyboard overlay state");
 
-    const std::wstring keyboard(
-        frame.keyboard.text.data());
     test.expect(
-        keyboard.find(L"Ctrl") != std::wstring::npos &&
-            keyboard.find(L"C") != std::wstring::npos,
-        "Shortcut keycap text preserves canonical modifier order");
+        frame.keyboard.keycap_count == 2 &&
+            std::wstring(
+                frame.keyboard.keycaps[0].label.data()) == L"Ctrl" &&
+            std::wstring(
+                frame.keyboard.keycaps[1].label.data()) == L"C",
+        "Shortcut keycaps preserve canonical modifier order");
+
+    const std::uint32_t generation =
+        frame.keyboard.generation;
+
+    TimePoint duplicate_time{
+        first_shortcut_time.ticks_100ns +
+        arssyut::core::MonotonicClock::ticks_per_second * 6 / 100
+    };
+    controller.on_shortcut(
+        chord,
+        duplicate_time);
+
+    frame = controller.step(
+        1.0f / 120.0f,
+        0.75f,
+        0.50f,
+        true,
+        duplicate_time,
+        duplicate_time);
+
+    test.expect(
+        frame.keyboard.generation == generation,
+        "Duplicate shortcut inside coalescing window reuses overlay generation");
 
     now.ticks_100ns +=
         arssyut::core::MonotonicClock::ticks_per_second * 4;
@@ -869,6 +957,90 @@ void test_retained_source_camera_cadence(
         "Retained-source camera animation allocates no new frame resources");
 }
 
+void test_keyboard_overlay_compositor(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t solid_bgra = 0xFF20242Au;
+
+    auto source = create_solid_texture(
+        owner.device(),
+        4,
+        4,
+        solid_bgra);
+    test.expect(
+        source != nullptr,
+        "Keyboard overlay source texture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "Keyboard overlay compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor = *compositor_result.value();
+
+    arssyut::presentation::PresentationFrameState state{};
+    state.keyboard =
+        arssyut::presentation::build_keyboard_overlay(
+            {
+                arssyut::presentation::ShortcutKey::C,
+                arssyut::presentation::ShortcutCtrl
+            },
+            1);
+    state.keyboard.opacity = 1.0f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {640, 360},
+            &state).ok(),
+        "Physical keycap overlay renders at representative output size");
+
+    test.expect(
+        texture_contains_non_solid_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            solid_bgra),
+        "Structured keycap overlay changes visible output pixels");
+
+    const auto generation =
+        compositor.resource_generation();
+
+    state.keyboard =
+        arssyut::presentation::build_keyboard_overlay(
+            {
+                arssyut::presentation::ShortcutKey::S,
+                static_cast<std::uint8_t>(
+                    arssyut::presentation::ShortcutCtrl |
+                    arssyut::presentation::ShortcutShift |
+                    arssyut::presentation::ShortcutWin)
+            },
+            2);
+    state.keyboard.opacity = 1.0f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {640, 360},
+            &state).ok(),
+        "New keycap generation updates retained overlay texture");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "Keycap generation change creates no new compositor resources");
+}
+
 void test_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -945,6 +1117,52 @@ void test_compositor(
         compositor.resource_generation() == generation,
         "Steady-state render loop creates no new frame resources");
 
+    arssyut::presentation::PresentationFrameState keyboard_state{};
+    keyboard_state.keyboard =
+        arssyut::presentation::build_keyboard_overlay(
+            {
+                arssyut::presentation::ShortcutKey::C,
+                arssyut::presentation::ShortcutCtrl
+            },
+            1);
+    keyboard_state.keyboard.opacity = 1.0f;
+
+    const auto keyboard_generation =
+        compositor.resource_generation();
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {8, 6},
+            &keyboard_state).ok(),
+        "Structured keycap overlay render succeeds");
+
+    keyboard_state.keyboard =
+        arssyut::presentation::build_keyboard_overlay(
+            {
+                arssyut::presentation::ShortcutKey::V,
+                static_cast<std::uint8_t>(
+                    arssyut::presentation::ShortcutCtrl |
+                    arssyut::presentation::ShortcutShift)
+            },
+            2);
+    keyboard_state.keyboard.opacity = 1.0f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {8, 6},
+            &keyboard_state).ok(),
+        "Keycap generation update reuses retained GPU resources");
+
+    test.expect(
+        compositor.resource_generation() == keyboard_generation,
+        "Shortcut changes allocate no new compositor frame resources");
+
     test.expect(
         compositor.render(
             owner.immediate_context(),
@@ -991,6 +1209,7 @@ int main()
     test_empty_video_pipeline(test, device);
     test_media_foundation_mp4(test);
     test_retained_source_camera_cadence(test, device);
+    test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
 
     if (test.failures != 0) {

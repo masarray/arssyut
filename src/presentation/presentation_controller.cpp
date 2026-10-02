@@ -1,10 +1,9 @@
 #include "presentation/presentation_controller.hpp"
 
-#include <Windows.h>
-
 #include <algorithm>
-#include <iterator>
-#include <cwchar>
+#include "presentation/shortcut_visualizer.hpp"
+
+#include <cmath>
 
 namespace arssyut::presentation {
 
@@ -16,126 +15,19 @@ constexpr std::int64_t kZoomMotionTailTicks =
     arssyut::core::MonotonicClock::ticks_per_second * 3 / 4;
 constexpr std::int64_t kKeyboardHoldTicks =
     arssyut::core::MonotonicClock::ticks_per_second * 6 / 5;
+constexpr std::int64_t kKeyboardFadeInTicks =
+    arssyut::core::MonotonicClock::ticks_per_second * 7 / 100;
+constexpr std::int64_t kKeyboardFadeOutTicks =
+    arssyut::core::MonotonicClock::ticks_per_second * 22 / 100;
+constexpr std::int64_t kShortcutCoalesceTicks =
+    arssyut::core::MonotonicClock::ticks_per_second * 8 / 100;
 
-constexpr std::uint8_t kModCtrl = 1u << 0;
-constexpr std::uint8_t kModShift = 1u << 1;
-constexpr std::uint8_t kModAlt = 1u << 2;
-constexpr std::uint8_t kModWin = 1u << 3;
-
-void append_token(
-    wchar_t *buffer,
-    std::size_t capacity,
-    const wchar_t *token)
+[[nodiscard]] float minimum_jerk(float value) noexcept
 {
-    if (!buffer || capacity == 0 || !token)
-        return;
-
-    const std::size_t used = std::wcslen(buffer);
-    if (used >= capacity - 1)
-        return;
-
-    if (used != 0) {
-        const wchar_t plus[] = L"  +  ";
-        wcsncat_s(
-            buffer,
-            capacity,
-            plus,
-            _TRUNCATE);
-    }
-
-    wcsncat_s(
-        buffer,
-        capacity,
-        token,
-        _TRUNCATE);
-}
-
-void key_name(
-    std::uint16_t key,
-    wchar_t *buffer,
-    std::size_t capacity)
-{
-    if (!buffer || capacity == 0)
-        return;
-
-    buffer[0] = L'\0';
-
-    if (key >= L'A' && key <= L'Z') {
-        buffer[0] = static_cast<wchar_t>(key);
-        if (capacity > 1)
-            buffer[1] = L'\0';
-        return;
-    }
-
-    if (key >= L'0' && key <= L'9') {
-        buffer[0] = static_cast<wchar_t>(key);
-        if (capacity > 1)
-            buffer[1] = L'\0';
-        return;
-    }
-
-    if (key >= VK_F1 && key <= VK_F12) {
-        swprintf_s(
-            buffer,
-            capacity,
-            L"F%u",
-            static_cast<unsigned>(key - VK_F1 + 1));
-        return;
-    }
-
-    const wchar_t *name = nullptr;
-    switch (key) {
-    case VK_TAB:
-        name = L"Tab";
-        break;
-    case VK_ESCAPE:
-        name = L"Esc";
-        break;
-    case VK_RETURN:
-        name = L"Enter";
-        break;
-    case VK_SPACE:
-        name = L"Space";
-        break;
-    case VK_BACK:
-        name = L"Backspace";
-        break;
-    case VK_DELETE:
-        name = L"Delete";
-        break;
-    case VK_HOME:
-        name = L"Home";
-        break;
-    case VK_END:
-        name = L"End";
-        break;
-    case VK_PRIOR:
-        name = L"PgUp";
-        break;
-    case VK_NEXT:
-        name = L"PgDn";
-        break;
-    case VK_LEFT:
-        name = L"Left";
-        break;
-    case VK_RIGHT:
-        name = L"Right";
-        break;
-    case VK_UP:
-        name = L"Up";
-        break;
-    case VK_DOWN:
-        name = L"Down";
-        break;
-    case VK_SNAPSHOT:
-        name = L"PrtSc";
-        break;
-    default:
-        name = L"Key";
-        break;
-    }
-
-    wcsncpy_s(buffer, capacity, name, _TRUNCATE);
+    const float t = std::clamp(value, 0.0f, 1.0f);
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    return t3 * (10.0f + t * (-15.0f + 6.0f * t));
 }
 
 } // namespace
@@ -146,9 +38,13 @@ void PresentationController::reset() noexcept
     clicks_.clear();
 
     zoom_until_ = {};
+    keyboard_started_ = {};
     keyboard_until_ = {};
+    last_shortcut_time_ = {};
     keyboard_ = {};
+    last_shortcut_ = {};
     keyboard_generation_ = 0;
+    have_last_shortcut_ = false;
     emphasis_pending_ = false;
 }
 
@@ -200,10 +96,34 @@ void PresentationController::on_shortcut(
     ShortcutChord chord,
     arssyut::core::TimePoint time) noexcept
 {
-    if (!settings_.shortcut_keys)
+    if (!settings_.shortcut_keys ||
+        !should_visualize_shortcut(chord)) {
         return;
+    }
+
+    const std::int64_t since_last =
+        have_last_shortcut_
+            ? arssyut::core::MonotonicClock::duration_ticks(
+                  last_shortcut_time_,
+                  time)
+            : kShortcutCoalesceTicks + 1;
+
+    if (have_last_shortcut_ &&
+        same_shortcut(chord, last_shortcut_) &&
+        since_last >= 0 &&
+        since_last <= kShortcutCoalesceTicks) {
+        last_shortcut_time_ = time;
+        keyboard_until_.ticks_100ns =
+            time.ticks_100ns + kKeyboardHoldTicks;
+        return;
+    }
+
+    last_shortcut_ = chord;
+    last_shortcut_time_ = time;
+    have_last_shortcut_ = true;
 
     update_keyboard(chord);
+    keyboard_started_ = time;
     keyboard_until_.ticks_100ns =
         time.ticks_100ns + kKeyboardHoldTicks;
 }
@@ -211,46 +131,13 @@ void PresentationController::on_shortcut(
 void PresentationController::update_keyboard(
     ShortcutChord chord) noexcept
 {
-    keyboard_.text.fill(L'\0');
-
-    if (chord.modifiers & kModCtrl)
-        append_token(
-            keyboard_.text.data(),
-            keyboard_.text.size(),
-            L"Ctrl");
-    if (chord.modifiers & kModShift)
-        append_token(
-            keyboard_.text.data(),
-            keyboard_.text.size(),
-            L"Shift");
-    if (chord.modifiers & kModAlt)
-        append_token(
-            keyboard_.text.data(),
-            keyboard_.text.size(),
-            L"Alt");
-    if (chord.modifiers & kModWin)
-        append_token(
-            keyboard_.text.data(),
-            keyboard_.text.size(),
-            L"Win");
-
-    wchar_t key[24]{};
-    key_name(
-        chord.key,
-        key,
-        std::size(key));
-
-    append_token(
-        keyboard_.text.data(),
-        keyboard_.text.size(),
-        key);
-
     ++keyboard_generation_;
     if (keyboard_generation_ == 0)
         keyboard_generation_ = 1;
 
-    keyboard_.generation = keyboard_generation_;
-    keyboard_.opacity = 1.0f;
+    keyboard_ = build_keyboard_overlay(
+        chord,
+        keyboard_generation_);
 }
 
 PresentationFrameState PresentationController::step(
@@ -329,20 +216,26 @@ PresentationFrameState PresentationController::step(
     if (settings_.shortcut_keys &&
         keyboard_.generation != 0 &&
         now.ticks_100ns < keyboard_until_.ticks_100ns) {
-        const auto remaining =
+        const std::int64_t elapsed = std::max<std::int64_t>(
+            0,
+            arssyut::core::MonotonicClock::duration_ticks(
+                keyboard_started_,
+                now));
+        const std::int64_t remaining = std::max<std::int64_t>(
+            0,
             keyboard_until_.ticks_100ns -
-            now.ticks_100ns;
-        const float fraction = std::clamp(
+                now.ticks_100ns);
+
+        const float fade_in = minimum_jerk(
+            static_cast<float>(elapsed) /
+            static_cast<float>(kKeyboardFadeInTicks));
+        const float fade_out = minimum_jerk(
             static_cast<float>(remaining) /
-                static_cast<float>(kKeyboardHoldTicks),
-            0.0f,
-            1.0f);
+            static_cast<float>(kKeyboardFadeOutTicks));
 
         result.keyboard = keyboard_;
         result.keyboard.opacity =
-            std::min(
-                1.0f,
-                fraction * 3.0f);
+            std::min(fade_in, fade_out);
     }
 
     return result;

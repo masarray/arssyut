@@ -21,6 +21,7 @@ endif()
 add_library(arssyut_core STATIC
     src/core/session/session_state_machine.cpp
     src/core/time/monotonic_clock.cpp
+    src/presentation/shortcut_visualizer.cpp
 )
 
 target_include_directories(arssyut_core
@@ -50,6 +51,7 @@ if(WIN32)
         src/platform/windows/graphics/d3d11_compositor.cpp
         src/platform/windows/graphics/d3d11_device.cpp
         src/platform/windows/input/presentation_input_worker.cpp
+        src/platform/windows/input/shortcut_keymap.cpp
         src/platform/windows/media/mf_h264_mp4_writer.cpp
         src/presentation/presentation_controller.cpp
         src/platform/windows/storage/recoverable_session.cpp
@@ -160,6 +162,29 @@ if(ARSSYUT_BUILD_TESTS)
 
     add_test(NAME arssyut_core_tests COMMAND arssyut_core_tests)
 
+    add_executable(arssyut_shortcut_tests
+        tests/test_shortcut_visualizer.cpp
+    )
+    target_link_libraries(arssyut_shortcut_tests PRIVATE arssyut_core)
+    if(MSVC)
+        target_compile_options(arssyut_shortcut_tests PRIVATE
+            /W4
+            /permissive-
+            /utf-8
+            /Zc:__cplusplus
+        )
+    else()
+        target_compile_options(arssyut_shortcut_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    add_test(
+        NAME arssyut_shortcut_tests
+        COMMAND arssyut_shortcut_tests
+    )
+
     add_executable(arssyut_arzoom_parity_tests
         tests/test_arzoom_parity.cpp
     )
@@ -225,5 +250,26 @@ if(ARSSYUT_BUILD_TESTS)
             )
         endif()
         add_test(NAME arssyut_windows_tests COMMAND arssyut_windows_tests)
+
+        add_executable(arssyut_windows_shortcut_tests
+            tests/windows/test_shortcut_keymap.cpp
+        )
+        target_link_libraries(
+            arssyut_windows_shortcut_tests
+            PRIVATE
+                arssyut_windows
+        )
+        if(MSVC)
+            target_compile_options(arssyut_windows_shortcut_tests PRIVATE
+                /W4
+                /permissive-
+                /utf-8
+                /Zc:__cplusplus
+            )
+        endif()
+        add_test(
+            NAME arssyut_windows_shortcut_tests
+            COMMAND arssyut_windows_shortcut_tests
+        )
     endif()
 endif()

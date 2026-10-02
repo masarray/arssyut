@@ -345,11 +345,13 @@ float4 ps_main(VertexOutput input) : SV_Target
         input.uv.x <= keyboard_rect.z &&
         input.uv.y >= keyboard_rect.y &&
         input.uv.y <= keyboard_rect.w) {
-        const float2 keyboard_uv =
+        float2 keyboard_uv =
             (input.uv - keyboard_rect.xy) /
             max(
                 keyboard_rect.zw - keyboard_rect.xy,
                 0.0001f);
+        keyboard_uv *=
+            max(output_info.zw, float2(0.0001f, 0.0001f));
 
         const float4 overlay =
             keyboard_texture.Sample(
@@ -380,8 +382,8 @@ struct PresentationConstants {
 
     float output_width;
     float output_height;
-    float reserved0;
-    float reserved1;
+    float keyboard_uv_scale_x;
+    float keyboard_uv_scale_y;
 
     float keyboard_left;
     float keyboard_top;
@@ -391,8 +393,8 @@ struct PresentationConstants {
     float clicks[16]{};
 };
 
-constexpr UINT kKeyboardWidth = 640;
-constexpr UINT kKeyboardHeight = 112;
+constexpr UINT kKeyboardWidth = 768;
+constexpr UINT kKeyboardHeight = 128;
 
 [[nodiscard]] std::uint32_t hresult_detail(HRESULT hr) noexcept
 {
@@ -469,6 +471,26 @@ D3D11Compositor::~D3D11Compositor()
     if (keyboard_font_) {
         DeleteObject(keyboard_font_);
         keyboard_font_ = nullptr;
+    }
+    if (keyboard_light_pen_) {
+        DeleteObject(keyboard_light_pen_);
+        keyboard_light_pen_ = nullptr;
+    }
+    if (keyboard_dark_pen_) {
+        DeleteObject(keyboard_dark_pen_);
+        keyboard_dark_pen_ = nullptr;
+    }
+    if (keyboard_shadow_brush_) {
+        DeleteObject(keyboard_shadow_brush_);
+        keyboard_shadow_brush_ = nullptr;
+    }
+    if (keyboard_light_brush_) {
+        DeleteObject(keyboard_light_brush_);
+        keyboard_light_brush_ = nullptr;
+    }
+    if (keyboard_dark_brush_) {
+        DeleteObject(keyboard_dark_brush_);
+        keyboard_dark_brush_ = nullptr;
     }
 
     if (keyboard_bitmap_) {
@@ -673,16 +695,43 @@ Status D3D11Compositor::initialize_keyboard_overlay() noexcept
             GetLastError());
     }
 
+    keyboard_shadow_brush_ =
+        CreateSolidBrush(RGB(16, 19, 24));
+    keyboard_light_brush_ =
+        CreateSolidBrush(RGB(246, 247, 245));
+    keyboard_dark_brush_ =
+        CreateSolidBrush(RGB(40, 44, 51));
+    keyboard_light_pen_ =
+        CreatePen(PS_SOLID, 2, RGB(198, 202, 207));
+    keyboard_dark_pen_ =
+        CreatePen(PS_SOLID, 2, RGB(83, 89, 99));
+
+    if (!keyboard_shadow_brush_ ||
+        !keyboard_light_brush_ ||
+        !keyboard_dark_brush_ ||
+        !keyboard_light_pen_ ||
+        !keyboard_dark_pen_) {
+        return Status::failure(
+            StatusCode::PlatformFailure,
+            GetLastError());
+    }
+
     return Status::success();
 }
 
 void D3D11Compositor::rasterize_keyboard_keycaps(
-    const wchar_t *text) noexcept
+    const arssyut::presentation::KeyboardOverlayFrame &keyboard) noexcept
 {
     if (!keyboard_dc_ ||
         !keyboard_bits_ ||
-        !text)
+        !keyboard_font_ ||
+        !keyboard_shadow_brush_ ||
+        !keyboard_light_brush_ ||
+        !keyboard_dark_brush_ ||
+        !keyboard_light_pen_ ||
+        !keyboard_dark_pen_) {
         return;
+    }
 
     auto *pixels =
         static_cast<std::uint32_t *>(keyboard_bits_);
@@ -693,146 +742,164 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
                 static_cast<std::size_t>(kKeyboardHeight),
         0u);
 
-    RECT client{
-        0,
-        0,
-        static_cast<LONG>(kKeyboardWidth),
-        static_cast<LONG>(kKeyboardHeight)
-    };
+    keyboard_content_width_ = 1;
+    keyboard_content_height_ = 1;
 
-    HBRUSH background =
-        CreateSolidBrush(RGB(22, 25, 30));
-    HPEN border =
-        CreatePen(PS_SOLID, 2, RGB(78, 84, 94));
+    const std::size_t count =
+        std::min(
+            keyboard.keycap_count,
+            keyboard.keycaps.size());
+    if (count == 0)
+        return;
 
+    HGDIOBJ old_font =
+        SelectObject(
+            keyboard_dc_,
+            keyboard_font_);
     HGDIOBJ old_brush =
-        SelectObject(keyboard_dc_, background);
+        GetCurrentObject(
+            keyboard_dc_,
+            OBJ_BRUSH);
     HGDIOBJ old_pen =
-        SelectObject(keyboard_dc_, border);
+        GetCurrentObject(
+            keyboard_dc_,
+            OBJ_PEN);
 
-    RoundRect(
-        keyboard_dc_,
-        1,
-        1,
-        client.right - 1,
-        client.bottom - 1,
-        24,
-        24);
-
-    SelectObject(
-        keyboard_dc_,
-        keyboard_font_);
     SetBkMode(
         keyboard_dc_,
         TRANSPARENT);
-    SetTextColor(
-        keyboard_dc_,
-        RGB(244, 246, 249));
 
-    std::array<wchar_t, 64> copy{};
-    wcsncpy_s(
-        copy.data(),
-        copy.size(),
-        text,
-        _TRUNCATE);
+    constexpr int kPadding = 8;
+    constexpr int kGap = 10;
+    constexpr int kTop = 12;
+    constexpr int kFaceHeight = 82;
+    constexpr int kDepth = 6;
+    constexpr int kCorner = 16;
 
-    constexpr wchar_t separator[] = L"  +  ";
-    wchar_t *context = nullptr;
-    wchar_t *token = wcstok_s(
-        copy.data(),
-        separator,
-        &context);
+    int x = kPadding;
 
-    struct Token {
-        wchar_t *text = nullptr;
-        int width = 0;
-    };
+    for (std::size_t i = 0; i < count; ++i) {
+        const auto &keycap =
+            keyboard.keycaps[i];
 
-    std::array<Token, 8> tokens{};
-    std::size_t count = 0;
-    int total_width = 0;
+        if (keycap.label[0] == L'\0')
+            continue;
 
-    while (token && count < tokens.size()) {
         SIZE extent{};
         GetTextExtentPoint32W(
             keyboard_dc_,
-            token,
-            static_cast<int>(wcslen(token)),
+            keycap.label.data(),
+            static_cast<int>(
+                wcsnlen_s(
+                    keycap.label.data(),
+                    keycap.label.size())),
             &extent);
 
         const int width =
             std::clamp(
-                static_cast<int>(extent.cx) + 38,
-                74,
-                190);
+                static_cast<int>(extent.cx) + 34,
+                64,
+                160);
 
-        tokens[count++] = {token, width};
-        total_width += width;
+        RECT shadow{
+            x + 2,
+            kTop + kDepth,
+            x + width + 2,
+            kTop + kFaceHeight + kDepth
+        };
 
-        token = wcstok_s(
-            nullptr,
-            separator,
-            &context);
-    }
+        SelectObject(
+            keyboard_dc_,
+            keyboard_shadow_brush_);
+        SelectObject(
+            keyboard_dc_,
+            GetStockObject(NULL_PEN));
+        RoundRect(
+            keyboard_dc_,
+            shadow.left,
+            shadow.top,
+            shadow.right,
+            shadow.bottom,
+            kCorner,
+            kCorner);
 
-    if (count > 1)
-        total_width +=
-            static_cast<int>(count - 1) * 14;
+        const bool dark =
+            keycap.tone ==
+            arssyut::presentation::KeycapTone::Dark;
 
-    int x =
-        std::max(
-            18,
-            (static_cast<int>(kKeyboardWidth) -
-             total_width) / 2);
+        SelectObject(
+            keyboard_dc_,
+            dark
+                ? keyboard_dark_brush_
+                : keyboard_light_brush_);
+        SelectObject(
+            keyboard_dc_,
+            dark
+                ? keyboard_dark_pen_
+                : keyboard_light_pen_);
 
-    HBRUSH key_brush =
-        CreateSolidBrush(RGB(50, 55, 64));
-    HPEN key_pen =
-        CreatePen(PS_SOLID, 1, RGB(93, 100, 112));
-
-    SelectObject(keyboard_dc_, key_brush);
-    SelectObject(keyboard_dc_, key_pen);
-
-    for (std::size_t i = 0; i < count; ++i) {
-        RECT key{
+        RECT face{
             x,
-            24,
-            x + tokens[i].width,
-            88
+            kTop,
+            x + width,
+            kTop + kFaceHeight
         };
 
         RoundRect(
             keyboard_dc_,
-            key.left,
-            key.top,
-            key.right,
-            key.bottom,
-            14,
-            14);
+            face.left,
+            face.top,
+            face.right,
+            face.bottom,
+            kCorner,
+            kCorner);
+
+        SetTextColor(
+            keyboard_dc_,
+            dark
+                ? RGB(246, 247, 249)
+                : RGB(31, 34, 39));
+
+        RECT text_rect = face;
+        text_rect.top -= 1;
 
         DrawTextW(
             keyboard_dc_,
-            tokens[i].text,
+            keycap.label.data(),
             -1,
-            &key,
+            &text_rect,
             DT_CENTER |
                 DT_VCENTER |
                 DT_SINGLELINE |
                 DT_NOPREFIX);
 
-        x = key.right + 14;
+        x = face.right + kGap;
     }
 
-    SelectObject(keyboard_dc_, old_pen);
-    SelectObject(keyboard_dc_, old_brush);
+    SelectObject(
+        keyboard_dc_,
+        old_pen);
+    SelectObject(
+        keyboard_dc_,
+        old_brush);
+    SelectObject(
+        keyboard_dc_,
+        old_font);
 
-    DeleteObject(key_pen);
-    DeleteObject(key_brush);
-    DeleteObject(border);
-    DeleteObject(background);
+    keyboard_content_width_ =
+        static_cast<std::uint32_t>(
+            std::clamp(
+                x - kGap + kPadding,
+                1,
+                static_cast<int>(kKeyboardWidth)));
+    keyboard_content_height_ =
+        static_cast<std::uint32_t>(
+            std::min(
+                kTop + kFaceHeight + kDepth + 8,
+                static_cast<int>(kKeyboardHeight)));
 
-    // GDI does not preserve alpha in a 32-bit DIB. Promote every painted
-    // pixel to an opaque source pixel; the shader applies temporal opacity.
+    // GDI draws RGB but does not preserve alpha in the 32-bit DIB. Promote
+    // only painted pixels. The shader applies the temporal overlay opacity.
     for (std::size_t i = 0;
          i <
          static_cast<std::size_t>(kKeyboardWidth) *
@@ -858,7 +925,7 @@ Status D3D11Compositor::update_keyboard_overlay(
     }
 
     rasterize_keyboard_keycaps(
-        keyboard.text.data());
+        keyboard);
 
     context->UpdateSubresource(
         keyboard_texture_.Get(),
@@ -1163,25 +1230,57 @@ Status D3D11Compositor::render_retained(
     constants.output_height =
         static_cast<float>(output_size.height);
 
-    const float output_aspect =
-        constants.output_width /
-        std::max(constants.output_height, 1.0f);
+    constants.keyboard_uv_scale_x =
+        static_cast<float>(keyboard_content_width_) /
+        static_cast<float>(kKeyboardWidth);
+    constants.keyboard_uv_scale_y =
+        static_cast<float>(keyboard_content_height_) /
+        static_cast<float>(kKeyboardHeight);
 
-    constexpr float keyboard_width = 0.36f;
-    const float keyboard_height =
-        keyboard_width *
-        (static_cast<float>(kKeyboardHeight) /
-         static_cast<float>(kKeyboardWidth)) *
-        output_aspect;
+    const float content_aspect =
+        static_cast<float>(keyboard_content_width_) /
+        std::max(
+            static_cast<float>(keyboard_content_height_),
+            1.0f);
+
+    float display_height_px = std::clamp(
+        constants.output_height * 0.090f,
+        72.0f,
+        132.0f);
+    float display_width_px =
+        display_height_px * content_aspect;
+
+    const float max_width_px =
+        constants.output_width * 0.78f;
+    if (display_width_px > max_width_px &&
+        display_width_px > 0.0f) {
+        const float scale =
+            max_width_px / display_width_px;
+        display_width_px *= scale;
+        display_height_px *= scale;
+    }
+
+    const float bottom_margin_px = std::clamp(
+        constants.output_height * 0.035f,
+        18.0f,
+        54.0f);
 
     constants.keyboard_left =
-        0.5f - keyboard_width * 0.5f;
+        (constants.output_width - display_width_px) *
+        0.5f /
+        constants.output_width;
     constants.keyboard_right =
-        0.5f + keyboard_width * 0.5f;
-    constants.keyboard_bottom = 0.94f;
+        (constants.output_width + display_width_px) *
+        0.5f /
+        constants.output_width;
+    constants.keyboard_bottom =
+        (constants.output_height - bottom_margin_px) /
+        constants.output_height;
     constants.keyboard_top =
-        constants.keyboard_bottom -
-        keyboard_height;
+        (constants.output_height -
+         bottom_margin_px -
+         display_height_px) /
+        constants.output_height;
 
     for (std::size_t i = 0;
          i < state.clicks.size();
