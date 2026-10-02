@@ -9,6 +9,7 @@
 #include "visual/arvisual_scene_analysis.hpp"
 
 #include <d3d11.h>
+#include <d3d11_3.h>
 #include <wrl/client.h>
 
 #include <array>
@@ -85,6 +86,9 @@ private:
     };
 
     Microsoft::WRL::ComPtr<ID3D11Device> device_;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext3> context3_;
+    bool context3_checked_ = false;
+
     Microsoft::WRL::ComPtr<ID3D11VertexShader> vertex_shader_;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> pixel_shader_;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler_;
