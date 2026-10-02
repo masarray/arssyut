@@ -520,6 +520,15 @@ void RecorderSession::worker_main() noexcept
         return;
     }
 
+    const bool presentation_enabled =
+        config_.presentation.smart_zoom ||
+        config_.presentation.click_visual ||
+        config_.presentation.shortcut_keys;
+
+    WgcCaptureOptions capture_options;
+    capture_options.capture_cursor =
+        !presentation_enabled;
+
     WgcCaptureSource capture;
     if (config_.target.kind ==
         arssyut::windows::CaptureTargetKind::Window) {
@@ -527,13 +536,15 @@ void RecorderSession::worker_main() noexcept
             device->device(),
             config_.target.window,
             frame_slot,
-            diagnostics_);
+            diagnostics_,
+            capture_options);
     } else {
         status = capture.start_monitor(
             device->device(),
             config_.target.monitor,
             frame_slot,
-            diagnostics_);
+            diagnostics_,
+            capture_options);
     }
 
     if (!status.ok()) {
@@ -575,11 +586,6 @@ void RecorderSession::worker_main() noexcept
     presentation_controller.reset();
     presentation_controller.set_settings(
         config_.presentation);
-
-    const bool presentation_enabled =
-        config_.presentation.smart_zoom ||
-        config_.presentation.click_visual ||
-        config_.presentation.shortcut_keys;
 
     if (presentation_enabled) {
         status = presentation_input.start();
@@ -750,6 +756,8 @@ void RecorderSession::worker_main() noexcept
             float cursor_y = 0.5f;
             const bool cursor_valid =
                 pointer.valid &&
+                pointer.cursor_visible &&
+                pointer.cursor_handle != nullptr &&
                 presentation_target_valid &&
                 screen_to_content(
                     presentation_target_rect,
@@ -778,6 +786,19 @@ void RecorderSession::worker_main() noexcept
                     cursor_valid,
                     now,
                     pointer.last_activity);
+
+            if (cursor_valid) {
+                const Status cursor_status =
+                    pipeline->compositor().
+                        update_cursor_shape(
+                            device->immediate_context(),
+                            pointer.cursor_handle);
+                if (!cursor_status.ok()) {
+                    fail(cursor_status);
+                    failed = true;
+                    break;
+                }
+            }
 
             previous_presentation = now;
             next_presentation = {
