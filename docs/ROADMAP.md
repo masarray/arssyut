@@ -282,6 +282,25 @@ P4R.2 therefore:
 
 See `docs/P4R2_CURSOR_CLICK_MOTION.md`.
 
+### P4R.3 — Presentation Reliability & Visual Polish
+
+Real 1080p60 validation on 2026-10-03 superseded the P4R.2 custom cursor
+experiment. P4R.3 prioritizes pointer reliability and moves visual impact back
+into click/keycap presentation:
+
+- restores native Windows/WGC cursor capture as the only cursor authority;
+- removes custom cursor raster/cache/shader and ballistic scale behavior;
+- keeps pointer observation only for ArZoom targeting and click coordinates;
+- makes 1u action keys square and assigns explicit realistic keyboard widths to
+  modifiers and long keys;
+- thickens the single click-ring core, expands near bloom and diffuse halo, and
+  lengthens the fade tail;
+- adds bright-surface chromatic support without introducing a second ring;
+- retriggers one same-target pulse for rapid repeated clicks instead of
+  stacking concentric circles.
+
+See `docs/P4R3_PRESENTATION_RELIABILITY.md`.
+
 ### Deliverables
 
 - dedicated Raw Input worker;
@@ -290,9 +309,10 @@ See `docs/P4R2_CURSOR_CLICK_MOTION.md`.
 - chord reducer;
 - privacy filter;
 - bounded click event ring;
-- retained GPU keycap renderer with one white physical-key language;
-- retained hotspot-anchored Windows cursor compositor;
-- bounded cursor-shape cache with no steady-state resource churn.
+- retained GPU keycap renderer with one white physical-key language and
+  semantic 1u/1.25u/1.5u/2u/3.5u geometry;
+- native WGC cursor authority that naturally follows ArZoom sampling;
+- analytic single-ring click core/bloom/halo with bounded retained state.
 
 ### Default display behavior
 
