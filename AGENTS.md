@@ -268,9 +268,10 @@ After the first real-recording audit, ArZoom integration has stricter rules:
   output frame;
 - never optimize static desktop capture by reusing an already-composited output
   while camera/click/presentation state is moving;
-- click state and click appearance must come from the same pinned ArZoom
-  behavior contract; do not replace the premium click shader with a visually
-  approximate local effect;
+- ArZoom owns camera behavior and content projection. Click appearance may use
+  an Arssyut product skin after direct visual validation, but it must remain
+  content-anchored to the same camera transform, fixed-capacity, analytic on
+  GPU, and allocation-free in the frame hot path;
 - CI must retain a frame-by-frame adapter-vs-upstream parity gate.
 
 
@@ -328,15 +329,23 @@ After the first shortcut-overlay audit:
 - ordinary unmodified printable input is hidden by default;
 - modified printable input may be shown as an action chord, but never with
   clipboard/text contents;
-- Raw Input remains the primary backend; a low-level hook may be added only
-  after a concrete direct-validation gap is demonstrated;
+- Raw Input remains the primary backend. Direct Windows validation on
+  2026-10-02 demonstrated a concrete Win+R gap, so WH_KEYBOARD_LL is allowed
+  only as a narrow supplemental source for Windows-key/system chords;
+- the low-level hook must publish only compact semantic action events, perform
+  no rendering/string/log/file work, and return immediately to CallNextHookEx;
+- Raw Input and hook events are deduplicated by the canonical semantic chord
+  reducer; do not create a second overlay authority;
 - keycap texture, DIB, font, brushes and pens are retained resources;
 - shortcut generation changes may update the retained texture, but must not
   create per-frame GPU/GDI resources;
 - keycap rendering is content-sized and transparent; do not reintroduce a
   large fixed background panel around a small shortcut;
-- the supplied keyboard-button artwork is design direction, not a reason to
-  parse or rasterize a large traced SVG in the realtime path.
+- all production keycaps use one light/white physical-key language; modifiers
+  must not switch to dark/black surfaces;
+- the Windows modifier uses a Windows-logo glyph rather than the text "Win";
+- the supplied keyboard-button artwork is the visual design direction, not a
+  reason to parse or rasterize its large traced SVG in the realtime path.
 
 
 ---
