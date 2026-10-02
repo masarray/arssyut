@@ -197,5 +197,26 @@ Use a real recording, not screenshots alone.
 - `presentation_input_dropped == 0` in normal validation;
 - compositor/encoder cadence remains within the established 1080p60 budget.
 
-CI success proves structural and deterministic gates only. Visual acceptance is
-completed only after this direct recording checklist passes.
+## Direct validation result — accepted
+
+The real recording `Arssyut-20261003-060151.mp4` was reviewed on
+2026-10-03 at 1920x1080 / 60 FPS.
+
+Accepted observations:
+
+- native Windows cursor remains stable through the reviewed idle/motion
+  sequences;
+- cursor visibility is materially better than the retired P4R.2 custom path;
+- during Smart Zoom, the native cursor scales naturally with the captured
+  desktop source rather than remaining a small independent overlay;
+- click V2 was explicitly accepted by direct user validation;
+- realistic keycap geometry was explicitly accepted by direct user validation;
+- diagnostics reported zero presentation-input drops and no analysis map
+  failures.
+
+P4R.3 is therefore the accepted production baseline. Future presentation work
+must preserve this behavior unless a new direct recording demonstrates a
+specific regression or a deliberately approved replacement.
+
+CI success proves structural and deterministic gates; this direct recording
+closes the P4R.3 visual-acceptance gate.
