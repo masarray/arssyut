@@ -55,12 +55,16 @@ Microsoft::WRL::ComPtr<ID3D11Texture2D> create_solid_texture(
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 
-    std::uint32_t pixels[16]{};
-    for (auto &pixel : pixels)
-        pixel = bgra;
+    if (!device || width == 0 || height == 0)
+        return {};
+
+    std::vector<std::uint32_t> pixels(
+        static_cast<std::size_t>(width) *
+        static_cast<std::size_t>(height),
+        bgra);
 
     D3D11_SUBRESOURCE_DATA initial{};
-    initial.pSysMem = pixels;
+    initial.pSysMem = pixels.data();
     initial.SysMemPitch = width * sizeof(std::uint32_t);
 
     Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
