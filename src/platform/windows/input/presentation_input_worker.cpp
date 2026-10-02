@@ -18,11 +18,6 @@ using arssyut::core::StatusCode;
 constexpr wchar_t kInputWindowClass[] =
     L"ArssyutPresentationInputWindow";
 
-constexpr std::uint8_t kModCtrl = 1u << 0;
-constexpr std::uint8_t kModShift = 1u << 1;
-constexpr std::uint8_t kModAlt = 1u << 2;
-constexpr std::uint8_t kModWin = 1u << 3;
-
 [[nodiscard]] std::uint32_t detail(HRESULT value) noexcept
 {
     return static_cast<std::uint32_t>(value);
@@ -357,42 +352,31 @@ void PresentationInputWorker::handle_mouse(
     }
 }
 
-std::uint16_t PresentationInputWorker::canonical_key(
-    const RAWKEYBOARD &keyboard) noexcept
-{
-    std::uint16_t key =
-        static_cast<std::uint16_t>(keyboard.VKey);
-
-    switch (key) {
-    case VK_LCONTROL:
-    case VK_RCONTROL:
-        return VK_CONTROL;
-    case VK_LSHIFT:
-    case VK_RSHIFT:
-        return VK_SHIFT;
-    case VK_LMENU:
-    case VK_RMENU:
-        return VK_MENU;
-    case VK_LWIN:
-    case VK_RWIN:
-        return VK_LWIN;
-    default:
-        return key;
-    }
-}
-
 std::uint8_t PresentationInputWorker::modifier_mask() const noexcept
 {
     std::uint8_t result = 0;
 
-    if (pressed_[VK_CONTROL].load(std::memory_order_relaxed))
-        result |= kModCtrl;
-    if (pressed_[VK_SHIFT].load(std::memory_order_relaxed))
-        result |= kModShift;
-    if (pressed_[VK_MENU].load(std::memory_order_relaxed))
-        result |= kModAlt;
-    if (pressed_[VK_LWIN].load(std::memory_order_relaxed))
-        result |= kModWin;
+    const bool ctrl =
+        pressed_[VK_LCONTROL].load(std::memory_order_relaxed) ||
+        pressed_[VK_RCONTROL].load(std::memory_order_relaxed);
+    const bool shift =
+        pressed_[VK_LSHIFT].load(std::memory_order_relaxed) ||
+        pressed_[VK_RSHIFT].load(std::memory_order_relaxed);
+    const bool alt =
+        pressed_[VK_LMENU].load(std::memory_order_relaxed) ||
+        pressed_[VK_RMENU].load(std::memory_order_relaxed);
+    const bool win =
+        pressed_[VK_LWIN].load(std::memory_order_relaxed) ||
+        pressed_[VK_RWIN].load(std::memory_order_relaxed);
+
+    if (ctrl)
+        result |= arssyut::presentation::ShortcutCtrl;
+    if (shift)
+        result |= arssyut::presentation::ShortcutShift;
+    if (alt)
+        result |= arssyut::presentation::ShortcutAlt;
+    if (win)
+        result |= arssyut::presentation::ShortcutWin;
 
     return result;
 }
@@ -401,7 +385,10 @@ void PresentationInputWorker::handle_keyboard(
     const RAWKEYBOARD &keyboard) noexcept
 {
     const std::uint16_t key =
-        canonical_key(keyboard);
+        physical_virtual_key(
+            static_cast<std::uint16_t>(keyboard.VKey),
+            static_cast<std::uint16_t>(keyboard.MakeCode),
+            static_cast<std::uint16_t>(keyboard.Flags));
 
     if (key >= pressed_.size())
         return;
