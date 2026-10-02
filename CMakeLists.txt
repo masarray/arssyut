@@ -186,6 +186,31 @@ if(ARSSYUT_BUILD_TESTS)
         COMMAND arssyut_arzoom_parity_tests
     )
 
+    add_executable(arssyut_arzoom_upstream_phase1_gate
+        tests/upstream/arzoom_phase1_gate.cpp
+    )
+    target_include_directories(arssyut_arzoom_upstream_phase1_gate PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/arzoom/include
+    )
+    if(MSVC)
+        target_compile_options(arssyut_arzoom_upstream_phase1_gate PRIVATE
+            /W4
+            /permissive-
+            /utf-8
+            /Zc:__cplusplus
+        )
+    else()
+        target_compile_options(arssyut_arzoom_upstream_phase1_gate PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    add_test(
+        NAME arssyut_arzoom_upstream_phase1_gate
+        COMMAND arssyut_arzoom_upstream_phase1_gate
+    )
+
     if(WIN32)
         add_executable(arssyut_windows_tests
             tests/windows/test_d3d11_device.cpp
