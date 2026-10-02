@@ -10,6 +10,7 @@
 #include "platform/windows/capture/wgc_capture_source.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "presentation/presentation_controller.hpp"
+#include "visual/arvisual_grade.hpp"
 
 #include <Windows.h>
 
@@ -46,6 +47,7 @@ struct RecorderConfig {
     arssyut::core::FrameRate frame_rate{60, 1};
     std::uint32_t bitrate_bps = 12'000'000;
     arssyut::presentation::PresentationSettings presentation{};
+    arssyut::visual::ArVisualGradeSettings visual{};
 };
 
 struct RecorderSnapshot {
