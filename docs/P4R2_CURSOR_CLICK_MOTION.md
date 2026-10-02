@@ -1,5 +1,10 @@
 # P4R.2 — Cursor & Click Motion Polish
 
+> **Superseded by P4R.3 after direct 1080p60 validation on 2026-10-03.**
+> This document remains as design history. The custom cursor/cache/ballistic
+> rules below are no longer production authority; see
+> `docs/P4R3_PRESENTATION_RELIABILITY.md`.
+
 ## Purpose
 
 P4R.2 turns pointer feedback into a first-class presentation layer while
