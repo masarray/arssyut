@@ -27,6 +27,7 @@ enum class CaptureTargetKind : std::uint8_t {
 
 struct WgcCaptureOptions {
     std::uint32_t frame_pool_buffers = 3;
+    bool capture_cursor = true;
 };
 
 class WgcCaptureSource final {

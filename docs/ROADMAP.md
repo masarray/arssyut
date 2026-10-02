@@ -262,16 +262,37 @@ P4R.1 therefore:
 
 See `docs/P4R_KEYBOARD_VISUALIZER.md`.
 
+### P4R.2 — Cursor & Click Motion Polish
+
+P4R.2 promotes the cursor into the presentation compositor so click feedback
+and pointer impact can behave as one coherent visual system without sacrificing
+pointer truthfulness.
+
+P4R.2 therefore:
+- disables native WGC cursor capture while presentation features are active;
+- retains the current Windows cursor shape in a bounded eight-slot cache;
+- projects the custom cursor through the same ArZoom camera transform;
+- scales strictly around the Windows hotspot;
+- adds a ~230 ms bounded ballistic click response
+  (1.00 -> 1.17 -> 0.95 -> 1.025 -> 1.00);
+- adds a subtle motion-speed response capped around +5%;
+- evolves the single click ring into a brighter 11 -> 62 px emissive pulse
+  with an expanding glow falloff and ~0.68-0.72 s lifetime;
+- keeps steady-state rendering allocation-free and output-cadence driven.
+
+See `docs/P4R2_CURSOR_CLICK_MOTION.md`.
+
 ### Deliverables
 
 - dedicated Raw Input worker;
-- low-level hook fallback only if demonstrated necessary;
+- narrow Win-key low-level-hook supplement with semantic dedupe;
 - canonical pressed-key state;
 - chord reducer;
 - privacy filter;
-- overlay event ring;
-- GPU keycap renderer;
-- light/dark styles based on provided design direction.
+- bounded click event ring;
+- retained GPU keycap renderer with one white physical-key language;
+- retained hotspot-anchored Windows cursor compositor;
+- bounded cursor-shape cache with no steady-state resource churn.
 
 ### Default display behavior
 

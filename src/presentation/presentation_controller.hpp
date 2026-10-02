@@ -68,6 +68,13 @@ private:
     std::array<ClickPulse, 4> clicks_{};
     std::uint32_t click_generation_ = 0;
 
+    float cursor_impact_age_seconds_ = 0.0f;
+    float cursor_velocity_boost_ = 0.0f;
+    float previous_cursor_x_ = 0.5f;
+    float previous_cursor_y_ = 0.5f;
+    bool cursor_impact_active_ = false;
+    bool have_previous_cursor_ = false;
+
     arssyut::core::TimePoint zoom_until_{};
     arssyut::core::TimePoint keyboard_started_{};
     arssyut::core::TimePoint keyboard_until_{};

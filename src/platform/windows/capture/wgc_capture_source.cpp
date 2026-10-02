@@ -500,6 +500,8 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
             });
 
         auto session = frame_pool.CreateCaptureSession(item);
+        session.IsCursorCaptureEnabled(
+            request.options.capture_cursor);
         session.StartCapture();
 
         running_.store(true, std::memory_order_release);

@@ -31,6 +31,53 @@ constexpr std::int64_t kShortcutCoalesceTicks =
     return t3 * (10.0f + t * (-15.0f + 6.0f * t));
 }
 
+[[nodiscard]] float smooth_segment(
+    float from,
+    float to,
+    float progress) noexcept
+{
+    return from +
+        (to - from) *
+        minimum_jerk(progress);
+}
+
+[[nodiscard]] float ballistic_cursor_scale(
+    float age_seconds) noexcept
+{
+    const float age =
+        std::max(age_seconds, 0.0f);
+
+    if (age <= 0.040f) {
+        return smooth_segment(
+            1.00f,
+            1.17f,
+            age / 0.040f);
+    }
+
+    if (age <= 0.105f) {
+        return smooth_segment(
+            1.17f,
+            0.95f,
+            (age - 0.040f) / 0.065f);
+    }
+
+    if (age <= 0.180f) {
+        return smooth_segment(
+            0.95f,
+            1.025f,
+            (age - 0.105f) / 0.075f);
+    }
+
+    if (age <= 0.230f) {
+        return smooth_segment(
+            1.025f,
+            1.00f,
+            (age - 0.180f) / 0.050f);
+    }
+
+    return 1.0f;
+}
+
 } // namespace
 
 void PresentationController::reset() noexcept
@@ -38,6 +85,13 @@ void PresentationController::reset() noexcept
     camera_.reset();
     clicks_ = {};
     click_generation_ = 0;
+
+    cursor_impact_age_seconds_ = 0.0f;
+    cursor_velocity_boost_ = 0.0f;
+    previous_cursor_x_ = 0.5f;
+    previous_cursor_y_ = 0.5f;
+    cursor_impact_active_ = false;
+    have_previous_cursor_ = false;
 
     zoom_until_ = {};
     keyboard_started_ = {};
@@ -109,6 +163,11 @@ void PresentationController::on_click(
             kind,
             content_x,
             content_y);
+    }
+
+    if (kind != ClickKind::None) {
+        cursor_impact_age_seconds_ = 0.0f;
+        cursor_impact_active_ = true;
     }
 
     if (settings_.smart_zoom) {
@@ -203,9 +262,9 @@ PresentationFrameState PresentationController::step(
 
     const auto camera = camera_.step(intent);
 
-    constexpr float kLeftClickLifetime = 0.64f;
-    constexpr float kRightClickLifetime = 0.66f;
-    constexpr float kMiddleClickLifetime = 0.58f;
+    constexpr float kLeftClickLifetime = 0.70f;
+    constexpr float kRightClickLifetime = 0.72f;
+    constexpr float kMiddleClickLifetime = 0.68f;
 
     for (auto &pulse : clicks_) {
         if (!pulse.active())
@@ -224,10 +283,83 @@ PresentationFrameState PresentationController::step(
             pulse = {};
     }
 
+    const float safe_dt =
+        std::clamp(dt, 0.0f, 0.10f);
+
+    float velocity_target = 0.0f;
+    if (cursor_valid &&
+        have_previous_cursor_ &&
+        safe_dt > 0.0001f) {
+        const float dx =
+            cursor_x - previous_cursor_x_;
+        const float dy =
+            cursor_y - previous_cursor_y_;
+        const float normalized_speed =
+            std::sqrt(dx * dx + dy * dy) /
+            safe_dt;
+
+        velocity_target =
+            std::clamp(
+                (normalized_speed - 0.75f) * 0.0030f,
+                0.0f,
+                0.050f);
+    }
+
+    const float velocity_response =
+        std::clamp(
+            safe_dt * 18.0f,
+            0.0f,
+            1.0f);
+    cursor_velocity_boost_ +=
+        (velocity_target - cursor_velocity_boost_) *
+        velocity_response;
+
+    if (cursor_valid) {
+        previous_cursor_x_ =
+            std::clamp(cursor_x, 0.0f, 1.0f);
+        previous_cursor_y_ =
+            std::clamp(cursor_y, 0.0f, 1.0f);
+        have_previous_cursor_ = true;
+    } else {
+        have_previous_cursor_ = false;
+        cursor_velocity_boost_ *=
+            std::max(
+                0.0f,
+                1.0f - safe_dt * 18.0f);
+    }
+
+    if (cursor_impact_active_) {
+        cursor_impact_age_seconds_ +=
+            std::max(dt, 0.0f);
+        if (cursor_impact_age_seconds_ >= 0.230f) {
+            cursor_impact_age_seconds_ = 0.230f;
+            cursor_impact_active_ = false;
+        }
+    }
+
+    const float impact_scale =
+        ballistic_cursor_scale(
+            cursor_impact_age_seconds_);
+    const float velocity_weight =
+        cursor_impact_active_ ? 0.35f : 1.0f;
+
     PresentationFrameState result;
     result.camera_center_x = camera.center.x;
     result.camera_center_y = camera.center.y;
     result.camera_zoom = camera.zoom;
+    result.cursor.content_x =
+        std::clamp(cursor_x, 0.0f, 1.0f);
+    result.cursor.content_y =
+        std::clamp(cursor_y, 0.0f, 1.0f);
+    result.cursor.scale =
+        std::clamp(
+            impact_scale +
+                cursor_velocity_boost_ *
+                    velocity_weight,
+            0.94f,
+            1.18f);
+    result.cursor.opacity =
+        cursor_valid ? 1.0f : 0.0f;
 
     for (std::size_t i = 0;
          i < clicks_.size();
