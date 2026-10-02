@@ -118,8 +118,13 @@ PointerSnapshot PresentationInputWorker::pointer() const noexcept
         pointer_x_.load(std::memory_order_relaxed);
     result.screen_y =
         pointer_y_.load(std::memory_order_relaxed);
+    result.cursor_handle =
+        reinterpret_cast<HCURSOR>(
+            cursor_handle_.load(std::memory_order_relaxed));
     result.valid =
         pointer_valid_.load(std::memory_order_acquire);
+    result.cursor_visible =
+        cursor_visible_.load(std::memory_order_relaxed);
     result.last_activity.ticks_100ns =
         pointer_activity_ticks_.load(std::memory_order_relaxed);
     return result;
@@ -130,6 +135,18 @@ void PresentationInputWorker::publish_pointer_activity() noexcept
     POINT point{};
     if (!GetCursorPos(&point))
         return;
+
+    CURSORINFO cursor_info{};
+    cursor_info.cbSize = sizeof(cursor_info);
+    if (GetCursorInfo(&cursor_info)) {
+        cursor_handle_.store(
+            reinterpret_cast<std::uintptr_t>(
+                cursor_info.hCursor),
+            std::memory_order_relaxed);
+        cursor_visible_.store(
+            (cursor_info.flags & CURSOR_SHOWING) != 0,
+            std::memory_order_relaxed);
+    }
 
     pointer_x_.store(point.x, std::memory_order_relaxed);
     pointer_y_.store(point.y, std::memory_order_relaxed);
