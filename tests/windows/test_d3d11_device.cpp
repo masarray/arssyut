@@ -6,6 +6,7 @@
 #include "platform/windows/video/native_video_pipeline.hpp"
 #include "presentation/presentation_controller.hpp"
 #include "presentation/shortcut_visualizer.hpp"
+#include "visual/arvisual_modes.hpp"
 
 #include <d3d11.h>
 #include <mfapi.h>
@@ -1376,6 +1377,111 @@ void test_arvisual_grade_compositor(
         "P5A grade/bypass changes create no compositor resources");
 }
 
+void test_arvisual_product_modes(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t warm_bgra = 0xFFB06030u;
+
+    auto source = create_solid_texture(
+        owner.device(),
+        4,
+        4,
+        warm_bgra);
+    test.expect(
+        source != nullptr,
+        "P5C product-mode source texture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "P5C product-mode compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    const auto pixel_grade =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                PixelAccurate);
+    const auto clean_grade =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                CleanScreen);
+    const auto vivid_grade =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                VividPresentation);
+
+    const auto generation =
+        compositor.resource_generation();
+
+    auto render_pixel =
+        [&](const arssyut::visual::ArVisualGradeSettings &grade,
+            std::uint32_t &pixel) {
+            if (!compositor.render(
+                    owner.immediate_context(),
+                    source.Get(),
+                    {0, 0, 4, 4},
+                    {64, 64},
+                    nullptr,
+                    &grade).ok()) {
+                return false;
+            }
+
+            return read_texture_pixel(
+                owner.device(),
+                owner.immediate_context(),
+                compositor.output_texture(),
+                32,
+                32,
+                pixel);
+        };
+
+    std::uint32_t pixel_out = 0;
+    std::uint32_t clean_out = 0;
+    std::uint32_t vivid_out = 0;
+
+    test.expect(
+        render_pixel(
+            pixel_grade,
+            pixel_out),
+        "P5C Pixel Accurate output can be inspected");
+    test.expect(
+        render_pixel(
+            clean_grade,
+            clean_out),
+        "P5C Clean Screen output can be inspected");
+    test.expect(
+        render_pixel(
+            vivid_grade,
+            vivid_out),
+        "P5C Vivid Presentation output can be inspected");
+
+    test.expect(
+        pixel_out == warm_bgra,
+        "P5C Pixel Accurate remains pixel-identical");
+    test.expect(
+        clean_out != warm_bgra,
+        "P5C Clean Screen applies a real bounded grade");
+    test.expect(
+        vivid_out != warm_bgra,
+        "P5C Vivid Presentation applies a real bounded grade");
+    test.expect(
+        clean_out != vivid_out,
+        "P5C Clean and Vivid modes are visually distinct");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "P5C mode changes allocate no compositor resources");
+}
+
 void test_arvisual_async_scene_analyzer(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -1798,6 +1904,7 @@ int main()
     test_retained_source_camera_cadence(test, device);
     test_single_ring_click_compositor(test, device);
     test_arvisual_grade_compositor(test, device);
+    test_arvisual_product_modes(test, device);
     test_arvisual_async_scene_analyzer(test, device);
     test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
