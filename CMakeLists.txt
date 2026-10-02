@@ -59,6 +59,7 @@ if(WIN32)
     target_include_directories(arssyut_windows
         PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/third_party/arzoom/include
     )
 
     target_compile_definitions(arssyut_windows PUBLIC
