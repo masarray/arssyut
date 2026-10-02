@@ -40,7 +40,8 @@ void copy_label(
 void set_keycap(
     KeycapFrame &keycap,
     const wchar_t *label,
-    KeycapGlyph glyph) noexcept
+    KeycapGlyph glyph,
+    KeycapSize size) noexcept
 {
     keycap.label.fill(L'\0');
     copy_label(
@@ -48,12 +49,14 @@ void set_keycap(
         keycap.label.size(),
         label);
     keycap.glyph = glyph;
+    keycap.size = size;
 }
 
 bool append_keycap(
     KeyboardOverlayFrame &frame,
     const wchar_t *label,
-    KeycapGlyph glyph = KeycapGlyph::Text) noexcept
+    KeycapGlyph glyph = KeycapGlyph::Text,
+    KeycapSize size = KeycapSize::Unit1) noexcept
 {
     if (frame.keycap_count >= frame.keycaps.size())
         return false;
@@ -61,7 +64,8 @@ bool append_keycap(
     set_keycap(
         frame.keycaps[frame.keycap_count],
         label,
-        glyph);
+        glyph,
+        size);
     ++frame.keycap_count;
     return true;
 }
