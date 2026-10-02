@@ -368,6 +368,24 @@ Rules:
   compositor textures, staging surfaces, render targets or shader resources;
 - diagnostics must persist a stable machine-readable product-mode name.
 
+### P5C real-calibration lock
+
+Product-mode tuning must be evidence-driven:
+
+- calibrate from matched real recordings of Pixel Accurate, Clean Screen and
+  Vivid Presentation using the same source/scene sequence;
+- disable Smart Zoom, Clicks and Keys for color-only calibration so presentation
+  effects do not bias judgments;
+- every calibration recording must retain its diagnostics JSON;
+- filenames must carry the selected mode slug;
+- diagnostics must expose the exact base grade plus latest completed scene
+  statistics and adaptive state;
+- do not tune multiple conceptual parameter groups at once without evidence;
+- any accepted mapping change must be re-validated across white UI, dark UI,
+  colorful content and highlight-risk scenes;
+- synthetic/WARP tests are regression gates, not substitutes for real visual
+  acceptance.
+
 ---
 
 ## 11. Input visualization and privacy contract
