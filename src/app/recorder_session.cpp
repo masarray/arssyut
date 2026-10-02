@@ -563,8 +563,10 @@ void RecorderSession::worker_main() noexcept
         config_.presentation.shortcut_keys;
 
     arssyut::windows::WgcCaptureOptions capture_options;
-    capture_options.capture_cursor =
-        !presentation_enabled;
+    // P4R.3A: keep the Windows/WGC cursor as the single cursor authority.
+    // ArZoom samples the captured desktop, so the native cursor naturally
+    // scales with the same camera transform without a second cursor layer.
+    capture_options.capture_cursor = true;
 
     WgcCaptureSource capture;
     if (config_.target.kind ==
@@ -793,8 +795,6 @@ void RecorderSession::worker_main() noexcept
             float cursor_y = 0.5f;
             const bool cursor_valid =
                 pointer.valid &&
-                pointer.cursor_visible &&
-                pointer.cursor_handle != nullptr &&
                 presentation_target_valid &&
                 screen_to_content(
                     presentation_target_rect,
@@ -823,19 +823,6 @@ void RecorderSession::worker_main() noexcept
                     cursor_valid,
                     now,
                     pointer.last_activity);
-
-            if (cursor_valid) {
-                const Status cursor_status =
-                    pipeline->compositor().
-                        update_cursor_shape(
-                            device->immediate_context(),
-                            pointer.cursor_handle);
-                if (!cursor_status.ok()) {
-                    fail(cursor_status);
-                    failed = true;
-                    break;
-                }
-            }
 
             previous_presentation = now;
             next_presentation = {
