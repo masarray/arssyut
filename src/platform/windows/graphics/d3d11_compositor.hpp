@@ -128,9 +128,7 @@ private:
     HFONT keyboard_font_ = nullptr;
     HBRUSH keyboard_shadow_brush_ = nullptr;
     HBRUSH keyboard_light_brush_ = nullptr;
-    HBRUSH keyboard_dark_brush_ = nullptr;
     HPEN keyboard_light_pen_ = nullptr;
-    HPEN keyboard_dark_pen_ = nullptr;
     void *keyboard_bits_ = nullptr;
     std::uint32_t keyboard_generation_ = 0;
     std::uint32_t keyboard_content_width_ = 1;
