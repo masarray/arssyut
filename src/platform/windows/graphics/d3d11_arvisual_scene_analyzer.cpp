@@ -292,7 +292,7 @@ Status D3D11ArVisualSceneAnalyzer::submit_if_due(
     }
 
     // The GPU is still working through both read-later slots.
-    // Skip the analysis sample rather than flushing or waiting.
+    // Skip the analysis sample rather than waiting or allocating more state.
     if (selected >= staging_slots) {
         ++busy_skips_;
         next_submit_ = {
@@ -370,6 +370,27 @@ Status D3D11ArVisualSceneAnalyzer::submit_if_due(
         analysis_texture_.Get());
     context->End(
         slot.ready.Get());
+
+    // Headless D3D11 pipelines have no Present call to naturally submit a
+    // partially filled command buffer. Submit this tiny 5-Hz analysis batch
+    // explicitly, but never wait for completion. Flush1 is asynchronous;
+    // later frames still use DONOTFLUSH GetData polling before any Map.
+    if (!context3_checked_) {
+        context3_checked_ = true;
+        (void)context->QueryInterface(
+            IID_PPV_ARGS(
+                context3_.ReleaseAndGetAddressOf()));
+    }
+
+    if (context3_) {
+        context3_->Flush1(
+            D3D11_CONTEXT_TYPE_ALL,
+            nullptr);
+    } else {
+        // Windows 10 normally exposes Context3. This legacy fallback also
+        // submits without waiting; it is reached only if QueryInterface fails.
+        context->Flush();
+    }
 
     slot.pending = true;
     slot.submitted_at = now;
