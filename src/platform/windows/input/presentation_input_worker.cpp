@@ -560,21 +560,12 @@ void PresentationInputWorker::handle_windows_key_hook(
     if (!win_down)
         return;
 
-    arssyut::presentation::ShortcutChord chord;
-    chord.key =
-        shortcut_key_from_virtual_key(vkey);
-    chord.modifiers =
-        arssyut::presentation::ShortcutWin;
-
-    if (hook_ctrl_down_)
-        chord.modifiers |=
-            arssyut::presentation::ShortcutCtrl;
-    if (hook_shift_down_)
-        chord.modifiers |=
-            arssyut::presentation::ShortcutShift;
-    if (hook_alt_down_)
-        chord.modifiers |=
-            arssyut::presentation::ShortcutAlt;
+    const auto chord =
+        windows_system_shortcut_chord(
+            vkey,
+            hook_ctrl_down_,
+            hook_shift_down_,
+            hook_alt_down_);
 
     publish_shortcut(
         chord,
