@@ -1,11 +1,8 @@
 #pragma once
 
 #include "core/time/monotonic_clock.hpp"
-#include "arzoom-camera.hpp"
 #include "arzoom-click-visual.hpp"
-#ifdef SmartCamera
-#undef SmartCamera
-#endif
+#include "presentation/arzoom_camera_adapter.hpp"
 #include "presentation/presentation_state.hpp"
 
 #include <cstdint>
@@ -61,7 +58,7 @@ private:
 
     PresentationSettings settings_{};
 
-    arzoom::PresenterAwareSmartCamera camera_;
+    ArZoomCameraAdapter camera_;
     arzoom::ClickVisualState clicks_;
 
     arssyut::core::TimePoint zoom_until_{};
