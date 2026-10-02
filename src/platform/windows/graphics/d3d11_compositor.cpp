@@ -1150,7 +1150,7 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
     constexpr int kTop = 12;
     constexpr int kFaceHeight = 82;
     constexpr int kDepth = 6;
-    constexpr int kCorner = 16;
+    constexpr int kCorner = 13;
 
     int x = kPadding;
 
@@ -1167,25 +1167,25 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
             continue;
         }
 
-        SIZE extent{};
-        if (!windows_logo) {
-            GetTextExtentPoint32W(
-                keyboard_dc_,
-                keycap.label.data(),
-                static_cast<int>(
-                    wcsnlen_s(
-                        keycap.label.data(),
-                        keycap.label.size())),
-                &extent);
+        int width = kFaceHeight;
+        switch (keycap.size) {
+        case arssyut::presentation::KeycapSize::Unit125:
+            width = 103;
+            break;
+        case arssyut::presentation::KeycapSize::Unit150:
+            width = 123;
+            break;
+        case arssyut::presentation::KeycapSize::Unit200:
+            width = 164;
+            break;
+        case arssyut::presentation::KeycapSize::Unit350:
+            width = 287;
+            break;
+        case arssyut::presentation::KeycapSize::Unit1:
+        default:
+            width = kFaceHeight;
+            break;
         }
-
-        const int width =
-            windows_logo
-                ? 76
-                : std::clamp(
-                      static_cast<int>(extent.cx) + 34,
-                      64,
-                      160);
 
         RECT shadow{
             x + 2,
