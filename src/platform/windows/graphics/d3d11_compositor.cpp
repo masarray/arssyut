@@ -476,10 +476,6 @@ D3D11Compositor::~D3D11Compositor()
         DeleteObject(keyboard_light_pen_);
         keyboard_light_pen_ = nullptr;
     }
-    if (keyboard_dark_pen_) {
-        DeleteObject(keyboard_dark_pen_);
-        keyboard_dark_pen_ = nullptr;
-    }
     if (keyboard_shadow_brush_) {
         DeleteObject(keyboard_shadow_brush_);
         keyboard_shadow_brush_ = nullptr;
@@ -487,10 +483,6 @@ D3D11Compositor::~D3D11Compositor()
     if (keyboard_light_brush_) {
         DeleteObject(keyboard_light_brush_);
         keyboard_light_brush_ = nullptr;
-    }
-    if (keyboard_dark_brush_) {
-        DeleteObject(keyboard_dark_brush_);
-        keyboard_dark_brush_ = nullptr;
     }
 
     if (keyboard_bitmap_) {
@@ -699,18 +691,12 @@ Status D3D11Compositor::initialize_keyboard_overlay() noexcept
         CreateSolidBrush(RGB(16, 19, 24));
     keyboard_light_brush_ =
         CreateSolidBrush(RGB(246, 247, 245));
-    keyboard_dark_brush_ =
-        CreateSolidBrush(RGB(40, 44, 51));
     keyboard_light_pen_ =
         CreatePen(PS_SOLID, 2, RGB(198, 202, 207));
-    keyboard_dark_pen_ =
-        CreatePen(PS_SOLID, 2, RGB(83, 89, 99));
 
     if (!keyboard_shadow_brush_ ||
         !keyboard_light_brush_ ||
-        !keyboard_dark_brush_ ||
-        !keyboard_light_pen_ ||
-        !keyboard_dark_pen_) {
+        !keyboard_light_pen_) {
         return Status::failure(
             StatusCode::PlatformFailure,
             GetLastError());
@@ -727,9 +713,7 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
         !keyboard_font_ ||
         !keyboard_shadow_brush_ ||
         !keyboard_light_brush_ ||
-        !keyboard_dark_brush_ ||
-        !keyboard_light_pen_ ||
-        !keyboard_dark_pen_) {
+        !keyboard_light_pen_) {
         return;
     }
 
@@ -782,24 +766,34 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
         const auto &keycap =
             keyboard.keycaps[i];
 
-        if (keycap.label[0] == L'\0')
+        const bool windows_logo =
+            keycap.glyph ==
+            arssyut::presentation::KeycapGlyph::WindowsLogo;
+
+        if (!windows_logo &&
+            keycap.label[0] == L'\0') {
             continue;
+        }
 
         SIZE extent{};
-        GetTextExtentPoint32W(
-            keyboard_dc_,
-            keycap.label.data(),
-            static_cast<int>(
-                wcsnlen_s(
-                    keycap.label.data(),
-                    keycap.label.size())),
-            &extent);
+        if (!windows_logo) {
+            GetTextExtentPoint32W(
+                keyboard_dc_,
+                keycap.label.data(),
+                static_cast<int>(
+                    wcsnlen_s(
+                        keycap.label.data(),
+                        keycap.label.size())),
+                &extent);
+        }
 
         const int width =
-            std::clamp(
-                static_cast<int>(extent.cx) + 34,
-                64,
-                160);
+            windows_logo
+                ? 76
+                : std::clamp(
+                      static_cast<int>(extent.cx) + 34,
+                      64,
+                      160);
 
         RECT shadow{
             x + 2,
@@ -823,20 +817,12 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
             kCorner,
             kCorner);
 
-        const bool dark =
-            keycap.tone ==
-            arssyut::presentation::KeycapTone::Dark;
-
         SelectObject(
             keyboard_dc_,
-            dark
-                ? keyboard_dark_brush_
-                : keyboard_light_brush_);
+            keyboard_light_brush_);
         SelectObject(
             keyboard_dc_,
-            dark
-                ? keyboard_dark_pen_
-                : keyboard_light_pen_);
+            keyboard_light_pen_);
 
         RECT face{
             x,
@@ -856,22 +842,83 @@ void D3D11Compositor::rasterize_keyboard_keycaps(
 
         SetTextColor(
             keyboard_dc_,
-            dark
-                ? RGB(246, 247, 249)
-                : RGB(31, 34, 39));
+            RGB(31, 34, 39));
 
-        RECT text_rect = face;
-        text_rect.top -= 1;
+        if (windows_logo) {
+            const int cx =
+                (face.left + face.right) / 2;
+            const int cy =
+                (face.top + face.bottom) / 2;
+            constexpr int pane_w = 11;
+            constexpr int pane_h = 13;
+            constexpr int gap = 3;
 
-        DrawTextW(
-            keyboard_dc_,
-            keycap.label.data(),
-            -1,
-            &text_rect,
-            DT_CENTER |
-                DT_VCENTER |
-                DT_SINGLELINE |
-                DT_NOPREFIX);
+            HBRUSH logo_brush =
+                CreateSolidBrush(RGB(31, 34, 39));
+            HGDIOBJ old_logo_brush =
+                SelectObject(
+                    keyboard_dc_,
+                    logo_brush);
+            HGDIOBJ old_logo_pen =
+                SelectObject(
+                    keyboard_dc_,
+                    GetStockObject(NULL_PEN));
+
+            const int left =
+                cx - pane_w - gap / 2;
+            const int right =
+                cx + gap / 2;
+            const int top =
+                cy - pane_h - gap / 2;
+            const int bottom =
+                cy + gap / 2;
+
+            Rectangle(
+                keyboard_dc_,
+                left,
+                top,
+                left + pane_w,
+                top + pane_h);
+            Rectangle(
+                keyboard_dc_,
+                right,
+                top - 1,
+                right + pane_w + 1,
+                top + pane_h);
+            Rectangle(
+                keyboard_dc_,
+                left,
+                bottom,
+                left + pane_w,
+                bottom + pane_h);
+            Rectangle(
+                keyboard_dc_,
+                right,
+                bottom,
+                right + pane_w + 1,
+                bottom + pane_h + 1);
+
+            SelectObject(
+                keyboard_dc_,
+                old_logo_pen);
+            SelectObject(
+                keyboard_dc_,
+                old_logo_brush);
+            DeleteObject(logo_brush);
+        } else {
+            RECT text_rect = face;
+            text_rect.top -= 1;
+
+            DrawTextW(
+                keyboard_dc_,
+                keycap.label.data(),
+                -1,
+                &text_rect,
+                DT_CENTER |
+                    DT_VCENTER |
+                    DT_SINGLELINE |
+                    DT_NOPREFIX);
+        }
 
         x = face.right + kGap;
     }
