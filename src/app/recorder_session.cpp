@@ -525,7 +525,7 @@ void RecorderSession::worker_main() noexcept
         config_.presentation.click_visual ||
         config_.presentation.shortcut_keys;
 
-    WgcCaptureOptions capture_options;
+    arssyut::windows::WgcCaptureOptions capture_options;
     capture_options.capture_cursor =
         !presentation_enabled;
 
