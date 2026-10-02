@@ -143,12 +143,14 @@ void key_name(
 void PresentationController::reset() noexcept
 {
     camera_.reset();
+    camera_.set_scene_context(false);
     clicks_.clear();
 
     zoom_until_ = {};
     keyboard_until_ = {};
     keyboard_ = {};
     keyboard_generation_ = 0;
+    emphasis_pending_ = false;
 }
 
 void PresentationController::set_settings(
@@ -191,6 +193,7 @@ void PresentationController::on_click(
             std::max(
                 zoom_until_.ticks_100ns,
                 time.ticks_100ns + kZoomClickHoldTicks);
+        emphasis_pending_ = true;
     }
 }
 
@@ -286,7 +289,9 @@ PresentationFrameState PresentationController::step(
     input.follow_policy =
         arzoom::CameraFollowPolicy::Smart;
     input.motion_style =
-        arzoom::CameraMotionStyle::Balanced;
+        arzoom::CameraMotionStyle::Cinematic;
+    input.emphasis_event = emphasis_pending_;
+    emphasis_pending_ = false;
 
     const auto camera = camera_.step(input);
 
