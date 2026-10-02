@@ -5,6 +5,7 @@
 #include "core/diagnostics/latency_histogram.hpp"
 #include "core/result/result.hpp"
 #include "core/result/status.hpp"
+#include "core/time/monotonic_clock.hpp"
 #include "core/video/frame_geometry.hpp"
 #include "presentation/presentation_state.hpp"
 #include "visual/arvisual_grade.hpp"
