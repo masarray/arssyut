@@ -8,6 +8,38 @@ namespace arssyut::windows {
 
 using arssyut::presentation::ShortcutKey;
 
+std::uint16_t physical_virtual_key(
+    std::uint16_t vkey,
+    std::uint16_t make_code,
+    std::uint16_t flags) noexcept
+{
+    if (vkey == VK_SHIFT) {
+        const UINT mapped =
+            MapVirtualKeyW(
+                make_code,
+                MAPVK_VSC_TO_VK_EX);
+        if (mapped == VK_LSHIFT ||
+            mapped == VK_RSHIFT) {
+            return static_cast<std::uint16_t>(mapped);
+        }
+        return VK_LSHIFT;
+    }
+
+    if (vkey == VK_CONTROL) {
+        return (flags & RI_KEY_E0) != 0
+            ? VK_RCONTROL
+            : VK_LCONTROL;
+    }
+
+    if (vkey == VK_MENU) {
+        return (flags & RI_KEY_E0) != 0
+            ? VK_RMENU
+            : VK_LMENU;
+    }
+
+    return vkey;
+}
+
 ShortcutKey shortcut_key_from_virtual_key(
     std::uint16_t vkey) noexcept
 {
