@@ -377,9 +377,22 @@ See `docs/P5B_ARVISUAL_ASYNC_ANALYSIS.md`.
 
 ### P5C — product modes
 
-- Pixel Accurate;
-- Clean Screen;
-- Vivid Presentation.
+Implemented scope:
+- replaces the temporary ArVisual checkbox with one explicit product-mode
+  selector;
+- Pixel Accurate is the default and is a true grade + Smart Auto bypass;
+- Clean Screen uses the existing P5A/P5B engine with conservative creative
+  dose, stronger clean-white behavior and stronger highlight safety;
+- Vivid Presentation preserves the pinned P5A v0.5.9 creative defaults and
+  relies on P5B Smart Auto to reduce risk on saturated/highlight-heavy scenes;
+- recorder configuration canonicalizes all internal grading parameters from
+  the selected product mode so undocumented hybrid presets cannot drift into
+  production;
+- diagnostics persist the stable mode name;
+- mode changes are constant-buffer state only and do not create compositor
+  resources.
+
+See `docs/P5C_PRODUCT_MODES.md`.
 
 ### Gates
 
