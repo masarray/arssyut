@@ -89,8 +89,8 @@ It contains large traced vectors and is intentionally not parsed every frame.
 P4R renders compact physical keycaps with retained native resources:
 
 - transparent background; no large enclosing card;
-- dark modifier keycaps;
-- light action keycap;
+- one consistent light/white physical-key surface for modifiers and actions;
+- Windows modifier rendered as a four-pane Windows logo, not the text "Win";
 - subtle physical depth;
 - restrained border;
 - compact spacing;
@@ -105,10 +105,22 @@ Font, brushes, pens, DIB and GPU texture are created once and reused.
 
 Primary backend remains Raw Input on the dedicated message worker.
 
-A low-level keyboard hook is **not** added speculatively. It is allowed only if
-direct Windows validation demonstrates a required system shortcut that Raw
-Input cannot observe. Secure-attention/secure-desktop sequences are outside the
-normal recorder shortcut contract.
+Direct Windows validation on 2026-10-02 demonstrated that Win+R could execute
+successfully while no semantic overlay event was produced. P4R.1 therefore
+adds WH_KEYBOARD_LL as a narrow supplemental source for Windows-key/system
+chords.
+
+The hook:
+- tracks only bounded key-transition state;
+- publishes semantic action chords only while a Windows modifier is held;
+- never stores typed text or clipboard data;
+- performs no formatting/rendering/file/network work;
+- returns immediately through CallNextHookEx;
+- is deduplicated against Raw Input by the existing semantic chord coalescer.
+
+Diagnostics expose whether the supplemental hook was active for a recording.
+Secure-attention/secure-desktop sequences remain outside the normal recorder
+shortcut contract.
 
 ## Animation
 
@@ -154,6 +166,7 @@ Record 1080p60 and exercise at least:
 - Ctrl+C;
 - Ctrl+Shift+S;
 - Alt+Tab;
+- Win+R;
 - Win+D;
 - Win+Shift+S;
 - F5 / F12;
