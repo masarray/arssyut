@@ -64,6 +64,32 @@ int main()
         !is_modifier_virtual_key('A'),
         "Ordinary key is not classified as modifier");
 
+    const auto win_r =
+        windows_system_shortcut_chord(
+            'R',
+            false,
+            false,
+            false);
+    test.expect(
+        win_r.key == ShortcutKey::R &&
+        win_r.modifiers ==
+            arssyut::presentation::ShortcutWin,
+        "Supplemental hook canonicalizes Windows+R");
+
+    const auto win_shift_s =
+        windows_system_shortcut_chord(
+            'S',
+            false,
+            true,
+            false);
+    test.expect(
+        win_shift_s.key == ShortcutKey::S &&
+        (win_shift_s.modifiers &
+            arssyut::presentation::ShortcutWin) != 0 &&
+        (win_shift_s.modifiers &
+            arssyut::presentation::ShortcutShift) != 0,
+        "Supplemental hook preserves Windows+Shift system chord");
+
     test.expect(
         physical_virtual_key(
             VK_CONTROL,
