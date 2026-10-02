@@ -514,20 +514,22 @@ float3 composite_single_ring(
     const float expansion =
         smooth_out(progress);
     const float radius_px =
-        lerp(11.0, 62.0, expansion) * scale;
+        lerp(10.5, 64.0, expansion) * scale;
     const float half_width_px =
-        lerp(2.25, 1.00, progress) * scale;
+        lerp(3.90, 2.25, progress) * scale;
     const float distance_px =
         length(delta_px);
     const float edge =
         abs(distance_px - radius_px);
 
+    // Fast ignition, then a deliberately long luminous tail. The core fades
+    // before the halo so the pulse dissolves instead of simply disappearing.
     const float ignition =
-        smoothstep(0.0, 0.050, progress);
+        smoothstep(0.0, 0.035, progress);
     const float core_fade =
-        1.0 - smoothstep(0.28, 1.0, progress);
-    const float glow_fade =
-        1.0 - smoothstep(0.18, 1.0, progress);
+        1.0 - smoothstep(0.48, 0.94, progress);
+    const float bloom_fade =
+        1.0 - smoothstep(0.58, 1.00, progress);
 
     const float core =
         vector_ring(
@@ -537,26 +539,42 @@ float3 composite_single_ring(
         ignition *
         core_fade;
 
-    const float glow_spread_px =
-        lerp(5.0, 18.0, expansion) * scale;
+    // Both bloom zones are distance falloffs from the SAME analytic ring.
+    // They are not secondary circles and never fill the ring center.
     const float glow_distance =
         max(edge - half_width_px, 0.0);
-    const float glow_shape =
+    const float near_spread_px =
+        lerp(9.0, 16.0, expansion) * scale;
+    const float halo_spread_px =
+        lerp(18.0, 30.0, expansion) * scale;
+
+    const float near_shape =
         saturate(
             1.0 -
             glow_distance /
-                max(glow_spread_px, 0.001));
-    const float glow =
-        glow_shape *
-        glow_shape *
+                max(near_spread_px, 0.001));
+    const float halo_shape =
+        saturate(
+            1.0 -
+            glow_distance /
+                max(halo_spread_px, 0.001));
+
+    const float near_bloom =
+        near_shape *
+        near_shape *
         ignition *
-        glow_fade;
+        bloom_fade;
+    const float diffuse_halo =
+        halo_shape *
+        halo_shape *
+        ignition *
+        bloom_fade;
 
     const float support =
         vector_ring(
             distance_px,
             radius_px,
-            half_width_px + 1.75 * scale) *
+            half_width_px + 2.6 * scale) *
         ignition *
         core_fade;
 
@@ -568,17 +586,25 @@ float3 composite_single_ring(
             base,
             float3(0.2126, 0.7152, 0.0722));
     const float bright_surface =
-        smoothstep(0.60, 0.90, luminance);
+        smoothstep(0.62, 0.92, luminance);
 
-    const float3 visible =
+    // White surfaces cannot become physically brighter. On bright content,
+    // use a restrained deeper chromatic support around the same ring so the
+    // eye still reads a luminous edge instead of a thin washed-out outline.
+    const float3 core_color =
         lerp(
-            tint,
-            tint * 0.68,
+            saturate(tint * 1.10),
+            tint * 0.80,
             bright_surface);
     const float3 support_color =
         lerp(
-            tint * 0.18,
-            float3(0.025, 0.035, 0.055),
+            tint * 0.28,
+            tint * 0.50,
+            bright_surface);
+    const float3 halo_color =
+        lerp(
+            tint,
+            tint * 0.62,
             bright_surface);
 
     base = lerp(
@@ -586,26 +612,27 @@ float3 composite_single_ring(
         support_color,
         saturate(
             support *
-            (0.050 + 0.20 * bright_surface)));
+            (0.08 + 0.24 * bright_surface)));
 
     base = lerp(
         base,
-        visible,
-        saturate(core * 0.98));
-
-    base = lerp(
-        base,
-        tint,
+        halo_color,
         saturate(
-            glow *
-            (0.16 +
-             0.08 * (1.0 - bright_surface))));
+            near_bloom *
+                (0.20 + 0.08 * bright_surface) +
+            diffuse_halo *
+                (0.075 + 0.055 * bright_surface)));
+
+    base = lerp(
+        base,
+        core_color,
+        saturate(core * 0.995));
 
     base +=
         tint *
-        glow *
-        0.10 *
-        (1.0 - bright_surface);
+        (near_bloom * 0.30 +
+         diffuse_halo * 0.14) *
+        (1.0 - bright_surface * 0.78);
 
     return saturate(base);
 }
