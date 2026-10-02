@@ -317,6 +317,29 @@ After the first ArVisual transplant:
 - neutral balance, highlight/gamut safety, bypass pixel accuracy and retained
   resource behavior must remain under automated tests.
 
+### P5B asynchronous-analysis lock
+
+After Smart Auto analysis is introduced:
+
+- scene analysis uses a fixed 64x36 downsample target and exactly two retained
+  staging/read-later slots;
+- analysis submission cadence is capped at 5 Hz and is attempted only for a
+  fresh retained WGC source;
+- GPU readiness is polled only with D3D11_ASYNC_GETDATA_DONOTFLUSH;
+- a staging texture may be mapped only after its EVENT query reports ready;
+- if both staging slots are pending, skip the analysis sample. Never Flush,
+  spin-wait, stall an output frame, or allocate an extra staging surface;
+- scene statistics use fixed histograms and the pinned ArVisual 0.65 s EMA;
+- EMA is time-based from scene-sample intervals, not output-frame count;
+- failed/unavailable analysis is a soft fallback: P5A static grade remains
+  active and recording continues;
+- the last valid adaptive state remains authoritative until a newer completed
+  sample is available;
+- Smart Auto telemetry must expose availability, submitted/completed samples,
+  busy skips, and map failures;
+- no analysis implementation may introduce a synchronous full-frame
+  GPU-to-CPU readback.
+
 ---
 
 ## 11. Input visualization and privacy contract
