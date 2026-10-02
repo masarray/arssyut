@@ -160,6 +160,32 @@ if(ARSSYUT_BUILD_TESTS)
 
     add_test(NAME arssyut_core_tests COMMAND arssyut_core_tests)
 
+    add_executable(arssyut_arzoom_parity_tests
+        tests/test_arzoom_parity.cpp
+    )
+    target_include_directories(arssyut_arzoom_parity_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/arzoom/include
+    )
+    if(MSVC)
+        target_compile_options(arssyut_arzoom_parity_tests PRIVATE
+            /W4
+            /permissive-
+            /utf-8
+            /Zc:__cplusplus
+        )
+    else()
+        target_compile_options(arssyut_arzoom_parity_tests PRIVATE
+            -Wall
+            -Wextra
+            -Wpedantic
+        )
+    endif()
+    add_test(
+        NAME arssyut_arzoom_parity_tests
+        COMMAND arssyut_arzoom_parity_tests
+    )
+
     if(WIN32)
         add_executable(arssyut_windows_tests
             tests/windows/test_d3d11_device.cpp
