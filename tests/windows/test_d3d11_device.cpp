@@ -1498,7 +1498,7 @@ void test_arvisual_async_scene_analyzer(
 
     test.expect(
         completed,
-        "P5B read-later staging completes without an explicit GPU flush");
+        "P5B read-later staging completes after nonblocking GPU submission");
     test.expect(
         compositor.scene_analysis_map_failures() == 0,
         "P5B ready staging surfaces map without failure");
