@@ -347,6 +347,30 @@ After the first shortcut-overlay audit:
 - the supplied keyboard-button artwork is the visual design direction, not a
   reason to parse or rasterize its large traced SVG in the realtime path.
 
+### P4R.2 cursor/click motion lock
+
+After direct validation of P4R.1, presentation cursor and click motion have
+additional non-regression rules:
+
+- when the presentation layer is active, native WGC cursor capture is disabled
+  so exactly one cursor authority reaches the encoded frame;
+- the Windows cursor handle/visibility is observed with pointer activity, but a
+  cursor bitmap is rasterized only on a cache miss or shape change;
+- cursor shape storage is fixed-capacity and retained. Steady-state cursor
+  rendering must not allocate GPU/GDI resources or read pixels back from the
+  output frame;
+- cursor scale is always anchored to the Windows hotspot, never the bitmap
+  center, so the indicated/pressed pixel remains truthful during animation;
+- click feedback remains one analytic ring. Glow is an emissive falloff from
+  that same ring, not a second visible ring or filled center;
+- click and cursor impact advance from the same bounded presentation clock;
+- click impact scale is bounded around the validated ballistic envelope
+  1.00 -> 1.17 -> 0.95 -> 1.025 -> 1.00 over roughly 230 ms;
+- velocity response is intentionally subtle and capped at about +5%; do not
+  introduce cursor lag, trailing position smoothing, or cartoon-like pulsing;
+- cursor and click projection must use the same ArZoom camera transform as the
+  demonstrated content.
+
 
 ---
 
