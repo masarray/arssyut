@@ -66,6 +66,45 @@ void PresentationController::push_click(
     if (kind == ClickKind::None)
         return;
 
+    const float safe_x =
+        std::clamp(content_x, 0.0f, 1.0f);
+    const float safe_y =
+        std::clamp(content_y, 0.0f, 1.0f);
+
+    // A fast repeated click at essentially the same target should recharge
+    // one luminous pulse instead of drawing concentric geometry. This keeps
+    // double-click feedback energetic but visually clean.
+    constexpr float kRetriggerAgeSeconds = 0.12f;
+    constexpr float kRetriggerRadiusSquared = 0.000225f;
+
+    for (auto &pulse : clicks_) {
+        if (!pulse.active() ||
+            pulse.kind != kind ||
+            pulse.age_seconds > kRetriggerAgeSeconds) {
+            continue;
+        }
+
+        const float dx =
+            pulse.content_x - safe_x;
+        const float dy =
+            pulse.content_y - safe_y;
+
+        if (dx * dx + dy * dy >
+            kRetriggerRadiusSquared) {
+            continue;
+        }
+
+        ++click_generation_;
+        if (click_generation_ == 0)
+            click_generation_ = 1;
+
+        pulse.content_x = safe_x;
+        pulse.content_y = safe_y;
+        pulse.age_seconds = 0.0f;
+        pulse.generation = click_generation_;
+        return;
+    }
+
     std::size_t target = clicks_.size();
     std::uint32_t oldest_generation =
         std::numeric_limits<std::uint32_t>::max();
@@ -91,10 +130,8 @@ void PresentationController::push_click(
 
     auto &pulse = clicks_[target];
     pulse.kind = kind;
-    pulse.content_x =
-        std::clamp(content_x, 0.0f, 1.0f);
-    pulse.content_y =
-        std::clamp(content_y, 0.0f, 1.0f);
+    pulse.content_x = safe_x;
+    pulse.content_y = safe_y;
     pulse.age_seconds = 0.0f;
     pulse.generation = click_generation_;
 }
@@ -204,9 +241,9 @@ PresentationFrameState PresentationController::step(
 
     const auto camera = camera_.step(intent);
 
-    constexpr float kLeftClickLifetime = 0.70f;
-    constexpr float kRightClickLifetime = 0.72f;
-    constexpr float kMiddleClickLifetime = 0.68f;
+    constexpr float kLeftClickLifetime = 0.88f;
+    constexpr float kRightClickLifetime = 0.90f;
+    constexpr float kMiddleClickLifetime = 0.84f;
 
     for (auto &pulse : clicks_) {
         if (!pulse.active())
