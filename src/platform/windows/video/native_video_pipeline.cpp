@@ -46,7 +46,7 @@ Status NativeVideoPipeline::reset_timeline(
     arssyut::core::TimePoint start,
     arssyut::core::FrameRate frame_rate) noexcept
 {
-    have_output_ = false;
+    have_source_ = false;
     last_source_sequence_ = 0;
     return scheduler_.reset(start, frame_rate);
 }
@@ -75,52 +75,70 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
             scheduled.skipped_intervals);
     }
 
-    auto lease = frame_slot_->try_acquire_latest();
-    if (!lease) {
-        VideoSlotResult result;
-        result.frame_index = scheduled.frame_index;
-        result.pts = scheduled.pts;
-        result.skipped_intervals = scheduled.skipped_intervals;
-        result.source_sequence = last_source_sequence_;
+    bool updated_source = false;
 
-        if (have_output_) {
-            result.action = VideoSlotAction::ReusePreviousOutput;
-            diagnostics_->increment(
-                DiagnosticMetric::VideoFramesReused);
-        } else {
-            result.action = VideoSlotAction::NoFrameAvailable;
-            diagnostics_->increment(
-                DiagnosticMetric::VideoFramesUnavailable);
+    auto lease = frame_slot_->try_acquire_latest();
+    if (lease) {
+        auto texture = capture_texture(lease.get());
+        if (!texture) {
+            return Result<VideoSlotResult>::failure(
+                texture.status());
         }
 
-        return Result<VideoSlotResult>::success(result);
+        const Status update_status =
+            compositor_->update_source(
+                context,
+                texture.value().Get());
+        if (!update_status.ok()) {
+            return Result<VideoSlotResult>::failure(
+                update_status);
+        }
+
+        have_source_ = true;
+        updated_source = true;
+        last_source_sequence_ = lease->sequence;
     }
 
-    auto texture = capture_texture(lease.get());
-    if (!texture)
-        return Result<VideoSlotResult>::failure(texture.status());
-
-    const Status render_status = compositor_->render(
-        context,
-        texture.value().Get(),
-        crop,
-        output_size,
-        presentation);
-    if (!render_status.ok())
-        return Result<VideoSlotResult>::failure(render_status);
-
-    have_output_ = true;
-    last_source_sequence_ = lease->sequence;
-
-    diagnostics_->increment(
-        DiagnosticMetric::VideoFramesRendered);
-
     VideoSlotResult result;
-    result.action = VideoSlotAction::RenderedNewFrame;
     result.frame_index = scheduled.frame_index;
     result.pts = scheduled.pts;
     result.skipped_intervals = scheduled.skipped_intervals;
     result.source_sequence = last_source_sequence_;
+
+    if (!have_source_) {
+        result.action = VideoSlotAction::NoFrameAvailable;
+        diagnostics_->increment(
+            DiagnosticMetric::VideoFramesUnavailable);
+        return Result<VideoSlotResult>::success(result);
+    }
+
+    // Camera, click and presentation state are output-timeline state. Re-render
+    // them on every CFR output slot even when Windows Graphics Capture did not
+    // publish a new desktop frame. This is the critical ArZoom parity rule:
+    // a 60-fps virtual camera must not inherit a lower/irregular WGC cadence.
+    const Status render_status =
+        compositor_->render_retained(
+            context,
+            crop,
+            output_size,
+            presentation);
+    if (!render_status.ok()) {
+        return Result<VideoSlotResult>::failure(
+            render_status);
+    }
+
+    diagnostics_->increment(
+        DiagnosticMetric::VideoFramesRendered);
+
+    if (updated_source) {
+        result.action =
+            VideoSlotAction::RenderedNewFrame;
+    } else {
+        result.action =
+            VideoSlotAction::RenderedRetainedSource;
+        diagnostics_->increment(
+            DiagnosticMetric::VideoFramesReused);
+    }
 
     return Result<VideoSlotResult>::success(result);
 }
