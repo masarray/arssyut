@@ -980,6 +980,83 @@ void test_retained_source_camera_cadence(
         "Retained-source camera animation allocates no new frame resources");
 }
 
+void test_single_ring_click_compositor(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t solid_bgra = 0xFF20242Au;
+
+    auto source = create_solid_texture(
+        owner.device(),
+        4,
+        4,
+        solid_bgra);
+    test.expect(
+        source != nullptr,
+        "Single-ring click source texture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "Single-ring click compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor = *compositor_result.value();
+
+    arssyut::presentation::PresentationFrameState state{};
+    state.clicks[0].content_x = 0.5f;
+    state.clicks[0].content_y = 0.5f;
+    state.clicks[0].age_seconds = 0.32f;
+    state.clicks[0].lifetime_seconds = 0.64f;
+    state.clicks[0].kind =
+        arssyut::presentation::ClickKind::Left;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {640, 360},
+            &state).ok(),
+        "Single-ring click renders at representative output size");
+
+    std::uint32_t center_pixel = 0;
+    std::uint32_t ring_pixel = 0;
+
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            320,
+            180,
+            center_pixel),
+        "Click center pixel can be inspected");
+
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            361,
+            180,
+            ring_pixel),
+        "Click ring pixel can be inspected");
+
+    test.expect(
+        center_pixel == solid_bgra,
+        "Single-ring click keeps center unfilled with no center dot");
+
+    test.expect(
+        ring_pixel != solid_bgra,
+        "Single-ring click produces a visible grown ring");
+}
+
 void test_keyboard_overlay_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -1232,6 +1309,7 @@ int main()
     test_empty_video_pipeline(test, device);
     test_media_foundation_mp4(test);
     test_retained_source_camera_cadence(test, device);
+    test_single_ring_click_compositor(test, device);
     test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
 
