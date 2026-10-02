@@ -11,6 +11,7 @@
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "presentation/presentation_controller.hpp"
 #include "visual/arvisual_grade.hpp"
+#include "visual/arvisual_modes.hpp"
 
 #include <Windows.h>
 
@@ -47,7 +48,11 @@ struct RecorderConfig {
     arssyut::core::FrameRate frame_rate{60, 1};
     std::uint32_t bitrate_bps = 12'000'000;
     arssyut::presentation::PresentationSettings presentation{};
-    arssyut::visual::ArVisualGradeSettings visual{};
+    arssyut::visual::ArVisualProductMode visual_mode =
+        arssyut::visual::ArVisualProductMode::PixelAccurate;
+    arssyut::visual::ArVisualGradeSettings visual =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::PixelAccurate);
 };
 
 struct RecorderSnapshot {

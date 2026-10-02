@@ -252,6 +252,13 @@ Status RecorderSession::start(
             StatusCode::InvalidArgument);
     }
 
+    // Product mode is the single public visual authority. Always rebuild the
+    // internal P5A/P5B grade from the mode so UI/config callers cannot drift
+    // into an undocumented hybrid preset.
+    config.visual =
+        arssyut::visual::grade_for_mode(
+            config.visual_mode);
+
     config_ = std::move(config);
     stop_requested_.store(
         false,
@@ -1117,6 +1124,10 @@ void RecorderSession::write_diagnostics(
             << "  \"fps_num\": " << config_.frame_rate.numerator << ",\n"
             << "  \"fps_den\": " << config_.frame_rate.denominator << ",\n"
             << "  \"bitrate_bps\": " << config_.bitrate_bps << ",\n"
+            << "  \"arvisual_mode\": \""
+            << arssyut::visual::product_mode_name(
+                   config_.visual_mode)
+            << "\",\n"
             << "  \"arvisual_enabled\": "
             << (config_.visual.enabled ? "true" : "false")
             << ",\n"

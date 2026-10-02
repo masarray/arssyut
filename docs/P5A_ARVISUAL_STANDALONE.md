@@ -49,8 +49,8 @@ Therefore the normal recorder remains Pixel Accurate until the user explicitly
 enables the validation toggle. The disabled path returns the source sample
 without applying ArVisual math.
 
-P5C will own final product-mode mapping. The P5A toggle exists only so the
-transplanted engine can be directly validated before product modes are defined.
+P5C now owns the final product-mode mapping. The temporary P5A checkbox has
+been replaced by Pixel Accurate, Clean Screen and Vivid Presentation.
 
 ## Portable behavior retained
 
