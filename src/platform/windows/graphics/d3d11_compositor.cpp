@@ -872,23 +872,33 @@ Status D3D11Compositor::ensure_output(FrameSize output_size) noexcept
     return Status::success();
 }
 
-Status D3D11Compositor::render(
+Status D3D11Compositor::update_source(
     ID3D11DeviceContext *context,
-    ID3D11Texture2D *source,
+    ID3D11Texture2D *source) noexcept
+{
+    if (!context || !source)
+        return Status::failure(StatusCode::InvalidArgument);
+
+    const Status input_status = ensure_input(source);
+    if (!input_status.ok())
+        return input_status;
+
+    context->CopyResource(input_copy_.Get(), source);
+    return Status::success();
+}
+
+Status D3D11Compositor::render_retained(
+    ID3D11DeviceContext *context,
     CropRect crop,
     FrameSize output_size,
     const arssyut::presentation::PresentationFrameState *presentation) noexcept
 {
-    if (!context || !source)
+    if (!context || !has_source())
         return Status::failure(StatusCode::InvalidArgument);
 
     const TimePoint started = MonotonicClock::now();
 
     resolve_gpu_queries(context);
-
-    const Status input_status = ensure_input(source);
-    if (!input_status.ok())
-        return input_status;
 
     const Status output_status = ensure_output(output_size);
     if (!output_status.ok())
@@ -902,8 +912,6 @@ Status D3D11Compositor::render(
 
     const std::size_t gpu_query =
         begin_gpu_query(context);
-
-    context->CopyResource(input_copy_.Get(), source);
 
     arssyut::presentation::PresentationFrameState neutral{};
     const auto &state =
@@ -976,28 +984,14 @@ Status D3D11Compositor::render(
          ++i) {
         const auto &click =
             state.clicks[i];
-
-        const float lifetime =
-            std::max(
-                click.lifetime_seconds,
-                0.0001f);
-
-        const float progress =
-            click.kind ==
-                    arssyut::presentation::ClickKind::None
-                ? 1.0f
-                : std::clamp(
-                      click.age_seconds / lifetime,
-                      0.0f,
-                      1.0f);
-
         const std::size_t base = i * 4;
+
         constants.clicks[base + 0] =
             click.content_x;
         constants.clicks[base + 1] =
             click.content_y;
         constants.clicks[base + 2] =
-            progress;
+            click.age_seconds;
         constants.clicks[base + 3] =
             static_cast<float>(
                 static_cast<std::uint8_t>(
@@ -1058,6 +1052,25 @@ Status D3D11Compositor::render(
         elapsed_microseconds(started, MonotonicClock::now()));
 
     return Status::success();
+}
+
+Status D3D11Compositor::render(
+    ID3D11DeviceContext *context,
+    ID3D11Texture2D *source,
+    CropRect crop,
+    FrameSize output_size,
+    const arssyut::presentation::PresentationFrameState *presentation) noexcept
+{
+    const Status update_status =
+        update_source(context, source);
+    if (!update_status.ok())
+        return update_status;
+
+    return render_retained(
+        context,
+        crop,
+        output_size,
+        presentation);
 }
 
 } // namespace arssyut::windows
