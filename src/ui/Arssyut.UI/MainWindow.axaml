@@ -4,15 +4,16 @@
     x:Class="Arssyut.UI.MainWindow"
     Title="Arssyut"
     Width="820"
-    Height="430"
+    Height="424"
     MinWidth="760"
-    MinHeight="410"
+    MinHeight="404"
     CanResize="False"
     WindowStartupLocation="CenterScreen"
     WindowDecorations="None"
     Background="Transparent"
     FontFamily="{DynamicResource ArFont.Inter}"
-    TextOptions.TextRenderingMode="SubpixelAntialias">
+    TextOptions.TextRenderingMode="SubpixelAntialias"
+    KeyDown="Window_OnKeyDown">
 
   <Border
       Margin="1"
@@ -24,7 +25,7 @@
 
     <Grid RowDefinitions="48,*">
 
-      <!-- Custom chrome -->
+      <!-- Product chrome -->
       <Grid
           x:Name="TitleBar"
           Grid.Row="0"
@@ -72,7 +73,9 @@
               Classes="ar"
               Height="30"
               Padding="10,0"
-              Click="Settings_OnClick">
+              Click="Settings_OnClick"
+              AutomationProperties.Name="Open Settings"
+              ToolTip.Tip="Settings">
             <StackPanel Orientation="Horizontal" Spacing="7">
               <LucideIcon
                   Kind="Settings2"
@@ -86,6 +89,7 @@
           <Button
               Classes="window-control"
               Click="Minimize_OnClick"
+              AutomationProperties.Name="Minimize Arssyut"
               ToolTip.Tip="Minimize">
             <LucideIcon
                 Kind="Minus"
@@ -97,6 +101,7 @@
           <Button
               Classes="window-control danger"
               Click="Close_OnClick"
+              AutomationProperties.Name="Close Arssyut"
               ToolTip.Tip="Close">
             <LucideIcon
                 Kind="X"
@@ -113,16 +118,15 @@
           Margin="18,8,18,16">
 
         <!-- Capture context -->
-        <Grid Grid.Row="0" RowDefinitions="Auto,Auto" RowSpacing="10">
+        <Grid Grid.Row="0" RowDefinitions="Auto,Auto" RowSpacing="9">
           <Grid ColumnDefinitions="Auto,*">
-            <StackPanel
-                Orientation="Horizontal"
-                Spacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="4">
               <Button
                   x:Name="ModeDisplay"
                   Classes="segment selected"
                   Click="CaptureMode_OnClick"
-                  Tag="Display">
+                  Tag="Display"
+                  AutomationProperties.Name="Capture display">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <LucideIcon Kind="Monitor" Size="16" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -134,7 +138,8 @@
                   x:Name="ModeWindow"
                   Classes="segment"
                   Click="CaptureMode_OnClick"
-                  Tag="Window">
+                  Tag="Window"
+                  AutomationProperties.Name="Capture window">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <LucideIcon Kind="AppWindow" Size="16" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -146,7 +151,8 @@
                   x:Name="ModeRegion"
                   Classes="segment"
                   Click="CaptureMode_OnClick"
-                  Tag="Region">
+                  Tag="Region"
+                  AutomationProperties.Name="Capture custom region">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <LucideIcon Kind="ScanLine" Size="16" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -158,7 +164,8 @@
                   x:Name="ModeGame"
                   Classes="segment"
                   Click="CaptureMode_OnClick"
-                  Tag="Game">
+                  Tag="Game"
+                  AutomationProperties.Name="Capture game">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <LucideIcon Kind="Gamepad2" Size="16" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -175,7 +182,7 @@
                 CornerRadius="99"
                 Padding="8,4">
               <TextBlock
-                  Text="UI PREVIEW"
+                  Text="INTERACTION PREVIEW"
                   FontSize="9.5"
                   FontWeight="SemiBold"
                   Foreground="{DynamicResource ArBrush.Record}" />
@@ -206,16 +213,19 @@
                 <TextBlock
                     x:Name="SourceTitle"
                     Text="Display 1 · 1920 × 1080"
-                    FontWeight="Medium" />
+                    FontWeight="Medium"
+                    TextTrimming="CharacterEllipsis" />
                 <TextBlock
                     x:Name="SourceSubtitle"
                     Classes="micro"
-                    Text="Primary display · 60 Hz" />
+                    Text="Primary display · 60 Hz"
+                    TextTrimming="CharacterEllipsis" />
               </StackPanel>
 
               <Button
                   Grid.Column="2"
                   Classes="ar icon"
+                  AutomationProperties.Name="Refresh capture sources"
                   ToolTip.Tip="Refresh capture sources">
                 <LucideIcon
                     Kind="RefreshCw"
@@ -227,8 +237,8 @@
           </Border>
         </Grid>
 
-        <!-- Inputs -->
-        <StackPanel Grid.Row="1" Margin="0,14,0,0" Spacing="7">
+        <!-- Compact device modules -->
+        <StackPanel Grid.Row="1" Margin="0,13,0,0" Spacing="7">
           <TextBlock
               Text="Inputs"
               Classes="micro"
@@ -237,154 +247,280 @@
 
           <Grid ColumnDefinitions="*,*,*" ColumnSpacing="8">
 
-            <Border Classes="device">
-              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+            <Border Classes="device" MinHeight="54" Padding="10,7">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                 <Border
-                    Width="34"
-                    Height="34"
-                    CornerRadius="9"
+                    Width="32"
+                    Height="32"
+                    CornerRadius="8"
                     Background="{DynamicResource ArBrush.Surface3}">
                   <LucideIcon
                       Kind="Volume2"
-                      Size="17"
+                      Size="16"
                       StrokeWidth="1.8"
                       Foreground="{DynamicResource ArBrush.Text}"
                       HorizontalAlignment="Center"
                       VerticalAlignment="Center" />
                 </Border>
-                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                   <TextBlock Text="System audio" FontWeight="Medium" />
-                  <TextBlock Text="Desktop audio" Classes="micro" />
+                  <TextBlock Text="Desktop playback" Classes="micro" />
                 </StackPanel>
                 <ToggleSwitch
+                    x:Name="SystemAudioToggle"
                     Grid.Column="2"
                     Classes="ar-toggle"
                     IsChecked="True"
                     OnContent=""
                     OffContent=""
+                    AutomationProperties.Name="System audio"
                     VerticalAlignment="Center" />
               </Grid>
             </Border>
 
-            <Border Grid.Column="1" Classes="device">
-              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+            <Button
+                x:Name="MicDeviceButton"
+                Grid.Column="1"
+                Classes="device-picker"
+                AutomationProperties.Name="Choose microphone device"
+                AutomationProperties.HelpText="Opens the microphone device list.">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                 <Border
-                    Width="34"
-                    Height="34"
-                    CornerRadius="9"
+                    Width="32"
+                    Height="32"
+                    CornerRadius="8"
                     Background="{DynamicResource ArBrush.Surface3}">
                   <LucideIcon
                       Kind="Mic"
-                      Size="17"
+                      Size="16"
                       StrokeWidth="1.8"
                       Foreground="{DynamicResource ArBrush.Text}"
                       HorizontalAlignment="Center"
                       VerticalAlignment="Center" />
                 </Border>
-                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+
+                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                   <TextBlock Text="Microphone" FontWeight="Medium" />
                   <TextBlock
+                      x:Name="MicDeviceText"
                       Text="Hi-Fi Cable Output"
                       Classes="micro"
+                      MaxWidth="145"
                       TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <ToggleSwitch
+
+                <LucideIcon
                     Grid.Column="2"
-                    Classes="ar-toggle"
-                    IsChecked="True"
-                    OnContent=""
-                    OffContent=""
+                    Kind="ChevronDown"
+                    Size="14"
+                    StrokeWidth="1.8"
+                    Foreground="{DynamicResource ArBrush.TextDim}"
                     VerticalAlignment="Center" />
               </Grid>
-            </Border>
 
-            <Border Grid.Column="2" Classes="device">
-              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+              <Button.Flyout>
+                <Flyout
+                    Placement="BottomEdgeAlignedLeft"
+                    FlyoutPresenterClasses="device-flyout">
+                  <StackPanel Width="300" Spacing="4">
+                    <StackPanel Margin="8,5,8,7" Spacing="2">
+                      <TextBlock Text="Microphone" FontWeight="SemiBold" />
+                      <TextBlock Text="Choose narration input" Classes="micro" />
+                    </StackPanel>
+
+                    <Button
+                        x:Name="MicOptionCable"
+                        Classes="device-option selected"
+                        Tag="Hi-Fi Cable Output (VB-Audio Virtual Cable)"
+                        Click="MicrophoneDevice_OnClick">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="2">
+                          <TextBlock Text="Hi-Fi Cable Output" />
+                          <TextBlock Text="VB-Audio Virtual Cable" Classes="micro" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="Default" Classes="micro" VerticalAlignment="Center" />
+                      </Grid>
+                    </Button>
+
+                    <Button
+                        x:Name="MicOptionArray"
+                        Classes="device-option"
+                        Tag="Microphone Array (Realtek(R) Audio)"
+                        Click="MicrophoneDevice_OnClick">
+                      <StackPanel Spacing="2">
+                        <TextBlock Text="Microphone Array" />
+                        <TextBlock Text="Realtek(R) Audio" Classes="micro" />
+                      </StackPanel>
+                    </Button>
+
+                    <Button
+                        x:Name="MicOptionLong"
+                        Classes="device-option"
+                        Tag="Professional USB Condenser Microphone — Conference Room Interface Channel 1/2"
+                        Click="MicrophoneDevice_OnClick">
+                      <StackPanel Spacing="2">
+                        <TextBlock Text="Professional USB Condenser Microphone" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="Conference Room Interface · Channel 1/2" Classes="micro" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                    </Button>
+
+                    <Border Margin="5,5,5,0" BorderBrush="{DynamicResource ArBrush.Stroke}" BorderThickness="0,1,0,0" />
+                    <Grid Margin="8,5,8,4" ColumnDefinitions="*,Auto">
+                      <TextBlock Text="Include microphone" Classes="muted" VerticalAlignment="Center" />
+                      <ToggleSwitch
+                          x:Name="MicToggle"
+                          Grid.Column="1"
+                          Classes="ar-toggle"
+                          IsChecked="True"
+                          OnContent=""
+                          OffContent=""
+                          Click="MicToggle_OnClick"
+                          AutomationProperties.Name="Include microphone" />
+                    </Grid>
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+
+            <Button
+                x:Name="CameraDeviceButton"
+                Grid.Column="2"
+                Classes="device-picker"
+                AutomationProperties.Name="Choose camera device"
+                AutomationProperties.HelpText="Opens the camera device list.">
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                 <Border
-                    Width="34"
-                    Height="34"
-                    CornerRadius="9"
+                    Width="32"
+                    Height="32"
+                    CornerRadius="8"
                     Background="{DynamicResource ArBrush.Surface3}">
                   <LucideIcon
                       Kind="Video"
-                      Size="17"
+                      Size="16"
                       StrokeWidth="1.8"
                       Foreground="{DynamicResource ArBrush.Text}"
                       HorizontalAlignment="Center"
                       VerticalAlignment="Center" />
                 </Border>
-                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+
+                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                   <TextBlock Text="Camera" FontWeight="Medium" />
                   <TextBlock
-                      Text="USB2.0 HD UVC Webcam"
+                      x:Name="CameraDeviceText"
+                      Text="Off · USB2.0 HD UVC"
                       Classes="micro"
+                      MaxWidth="145"
                       TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <ToggleSwitch
+
+                <LucideIcon
                     Grid.Column="2"
-                    Classes="ar-toggle"
-                    IsChecked="False"
-                    OnContent=""
-                    OffContent=""
+                    Kind="ChevronDown"
+                    Size="14"
+                    StrokeWidth="1.8"
+                    Foreground="{DynamicResource ArBrush.TextDim}"
                     VerticalAlignment="Center" />
               </Grid>
-            </Border>
+
+              <Button.Flyout>
+                <Flyout
+                    Placement="BottomEdgeAlignedRight"
+                    FlyoutPresenterClasses="device-flyout">
+                  <StackPanel Width="300" Spacing="4">
+                    <StackPanel Margin="8,5,8,7" Spacing="2">
+                      <TextBlock Text="Camera" FontWeight="SemiBold" />
+                      <TextBlock Text="Choose picture-in-picture source" Classes="micro" />
+                    </StackPanel>
+
+                    <Button
+                        x:Name="CameraOptionUsb"
+                        Classes="device-option selected"
+                        Tag="USB2.0 HD UVC Webcam"
+                        Click="CameraDevice_OnClick">
+                      <StackPanel Spacing="2">
+                        <TextBlock Text="USB2.0 HD UVC Webcam" />
+                        <TextBlock Text="1920 × 1080 · 30 fps" Classes="micro" />
+                      </StackPanel>
+                    </Button>
+
+                    <Button
+                        x:Name="CameraOptionObs"
+                        Classes="device-option"
+                        Tag="OBS Virtual Camera"
+                        Click="CameraDevice_OnClick">
+                      <StackPanel Spacing="2">
+                        <TextBlock Text="OBS Virtual Camera" />
+                        <TextBlock Text="Virtual video device" Classes="micro" />
+                      </StackPanel>
+                    </Button>
+
+                    <Button
+                        x:Name="CameraOptionLong"
+                        Classes="device-option"
+                        Tag="4K Conference Camera — Ultra Wide Room Camera with AI Auto Framing"
+                        Click="CameraDevice_OnClick">
+                      <StackPanel Spacing="2">
+                        <TextBlock Text="4K Conference Camera — Ultra Wide Room Camera" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="AI Auto Framing" Classes="micro" />
+                      </StackPanel>
+                    </Button>
+
+                    <Border Margin="5,5,5,0" BorderBrush="{DynamicResource ArBrush.Stroke}" BorderThickness="0,1,0,0" />
+                    <Grid Margin="8,5,8,4" ColumnDefinitions="*,Auto">
+                      <TextBlock Text="Include camera" Classes="muted" VerticalAlignment="Center" />
+                      <ToggleSwitch
+                          x:Name="CameraToggle"
+                          Grid.Column="1"
+                          Classes="ar-toggle"
+                          IsChecked="False"
+                          OnContent=""
+                          OffContent=""
+                          Click="CameraToggle_OnClick"
+                          AutomationProperties.Name="Include camera" />
+                    </Grid>
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
           </Grid>
         </StackPanel>
 
         <!-- Quiet configuration summary -->
         <Grid
             Grid.Row="2"
-            Margin="2,14,2,0"
+            Margin="2,13,2,0"
             ColumnDefinitions="Auto,Auto,Auto,*"
             ColumnSpacing="8"
             VerticalAlignment="Top">
-          <Border
-              Background="{DynamicResource ArBrush.Surface2}"
-              CornerRadius="99"
-              Padding="9,5">
+          <Border Background="{DynamicResource ArBrush.Surface2}" CornerRadius="99" Padding="9,5">
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <LucideIcon
-                  Kind="ScanLine"
-                  Size="13"
-                  StrokeWidth="1.8"
-                  Foreground="{DynamicResource ArBrush.TextSecondary}" />
+              <LucideIcon Kind="ScanLine" Size="13" StrokeWidth="1.8"
+                          Foreground="{DynamicResource ArBrush.TextSecondary}" />
               <TextBlock Text="Pixel Accurate" FontSize="10.5" Classes="muted" />
             </StackPanel>
           </Border>
 
-          <Border
-              Grid.Column="1"
-              Background="{DynamicResource ArBrush.Surface2}"
-              CornerRadius="99"
-              Padding="9,5">
-            <TextBlock Text="60 fps" FontSize="10.5" Classes="muted" />
+          <Border Grid.Column="1" Background="{DynamicResource ArBrush.Surface2}" CornerRadius="99" Padding="9,5">
+            <TextBlock Text="60 fps" FontSize="10.5" Classes="muted" FontFeatures="+tnum" />
           </Border>
 
-          <Border
-              Grid.Column="2"
-              Background="{DynamicResource ArBrush.Surface2}"
-              CornerRadius="99"
-              Padding="9,5">
+          <Border Grid.Column="2" Background="{DynamicResource ArBrush.Surface2}" CornerRadius="99" Padding="9,5">
             <TextBlock Text="Smart Zoom · On" FontSize="10.5" Classes="muted" />
           </Border>
         </Grid>
 
-        <!-- Status + primary action -->
+        <!-- Contextual status and transport -->
         <Border
             Grid.Row="3"
             Margin="0,12,0,0"
-            Padding="12,10"
+            Padding="12,9"
             Background="#8A10141A"
             BorderBrush="{DynamicResource ArBrush.Stroke}"
             BorderThickness="1"
             CornerRadius="10">
-          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="12">
 
-            <StackPanel
-                Orientation="Horizontal"
-                Spacing="8"
-                VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
               <Ellipse
                   x:Name="StatusDot"
                   Width="7"
@@ -400,48 +536,61 @@
             <TextBlock
                 x:Name="StatusDetail"
                 Grid.Column="1"
-                Text="Ready to record · native bridge will bind here"
+                Text="Ready to record · F9 starts"
                 Classes="micro"
                 VerticalAlignment="Center"
                 TextTrimming="CharacterEllipsis" />
 
             <StackPanel
+                x:Name="SavedActions"
                 Grid.Column="2"
                 Orientation="Horizontal"
-                Spacing="7">
+                Spacing="6"
+                IsVisible="False">
               <Button
-                  x:Name="PauseButton"
-                  Classes="ar icon"
-                  IsVisible="False"
-                  Click="Pause_OnClick"
-                  ToolTip.Tip="Pause">
-                <LucideIcon
-                    x:Name="PauseIcon"
-                    Kind="Pause"
-                    Size="16"
-                    StrokeWidth="1.9"
-                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  Classes="saved-action"
+                  Click="OpenSaved_OnClick"
+                  AutomationProperties.Name="Open saved recording">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <LucideIcon Kind="ExternalLink" Size="13" StrokeWidth="1.8"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Text="Open" />
+                </StackPanel>
               </Button>
 
               <Button
-                  x:Name="RecordButton"
-                  Classes="record"
-                  Click="Record_OnClick">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                  <LucideIcon
-                      x:Name="RecordIcon"
-                      Kind="Circle"
-                      Size="15"
-                      StrokeWidth="2.2"
-                      Foreground="White" />
-                  <TextBlock
-                      x:Name="RecordText"
-                      Text="Record"
-                      FontWeight="SemiBold"
-                      Foreground="White" />
+                  Classes="saved-action"
+                  Click="ShowFolder_OnClick"
+                  AutomationProperties.Name="Show saved recording in folder">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <LucideIcon Kind="FolderOpen" Size="13" StrokeWidth="1.8"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Text="Folder" />
                 </StackPanel>
               </Button>
             </StackPanel>
+
+            <Button
+                x:Name="RecordButton"
+                Grid.Column="3"
+                Classes="record"
+                Click="Record_OnClick"
+                AutomationProperties.Name="Start recording"
+                AutomationProperties.HelpText="Starts the interaction preview. Keyboard shortcut F9.">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <LucideIcon
+                    x:Name="RecordIcon"
+                    Kind="Circle"
+                    Size="15"
+                    StrokeWidth="2.2"
+                    Foreground="White" />
+                <TextBlock
+                    x:Name="RecordText"
+                    Text="Record"
+                    FontWeight="SemiBold"
+                    Foreground="White" />
+              </StackPanel>
+            </Button>
           </Grid>
         </Border>
       </Grid>
