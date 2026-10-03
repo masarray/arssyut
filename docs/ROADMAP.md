@@ -635,12 +635,31 @@ Implemented on the feature branch:
 
 ### P6R.2 — custom Region backend
 
-Required before Region can record:
-- interactive region selection and drag handles;
-- canonical monitor-space -> source crop mapping;
-- output/aspect policy;
-- multi-monitor/DPI-safe persistence;
-- boundary is the editor for the actual crop, not decorative chrome.
+**Status: IMPLEMENTED ON FEATURE BRANCH / CI + REAL GUI ACCEPTANCE PENDING**
+
+Implemented:
+- Region boundary is now an editor, not decorative chrome;
+- top pill provides native move behavior;
+- visible edges/corners provide native resize behavior with a 320 × 180 minimum;
+- idle Region placement is event-driven so the 33 ms UI timer cannot fight the
+  native move/resize loop;
+- Region is stored in virtual-screen coordinates, preserving negative monitor
+  origins and per-monitor-DPI-safe desktop geometry;
+- selected Region maps once into the existing monitor WGC source as a canonical
+  `CropRect`; there is no second capture path;
+- output dimensions follow the selected crop and are trimmed to even NV12/H.264
+  dimensions only when needed;
+- Smart Zoom/click/keystroke normalization uses the same Region screen rectangle
+  that feeds the compositor crop;
+- when recording, the visible boundary still contracts/moves from the
+  authoritative PresentationFrameState camera values.
+
+Acceptance still required:
+- resize/move from all handles on a real multi-monitor desktop;
+- negative-origin monitor test;
+- output frame dimensions and pixel content match the selected Region;
+- Smart Zoom viewport remains inside the selected Region;
+- repeated Region -> Display -> Region switching preserves coherent state.
 
 ### P6R.3 — audio backend
 
