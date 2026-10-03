@@ -1,136 +1,59 @@
-# P6 — Compact Professional Product UI/UX
+# P6 — Recorder Workspace UI/UX
 
-## Goal
+> Superseded by the P6R redesign after direct GUI testing on 2026-10-03.
 
-Turn the existing engineering recorder shell into a compact product workflow
-without changing recorder, ArZoom, ArVisual, encoder or color-pipeline
-authority.
+The first P6 implementation treated the recorder as a compact configuration
+form. Direct testing showed that this was not a sufficient product model for a
+desktop screen recorder and exposed an interaction regression around
+Record/Stop.
 
-P6 follows four product rules:
+The authoritative P6 design and implementation contract is now:
 
-1. capture first;
-2. one obvious primary action;
-3. progressive disclosure instead of a dashboard;
-4. every visible session state comes from the recorder engine.
+- `docs/P6R_RECORDER_UX_RESEARCH.md`;
+- the P6R section in `docs/ROADMAP.md`;
+- the P6R recorder workspace contract in `AGENTS.md`.
 
-## Idle workspace
+## Required product grammar
 
-The default window is intentionally short and dense.
+P6R treats these as first-class recorder concepts:
 
-Primary capture card:
-- Capture Source dropdown using the existing monitor/window catalog;
-- Refresh;
-- 60/30 fps selector;
-- one compact rectangular Record button;
-- one-line summary of resolution, fps, Visual Style and presentation effects.
+- Capture Mode: Display / Window / Region / Game;
+- visible capture/viewport boundary;
+- compact recording toolbar;
+- Record/Stop icon;
+- Pause icon;
+- System Audio;
+- Microphone + device selection;
+- Camera + device selection;
+- dedicated Settings window;
+- Output / Sound / Camera / Mouse & Keystroke / Hotkeys categories.
 
-Header:
-- product name;
-- small descriptive subtitle;
-- Settings disclosure button.
+## Runtime ownership
 
-No audio/microphone placeholder cards are shown because those controls are not
-implemented by the current production path.
+The GUI may present upcoming recorder capabilities before their backend
+milestones are complete because P6R is intentionally UX-first, but it must never
+pretend an unsupported stream or capture mode was recorded.
 
-## Settings disclosure
+Display and Window remain the currently authoritative capture paths.
 
-Settings expands the same window rather than opening a second configuration
-authority.
+Region, Game, audio, microphone, webcam composition and pause/resume are tracked
+as explicit follow-on backend milestones in the P6R roadmap.
 
-It exposes:
-- Smart zoom;
-- Click visual;
-- Shortcut keys;
-- Visual Style: Pixel Accurate / Clean Screen / Vivid Presentation.
+The capture boundary and recording toolbar are separate overlay windows. The
+main recorder HWND must not be morphed into the recording toolbar.
 
-Closing Settings only hides the controls. It does not rewrite their values.
+The UI timer must not block waiting for the recorder worker. Ready/Failed
+transitions are accepted only after the worker publishes completion.
 
-The collapsed capture summary remains visible so the operator can see the
-current recording configuration without reopening Settings.
+## Visual acceptance
 
-## Recording surface
+P6R remains unmerged until real Windows testing confirms:
 
-Once RecorderSnapshot enters an active state, the idle shell collapses into a
-small borderless top-center bar.
-
-The bar contains only:
-- engine-derived status;
-- elapsed time;
-- one Stop control.
-
-It remains capture-excluded while recording and does not duplicate recorder
-state.
-
-The pre-record idle window rectangle is restored after Ready/Failed.
-
-## Result surface
-
-Ready and Failed return to the same compact workspace.
-
-Ready:
-- status becomes Saved;
-- final performance counters remain inspectable;
-- output filename is shown;
-- Open video is enabled when the output exists;
-- Diagnostics is enabled when its sidecar exists.
-
-Failed:
-- no blocking completion popup is required;
-- error/status/encoder stage are rendered inline;
-- diagnostics remain directly accessible.
-
-The only blocking failure dialogs left are pre-session/actionable conditions
-such as no source selected or recorder startup failure.
-
-## Keyboard
-
-F9 is an application accelerator for the primary Record/Stop action. It invokes
-the same command handler as the Record button; there is no keyboard-specific
-recording authority.
-
-Tab/Space navigation remains available through standard Win32 controls.
-
-## Visual language
-
-- native dark shell;
-- thin low-contrast borders;
-- one restrained red recording accent;
-- no oversized typography;
-- no giant circular record button;
-- no tile/dashboard grid;
-- compact labels and Segoe UI;
-- status colors are semantic only: red for recording/failure and green for
-  successful completion.
-
-## Locked engine boundary
-
-P6 does not modify:
-- P5D.7 BT.709/full-RGB-to-studio-NV12 color contract;
-- P5D/P5D.6 text/UI structure constants;
-- P5E screen-native/neutral-anchor constants;
-- H.264 rate-control policy;
-- ArZoom camera behavior;
-- click/keycap compositor behavior;
-- capture cadence or frame scheduler.
-
-## Acceptance
-
-Automated:
-- Windows release build;
-- existing deterministic test suite;
-- GUI launch smoke;
-- package artifact.
-
-Real GUI review:
-- collapsed idle hierarchy is readable at 100% scaling;
-- source names remain usable for long app/window titles;
-- Settings opens/closes without layout overlap;
-- current configuration summary updates after setting changes;
-- Record is visually primary but not oversized;
-- recording bar is compact and readable;
-- F9 and pointer Record/Stop behave identically;
-- Ready state exposes video/diagnostics cleanly;
-- Failed state stays actionable without UI-state divergence;
-- recording window remains excluded from capture.
-
-P6 should remain unmerged until this real GUI acceptance is complete.
+- main recorder is understandable without explanation;
+- capture mode and target are obvious;
+- boundary follows selected Display/Window;
+- boundary contracts/moves with Smart Zoom using the compositor camera state;
+- Record -> recording -> Stop -> Finalizing -> Ready stays responsive;
+- Settings is usable and categorized correctly;
+- real microphone/camera device names appear when devices exist;
+- unsupported capabilities are visibly pending rather than silently faked.
