@@ -33,10 +33,29 @@ public sealed partial class App : Application
                         "--controller-preview",
                         StringComparison.OrdinalIgnoreCase));
 
+            var settingsPreview =
+                Array.Exists(
+                    args,
+                    arg => string.Equals(
+                        arg,
+                        "--settings-preview",
+                        StringComparison.OrdinalIgnoreCase));
+
+            var settingsStress =
+                Array.Exists(
+                    args,
+                    arg => string.Equals(
+                        arg,
+                        "--settings-stress",
+                        StringComparison.OrdinalIgnoreCase));
+
             desktop.MainWindow =
-                new MainWindow(
-                    stressLongNames,
-                    controllerPreview);
+                settingsPreview
+                    ? new SettingsWindow(
+                        settingsStress)
+                    : new MainWindow(
+                        stressLongNames,
+                        controllerPreview);
         }
 
         base.OnFrameworkInitializationCompleted();
