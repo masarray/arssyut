@@ -731,6 +731,15 @@ Status MfH264Mp4Writer::create_video_processor(
     if (FAILED(hr) || !video_context_)
         return unsupported(hr);
 
+    /*
+     * ID3D11VideoContext1 gives an unambiguous DXGI color-space contract.
+     * Windows 10 should expose it; retain an explicit legacy D3D11 color-space
+     * fallback so older/quirky drivers do not turn color authority into a
+     * startup failure.
+     */
+    (void)video_context_.As(
+        &video_context1_);
+
     D3D11_VIDEO_PROCESSOR_CONTENT_DESC content{};
     content.InputFrameFormat =
         D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
@@ -811,6 +820,61 @@ Status MfH264Mp4Writer::create_video_processor(
         video_processor_.Get(),
         TRUE,
         &rect);
+
+    /*
+     * P5D.7: explicit desktop RGB -> video YCbCr contract.
+     *
+     * Source compositor texture:
+     *   full-range SDR RGB, BT.709/sRGB primaries.
+     *
+     * Encoder surface:
+     *   studio-range NV12, BT.709 matrix/transfer.
+     *
+     * The prior implicit/default state could let the processor emit full-range
+     * Y while the H.264 path was interpreted as studio-range, collapsing
+     * near-white gray UI into white and near-black hierarchy into black.
+     */
+    if (video_context1_) {
+        video_context1_->VideoProcessorSetStreamColorSpace1(
+            video_processor_.Get(),
+            0,
+            DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
+        video_context1_->VideoProcessorSetOutputColorSpace1(
+            video_processor_.Get(),
+            DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709);
+
+        active_color_pipeline_ =
+            MfColorPipelineMode::Context1Explicit;
+    } else {
+        D3D11_VIDEO_PROCESSOR_COLOR_SPACE input_color{};
+        input_color.Usage = 1;
+        input_color.RGB_Range = 0; // full-range RGB
+        input_color.YCbCr_Matrix = 1; // BT.709 when conversion is required
+        input_color.YCbCr_xvYCC = 0;
+        input_color.Nominal_Range =
+            D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255;
+
+        D3D11_VIDEO_PROCESSOR_COLOR_SPACE output_color{};
+        output_color.Usage = 1;
+        output_color.RGB_Range = 0;
+        output_color.YCbCr_Matrix = 1; // BT.709
+        output_color.YCbCr_xvYCC = 0;
+        output_color.Nominal_Range =
+            D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_16_235;
+
+        video_context_->VideoProcessorSetStreamColorSpace(
+            video_processor_.Get(),
+            0,
+            &input_color);
+        video_context_->VideoProcessorSetOutputColorSpace(
+            video_processor_.Get(),
+            &output_color);
+
+        active_color_pipeline_ =
+            MfColorPipelineMode::LegacyExplicit;
+    }
+
+    color_pipeline_authoritative_ = true;
 
     return Status::success();
 }
@@ -1259,6 +1323,7 @@ void MfH264Mp4Writer::teardown() noexcept
 
     video_processor_.Reset();
     video_enumerator_.Reset();
+    video_context1_.Reset();
     video_context_.Reset();
     video_device_.Reset();
 
