@@ -38,6 +38,7 @@ cbuffer PresentationConstants : register(b0)
     float4 arvisual3;
     float4 arvisual4;
     float4 arvisual5;
+    float4 arvisual6;
     float4 click0;
     float4 click1;
     float4 click2;
@@ -181,6 +182,7 @@ float4 apply_arvisual(float4 px, float2 uv)
     const float smart_separation = arvisual5.x;
     const float2 texel_size = max(arvisual5.yz, float2(0.0000001, 0.0000001));
     const float text_legibility = saturate(arvisual5.w);
+    const float ui_structure = saturate(arvisual6.x);
 
     float alpha = px.a;
     float3 src = saturate(px.rgb * ((alpha > 0.0) ? (1.0 / alpha) : 0.0));
@@ -542,6 +544,62 @@ float4 apply_arvisual(float4 px, float2 uv)
     float final_knee = lerp(final_knee_base, 0.972, neutral_highlight);
     target_y = arvisual_soft_luma_shoulder(target_y, final_knee, smart_highlight + highlight_guard * 0.35);
     color = arvisual_fit_gamut_preserve_luma(color, target_y);
+
+    /*
+     * P5D.6 low-contrast UI structure preservation.
+     *
+     * Real matched capture showed neutral 1px card borders/separators fading
+     * into their background after grading + H.264/player scaling. This is a
+     * different topology from text: shallow neutral detail only. Preserve it
+     * late in the pipeline so earlier tone shaping cannot flatten it again.
+     *
+     * Bright UI: only a slightly darker neutral line may be reinforced.
+     * Dark UI: only a slightly lighter neutral line may be reinforced.
+     * Strong edges/text, saturated edges, skin and flat regions are excluded.
+     */
+    y = arvisual_luminance(color);
+    float structure_detail_abs = abs(detail);
+    float structure_edge =
+        smoothstep(0.0025, 0.010, structure_detail_abs) *
+        (1.0 - smoothstep(0.055, 0.105, structure_detail_abs));
+
+    float structure_src_neutral =
+        1.0 - smoothstep(0.06, 0.22, src_hsv.y);
+    float structure_neighbor_neutral =
+        1.0 - smoothstep(0.06, 0.20, neighborhood_hsv.y);
+
+    float bright_structure_context =
+        smoothstep(0.68, 0.92, neighbor_luma) *
+        smoothstep(0.0025, 0.025, -detail);
+    float dark_structure_context =
+        (1.0 - smoothstep(0.20, 0.48, neighbor_luma)) *
+        smoothstep(0.0025, 0.025, detail);
+
+    float structure_context =
+        max(
+            bright_structure_context,
+            dark_structure_context * 0.72);
+
+    float structure_soft_detail =
+        detail /
+        (1.0 + structure_detail_abs * 18.0);
+
+    float structure_delta =
+        structure_soft_detail *
+        ui_structure *
+        0.42 *
+        structure_edge *
+        structure_src_neutral *
+        structure_neighbor_neutral *
+        structure_context *
+        (1.0 - skin_mask * 0.99);
+
+    structure_delta =
+        clamp(structure_delta, -0.010, 0.007);
+
+    color = arvisual_fit_gamut_preserve_luma(
+        color,
+        y + structure_delta);
 
     return float4(saturate(color) * alpha, alpha);
 }
@@ -914,6 +972,11 @@ struct PresentationConstants {
     float arvisual_texel_x;
     float arvisual_texel_y;
     float arvisual_text_legibility;
+
+    float arvisual_ui_structure;
+    float arvisual_reserved6_y;
+    float arvisual_reserved6_z;
+    float arvisual_reserved6_w;
 
     float clicks[16]{};
 };
@@ -1964,6 +2027,8 @@ Status D3D11Compositor::render_retained(
             1.0f);
     constants.arvisual_text_legibility =
         grade.text_legibility;
+    constants.arvisual_ui_structure =
+        grade.ui_structure;
 
     for (std::size_t i = 0;
          i < state.clicks.size();
