@@ -1,0 +1,163 @@
+<Window
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="Arssyut.UI.CaptureBoundaryWindow"
+    Width="960"
+    Height="540"
+    MinWidth="320"
+    MinHeight="180"
+    CanResize="True"
+    ShowInTaskbar="False"
+    ShowActivated="False"
+    Topmost="True"
+    WindowDecorations="None"
+    Background="Transparent"
+    TransparencyLevelHint="Transparent">
+
+  <Grid>
+    <Rectangle
+        Margin="2"
+        Stroke="{DynamicResource ArBrush.Record}"
+        StrokeThickness="2"
+        StrokeDashArray="7,5"
+        RadiusX="2"
+        RadiusY="2"
+        IsHitTestVisible="False" />
+
+    <Grid
+        x:Name="RegionChrome"
+        IsVisible="False">
+
+      <Border
+          x:Name="MovePill"
+          Width="164"
+          Height="28"
+          Margin="0,7,0,0"
+          Padding="10,0"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Top"
+          Background="#EA171C24"
+          BorderBrush="{DynamicResource ArBrush.StrokeStrong}"
+          BorderThickness="1"
+          CornerRadius="9"
+          PointerPressed="MovePill_OnPointerPressed">
+        <StackPanel
+            Orientation="Horizontal"
+            Spacing="7"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+          <LucideIcon
+              Kind="Move"
+              Size="14"
+              StrokeWidth="1.8"
+              Foreground="{DynamicResource ArBrush.TextSecondary}" />
+          <TextBlock
+              x:Name="RegionSizeText"
+              Text="1280 × 720"
+              FontSize="10.5"
+              FontWeight="SemiBold"
+              FontFeatures="+tnum"
+              VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+
+      <!-- edge hit targets -->
+      <Border
+          Tag="North"
+          Height="12"
+          HorizontalAlignment="Stretch"
+          VerticalAlignment="Top"
+          Background="Transparent"
+          PointerPressed="ResizeHandle_OnPointerPressed" />
+      <Border
+          Tag="South"
+          Height="12"
+          HorizontalAlignment="Stretch"
+          VerticalAlignment="Bottom"
+          Background="Transparent"
+          PointerPressed="ResizeHandle_OnPointerPressed" />
+      <Border
+          Tag="West"
+          Width="12"
+          HorizontalAlignment="Left"
+          VerticalAlignment="Stretch"
+          Background="Transparent"
+          PointerPressed="ResizeHandle_OnPointerPressed" />
+      <Border
+          Tag="East"
+          Width="12"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Stretch"
+          Background="Transparent"
+          PointerPressed="ResizeHandle_OnPointerPressed" />
+
+      <!-- corner hit targets -->
+      <Border
+          Tag="NorthWest"
+          Width="18"
+          Height="18"
+          HorizontalAlignment="Left"
+          VerticalAlignment="Top"
+          Background="Transparent"
+          PointerPressed="ResizeHandle_OnPointerPressed" />
+      <Border
+          Tag="NorthEast"
+          Width="18"
+          Height="18"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Top"
+          Background="Transparent"
+          PointerPressed="ResizeHandle_OnPointerPressed" />
+      <Border
+          Tag="SouthWest"
+          Width="18"
+          Height="18"
+          HorizontalAlignment="Left"
+          VerticalAlignment="Bottom"
+          Background="Transparent"
+          PointerPressed="ResizeHandle_OnPointerPressed" />
+      <Border
+          Tag="SouthEast"
+          Width="18"
+          Height="18"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Bottom"
+          Background="Transparent"
+          PointerPressed="ResizeHandle_OnPointerPressed" />
+
+      <!-- visual handles -->
+      <Ellipse Width="9" Height="9" Margin="-1,-1,0,0"
+               HorizontalAlignment="Left" VerticalAlignment="Top"
+               Fill="White" Stroke="{DynamicResource ArBrush.Record}" StrokeThickness="2"
+               IsHitTestVisible="False" />
+      <Ellipse Width="9" Height="9" Margin="0,-1,-1,0"
+               HorizontalAlignment="Right" VerticalAlignment="Top"
+               Fill="White" Stroke="{DynamicResource ArBrush.Record}" StrokeThickness="2"
+               IsHitTestVisible="False" />
+      <Ellipse Width="9" Height="9" Margin="-1,0,0,-1"
+               HorizontalAlignment="Left" VerticalAlignment="Bottom"
+               Fill="White" Stroke="{DynamicResource ArBrush.Record}" StrokeThickness="2"
+               IsHitTestVisible="False" />
+      <Ellipse Width="9" Height="9" Margin="0,0,-1,-1"
+               HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Fill="White" Stroke="{DynamicResource ArBrush.Record}" StrokeThickness="2"
+               IsHitTestVisible="False" />
+      <Ellipse Width="9" Height="9" Margin="0,-1,0,0"
+               HorizontalAlignment="Center" VerticalAlignment="Top"
+               Fill="White" Stroke="{DynamicResource ArBrush.Record}" StrokeThickness="2"
+               IsHitTestVisible="False" />
+      <Ellipse Width="9" Height="9" Margin="0,0,0,-1"
+               HorizontalAlignment="Center" VerticalAlignment="Bottom"
+               Fill="White" Stroke="{DynamicResource ArBrush.Record}" StrokeThickness="2"
+               IsHitTestVisible="False" />
+      <Ellipse Width="9" Height="9" Margin="-1,0,0,0"
+               HorizontalAlignment="Left" VerticalAlignment="Center"
+               Fill="White" Stroke="{DynamicResource ArBrush.Record}" StrokeThickness="2"
+               IsHitTestVisible="False" />
+      <Ellipse Width="9" Height="9" Margin="0,0,-1,0"
+               HorizontalAlignment="Right" VerticalAlignment="Center"
+               Fill="White" Stroke="{DynamicResource ArBrush.Record}" StrokeThickness="2"
+               IsHitTestVisible="False" />
+    </Grid>
+  </Grid>
+</Window>
