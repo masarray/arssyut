@@ -1113,8 +1113,9 @@ void RecorderSession::worker_main() noexcept
         visual_scene_stats,
         visual_adaptive,
         writer.active_profile(),
-        writer.quality_vbr_applied(),
-        writer.requested_quality());
+        writer.active_rate_control(),
+        writer.quality_vs_speed_applied(),
+        writer.requested_quality_vs_speed());
 
     state_.store(
         failed
