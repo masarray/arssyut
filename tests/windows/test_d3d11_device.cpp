@@ -11,6 +11,7 @@
 #include <d3d11.h>
 #include <mfapi.h>
 #include <mfobjects.h>
+#include <mfreadwrite.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -817,14 +818,37 @@ void test_media_foundation_mp4(TestContext &test)
 
     auto &owner = *hardware_result.value();
 
-    constexpr std::uint32_t width = 64;
+    constexpr std::uint32_t width = 192;
     constexpr std::uint32_t height = 64;
-    constexpr std::uint32_t bgra = 0xFF3050A0u;
+    constexpr std::array<std::uint8_t, 12> gray_levels{
+        0, 8, 16, 24, 32, 64,
+        128, 192, 220, 232, 246, 255
+    };
+    constexpr std::uint32_t band_width =
+        width /
+        static_cast<std::uint32_t>(
+            gray_levels.size());
 
     std::vector<std::uint32_t> pixels(
         static_cast<std::size_t>(width) *
-            static_cast<std::size_t>(height),
-        bgra);
+            static_cast<std::size_t>(height));
+
+    for (std::uint32_t y = 0; y < height; ++y) {
+        for (std::uint32_t x = 0; x < width; ++x) {
+            const std::size_t band =
+                std::min<std::size_t>(
+                    x / band_width,
+                    gray_levels.size() - 1);
+            const std::uint32_t g =
+                gray_levels[band];
+            pixels[
+                static_cast<std::size_t>(y) * width + x] =
+                0xFF000000u |
+                (g << 16) |
+                (g << 8) |
+                g;
+        }
+    }
 
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = width;
@@ -872,7 +896,7 @@ void test_media_foundation_mp4(TestContext &test)
     MfVideoWriterConfig config;
     config.size = {width, height};
     config.frame_rate = {30, 1};
-    config.bitrate_bps = 500'000;
+    config.bitrate_bps = 2'000'000;
     config.surface_count = 4;
 
     const auto open_status =
@@ -921,6 +945,19 @@ void test_media_foundation_mp4(TestContext &test)
         writer.bitrate_vbr_applied(),
         "P5D.6 encoder negotiates bitrate-controlled unconstrained VBR");
 
+    test.expect(
+        writer.color_pipeline_authoritative(),
+        "P5D.7 encoder uses an explicit color-pipeline authority");
+
+    const std::string color_pipeline =
+        arssyut::windows::mf_color_pipeline_mode_name(
+            writer.active_color_pipeline());
+
+    test.expect(
+        color_pipeline == "d3d11_context1_bt709" ||
+            color_pipeline == "d3d11_legacy_explicit_bt709",
+        "P5D.7 color pipeline resolves to explicit BT.709 conversion");
+
     std::cout
         << "P5D.6 encoder profile="
         << active_profile
@@ -929,6 +966,8 @@ void test_media_foundation_mp4(TestContext &test)
                writer.active_rate_control())
         << " quality_vs_speed="
         << (writer.quality_vs_speed_applied() ? "applied" : "fallback")
+        << " color_pipeline="
+        << color_pipeline
         << '\n';
 
     bool write_ok = true;
