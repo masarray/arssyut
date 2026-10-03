@@ -856,6 +856,26 @@ void test_media_foundation_mp4(TestContext &test)
         return;
     }
 
+    const std::string active_profile =
+        arssyut::windows::mf_h264_profile_name(
+            writer.active_profile());
+
+    test.expect(
+        active_profile == "high" ||
+            active_profile == "main",
+        "P5D encoder resolves a canonical H.264 profile");
+
+    test.expect(
+        writer.requested_quality() == 86,
+        "P5D encoder carries the screen-quality target");
+
+    std::cout
+        << "P5D encoder profile="
+        << active_profile
+        << " quality_vbr="
+        << (writer.quality_vbr_applied() ? "true" : "false")
+        << '\n';
+
     bool write_ok = true;
     constexpr std::int64_t duration =
         arssyut::core::MonotonicClock::
