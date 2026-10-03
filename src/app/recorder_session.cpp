@@ -1083,7 +1083,10 @@ void RecorderSession::worker_main() noexcept
         resource_generation,
         visual_analysis_primed,
         visual_scene_stats,
-        visual_adaptive);
+        visual_adaptive,
+        writer.active_profile(),
+        writer.quality_vbr_applied(),
+        writer.requested_quality());
 
     state_.store(
         failed
@@ -1101,7 +1104,10 @@ void RecorderSession::write_diagnostics(
     std::uint64_t resource_generation,
     bool visual_analysis_primed,
     arssyut::visual::ArVisualSceneStats visual_scene_stats,
-    arssyut::visual::ArVisualAdaptiveState visual_adaptive) noexcept
+    arssyut::visual::ArVisualAdaptiveState visual_adaptive,
+    arssyut::windows::MfH264Profile encoder_profile,
+    bool encoder_quality_vbr,
+    std::uint32_t encoder_quality) noexcept
 {
     try {
         const auto snapshot_value =
@@ -1140,6 +1146,17 @@ void RecorderSession::write_diagnostics(
             << "  \"fps_num\": " << config_.frame_rate.numerator << ",\n"
             << "  \"fps_den\": " << config_.frame_rate.denominator << ",\n"
             << "  \"bitrate_bps\": " << config_.bitrate_bps << ",\n"
+            << "  \"encoder_h264_profile\": \""
+            << arssyut::windows::mf_h264_profile_name(
+                   encoder_profile)
+            << "\",\n"
+            << "  \"encoder_quality_vbr\": "
+            << (encoder_quality_vbr ? "true" : "false")
+            << ",\n"
+            << "  \"encoder_quality\": "
+            << encoder_quality << ",\n"
+            << "  \"encoder_pixel_format\": \"nv12\",\n"
+            << "  \"encoder_chroma_subsampling\": \"4:2:0\",\n"
             << "  \"arvisual_mode\": \""
             << arssyut::visual::product_mode_name(
                    config_.visual_mode)
@@ -1175,6 +1192,8 @@ void RecorderSession::write_diagnostics(
             << config_.visual.highlight_guard << ",\n"
             << "  \"arvisual_base_performance\": "
             << config_.visual.performance << ",\n"
+            << "  \"arvisual_base_text_legibility\": "
+            << config_.visual.text_legibility << ",\n"
             << "  \"visual_analysis_primed\": "
             << (visual_analysis_primed ? "true" : "false")
             << ",\n"
