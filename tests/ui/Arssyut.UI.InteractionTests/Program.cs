@@ -80,5 +80,61 @@ Expect(
         session.SavedFileName),
     "Reset clears the preview result");
 
+
+
+var settings =
+    new SettingsPreviewState();
+
+Expect(
+    settings.OutputFolder == @"Videos\Arssyut",
+    "Settings preview starts with the compact default output folder");
+
+Expect(
+    settings.TrySetHotkey(
+        "Record",
+        "Ctrl+Shift+R",
+        out var recordError) &&
+    string.IsNullOrEmpty(recordError) &&
+    settings.RecordHotkey ==
+        "Ctrl+Shift+R",
+    "Settings preview accepts a new Record shortcut");
+
+Expect(
+    !settings.TrySetHotkey(
+        "Pause",
+        "Ctrl+Shift+R",
+        out var conflictError) &&
+    !string.IsNullOrEmpty(
+        conflictError) &&
+    settings.PauseHotkey ==
+        "F10",
+    "Settings preview rejects duplicate shortcut conflicts");
+
+settings.SetCameraPlacement(
+    CameraPlacement.TopLeft);
+Expect(
+    settings.CameraPlacement ==
+        CameraPlacement.TopLeft,
+    "camera placement preview updates deterministically");
+
+settings.SetOutputFolder(
+    @"D:\Recordings\Arssyut");
+Expect(
+    settings.OutputFolder ==
+        @"D:\Recordings\Arssyut",
+    "folder picker preview state accepts a selected folder");
+
+settings.Reset();
+Expect(
+    settings.RecordHotkey == "F9" &&
+    settings.PauseHotkey == "F10" &&
+    settings.MicrophoneHotkey ==
+        "Ctrl+F9" &&
+    settings.CameraPlacement ==
+        CameraPlacement.BottomRight &&
+    settings.OutputFolder ==
+        @"Videos\Arssyut",
+    "Settings preview Reset restores deterministic defaults");
+
 Console.WriteLine(
     "P6UI interaction-state checks passed.");
