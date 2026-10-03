@@ -758,9 +758,15 @@ void update_capture_boundary(
 
         if (recording) {
             rect =
-                camera_viewport_rect(
-                    rect,
-                    snapshot);
+                arssyut::app::
+                    camera_viewport_rect(
+                        rect,
+                        snapshot->
+                            presentation_camera_center_x,
+                        snapshot->
+                            presentation_camera_center_y,
+                        snapshot->
+                            presentation_camera_zoom);
         }
 
         app.overlay.show_boundary(
