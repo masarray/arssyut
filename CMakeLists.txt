@@ -98,6 +98,7 @@ if(WIN32)
 
     add_executable(arssyut WIN32
         src/app/device_catalog.cpp
+        src/app/lucide_icons.cpp
         src/app/recorder_overlay.cpp
         src/app/recorder_session.cpp
         src/app/recorder_settings_window.cpp
