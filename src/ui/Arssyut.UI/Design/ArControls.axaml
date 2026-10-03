@@ -1,0 +1,229 @@
+<Styles
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Base typography -->
+  <Style Selector="Window">
+    <Setter Property="TextElement.FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="TextElement.FontSize" Value="{DynamicResource ArType.Body}" />
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Body}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="TextBlock.micro">
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Micro}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextDim}" />
+  </Style>
+
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextSecondary}" />
+  </Style>
+
+  <Style Selector="TextBlock.section">
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Section}" />
+    <Setter Property="FontWeight" Value="{DynamicResource ArWeight.SemiBold}" />
+  </Style>
+
+  <Style Selector="TextBlock.title">
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Title}" />
+    <Setter Property="FontWeight" Value="{DynamicResource ArWeight.SemiBold}" />
+  </Style>
+
+  <!-- Surfaces -->
+  <Style Selector="Border.panel">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface1}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ArRadius.LG}" />
+  </Style>
+
+  <Style Selector="Border.subtle-panel">
+    <Setter Property="Background" Value="#8F161B23" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ArRadius.MD}" />
+  </Style>
+
+  <!-- Product buttons -->
+  <Style Selector="Button.ar">
+    <Setter Property="Height" Value="{DynamicResource ArControl.SM}" />
+    <Setter Property="Padding" Value="{DynamicResource ArPadding.Button}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ArRadius.MD}" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Control}" />
+    <Setter Property="FontWeight" Value="{DynamicResource ArWeight.Medium}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button.ar:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.SurfaceHover}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.StrokeStrong}" />
+  </Style>
+
+  <Style Selector="Button.ar:pressed">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.SurfacePressed}" />
+  </Style>
+
+  <Style Selector="Button.ar:disabled">
+    <Setter Property="Opacity" Value="0.42" />
+  </Style>
+
+  <Style Selector="Button.segment">
+    <Setter Property="Height" Value="34" />
+    <Setter Property="MinWidth" Value="92" />
+    <Setter Property="Padding" Value="11,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextSecondary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Control}" />
+    <Setter Property="FontWeight" Value="{DynamicResource ArWeight.Medium}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button.segment:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.SurfaceHover}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="Button.segment.selected">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.RecordSoft}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="Button.icon">
+    <Setter Property="Width" Value="{DynamicResource ArControl.SM}" />
+    <Setter Property="MinWidth" Value="{DynamicResource ArControl.SM}" />
+    <Setter Property="Padding" Value="0" />
+  </Style>
+
+  <Style Selector="Button.window-control">
+    <Setter Property="Width" Value="34" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextSecondary}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button.window-control:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.SurfaceHover}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="Button.window-control.danger:pointerover">
+    <Setter Property="Background" Value="#C93A424D" />
+    <Setter Property="Foreground" Value="White" />
+  </Style>
+
+  <Style Selector="Button.record">
+    <Setter Property="Height" Value="{DynamicResource ArControl.Record}" />
+    <Setter Property="MinWidth" Value="116" />
+    <Setter Property="Padding" Value="16,0" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Section}" />
+    <Setter Property="FontWeight" Value="{DynamicResource ArWeight.SemiBold}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button.record:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.RecordHover}" />
+  </Style>
+
+  <Style Selector="Button.record:pressed">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.RecordPressed}" />
+  </Style>
+
+  <Style Selector="Button.nav">
+    <Setter Property="Height" Value="34" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextSecondary}" />
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Control}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button.nav:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="Button.nav.selected">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.RecordSoft}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <!-- Inputs -->
+  <Style Selector="ComboBox.ar-select">
+    <Setter Property="Height" Value="{DynamicResource ArControl.SM}" />
+    <Setter Property="MinHeight" Value="{DynamicResource ArControl.SM}" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Control}" />
+  </Style>
+
+  <Style Selector="ComboBox.ar-select:pointerover">
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.StrokeStrong}" />
+  </Style>
+
+  <Style Selector="ToggleSwitch.ar-toggle">
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="FontSize" Value="{DynamicResource ArType.Control}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="TextBox.ar-input">
+    <Setter Property="Height" Value="{DynamicResource ArControl.SM}" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ArRadius.MD}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+  </Style>
+
+  <Style Selector="Border.device">
+    <Setter Property="MinHeight" Value="70" />
+    <Setter Property="Padding" Value="12,10" />
+    <Setter Property="Background" Value="#B0161B23" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ArRadius.LG}" />
+  </Style>
+
+  <Style Selector="Border.setting-row">
+    <Setter Property="Padding" Value="0,12" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+
+</Styles>
