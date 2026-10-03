@@ -12,6 +12,8 @@ public enum CameraPlacement
 
 public sealed class SettingsPreviewState
 {
+    public event EventHandler? Changed;
+
     public string OutputFolder { get; private set; } =
         @"Videos\Arssyut";
 
@@ -37,7 +39,10 @@ public sealed class SettingsPreviewState
         string path)
     {
         if (!string.IsNullOrWhiteSpace(path))
+        {
             OutputFolder = path.Trim();
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     public bool TrySetHotkey(
@@ -99,12 +104,16 @@ public sealed class SettingsPreviewState
                 return false;
         }
 
+        Changed?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
     public void SetCameraPlacement(
-        CameraPlacement placement) =>
+        CameraPlacement placement)
+    {
         CameraPlacement = placement;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     public void Reset()
     {
@@ -122,6 +131,7 @@ public sealed class SettingsPreviewState
             "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
         CameraDevice =
             "USB2.0 HD UVC Webcam";
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     private bool ConflictsWithOtherAction(
