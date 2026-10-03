@@ -1739,34 +1739,40 @@ void paint_background(
     DeleteObject(accent);
 }
 
-void draw_mode_button(
-    AppWindow &app,
-    const DRAWITEMSTRUCT &item,
-    CaptureMode mode,
-    const wchar_t *label)
+void draw_button_surface(
+    HDC dc,
+    RECT rect,
+    COLORREF fill,
+    COLORREF border,
+    bool pressed)
 {
-    const bool selected =
-        app.ui.capture_mode == mode;
+    if (pressed) {
+        fill =
+            RGB(
+                std::max(
+                    0,
+                    static_cast<int>(
+                        GetRValue(fill)) - 8),
+                std::max(
+                    0,
+                    static_cast<int>(
+                        GetGValue(fill)) - 8),
+                std::max(
+                    0,
+                    static_cast<int>(
+                        GetBValue(fill)) - 8));
+    }
 
-    HDC dc = item.hDC;
-    RECT rect = item.rcItem;
-
-    HBRUSH fill =
-        CreateSolidBrush(
-            selected
-                ? RGB(39, 70, 72)
-                : RGB(31, 35, 41));
-
+    HBRUSH brush =
+        CreateSolidBrush(fill);
     HPEN pen =
         CreatePen(
             PS_SOLID,
             1,
-            selected
-                ? kAqua
-                : kBorder);
+            border);
 
     HGDIOBJ old_brush =
-        SelectObject(dc, fill);
+        SelectObject(dc, brush);
     HGDIOBJ old_pen =
         SelectObject(dc, pen);
 
@@ -1776,35 +1782,115 @@ void draw_mode_button(
         rect.top + 1,
         rect.right - 1,
         rect.bottom - 1,
-        8,
-        8);
+        9,
+        9);
+
+    SelectObject(dc, old_pen);
+    SelectObject(dc, old_brush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+}
+
+void draw_mode_button(
+    AppWindow &app,
+    const DRAWITEMSTRUCT &item,
+    CaptureMode mode,
+    const wchar_t *label)
+{
+    const bool selected =
+        app.ui.capture_mode == mode;
+    const bool pressed =
+        (item.itemState &
+         ODS_SELECTED) != 0;
+    const bool enabled =
+        (item.itemState &
+         ODS_DISABLED) == 0;
+
+    HDC dc = item.hDC;
+    RECT rect = item.rcItem;
+
+    const COLORREF fill =
+        selected
+            ? RGB(104, 31, 36)
+            : RGB(31, 35, 41);
+    const COLORREF border =
+        selected
+            ? kAccent
+            : kBorder;
+    const COLORREF foreground =
+        enabled
+            ? RGB(246, 248, 250)
+            : RGB(105, 111, 119);
+
+    draw_button_surface(
+        dc,
+        rect,
+        fill,
+        border,
+        pressed);
+
+    LucideIcon icon =
+        LucideIcon::Monitor;
+
+    switch (mode) {
+    case CaptureMode::Window:
+        icon =
+            LucideIcon::AppWindow;
+        break;
+    case CaptureMode::Region:
+        icon =
+            LucideIcon::Region;
+        break;
+    case CaptureMode::Game:
+        icon =
+            LucideIcon::Gamepad;
+        break;
+    case CaptureMode::Display:
+    default:
+        icon =
+            LucideIcon::Monitor;
+        break;
+    }
+
+    RECT icon_rect{
+        rect.left + 8,
+        rect.top + 7,
+        rect.left + 26,
+        rect.bottom - 7};
+
+    draw_lucide_icon(
+        dc,
+        icon,
+        icon_rect,
+        foreground,
+        2,
+        false);
+
+    RECT text_rect{
+        rect.left + 30,
+        rect.top,
+        rect.right - 6,
+        rect.bottom};
 
     SelectObject(
         dc,
         app.small_font);
-
     SetBkMode(
         dc,
         TRANSPARENT);
     SetTextColor(
         dc,
-        selected
-            ? RGB(235, 250, 248)
-            : kText);
+        foreground);
 
     DrawTextW(
         dc,
         label,
         -1,
-        &rect,
-        DT_CENTER |
+        &text_rect,
+        DT_LEFT |
             DT_VCENTER |
-            DT_SINGLELINE);
-
-    SelectObject(dc, old_pen);
-    SelectObject(dc, old_brush);
-    DeleteObject(pen);
-    DeleteObject(fill);
+            DT_SINGLELINE |
+            DT_END_ELLIPSIS);
 }
 
 void draw_input_button(
@@ -1820,169 +1906,78 @@ void draw_input_button(
     else if (id == IdCamera)
         active = app.ui.camera;
 
+    const bool pressed =
+        (item.itemState &
+         ODS_SELECTED) != 0;
+    const bool enabled =
+        (item.itemState &
+         ODS_DISABLED) == 0;
+
     HDC dc = item.hDC;
     RECT rect = item.rcItem;
 
-    HBRUSH fill =
-        CreateSolidBrush(
-            active
-                ? RGB(34, 73, 69)
-                : RGB(31, 35, 41));
+    const COLORREF fill =
+        active
+            ? RGB(104, 31, 36)
+            : RGB(31, 35, 41);
+    const COLORREF border =
+        active
+            ? kAccent
+            : kBorder;
+    const COLORREF foreground =
+        enabled
+            ? RGB(248, 249, 251)
+            : RGB(105, 111, 119);
 
-    HPEN pen =
-        CreatePen(
-            PS_SOLID,
-            1,
-            active
-                ? kAqua
-                : kBorder);
-
-    HGDIOBJ old_brush =
-        SelectObject(dc, fill);
-    HGDIOBJ old_pen =
-        SelectObject(dc, pen);
-
-    RoundRect(
+    draw_button_surface(
         dc,
-        rect.left + 1,
-        rect.top + 1,
-        rect.right - 1,
-        rect.bottom - 1,
-        8,
-        8);
+        rect,
+        fill,
+        border,
+        pressed);
 
-    HPEN icon_pen =
-        CreatePen(
-            PS_SOLID,
-            2,
-            active
-                ? RGB(235, 250, 248)
-                : kText);
-
-    SelectObject(
-        dc,
-        icon_pen);
-
-    const int cx =
-        rect.left + 17;
-    const int cy =
-        (rect.top + rect.bottom) / 2;
+    LucideIcon icon =
+        LucideIcon::Volume;
+    const wchar_t *label =
+        L"System";
 
     if (id == IdMicrophone) {
-        RoundRect(
-            dc,
-            cx - 4,
-            cy - 8,
-            cx + 4,
-            cy + 3,
-            6,
-            6);
-        Arc(
-            dc,
-            cx - 8,
-            cy - 3,
-            cx + 8,
-            cy + 9,
-            cx - 8,
-            cy + 1,
-            cx + 8,
-            cy + 1);
-        MoveToEx(
-            dc,
-            cx,
-            cy + 7,
-            nullptr);
-        LineTo(
-            dc,
-            cx,
-            cy + 10);
+        icon = LucideIcon::Mic;
+        label = L"Mic";
     } else if (id == IdCamera) {
-        Rectangle(
-            dc,
-            cx - 8,
-            cy - 6,
-            cx + 5,
-            cy + 7);
-        MoveToEx(
-            dc,
-            cx + 5,
-            cy - 3,
-            nullptr);
-        LineTo(
-            dc,
-            cx + 11,
-            cy - 7);
-        LineTo(
-            dc,
-            cx + 11,
-            cy + 8);
-        LineTo(
-            dc,
-            cx + 5,
-            cy + 4);
-    } else {
-        MoveToEx(
-            dc,
-            cx - 8,
-            cy - 3,
-            nullptr);
-        LineTo(
-            dc,
-            cx - 3,
-            cy - 3);
-        LineTo(
-            dc,
-            cx + 2,
-            cy - 8);
-        LineTo(
-            dc,
-            cx + 2,
-            cy + 8);
-        LineTo(
-            dc,
-            cx - 3,
-            cy + 3);
-        LineTo(
-            dc,
-            cx - 8,
-            cy + 3);
-        Arc(
-            dc,
-            cx - 2,
-            cy - 8,
-            cx + 13,
-            cy + 8,
-            cx + 4,
-            cy - 6,
-            cx + 4,
-            cy + 6);
+        icon = LucideIcon::Video;
+        label = L"Camera";
     }
 
-    const wchar_t *label =
-        id == IdMicrophone
-            ? L"Mic"
-            : id == IdCamera
-                ? L"Camera"
-                : L"System";
+    RECT icon_rect{
+        rect.left + 8,
+        rect.top + 7,
+        rect.left + 27,
+        rect.bottom - 7};
+
+    draw_lucide_icon(
+        dc,
+        icon,
+        icon_rect,
+        foreground,
+        2,
+        false);
 
     RECT text_rect{
-        rect.left + 34,
+        rect.left + 33,
         rect.top,
-        rect.right - 4,
+        rect.right - 5,
         rect.bottom};
 
     SelectObject(
         dc,
         app.tiny_font);
-
     SetBkMode(
         dc,
         TRANSPARENT);
     SetTextColor(
         dc,
-        active
-            ? RGB(235, 250, 248)
-            : kText);
+        foreground);
 
     DrawTextW(
         dc,
@@ -1992,13 +1987,6 @@ void draw_input_button(
         DT_LEFT |
             DT_VCENTER |
             DT_SINGLELINE);
-
-    SelectObject(dc, old_pen);
-    SelectObject(dc, old_brush);
-
-    DeleteObject(icon_pen);
-    DeleteObject(pen);
-    DeleteObject(fill);
 }
 
 void draw_primary_button(
@@ -2012,110 +2000,145 @@ void draw_primary_button(
     const bool enabled =
         IsWindowEnabled(
             item.hwndItem) != FALSE;
+    const bool pressed =
+        (item.itemState &
+         ODS_SELECTED) != 0;
 
-    HBRUSH fill =
-        CreateSolidBrush(
-            pause
-                ? RGB(31, 35, 41)
-                : kAccent);
-
-    HPEN pen =
-        CreatePen(
-            PS_SOLID,
-            1,
-            pause
-                ? kBorder
-                : kAccentDark);
-
-    HGDIOBJ old_brush =
-        SelectObject(dc, fill);
-    HGDIOBJ old_pen =
-        SelectObject(dc, pen);
-
-    RoundRect(
-        dc,
-        rect.left + 1,
-        rect.top + 1,
-        rect.right - 1,
-        rect.bottom - 1,
-        10,
-        10);
-
-    const COLORREF icon =
+    const COLORREF fill =
+        pause
+            ? RGB(31, 35, 41)
+            : kAccent;
+    const COLORREF border =
+        pause
+            ? kBorder
+            : kAccentDark;
+    const COLORREF foreground =
         enabled
             ? RGB(255, 255, 255)
-            : RGB(105, 110, 118);
+            : RGB(108, 113, 121);
 
-    HPEN icon_pen =
-        CreatePen(
-            PS_SOLID,
-            2,
-            icon);
+    draw_button_surface(
+        dc,
+        rect,
+        fill,
+        border,
+        pressed);
+
+    RECT icon_rect = rect;
+    InflateRect(
+        &icon_rect,
+        -10,
+        -8);
+
+    const bool stopping =
+        !pause &&
+        active_state(
+            app.visible_state);
+
+    draw_lucide_icon(
+        dc,
+        pause
+            ? LucideIcon::Pause
+            : stopping
+                ? LucideIcon::Stop
+                : LucideIcon::Record,
+        icon_rect,
+        foreground,
+        2,
+        !pause);
+}
+
+void draw_secondary_button(
+    AppWindow &app,
+    const DRAWITEMSTRUCT &item,
+    int id)
+{
+    HDC dc = item.hDC;
+    RECT rect = item.rcItem;
+
+    const bool enabled =
+        IsWindowEnabled(
+            item.hwndItem) != FALSE;
+    const bool pressed =
+        (item.itemState &
+         ODS_SELECTED) != 0;
+
+    draw_button_surface(
+        dc,
+        rect,
+        enabled
+            ? RGB(31, 35, 41)
+            : RGB(27, 30, 35),
+        kBorder,
+        pressed);
+
+    const COLORREF foreground =
+        enabled
+            ? RGB(237, 240, 244)
+            : RGB(103, 109, 117);
+
+    LucideIcon icon =
+        LucideIcon::Sliders;
+    const wchar_t *label =
+        L"Settings";
+
+    if (id == IdRefresh) {
+        icon =
+            LucideIcon::Refresh;
+        label =
+            L"Refresh";
+    } else if (id == IdOpen) {
+        icon =
+            LucideIcon::Folder;
+        label =
+            L"Open";
+    } else if (id ==
+               IdOpenDiagnostics) {
+        icon =
+            LucideIcon::Sliders;
+        label =
+            L"Logs";
+    }
+
+    RECT icon_rect{
+        rect.left + 8,
+        rect.top + 7,
+        rect.left + 24,
+        rect.bottom - 7};
+
+    draw_lucide_icon(
+        dc,
+        icon,
+        icon_rect,
+        foreground,
+        2,
+        false);
+
+    RECT text_rect{
+        rect.left + 29,
+        rect.top,
+        rect.right - 5,
+        rect.bottom};
 
     SelectObject(
         dc,
-        icon_pen);
+        app.tiny_font);
+    SetBkMode(
+        dc,
+        TRANSPARENT);
+    SetTextColor(
+        dc,
+        foreground);
 
-    const int cx =
-        rect.left + 18;
-    const int cy =
-        (rect.top +
-         rect.bottom) / 2;
-
-    if (pause) {
-        MoveToEx(
-            dc,
-            cx - 4,
-            cy - 6,
-            nullptr);
-        LineTo(
-            dc,
-            cx - 4,
-            cy + 6);
-        MoveToEx(
-            dc,
-            cx + 4,
-            cy - 6,
-            nullptr);
-        LineTo(
-            dc,
-            cx + 4,
-            cy + 6);
-    } else {
-        HBRUSH glyph =
-            CreateSolidBrush(icon);
-        HGDIOBJ previous_brush =
-            SelectObject(dc, glyph);
-
-        if (active_state(
-                app.visible_state)) {
-            Rectangle(
-                dc,
-                cx - 6,
-                cy - 6,
-                cx + 6,
-                cy + 6);
-        } else {
-            Ellipse(
-                dc,
-                cx - 7,
-                cy - 7,
-                cx + 7,
-                cy + 7);
-        }
-
-        SelectObject(
-            dc,
-            previous_brush);
-        DeleteObject(glyph);
-    }
-
-    SelectObject(dc, old_pen);
-    SelectObject(dc, old_brush);
-
-    DeleteObject(icon_pen);
-    DeleteObject(pen);
-    DeleteObject(fill);
+    DrawTextW(
+        dc,
+        label,
+        -1,
+        &text_rect,
+        DT_LEFT |
+            DT_VCENTER |
+            DT_SINGLELINE |
+            DT_END_ELLIPSIS);
 }
 
 LRESULT CALLBACK window_proc(
@@ -2932,6 +2955,16 @@ LRESULT CALLBACK window_proc(
                 *app,
                 *item,
                 false);
+            return TRUE;
+        case IdSettings:
+        case IdRefresh:
+        case IdOpen:
+        case IdOpenDiagnostics:
+            draw_secondary_button(
+                *app,
+                *item,
+                static_cast<int>(
+                    wparam));
             return TRUE;
         default:
             break;
