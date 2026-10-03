@@ -47,6 +47,15 @@ struct RecorderConfig {
     std::filesystem::path output_path;
     arssyut::core::FrameSize output_size{1920, 1080};
     arssyut::core::FrameRate frame_rate{60, 1};
+
+    // Empty crop means full source. Region mode maps its virtual-screen
+    // selection into source pixels before the worker starts.
+    arssyut::core::CropRect crop{};
+
+    // Presentation input must normalize against the same spatial region that
+    // the compositor receives. This is especially important for custom Region.
+    RECT presentation_screen_rect{};
+    bool presentation_screen_rect_valid = false;
     std::uint32_t bitrate_bps = 18'000'000;
     arssyut::presentation::PresentationSettings presentation{};
     arssyut::visual::ArVisualProductMode visual_mode =
