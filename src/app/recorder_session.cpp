@@ -300,6 +300,19 @@ Status RecorderSession::start(
     visual_analysis_map_failures_.store(
         0,
         std::memory_order_release);
+    presentation_camera_center_x_.store(
+        0.5f,
+        std::memory_order_release);
+    presentation_camera_center_y_.store(
+        0.5f,
+        std::memory_order_release);
+    presentation_camera_zoom_.store(
+        1.0f,
+        std::memory_order_release);
+    worker_finished_.store(
+        false,
+        std::memory_order_release);
+
     state_.store(
         RecorderState::Preparing,
         std::memory_order_release);
@@ -421,6 +434,19 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
         compositor_gpu_p95_us_.load(
             std::memory_order_relaxed);
 
+    result.presentation_camera_center_x =
+        presentation_camera_center_x_.load(
+            std::memory_order_relaxed);
+    result.presentation_camera_center_y =
+        presentation_camera_center_y_.load(
+            std::memory_order_relaxed);
+    result.presentation_camera_zoom =
+        presentation_camera_zoom_.load(
+            std::memory_order_relaxed);
+    result.worker_finished =
+        worker_finished_.load(
+            std::memory_order_acquire);
+
     result.memory_private_bytes =
         memory_private_bytes_.load(
             std::memory_order_relaxed);
@@ -453,6 +479,16 @@ void RecorderSession::fail(Status status) noexcept
 
 void RecorderSession::worker_main() noexcept
 {
+    struct WorkerFinishGuard {
+        std::atomic<bool> &flag;
+        ~WorkerFinishGuard() noexcept
+        {
+            flag.store(
+                true,
+                std::memory_order_release);
+        }
+    } finish_guard{worker_finished_};
+
     std::error_code file_ec;
     std::filesystem::create_directories(
         config_.output_path.parent_path(),
@@ -866,6 +902,16 @@ void RecorderSession::worker_main() noexcept
                     cursor_valid,
                     now,
                     pointer.last_activity);
+
+            presentation_camera_center_x_.store(
+                presentation_state.camera_center_x,
+                std::memory_order_relaxed);
+            presentation_camera_center_y_.store(
+                presentation_state.camera_center_y,
+                std::memory_order_relaxed);
+            presentation_camera_zoom_.store(
+                presentation_state.camera_zoom,
+                std::memory_order_relaxed);
 
             previous_presentation = now;
             next_presentation = {
