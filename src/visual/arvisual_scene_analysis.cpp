@@ -735,10 +735,16 @@ void apply_adaptive(
             0.0f,
             1.0f);
 
+    /*
+     * Product mode is already a strong prior: Clean/Vivid are screen-recorder
+     * modes, not camera modes. Topology confidence therefore strengthens a
+     * baseline screen policy rather than being the sole on/off switch.
+     */
     const float screen_weight =
         std::clamp(
             grade.screen_native *
-                screen_confidence,
+                (0.72f +
+                 screen_confidence * 0.28f),
             0.0f,
             1.0f);
 
