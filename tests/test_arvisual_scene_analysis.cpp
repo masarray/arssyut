@@ -128,6 +128,10 @@ void test_bright_neutral_ui_scene(TestContext &test)
         "Bright browser-style scene is classified as neutral white UI");
 
     test.expect(
+        adaptive.white_ui > 0.95f,
+        "Neutral white UI classifier reaches high confidence");
+
+    test.expect(
         adaptive.highlight < 0.20f,
         "Neutral white UI does not masquerade as clipped highlight risk");
 
@@ -166,6 +170,10 @@ void test_hot_vivid_scene(TestContext &test)
         "Hot vivid scene produces an observation");
 
     const auto &adaptive = model.adaptive();
+
+    test.expect(
+        adaptive.white_ui < 0.01f,
+        "Hot vivid scene is never classified as neutral white UI");
 
     test.expect(
         adaptive.highlight > 0.95f,
