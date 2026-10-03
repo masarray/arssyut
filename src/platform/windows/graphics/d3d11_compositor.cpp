@@ -474,7 +474,7 @@ float4 apply_arvisual(float4 px, float2 uv)
      *
      * This is intentionally directional. Positive detail (light text on dark
      * UI) receives the original P5D gain. Only negative detail can receive the
-     * additional 1.32x maximum reinforcement and slightly wider negative luma
+     * additional 1.45x maximum reinforcement and slightly wider negative luma
      * headroom. Saturated neighborhoods, skin and flat regions remain gated
      * by the existing P5D masks.
      */
@@ -498,7 +498,7 @@ float4 apply_arvisual(float4 px, float2 uv)
 
     float directional_gain =
         text_soft_detail < 0.0
-            ? lerp(1.0, 1.32, dark_on_bright)
+            ? lerp(1.0, 1.45, dark_on_bright)
             : 1.0;
 
     float signed_headroom =
