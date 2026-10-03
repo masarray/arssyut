@@ -29,6 +29,7 @@
           Grid.Row="0"
           Margin="14,0,10,0"
           ColumnDefinitions="*,Auto"
+          Background="Transparent"
           PointerPressed="TitleBar_OnPointerPressed">
 
         <StackPanel
@@ -89,7 +90,7 @@
 
             <StackPanel Grid.Row="1" Spacing="3">
               <Button x:Name="NavGeneral" AutomationProperties.Name="General settings" Classes="nav" Click="Nav_OnClick" Tag="General">
-                <StackPanel Orientation="Horizontal" Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Settings2" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="General" />
@@ -97,7 +98,7 @@
               </Button>
 
               <Button x:Name="NavRecording" AutomationProperties.Name="Recording settings" Classes="nav selected" Click="Nav_OnClick" Tag="Recording">
-                <StackPanel Orientation="Horizontal" Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Video" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Recording" />
@@ -105,7 +106,7 @@
               </Button>
 
               <Button x:Name="NavOutput" AutomationProperties.Name="Output settings" Classes="nav" Click="Nav_OnClick" Tag="Output">
-                <StackPanel Orientation="Horizontal" Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="FolderOpen" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Output" />
@@ -113,7 +114,7 @@
               </Button>
 
               <Button x:Name="NavAudio" AutomationProperties.Name="Audio settings" Classes="nav" Click="Nav_OnClick" Tag="Audio">
-                <StackPanel Orientation="Horizontal" Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Volume2" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Audio" />
@@ -121,7 +122,7 @@
               </Button>
 
               <Button x:Name="NavCamera" AutomationProperties.Name="Camera settings" Classes="nav" Click="Nav_OnClick" Tag="Camera">
-                <StackPanel Orientation="Horizontal" Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Camera" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Camera" />
@@ -129,7 +130,7 @@
               </Button>
 
               <Button x:Name="NavMouse" AutomationProperties.Name="Mouse and keystroke settings" Classes="nav" Click="Nav_OnClick" Tag="Mouse">
-                <StackPanel Orientation="Horizontal" Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="MousePointer2" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Mouse &amp; Keys" />
@@ -137,7 +138,7 @@
               </Button>
 
               <Button x:Name="NavHotkeys" AutomationProperties.Name="Hotkey settings" Classes="nav" Click="Nav_OnClick" Tag="Hotkeys">
-                <StackPanel Orientation="Horizontal" Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Keyboard" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Hotkeys" />
@@ -145,7 +146,7 @@
               </Button>
 
               <Button x:Name="NavAdvanced" AutomationProperties.Name="Advanced settings" Classes="nav" Click="Nav_OnClick" Tag="Advanced">
-                <StackPanel Orientation="Horizontal" Spacing="9">
+                <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Wrench" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Advanced" />
@@ -329,7 +330,7 @@
                           Classes="ar"
                           Click="OutputFolder_OnClick"
                           AutomationProperties.Name="Choose output folder">
-                        <StackPanel Orientation="Horizontal" Spacing="7">
+                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                           <LucideIcon Kind="FolderOpen" Size="15" StrokeWidth="1.8"
                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                           <TextBlock Text="Browse" />
@@ -750,7 +751,7 @@
                           Classes="ar"
                           Click="ResetPreview_OnClick"
                           AutomationProperties.Name="Reset Settings preview">
-                        <StackPanel Orientation="Horizontal" Spacing="7">
+                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                           <LucideIcon Kind="RotateCcw" Size="14" StrokeWidth="1.8"
                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                           <TextBlock Text="Reset preview" />
