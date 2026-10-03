@@ -188,7 +188,7 @@ bool RecorderOverlay::create(
             L"",
             WS_POPUP,
             0, 0, 330, 54,
-            owner_,
+            nullptr,
             nullptr,
             instance_,
             this);
@@ -304,7 +304,7 @@ bool RecorderOverlay::create(
             L"",
             WS_POPUP,
             0, 0, 1, 1,
-            owner_,
+            nullptr,
             nullptr,
             instance_,
             this);
