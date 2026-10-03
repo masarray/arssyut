@@ -248,10 +248,39 @@ After any mapping change, repeat the same matched triad.
 A calibration change is accepted only when it improves the target problem
 without causing a regression in the other scene classes.
 
+## First matched triad — 2026-10-03
+
+The first real Pixel Accurate / Clean Screen / Vivid Presentation triad
+confirmed the core product hierarchy and realtime health, but exposed a Smart
+Auto classification issue rather than a base-preset issue.
+
+The final matched scene was an overwhelmingly neutral white browser/document.
+Clean and Vivid both reported approximately:
+
+- median luma ~0.978;
+- p98 luma ~0.994;
+- mean saturation below 0.004;
+- neutral fraction ~0.985.
+
+Despite that topology, the literal adaptive mapping reached:
+
+- exposure -0.025;
+- highlight pressure 1.0;
+- pop 1.025;
+- strength 0.84;
+- chroma limit 0.96.
+
+Frame-matched review also showed mild white-screen dimming and a brightness /
+chroma settle after transitions from white UI into saturated blue/red scenes.
+
+P5C.2 addresses that specific classification error while leaving the Clean and
+Vivid base mappings unchanged. A second matched triad is required after P5C.2
+before final product-mode acceptance.
+
 ## Current status
 
 P5C engine and mode mappings are implemented and CI-gated.
 
-This calibration-support milestone does **not** claim final visual tuning by
-itself. Final P5C visual acceptance requires matched real recordings for all
-three modes.
+P5C.2 neutral-white calibration is evidence-driven from the first matched
+triad. Final P5C visual acceptance remains open until the corrected build is
+re-recorded in Pixel Accurate, Clean Screen and Vivid Presentation modes.
