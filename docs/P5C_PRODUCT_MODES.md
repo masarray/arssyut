@@ -59,6 +59,7 @@ P5C mapping:
 | depth pop | 0.30 |
 | highlight guard | 0.98 |
 | performance | 1.00 |
+| text legibility | 0.56 |
 | Smart Auto | ON |
 
 Design intent:
@@ -99,6 +100,7 @@ P5C keeps the pinned P5A v0.5.9 defaults:
 | depth pop | 0.76 |
 | highlight guard | 0.94 |
 | performance | 1.00 |
+| text legibility | 0.34 |
 | Smart Auto | ON |
 
 P5B can still lower pop, strength and chroma ceiling or increase highlight
