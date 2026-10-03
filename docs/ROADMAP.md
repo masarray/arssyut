@@ -411,6 +411,31 @@ have been reviewed.
 
 See `docs/P5C_REAL_VISUAL_CALIBRATION.md`.
 
+### P5C.2 — neutral-white Smart Auto calibration
+
+First matched Pixel Accurate / Clean Screen / Vivid Presentation recordings
+were reviewed on 2026-10-03.
+
+Evidence:
+- Pixel Accurate correctly bypassed grade and analysis;
+- Clean/Vivid analysis completed with zero busy skips/map failures;
+- the matched final browser/document scene was ~98.5% neutral with ~0.3%
+  saturation, but literal P5B mapping produced max highlight pressure,
+  minimum exposure and a positive muted-pop preload;
+- frame-matched comparison showed mild white-screen dimming and visible
+  brightness/chroma settling after white-to-color transitions.
+
+Correction:
+- add a bright + overwhelmingly neutral + low-chroma desktop-UI classifier;
+- attenuate negative exposure and neutral clipping pressure only for that
+  topology;
+- suppress muted-scene pop preload on white UI;
+- retain hot-vivid, dark-scene, async cadence and EMA behavior unchanged;
+- export `visual_adaptive_white_ui` for the next matched triad.
+
+Preset values for Clean Screen and Vivid Presentation remain unchanged in this
+pass.
+
 ### Gates
 
 Visual test scenes:

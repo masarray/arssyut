@@ -268,15 +268,55 @@ void ArVisualSceneModel::update_adaptive() noexcept
         return;
     }
 
+    /*
+     * Screen-capture calibration:
+     *
+     * A browser/document can legitimately contain an almost full-screen
+     * neutral white canvas. Treating that as the same thing as clipped,
+     * colorful highlights caused P5C calibration captures to enter
+     * highlight=1 / exposure=-0.025 on otherwise healthy white UI. That state
+     * then bled into the next colorful scene through the 0.65 s EMA.
+     *
+     * Detect only the very specific "bright + overwhelmingly neutral +
+     * low-chroma" topology. Photos, colorful highlights, dark IDEs and vivid
+     * scenes do not satisfy all three gates and retain the pinned P5B logic.
+     */
+    const float bright_neutral_ui =
+        std::clamp(
+            (s.neutral_frac - 0.70f) / 0.25f,
+            0.0f,
+            1.0f) *
+        (1.0f -
+         std::clamp(
+             (s.mean_saturation - 0.04f) / 0.12f,
+             0.0f,
+             1.0f)) *
+        std::clamp(
+            (s.median_luma - 0.82f) / 0.14f,
+            0.0f,
+            1.0f);
+
+    adaptive_.white_ui =
+        bright_neutral_ui;
+
     const float upper_key =
         s.p90_luma * 0.72f +
         s.p98_luma * 0.28f;
 
-    adaptive_.exposure =
+    const float raw_exposure =
         std::clamp(
             (0.64f - upper_key) * 0.09f,
             -0.025f,
             0.012f);
+
+    const float neutral_exposure_guard =
+        1.0f - bright_neutral_ui * 0.88f;
+
+    adaptive_.exposure =
+        raw_exposure < 0.0f
+            ? raw_exposure *
+                neutral_exposure_guard
+            : raw_exposure;
 
     const float p90_pressure =
         std::clamp(
@@ -299,13 +339,21 @@ void ArVisualSceneModel::update_adaptive() noexcept
             0.0f,
             1.0f);
 
-    adaptive_.highlight =
+    const float neutral_highlight_guard =
+        1.0f - bright_neutral_ui * 0.88f;
+
+    const float neutral_luma_pressure =
         std::max({
             p90_pressure * 0.70f,
             p98_pressure,
-            clip_pressure,
-            hot_pressure
-        });
+            clip_pressure
+        }) *
+        neutral_highlight_guard;
+
+    adaptive_.highlight =
+        std::max(
+            neutral_luma_pressure,
+            hot_pressure);
 
     const float sat_pressure =
         std::clamp(
@@ -333,7 +381,8 @@ void ArVisualSceneModel::update_adaptive() noexcept
         std::clamp(
             (0.18f - s.mean_saturation) * 0.16f,
             0.0f,
-            0.025f);
+            0.025f) *
+        (1.0f - bright_neutral_ui);
 
     adaptive_.pop =
         std::clamp(

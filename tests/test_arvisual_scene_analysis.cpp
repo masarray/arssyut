@@ -90,6 +90,70 @@ void test_neutral_scene(TestContext &test)
         "Mid-gray scene does not create highlight pressure");
 }
 
+void test_bright_neutral_ui_scene(TestContext &test)
+{
+    auto pixels =
+        solid_bgra(250, 250, 250);
+
+    // Keep a small amount of saturated UI color so this models a real white
+    // browser/document instead of a mathematically pure gray card.
+    constexpr std::size_t colored_pixels = 24;
+    for (std::size_t i = 0;
+         i < colored_pixels;
+         ++i) {
+        const std::size_t offset = i * 4u;
+        pixels[offset + 0] = 32;
+        pixels[offset + 1] = 96;
+        pixels[offset + 2] = 240;
+        pixels[offset + 3] = 255;
+    }
+
+    arssyut::visual::ArVisualSceneModel model;
+    test.expect(
+        model.observe_bgra8(
+            pixels.data(),
+            64u * 4u,
+            64,
+            36,
+            0.20f),
+        "Bright neutral UI scene produces an observation");
+
+    const auto &stats = model.stats();
+    const auto &adaptive = model.adaptive();
+
+    test.expect(
+        stats.neutral_frac > 0.97f &&
+            stats.mean_saturation < 0.03f &&
+            stats.median_luma > 0.95f,
+        "Bright browser-style scene is classified as neutral white UI");
+
+    test.expect(
+        adaptive.white_ui > 0.95f,
+        "Neutral white UI classifier reaches high confidence");
+
+    test.expect(
+        adaptive.highlight < 0.20f,
+        "Neutral white UI does not masquerade as clipped highlight risk");
+
+    test.expect(
+        adaptive.exposure > -0.005f,
+        "Neutral white UI avoids global negative-exposure dimming");
+
+    test.expect(
+        adaptive.pop <= 1.001f &&
+            adaptive.pop > 0.97f,
+        "Neutral white UI never preloads a positive pop boost while small hot-color risk may still reduce pop");
+
+    test.expect(
+        adaptive.strength > 0.95f &&
+            adaptive.chroma_limit > 0.98f,
+        "Neutral white UI retains near-neutral creative safety state");
+
+    test.expect(
+        adaptive.clean > 0.95f,
+        "Neutral white UI still requests clean-white support");
+}
+
 void test_hot_vivid_scene(TestContext &test)
 {
     auto pixels =
@@ -106,6 +170,10 @@ void test_hot_vivid_scene(TestContext &test)
         "Hot vivid scene produces an observation");
 
     const auto &adaptive = model.adaptive();
+
+    test.expect(
+        adaptive.white_ui < 0.01f,
+        "Hot vivid scene is never classified as neutral white UI");
 
     test.expect(
         adaptive.highlight > 0.95f,
@@ -297,6 +365,7 @@ int main()
     TestContext test;
 
     test_neutral_scene(test);
+    test_bright_neutral_ui_scene(test);
     test_hot_vivid_scene(test);
     test_dark_scene(test);
     test_time_based_ema(test);

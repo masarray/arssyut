@@ -32,6 +32,7 @@ struct ArVisualAdaptiveState {
     float chroma_limit = 0.985f;
     float clean = 0.0f;
     float separation = 0.0f;
+    float white_ui = 0.0f;
 };
 
 class ArVisualSceneModel final {

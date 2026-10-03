@@ -1218,6 +1218,8 @@ void RecorderSession::write_diagnostics(
             << visual_adaptive.clean << ",\n"
             << "  \"visual_adaptive_separation\": "
             << visual_adaptive.separation << ",\n"
+            << "  \"visual_adaptive_white_ui\": "
+            << visual_adaptive.white_ui << ",\n"
             << "  \"visual_analysis_available\": "
             << (snapshot_value.visual_analysis_available ? "true" : "false")
             << ",\n"

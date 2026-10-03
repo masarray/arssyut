@@ -384,7 +384,16 @@ Product-mode tuning must be evidence-driven:
 - any accepted mapping change must be re-validated across white UI, dark UI,
   colorful content and highlight-risk scenes;
 - synthetic/WARP tests are regression gates, not substitutes for real visual
-  acceptance.
+  acceptance;
+- bright neutral browser/document UI must not be treated as equivalent to
+  clipped colorful highlights merely because most channels are near 1.0;
+- the P5C.2 white-UI classifier is intentionally conjunctive: high median
+  luma + overwhelming neutral fraction + low scene saturation;
+- white-UI calibration may attenuate neutral luminance/near-clip pressure and
+  negative exposure, but must never attenuate hot-vivid pressure;
+- muted-scene positive pop lift must not preload while the scene is classified
+  as bright neutral UI;
+- changes to this classifier require another matched Pixel/Clean/Vivid triad.
 
 ---
 
