@@ -39,7 +39,14 @@ struct ArVisualGradeSettings {
     // intentionally capped to only a few luma code values.
     float ui_structure = 0.0f;
 
-    // P5A neutral adaptive inputs. P5B will update these asynchronously.
+    // P5E screen-native behavior. screen_native blends Smart Auto away from
+    // camera-style exposure normalization toward risk-limiter semantics.
+    // neutral_surface_anchor constrains flat neutral UI luma near its authored
+    // source value. Pixel Accurate keeps both at zero.
+    float screen_native = 0.0f;
+    float neutral_surface_anchor = 0.0f;
+
+    // P5A/P5E adaptive inputs. P5B will update these asynchronously.
     float smart_exposure = 0.0f;
     float smart_pop = 1.0f;
     float smart_highlight = 0.0f;
@@ -48,6 +55,7 @@ struct ArVisualGradeSettings {
     float smart_chroma_limit = 0.985f;
     float smart_clean = 0.0f;
     float smart_separation = 0.0f;
+    float smart_screen_ui = 0.0f;
 };
 
 [[nodiscard]] inline ArVisualGradeSettings sanitize(
@@ -81,6 +89,10 @@ struct ArVisualGradeSettings {
         std::clamp(value.text_legibility, 0.0f, 1.0f);
     value.ui_structure =
         std::clamp(value.ui_structure, 0.0f, 1.0f);
+    value.screen_native =
+        std::clamp(value.screen_native, 0.0f, 1.0f);
+    value.neutral_surface_anchor =
+        std::clamp(value.neutral_surface_anchor, 0.0f, 1.0f);
 
     value.smart_exposure =
         std::clamp(value.smart_exposure, -0.025f, 0.018f);
@@ -98,6 +110,8 @@ struct ArVisualGradeSettings {
         std::clamp(value.smart_clean, 0.0f, 1.0f);
     value.smart_separation =
         std::clamp(value.smart_separation, 0.0f, 1.0f);
+    value.smart_screen_ui =
+        std::clamp(value.smart_screen_ui, 0.0f, 1.0f);
 
     return value;
 }
