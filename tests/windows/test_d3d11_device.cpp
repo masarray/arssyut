@@ -15,6 +15,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -1035,6 +1036,312 @@ void test_media_foundation_mp4(TestContext &test)
     test.expect(
         !ec && size > 512,
         "Finalized MP4 is non-empty");
+
+    /*
+     * P5D.7 end-to-end color-range gate.
+     *
+     * Re-open the actual H.264/MP4 through Media Foundation, request decoded
+     * NV12, and inspect its luma plane. This catches the exact class of bug
+     * found in real recordings: full-range Y values being carried in a stream
+     * interpreted as studio-range, which collapses near-white gray UI and
+     * near-black hierarchy.
+     */
+    const HRESULT decode_startup =
+        MFStartup(
+            MF_VERSION,
+            MFSTARTUP_FULL);
+
+    test.expect(
+        SUCCEEDED(decode_startup),
+        "P5D.7 Media Foundation decode session starts");
+
+    if (SUCCEEDED(decode_startup)) {
+        Microsoft::WRL::ComPtr<IMFSourceReader> reader;
+        const HRESULT reader_hr =
+            MFCreateSourceReaderFromURL(
+                output.c_str(),
+                nullptr,
+                reader.GetAddressOf());
+
+        test.expect(
+            SUCCEEDED(reader_hr) && reader,
+            "P5D.7 encoded MP4 opens through Source Reader");
+
+        if (SUCCEEDED(reader_hr) && reader) {
+            Microsoft::WRL::ComPtr<IMFMediaType> native_type;
+            const HRESULT native_hr =
+                reader->GetNativeMediaType(
+                    MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                    0,
+                    native_type.GetAddressOf());
+
+            test.expect(
+                SUCCEEDED(native_hr) && native_type,
+                "P5D.7 H.264 native media type is readable");
+
+            if (SUCCEEDED(native_hr) && native_type) {
+                UINT32 nominal_range = MFNominalRange_Unknown;
+                UINT32 primaries = MFVideoPrimaries_Unknown;
+                UINT32 transfer = MFVideoTransFunc_Unknown;
+                UINT32 matrix = MFVideoTransferMatrix_Unknown;
+
+                const HRESULT range_hr =
+                    native_type->GetUINT32(
+                        MF_MT_VIDEO_NOMINAL_RANGE,
+                        &nominal_range);
+                const HRESULT primaries_hr =
+                    native_type->GetUINT32(
+                        MF_MT_VIDEO_PRIMARIES,
+                        &primaries);
+                const HRESULT transfer_hr =
+                    native_type->GetUINT32(
+                        MF_MT_TRANSFER_FUNCTION,
+                        &transfer);
+                const HRESULT matrix_hr =
+                    native_type->GetUINT32(
+                        MF_MT_YUV_MATRIX,
+                        &matrix);
+
+                test.expect(
+                    SUCCEEDED(range_hr) &&
+                        nominal_range ==
+                            MFNominalRange_16_235,
+                    "P5D.7 MP4 signals studio 16-235 nominal range");
+                test.expect(
+                    SUCCEEDED(primaries_hr) &&
+                        primaries ==
+                            MFVideoPrimaries_BT709,
+                    "P5D.7 MP4 signals BT.709 primaries");
+                test.expect(
+                    SUCCEEDED(transfer_hr) &&
+                        transfer ==
+                            MFVideoTransFunc_709,
+                    "P5D.7 MP4 signals BT.709 transfer");
+                test.expect(
+                    SUCCEEDED(matrix_hr) &&
+                        matrix ==
+                            MFVideoTransferMatrix_BT709,
+                    "P5D.7 MP4 signals BT.709 YCbCr matrix");
+            }
+
+            Microsoft::WRL::ComPtr<IMFMediaType> decode_type;
+            HRESULT decode_hr =
+                MFCreateMediaType(
+                    decode_type.GetAddressOf());
+
+            if (SUCCEEDED(decode_hr)) {
+                decode_hr =
+                    decode_type->SetGUID(
+                        MF_MT_MAJOR_TYPE,
+                        MFMediaType_Video);
+            }
+            if (SUCCEEDED(decode_hr)) {
+                decode_hr =
+                    decode_type->SetGUID(
+                        MF_MT_SUBTYPE,
+                        MFVideoFormat_NV12);
+            }
+            if (SUCCEEDED(decode_hr)) {
+                decode_hr =
+                    reader->SetCurrentMediaType(
+                        MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                        nullptr,
+                        decode_type.Get());
+            }
+
+            test.expect(
+                SUCCEEDED(decode_hr),
+                "P5D.7 Source Reader decodes H.264 to NV12");
+
+            Microsoft::WRL::ComPtr<IMFSample> decoded_sample;
+
+            if (SUCCEEDED(decode_hr)) {
+                for (int attempt = 0;
+                     attempt < 64 &&
+                     !decoded_sample;
+                     ++attempt) {
+                    DWORD actual_stream = 0;
+                    DWORD flags = 0;
+                    LONGLONG timestamp = 0;
+                    Microsoft::WRL::ComPtr<IMFSample> sample;
+
+                    const HRESULT read_hr =
+                        reader->ReadSample(
+                            MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                            0,
+                            &actual_stream,
+                            &flags,
+                            &timestamp,
+                            sample.GetAddressOf());
+
+                    if (FAILED(read_hr))
+                        break;
+
+                    if (sample)
+                        decoded_sample = sample;
+
+                    if ((flags &
+                         MF_SOURCE_READERF_ENDOFSTREAM) != 0) {
+                        break;
+                    }
+                }
+            }
+
+            test.expect(
+                decoded_sample != nullptr,
+                "P5D.7 decoded gray-ladder sample is available");
+
+            if (decoded_sample) {
+                Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+                const HRESULT buffer_hr =
+                    decoded_sample->
+                        ConvertToContiguousBuffer(
+                            buffer.GetAddressOf());
+
+                test.expect(
+                    SUCCEEDED(buffer_hr) && buffer,
+                    "P5D.7 decoded NV12 sample is contiguous");
+
+                if (SUCCEEDED(buffer_hr) && buffer) {
+                    BYTE *bytes_ptr = nullptr;
+                    DWORD max_length = 0;
+                    DWORD current_length = 0;
+
+                    const HRESULT lock_hr =
+                        buffer->Lock(
+                            &bytes_ptr,
+                            &max_length,
+                            &current_length);
+
+                    test.expect(
+                        SUCCEEDED(lock_hr) &&
+                            bytes_ptr &&
+                            current_length >=
+                                width * height,
+                        "P5D.7 decoded NV12 luma plane is readable");
+
+                    if (SUCCEEDED(lock_hr) &&
+                        bytes_ptr &&
+                        current_length >=
+                            width * height) {
+                        const std::uint64_t stride_numerator =
+                            static_cast<std::uint64_t>(
+                                current_length) *
+                            2ULL;
+                        const std::uint64_t stride_denominator =
+                            3ULL *
+                            static_cast<std::uint64_t>(
+                                height);
+
+                        const std::uint32_t stride =
+                            stride_denominator != 0 &&
+                                    stride_numerator %
+                                        stride_denominator ==
+                                        0
+                                ? static_cast<std::uint32_t>(
+                                      stride_numerator /
+                                      stride_denominator)
+                                : width;
+
+                        test.expect(
+                            stride >= width,
+                            "P5D.7 decoded NV12 stride covers the luma width");
+
+                        std::array<int, gray_levels.size()>
+                            decoded_y{};
+
+                        const std::uint32_t sample_y =
+                            height / 2;
+
+                        for (std::size_t band = 0;
+                             band < gray_levels.size();
+                             ++band) {
+                            const std::uint32_t sample_x =
+                                static_cast<std::uint32_t>(
+                                    band) *
+                                    band_width +
+                                band_width / 2;
+
+                            decoded_y[band] =
+                                bytes_ptr[
+                                    static_cast<std::size_t>(
+                                        sample_y) *
+                                        stride +
+                                    sample_x];
+                        }
+
+                        bool monotonic = true;
+                        bool within_studio_mapping = true;
+
+                        for (std::size_t band = 0;
+                             band < gray_levels.size();
+                             ++band) {
+                            const double normalized =
+                                static_cast<double>(
+                                    gray_levels[band]) /
+                                255.0;
+                            const int expected =
+                                static_cast<int>(
+                                    16.0 +
+                                    219.0 * normalized +
+                                    0.5);
+
+                            if (std::abs(
+                                    decoded_y[band] -
+                                    expected) > 10) {
+                                within_studio_mapping = false;
+                            }
+
+                            if (band > 0 &&
+                                decoded_y[band] + 2 <
+                                    decoded_y[band - 1]) {
+                                monotonic = false;
+                            }
+                        }
+
+                        test.expect(
+                            within_studio_mapping,
+                            "P5D.7 gray ladder follows studio-range BT.709 luma mapping");
+                        test.expect(
+                            monotonic,
+                            "P5D.7 gray ladder remains monotonic after H.264 round-trip");
+                        test.expect(
+                            decoded_y.front() >= 10 &&
+                                decoded_y.back() <= 241,
+                            "P5D.7 black/white endpoints remain in studio-range neighborhood");
+                        test.expect(
+                            decoded_y.back() -
+                                    decoded_y[
+                                        decoded_y.size() -
+                                        2] >=
+                                3,
+                            "P5D.7 near-white gray remains distinct from white");
+                        test.expect(
+                            decoded_y[2] -
+                                    decoded_y.front() >=
+                                5,
+                            "P5D.7 near-black gray remains distinct from black");
+
+                        std::cout
+                            << "P5D.7 decoded Y:"
+                            << " black="
+                            << decoded_y.front()
+                            << " gray246="
+                            << decoded_y[
+                                   decoded_y.size() - 2]
+                            << " white="
+                            << decoded_y.back()
+                            << '\n';
+                    }
+
+                    if (SUCCEEDED(lock_hr))
+                        (void)buffer->Unlock();
+                }
+            }
+        }
+
+        MFShutdown();
+    }
 
     std::filesystem::remove_all(root, ec);
 }
