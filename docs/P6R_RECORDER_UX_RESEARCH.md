@@ -206,10 +206,20 @@ This keeps the message pump responsive while recording/finalizing.
 - real device enumeration.
 
 ### P6R.2 — custom region backend
-- interactive region handles;
-- canonical screen-to-source crop;
-- 16:9/output-aspect options;
-- region persistence and multi-monitor safety.
+
+Implemented after direct GUI review:
+- an editable topmost Region boundary with native move and resize hit targets;
+- Region geometry stored in virtual-screen coordinates rather than local window
+  coordinates;
+- canonical monitor-space -> source-pixel CropRect mapping;
+- native-size Region output with even-dimension NV12 alignment;
+- presentation/cursor normalization against the same Region rect;
+- event-driven idle editor so UI polling cannot snap the selector back.
+
+Future refinement after real acceptance:
+- optional aspect-lock/preset sizes;
+- keyboard nudge/resize parity with mature rectangle recorders;
+- automatic target/window snapping.
 
 ### P6R.3 — audio backend
 - WASAPI system loopback;
@@ -239,3 +249,23 @@ This keeps the message pump responsive while recording/finalizing.
 
 P6R is not complete until the new GUI is visually accepted and the interaction
 freeze regression is reproduced as fixed.
+
+
+## P6R.2 visual-system and overlay follow-up
+
+Direct GUI acceptance on 2026-10-03 rejected the mixed native-gray/owner-draw
+appearance. The follow-up standardizes the recorder shell around compact dark
+surfaces, restrained red recording/selection accent and Lucide-derived vector
+geometry rendered natively at runtime.
+
+The recording toolbar also moved its status/timer to one buffered parent paint
+surface and caches unchanged state. Capture cadence is no longer allowed to
+force full toolbar repaint work.
+
+External evidence used for this revision:
+- Bandicam Rectangle mode: moveable/resizable capture window, target selection,
+  size presets and recording controls;
+- ScreenPal: editable recorder boundary and explicit screen/camera modes;
+- OBS: separate Display/Window/Game/Video Capture source concepts;
+- Microsoft Win32: layered windows for smoothly composed shaped/animated
+  overlays and UxTheme buffered painting for off-screen paint/commit.
