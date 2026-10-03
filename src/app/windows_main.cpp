@@ -27,6 +27,9 @@ namespace {
 
 using arssyut::app::CaptureMode;
 using arssyut::app::DeviceChoice;
+using arssyut::app::LucideIcon;
+using arssyut::app::draw_lucide_icon;
+using arssyut::app::kUiRegionChanged;
 using arssyut::app::RecorderConfig;
 using arssyut::app::RecorderOverlay;
 using arssyut::app::RecorderOverlayCommands;
