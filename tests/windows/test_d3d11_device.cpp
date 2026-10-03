@@ -914,14 +914,21 @@ void test_media_foundation_mp4(TestContext &test)
         "P5D encoder resolves a canonical H.264 profile");
 
     test.expect(
-        writer.requested_quality() == 86,
-        "P5D encoder carries the screen-quality target");
+        writer.requested_quality_vs_speed() == 85,
+        "P5D.6 encoder carries the high quality-vs-speed preference");
+
+    test.expect(
+        writer.bitrate_vbr_applied(),
+        "P5D.6 encoder negotiates bitrate-controlled unconstrained VBR");
 
     std::cout
-        << "P5D encoder profile="
+        << "P5D.6 encoder profile="
         << active_profile
-        << " quality_vbr="
-        << (writer.quality_vbr_applied() ? "true" : "false")
+        << " rate_control="
+        << arssyut::windows::mf_rate_control_mode_name(
+               writer.active_rate_control())
+        << " quality_vs_speed="
+        << (writer.quality_vs_speed_applied() ? "applied" : "fallback")
         << '\n';
 
     bool write_ok = true;
