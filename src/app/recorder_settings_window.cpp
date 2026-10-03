@@ -1,4 +1,5 @@
 #include "app/recorder_settings_window.hpp"
+#include "app/lucide_icons.hpp"
 
 #ifdef _WIN32
 
@@ -25,6 +26,10 @@ constexpr COLORREF kText =
     RGB(236, 239, 243);
 constexpr COLORREF kMuted =
     RGB(148, 156, 166);
+constexpr COLORREF kBorder =
+    RGB(49, 55, 64);
+constexpr COLORREF kAccent =
+    RGB(232, 67, 67);
 
 enum SettingsControlId : int {
     IdCategories = 3001,
@@ -125,6 +130,156 @@ void show_control(
                 ? SW_SHOW
                 : SW_HIDE);
     }
+}
+
+void draw_category_item(
+    HDC dc,
+    RECT rect,
+    const wchar_t *text,
+    HFONT font,
+    bool selected)
+{
+    HBRUSH fill =
+        CreateSolidBrush(
+            selected
+                ? RGB(92, 31, 35)
+                : kSidebar);
+    FillRect(
+        dc,
+        &rect,
+        fill);
+    DeleteObject(fill);
+
+    if (selected) {
+        RECT accent{
+            rect.left,
+            rect.top,
+            rect.left + 3,
+            rect.bottom};
+        HBRUSH accent_brush =
+            CreateSolidBrush(kAccent);
+        FillRect(
+            dc,
+            &accent,
+            accent_brush);
+        DeleteObject(accent_brush);
+    }
+
+    RECT text_rect = rect;
+    text_rect.left += 14;
+    text_rect.right -= 8;
+
+    SelectObject(
+        dc,
+        font);
+    SetBkMode(
+        dc,
+        TRANSPARENT);
+    SetTextColor(
+        dc,
+        selected
+            ? RGB(251, 252, 253)
+            : kText);
+
+    DrawTextW(
+        dc,
+        text ? text : L"",
+        -1,
+        &text_rect,
+        DT_LEFT |
+            DT_VCENTER |
+            DT_SINGLELINE |
+            DT_END_ELLIPSIS |
+            DT_NOPREFIX);
+}
+
+void draw_browse_button(
+    HDC dc,
+    RECT rect,
+    HFONT font,
+    bool enabled,
+    bool pressed)
+{
+    COLORREF fill =
+        enabled
+            ? RGB(31, 35, 41)
+            : RGB(27, 30, 35);
+
+    if (pressed) {
+        fill =
+            RGB(24, 28, 33);
+    }
+
+    HBRUSH brush =
+        CreateSolidBrush(fill);
+    HPEN pen =
+        CreatePen(
+            PS_SOLID,
+            1,
+            kBorder);
+
+    HGDIOBJ old_brush =
+        SelectObject(dc, brush);
+    HGDIOBJ old_pen =
+        SelectObject(dc, pen);
+
+    RoundRect(
+        dc,
+        rect.left + 1,
+        rect.top + 1,
+        rect.right - 1,
+        rect.bottom - 1,
+        9,
+        9);
+
+    SelectObject(dc, old_pen);
+    SelectObject(dc, old_brush);
+    DeleteObject(pen);
+    DeleteObject(brush);
+
+    const COLORREF foreground =
+        enabled
+            ? RGB(239, 242, 246)
+            : RGB(101, 107, 115);
+
+    RECT icon_rect{
+        rect.left + 8,
+        rect.top + 7,
+        rect.left + 24,
+        rect.bottom - 7};
+
+    draw_lucide_icon(
+        dc,
+        LucideIcon::Folder,
+        icon_rect,
+        foreground,
+        2,
+        false);
+
+    RECT text_rect{
+        rect.left + 30,
+        rect.top,
+        rect.right - 5,
+        rect.bottom};
+
+    SelectObject(
+        dc,
+        font);
+    SetBkMode(
+        dc,
+        TRANSPARENT);
+    SetTextColor(
+        dc,
+        foreground);
+
+    DrawTextW(
+        dc,
+        L"Browse",
+        -1,
+        &text_rect,
+        DT_LEFT |
+            DT_VCENTER |
+            DT_SINGLELINE);
 }
 
 } // namespace
@@ -260,7 +415,9 @@ void RecorderSettingsWindow::create_controls()
                 WS_VISIBLE |
                 WS_TABSTOP |
                 LBS_NOTIFY |
-                LBS_NOINTEGRALHEIGHT,
+                LBS_NOINTEGRALHEIGHT |
+                LBS_OWNERDRAWFIXED |
+                LBS_HASSTRINGS,
             0, 0, 150, 390,
             window_,
             reinterpret_cast<HMENU>(
@@ -465,8 +622,9 @@ void RecorderSettingsWindow::create_controls()
             L"BUTTON",
             L"Browse...",
             WS_CHILD |
-                WS_TABSTOP,
-            518, 103, 94, 28,
+                WS_TABSTOP |
+                BS_OWNERDRAW,
+            518, 103, 94, 30,
             window_,
             reinterpret_cast<HMENU>(
                 IdBrowseOutput),
@@ -1104,6 +1262,65 @@ RecorderSettingsWindow::window_proc(
     }
 
     switch (message) {
+    case WM_MEASUREITEM: {
+        auto *measure =
+            reinterpret_cast<
+                MEASUREITEMSTRUCT *>(lparam);
+
+        if (measure &&
+            measure->CtlID ==
+                IdCategories) {
+            measure->itemHeight = 34;
+            return TRUE;
+        }
+        break;
+    }
+
+    case WM_DRAWITEM: {
+        const auto *item =
+            reinterpret_cast<
+                DRAWITEMSTRUCT *>(lparam);
+        if (!item)
+            break;
+
+        if (item->CtlID ==
+            IdCategories) {
+            wchar_t text[128]{};
+            if (item->itemID !=
+                static_cast<UINT>(-1)) {
+                SendMessageW(
+                    self->categories_,
+                    LB_GETTEXT,
+                    item->itemID,
+                    reinterpret_cast<LPARAM>(
+                        text));
+            }
+
+            draw_category_item(
+                item->hDC,
+                item->rcItem,
+                text,
+                self->normal_font_,
+                (item->itemState &
+                 ODS_SELECTED) != 0);
+            return TRUE;
+        }
+
+        if (item->CtlID ==
+            IdBrowseOutput) {
+            draw_browse_button(
+                item->hDC,
+                item->rcItem,
+                self->normal_font_,
+                (item->itemState &
+                 ODS_DISABLED) == 0,
+                (item->itemState &
+                 ODS_SELECTED) != 0);
+            return TRUE;
+        }
+        break;
+    }
+
     case WM_COMMAND: {
         const int id =
             LOWORD(wparam);
