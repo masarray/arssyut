@@ -83,6 +83,11 @@ struct RecorderSnapshot {
     std::uint32_t compositor_cpu_p95_us = 0;
     std::uint32_t compositor_gpu_p95_us = 0;
 
+    float presentation_camera_center_x = 0.5f;
+    float presentation_camera_center_y = 0.5f;
+    float presentation_camera_zoom = 1.0f;
+    bool worker_finished = true;
+
     std::uint64_t memory_private_bytes = 0;
     std::uint64_t memory_private_max_bytes = 0;
 
@@ -177,6 +182,11 @@ private:
     std::atomic<std::uint32_t> capture_p95_us_{0};
     std::atomic<std::uint32_t> compositor_cpu_p95_us_{0};
     std::atomic<std::uint32_t> compositor_gpu_p95_us_{0};
+
+    std::atomic<float> presentation_camera_center_x_{0.5f};
+    std::atomic<float> presentation_camera_center_y_{0.5f};
+    std::atomic<float> presentation_camera_zoom_{1.0f};
+    std::atomic<bool> worker_finished_{true};
 
     std::atomic<std::uint64_t> memory_private_bytes_{0};
     std::atomic<std::uint64_t> memory_private_max_bytes_{0};
