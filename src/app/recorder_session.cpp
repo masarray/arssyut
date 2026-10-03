@@ -323,6 +323,9 @@ Status RecorderSession::start(
                 worker_main();
             });
     } catch (...) {
+        worker_finished_.store(
+            true,
+            std::memory_order_release);
         state_.store(
             RecorderState::Failed,
             std::memory_order_release);
