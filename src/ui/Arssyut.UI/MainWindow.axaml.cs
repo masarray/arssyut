@@ -23,7 +23,8 @@ public sealed partial class MainWindow : Window
         "USB2.0 HD UVC Webcam";
 
     public MainWindow(
-        bool stressLongNames = false)
+        bool stressLongNames = false,
+        bool autoStartRecording = false)
     {
         InitializeComponent();
 
@@ -64,6 +65,12 @@ public sealed partial class MainWindow : Window
 
         RefreshInputLabels();
         ApplySessionState();
+
+        if (autoStartRecording)
+        {
+            Opened +=
+                (_, _) => StartPreviewRecording();
+        }
     }
 
     private void TitleBar_OnPointerPressed(
