@@ -406,6 +406,50 @@ void resize_idle_window(AppWindow &app)
     }
 }
 
+
+void set_compact_chrome(
+    AppWindow &app,
+    bool compact)
+{
+    if (!app.window)
+        return;
+
+    const LONG_PTR idle_style =
+        WS_OVERLAPPED |
+        WS_CAPTION |
+        WS_SYSMENU |
+        WS_MINIMIZEBOX;
+
+    const LONG_PTR desired =
+        compact
+            ? static_cast<LONG_PTR>(WS_POPUP)
+            : idle_style;
+
+    if (GetWindowLongPtrW(
+            app.window,
+            GWL_STYLE) == desired) {
+        return;
+    }
+
+    SetWindowLongPtrW(
+        app.window,
+        GWL_STYLE,
+        desired);
+
+    SetWindowPos(
+        app.window,
+        nullptr,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE |
+            SWP_NOSIZE |
+            SWP_NOZORDER |
+            SWP_NOACTIVATE |
+            SWP_FRAMECHANGED);
+}
+
 void set_capture_exclusion(AppWindow &app, bool excluded)
 {
     if (!app.window || app.capture_excluded == excluded)
@@ -473,6 +517,7 @@ void refresh_sources(AppWindow &app)
 
 void layout_idle(AppWindow &app)
 {
+    set_compact_chrome(app, false);
     show(app.title_text, true);
     show(app.subtitle_text, true);
     show(app.source_label, true);
@@ -567,6 +612,8 @@ void layout_recording(AppWindow &app)
         app.idle_rect_valid = true;
     }
 
+    set_compact_chrome(app, true);
+
     show(app.title_text, false);
     show(app.subtitle_text, false);
     show(app.source_label, false);
@@ -619,8 +666,9 @@ void layout_recording(AppWindow &app)
         x,
         y,
         304,
-        72,
-        SWP_SHOWWINDOW);
+        64,
+        SWP_SHOWWINDOW |
+            SWP_FRAMECHANGED);
 
     app.compact_mode = true;
     InvalidateRect(app.window, nullptr, TRUE);
@@ -1793,15 +1841,34 @@ int WINAPI wWinMain(
     ShowWindow(window, show_command);
     UpdateWindow(window);
 
+    ACCEL accelerator{};
+    accelerator.fVirt = FVIRTKEY;
+    accelerator.key = VK_F9;
+    accelerator.cmd = IdRecord;
+
+    HACCEL accelerators =
+        CreateAcceleratorTableW(
+            &accelerator,
+            1);
+
     MSG message{};
     while (GetMessageW(
                &message,
                nullptr,
                0,
                0) > 0) {
-        TranslateMessage(&message);
-        DispatchMessageW(&message);
+        if (!accelerators ||
+            !TranslateAcceleratorW(
+                window,
+                accelerators,
+                &message)) {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
     }
+
+    if (accelerators)
+        DestroyAcceleratorTable(accelerators);
 
     return static_cast<int>(message.wParam);
 }
