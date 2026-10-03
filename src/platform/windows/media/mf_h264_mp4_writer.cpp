@@ -99,6 +99,18 @@ const char *mf_h264_profile_name(
     }
 }
 
+const char *mf_rate_control_mode_name(
+    MfRateControlMode mode) noexcept
+{
+    switch (mode) {
+    case MfRateControlMode::UnconstrainedVbr:
+        return "unconstrained_vbr";
+    case MfRateControlMode::Default:
+    default:
+        return "default";
+    }
+}
+
 const char *mf_writer_stage_name(
     MfWriterStage stage) noexcept
 {
@@ -260,7 +272,9 @@ Status MfH264Mp4Writer::open(
         MfWriterStage::None,
         std::memory_order_release);
     active_profile_ = MfH264Profile::Main;
-    quality_vbr_applied_ = false;
+    active_rate_control_ =
+        MfRateControlMode::Default;
+    quality_vs_speed_applied_ = false;
 
     if (open_ ||
         !device ||
@@ -293,10 +307,10 @@ Status MfH264Mp4Writer::open(
             3U,
             static_cast<std::uint32_t>(
                 max_surface_count));
-    config.quality =
+    config.quality_vs_speed =
         std::clamp<std::uint32_t>(
-            config.quality,
-            1U,
+            config.quality_vs_speed,
+            0U,
             100U);
 
     config_ = config;
@@ -488,49 +502,100 @@ Status MfH264Mp4Writer::open(
     // width in bytes (NV12 luma plane here). Omitting it avoids over-
     // constraining hardware encoder negotiation on some drivers.
     //
-    // Prefer quality-based VBR for screen content. Microsoft documents both
-    // CODECAPI_AVEncCommonRateControlMode and CODECAPI_AVEncCommonQuality for
-    // the H.264 encoder. Some hardware MFTs expose a smaller property surface,
-    // so rejection is a soft fallback to the prior unconstrained negotiation.
+    // P5D.6 uses bitrate-controlled *unconstrained* VBR. Microsoft documents
+    // this mode as targeting MF_MT_AVG_BITRATE / AVEncCommonMeanBitRate,
+    // unlike quality-VBR where the mean bitrate is ignored. This matters for
+    // desktop capture because almost-static frames can otherwise collapse to
+    // a very low bitrate and quantize away 1px neutral borders/separators.
+    //
+    // Negotiate in tiers:
+    //   1) VBR + mean bitrate + high quality-vs-speed preference,
+    //   2) VBR + mean bitrate only,
+    //   3) normal Sink Writer negotiation.
+    // Rate-control preferences must never make recorder startup fail.
     Microsoft::WRL::ComPtr<IMFAttributes> encoding_parameters;
 
-    if (config_.prefer_quality_vbr) {
-        HRESULT params_hr =
-            MFCreateAttributes(
-                encoding_parameters.GetAddressOf(),
-                2);
+    auto make_bitrate_vbr_parameters =
+        [&](bool include_quality_vs_speed)
+            -> Microsoft::WRL::ComPtr<IMFAttributes> {
+            Microsoft::WRL::ComPtr<IMFAttributes> parameters;
+            HRESULT params_hr =
+                MFCreateAttributes(
+                    parameters.GetAddressOf(),
+                    include_quality_vs_speed ? 3U : 2U);
 
-        if (SUCCEEDED(params_hr)) {
-            params_hr =
-                encoding_parameters->SetUINT32(
-                    CODECAPI_AVEncCommonRateControlMode,
-                    static_cast<UINT32>(
-                        eAVEncCommonRateControlMode_Quality));
+            if (SUCCEEDED(params_hr)) {
+                params_hr =
+                    parameters->SetUINT32(
+                        CODECAPI_AVEncCommonRateControlMode,
+                        static_cast<UINT32>(
+                            eAVEncCommonRateControlMode_UnconstrainedVBR));
+            }
+
+            if (SUCCEEDED(params_hr)) {
+                params_hr =
+                    parameters->SetUINT32(
+                        CODECAPI_AVEncCommonMeanBitRate,
+                        config_.bitrate_bps);
+            }
+
+            if (SUCCEEDED(params_hr) &&
+                include_quality_vs_speed) {
+                params_hr =
+                    parameters->SetUINT32(
+                        CODECAPI_AVEncCommonQualityVsSpeed,
+                        config_.quality_vs_speed);
+            }
+
+            if (FAILED(params_hr))
+                parameters.Reset();
+
+            return parameters;
+        };
+
+    hr = E_FAIL;
+
+    if (config_.prefer_bitrate_vbr) {
+        encoding_parameters =
+            make_bitrate_vbr_parameters(true);
+
+        if (encoding_parameters) {
+            hr = writer_->SetInputMediaType(
+                stream_index_,
+                input_type.Get(),
+                encoding_parameters.Get());
+
+            if (SUCCEEDED(hr)) {
+                active_rate_control_ =
+                    MfRateControlMode::UnconstrainedVbr;
+                quality_vs_speed_applied_ = true;
+            }
         }
 
-        if (SUCCEEDED(params_hr)) {
-            params_hr =
-                encoding_parameters->SetUINT32(
-                    CODECAPI_AVEncCommonQuality,
-                    std::clamp<std::uint32_t>(
-                        config_.quality,
-                        1U,
-                        100U));
-        }
+        if (FAILED(hr)) {
+            encoding_parameters =
+                make_bitrate_vbr_parameters(false);
 
-        if (FAILED(params_hr))
-            encoding_parameters.Reset();
+            if (encoding_parameters) {
+                hr = writer_->SetInputMediaType(
+                    stream_index_,
+                    input_type.Get(),
+                    encoding_parameters.Get());
+
+                if (SUCCEEDED(hr)) {
+                    active_rate_control_ =
+                        MfRateControlMode::UnconstrainedVbr;
+                    quality_vs_speed_applied_ = false;
+                }
+            }
+        }
     }
 
-    hr = writer_->SetInputMediaType(
-        stream_index_,
-        input_type.Get(),
-        encoding_parameters.Get());
+    if (FAILED(hr)) {
+        active_rate_control_ =
+            MfRateControlMode::Default;
+        quality_vs_speed_applied_ = false;
 
-    if (SUCCEEDED(hr) && encoding_parameters) {
-        quality_vbr_applied_ = true;
-    } else if (FAILED(hr) && encoding_parameters) {
-        quality_vbr_applied_ = false;
         hr = writer_->SetInputMediaType(
             stream_index_,
             input_type.Get(),
