@@ -140,9 +140,9 @@ void test_bright_neutral_ui_scene(TestContext &test)
         "Neutral white UI avoids global negative-exposure dimming");
 
     test.expect(
-        adaptive.pop >= 0.999f &&
-            adaptive.pop <= 1.001f,
-        "Neutral white UI does not preload a muted-scene pop boost");
+        adaptive.pop <= 1.001f &&
+            adaptive.pop > 0.97f,
+        "Neutral white UI never preloads a positive pop boost while small hot-color risk may still reduce pop");
 
     test.expect(
         adaptive.strength > 0.95f &&
