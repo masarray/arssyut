@@ -378,4 +378,103 @@
     <Setter Property="BorderThickness" Value="0,0,0,1" />
   </Style>
 
+
+  <!-- P6UI.3 Settings acceptance -->
+  <Style Selector="Border.value-pill">
+    <Setter Property="Padding" Value="9,5" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="7" />
+  </Style>
+
+  <Style Selector="Button.hotkey">
+    <Setter Property="MinWidth" Value="118" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="Padding" Value="10,0" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+    <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="Button.hotkey:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.SurfaceHover}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.StrokeStrong}" />
+  </Style>
+
+  <Style Selector="Button.hotkey.capturing">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.RecordSoft}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Record}" />
+  </Style>
+
+  <Style Selector="Button.hotkey:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Button.camera-anchor">
+    <Setter Property="Width" Value="26" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextSecondary}" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button.camera-anchor:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.SurfaceHover}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="Button.camera-anchor.selected">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.RecordSoft}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Record}" />
+  </Style>
+
+  <Style Selector="Button.camera-anchor:focus-visible">
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="ProgressBar.audio-meter">
+    <Setter Property="Width" Value="182" />
+    <Setter Property="Height" Value="5" />
+    <Setter Property="MinHeight" Value="5" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface3}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Success}" />
+  </Style>
+
+  <Style Selector="Border.camera-preview">
+    <Setter Property="Width" Value="214" />
+    <Setter Property="Height" Value="120" />
+    <Setter Property="Background" Value="#FF0E1217" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.StrokeStrong}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="9" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+
+  <Style Selector="TextBlock.path-preview">
+    <Setter Property="MaxWidth" Value="300" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextSecondary}" />
+  </Style>
+
 </Styles>
