@@ -650,23 +650,35 @@ void refresh_sources(AppWindow &app)
         return false;
     }
 
-    if (!app.ui.
-            region_screen_rect_valid) {
-        app.ui.region_screen_rect =
-            arssyut::app::
-                default_region_rect(
-                    bounds);
-        app.ui.region_screen_rect_valid =
-            true;
-        return true;
+    RECT candidate =
+        app.ui.
+                region_screen_rect_valid
+            ? app.ui.region_screen_rect
+            : arssyut::app::
+                  default_region_rect(
+                      bounds);
+
+    candidate =
+        arssyut::app::
+            clamp_region_rect(
+                candidate,
+                bounds);
+
+    arssyut::app::
+        RegionCropMapping mapping;
+
+    if (!arssyut::app::
+            map_region_to_crop(
+                bounds,
+                candidate,
+                mapping)) {
+        return false;
     }
 
     app.ui.region_screen_rect =
-        arssyut::app::
-            clamp_region_rect(
-                app.ui.region_screen_rect,
-                bounds);
-
+        mapping.screen_rect;
+    app.ui.region_screen_rect_valid =
+        true;
     return true;
 }
 
@@ -2546,6 +2558,10 @@ LRESULT CALLBACK window_proc(
                     app->ui.
                         region_screen_rect_valid =
                             true;
+
+                    (void)ensure_region_rect(
+                        *app,
+                        *target);
 
                     update_capture_boundary(
                         *app,
