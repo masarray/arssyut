@@ -60,6 +60,9 @@ P5C mapping:
 | highlight guard | 0.98 |
 | performance | 1.00 |
 | text legibility | 0.56 |
+| UI structure | 0.72 |
+| screen native | 1.00 |
+| neutral surface anchor | 0.94 |
 | Smart Auto | ON |
 
 Design intent:
@@ -101,11 +104,16 @@ P5C keeps the pinned P5A v0.5.9 defaults:
 | highlight guard | 0.94 |
 | performance | 1.00 |
 | text legibility | 0.34 |
+| UI structure | 0.38 |
+| screen native | 0.72 |
+| neutral surface anchor | 0.62 |
 | Smart Auto | ON |
 
-P5B can still lower pop, strength and chroma ceiling or increase highlight
-pressure on risky scenes. Vivid therefore means a stronger creative baseline,
-not an unconditional saturation boost.
+P5E changes how P5B evidence is applied to screen modes. Camera-style global
+exposure/shadow/neutral-highlight normalization is suppressed according to the
+screen-native prior, while hot-vivid and saturation risk may still lower pop,
+strength and chroma ceiling. Vivid therefore means a stronger creative
+baseline, not an unconditional saturation boost.
 
 ## UI contract
 
