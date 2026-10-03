@@ -1,4 +1,5 @@
 #include "app/device_catalog.hpp"
+#include "app/lucide_icons.hpp"
 #include "app/recorder_overlay.hpp"
 #include "app/recorder_session.hpp"
 #include "app/recorder_settings_window.hpp"
@@ -42,7 +43,7 @@ constexpr UINT_PTR kUiTimer = 1;
 constexpr int kHotkeyRecordStop = 1;
 
 constexpr int kWindowWidth = 820;
-constexpr int kWindowHeight = 360;
+constexpr int kWindowHeight = 404;
 
 constexpr COLORREF kBackground =
     RGB(14, 17, 20);
@@ -204,7 +205,8 @@ capture_mode_name(CaptureMode mode) noexcept
     CaptureMode mode) noexcept
 {
     return mode == CaptureMode::Display ||
-           mode == CaptureMode::Window;
+           mode == CaptureMode::Window ||
+           mode == CaptureMode::Region;
 }
 
 [[nodiscard]] std::wstring format_elapsed(
@@ -743,6 +745,230 @@ void refresh_sources(AppWindow &app)
     return result;
 }
 
+[[nodiscard]] RECT clamp_region_rect(
+    RECT rect,
+    RECT bounds) noexcept
+{
+    const LONG bounds_width =
+        bounds.right - bounds.left;
+    const LONG bounds_height =
+        bounds.bottom - bounds.top;
+
+    LONG width =
+        std::max<LONG>(
+            320,
+            rect.right - rect.left);
+    LONG height =
+        std::max<LONG>(
+            180,
+            rect.bottom - rect.top);
+
+    width =
+        std::min(
+            width,
+            bounds_width);
+    height =
+        std::min(
+            height,
+            bounds_height);
+
+    LONG left =
+        std::clamp(
+            rect.left,
+            bounds.left,
+            bounds.right - width);
+    LONG top =
+        std::clamp(
+            rect.top,
+            bounds.top,
+            bounds.bottom - height);
+
+    return {
+        left,
+        top,
+        left + width,
+        top + height};
+}
+
+[[nodiscard]] RECT default_region_rect(
+    RECT bounds) noexcept
+{
+    const LONG bounds_width =
+        bounds.right - bounds.left;
+    const LONG bounds_height =
+        bounds.bottom - bounds.top;
+
+    LONG width =
+        std::max<LONG>(
+            320,
+            static_cast<LONG>(
+                std::lround(
+                    static_cast<double>(
+                        bounds_width) *
+                    0.68)));
+
+    width =
+        std::min(
+            width,
+            bounds_width);
+
+    LONG height =
+        std::max<LONG>(
+            180,
+            static_cast<LONG>(
+                std::lround(
+                    static_cast<double>(
+                        width) *
+                    9.0 /
+                    16.0)));
+
+    if (height > bounds_height) {
+        height =
+            bounds_height;
+        width =
+            std::min(
+                bounds_width,
+                static_cast<LONG>(
+                    std::lround(
+                        static_cast<double>(
+                            height) *
+                        16.0 /
+                        9.0)));
+    }
+
+    RECT rect{};
+    rect.left =
+        bounds.left +
+        (bounds_width - width) / 2;
+    rect.top =
+        bounds.top +
+        (bounds_height - height) / 2;
+    rect.right =
+        rect.left + width;
+    rect.bottom =
+        rect.top + height;
+
+    return clamp_region_rect(
+        rect,
+        bounds);
+}
+
+[[nodiscard]] bool ensure_region_rect(
+    AppWindow &app,
+    const RecorderTarget &target)
+{
+    RECT bounds{};
+    if (!arssyut::app::
+            recorder_target_screen_rect(
+                target,
+                bounds)) {
+        return false;
+    }
+
+    if (!app.ui.
+            region_screen_rect_valid) {
+        app.ui.region_screen_rect =
+            default_region_rect(bounds);
+        app.ui.region_screen_rect_valid =
+            true;
+        return true;
+    }
+
+    app.ui.region_screen_rect =
+        clamp_region_rect(
+            app.ui.region_screen_rect,
+            bounds);
+
+    return true;
+}
+
+[[nodiscard]] bool apply_region_to_config(
+    AppWindow &app,
+    const RecorderTarget &target,
+    RecorderConfig &config)
+{
+    if (!ensure_region_rect(
+            app,
+            target)) {
+        return false;
+    }
+
+    RECT bounds{};
+    if (!arssyut::app::
+            recorder_target_screen_rect(
+                target,
+                bounds)) {
+        return false;
+    }
+
+    RECT region =
+        clamp_region_rect(
+            app.ui.region_screen_rect,
+            bounds);
+
+    LONG width =
+        region.right - region.left;
+    LONG height =
+        region.bottom - region.top;
+
+    // NV12/H.264 requires chroma-aligned dimensions. Keep the user's region
+    // spatially stable and trim at most one pixel from right/bottom.
+    width &= ~1L;
+    height &= ~1L;
+
+    if (width < 320 ||
+        height < 180) {
+        return false;
+    }
+
+    region.right =
+        region.left + width;
+    region.bottom =
+        region.top + height;
+
+    const LONG crop_left =
+        region.left - bounds.left;
+    const LONG crop_top =
+        region.top - bounds.top;
+
+    config.crop = {
+        static_cast<std::uint32_t>(
+            std::max<LONG>(
+                0,
+                crop_left)),
+        static_cast<std::uint32_t>(
+            std::max<LONG>(
+                0,
+                crop_top)),
+        static_cast<std::uint32_t>(
+            std::max<LONG>(
+                0,
+                crop_left + width)),
+        static_cast<std::uint32_t>(
+            std::max<LONG>(
+                0,
+                crop_top + height))};
+
+    config.output_size = {
+        static_cast<std::uint32_t>(
+            width),
+        static_cast<std::uint32_t>(
+            height)};
+
+    config.presentation_screen_rect =
+        region;
+    config.
+        presentation_screen_rect_valid =
+            true;
+
+    app.ui.region_screen_rect =
+        region;
+    app.ui.region_screen_rect_valid =
+        true;
+
+    return true;
+}
+
 void update_capture_boundary(
     AppWindow &app,
     const RecorderSnapshot *snapshot)
@@ -762,7 +988,38 @@ void update_capture_boundary(
         return;
     }
 
+    const bool recording =
+        snapshot &&
+        active_state(snapshot->state);
+
     RECT rect{};
+
+    if (app.ui.capture_mode ==
+        CaptureMode::Region) {
+        if (!ensure_region_rect(
+                app,
+                *target)) {
+            app.overlay.hide_boundary();
+            return;
+        }
+
+        rect =
+            app.ui.region_screen_rect;
+
+        if (recording) {
+            rect =
+                camera_viewport_rect(
+                    rect,
+                    snapshot);
+        }
+
+        app.overlay.show_boundary(
+            rect,
+            recording,
+            !recording);
+        return;
+    }
+
     if (!arssyut::app::
             recorder_target_screen_rect(
                 *target,
@@ -770,10 +1027,6 @@ void update_capture_boundary(
         app.overlay.hide_boundary();
         return;
     }
-
-    const bool recording =
-        snapshot &&
-        active_state(snapshot->state);
 
     if (recording) {
         rect =
@@ -784,7 +1037,8 @@ void update_capture_boundary(
 
     app.overlay.show_boundary(
         rect,
-        recording);
+        recording,
+        false);
 }
 
 void sync_main_controls_from_model(
@@ -878,12 +1132,31 @@ void update_summary(AppWindow &app)
             L"Vivid Presentation";
     }
 
+    wchar_t dimensions[64]{};
+    wcscpy_s(
+        dimensions,
+        L"1920 × 1080");
+
+    if (app.ui.capture_mode ==
+            CaptureMode::Region &&
+        app.ui.
+            region_screen_rect_valid) {
+        const RECT region =
+            app.ui.region_screen_rect;
+        swprintf_s(
+            dimensions,
+            L"%ld × %ld",
+            region.right - region.left,
+            region.bottom - region.top);
+    }
+
     wchar_t summary[512]{};
     swprintf_s(
         summary,
-        L"%s · 1920 × 1080 · %u fps · %s · Zoom %s · Clicks %s · Keys %s",
+        L"%s · %s · %u fps · %s · Zoom %s · Clicks %s · Keys %s",
         capture_mode_name(
             app.ui.capture_mode),
+        dimensions,
         app.ui.frame_rate,
         visual,
         app.ui.smart_zoom
@@ -904,14 +1177,14 @@ void update_summary(AppWindow &app)
             app.ui.capture_mode)) {
         SetWindowTextW(
             app.result_text,
-            app.ui.capture_mode ==
-                    CaptureMode::Region
-                ? L"Custom area UX ready · crop/selection backend is the next capture milestone"
-                : L"Game mode UX ready · dedicated game capture backend is the next capture milestone");
+            L"Game mode UX ready · dedicated game capture backend is the next capture milestone");
     } else if (!app.session) {
         SetWindowTextW(
             app.result_text,
-            L"MP4 output · native H.264 · recording boundary enabled");
+            app.ui.capture_mode ==
+                    CaptureMode::Region
+                ? L"Drag the top pill to move · drag orange edges/corners to resize"
+                : L"MP4 output · native H.264 · recording boundary enabled");
     }
 }
 
@@ -1075,6 +1348,23 @@ void start_recording(AppWindow &app)
         default_output_path(app.ui);
     config.output_size =
         {1920, 1080};
+
+    if (app.ui.capture_mode ==
+        CaptureMode::Region) {
+        if (!apply_region_to_config(
+                app,
+                *target,
+                config)) {
+            MessageBoxW(
+                app.window,
+                L"Choose a valid recording region first.",
+                L"Arssyut",
+                MB_OK |
+                    MB_ICONINFORMATION);
+            return;
+        }
+    }
+
     config.frame_rate =
         {app.ui.frame_rate, 1};
     config.bitrate_bps =
@@ -1401,17 +1691,26 @@ void paint_background(
             20,
             70,
             client.right - 20,
-            194},
+            198},
         kCard);
 
     draw_rounded_card(
         dc,
         RECT{
             20,
-            204,
+            208,
+            client.right - 20,
+            304},
+        kCardRaised);
+
+    draw_rounded_card(
+        dc,
+        RECT{
+            20,
+            314,
             client.right - 20,
             client.bottom - 12},
-        kCardRaised);
+        kCard);
 
     HPEN accent =
         CreatePen(
@@ -1957,8 +2256,9 @@ LRESULT CALLBACK window_proc(
                 L"Settings",
                 WS_CHILD |
                     WS_VISIBLE |
-                    WS_TABSTOP,
-                696, 15, 92, 30,
+                    WS_TABSTOP |
+                    BS_OWNERDRAW,
+                682, 15, 106, 30,
                 window,
                 reinterpret_cast<HMENU>(
                     IdSettings),
@@ -2058,7 +2358,8 @@ LRESULT CALLBACK window_proc(
                 L"Refresh",
                 WS_CHILD |
                     WS_VISIBLE |
-                    WS_TABSTOP,
+                    WS_TABSTOP |
+                    BS_OWNERDRAW,
                 704, 104, 70, 32,
                 window,
                 reinterpret_cast<HMENU>(
@@ -2224,14 +2525,14 @@ LRESULT CALLBACK window_proc(
             create_label(
                 *app,
                 L"Ready",
-                32, 290, 130, 24,
+                32, 326, 120, 24,
                 app->normal_font);
 
         app->result_text =
             create_label(
                 *app,
                 L"",
-                134, 292, 438, 20,
+                154, 328, 414, 20,
                 app->tiny_font);
 
         app->open_button =
@@ -2241,8 +2542,9 @@ LRESULT CALLBACK window_proc(
                 L"Open video",
                 WS_CHILD |
                     WS_VISIBLE |
-                    WS_TABSTOP,
-                584, 286, 92, 30,
+                    WS_TABSTOP |
+                    BS_OWNERDRAW,
+                584, 326, 92, 32,
                 window,
                 reinterpret_cast<HMENU>(
                     IdOpen),
@@ -2265,8 +2567,9 @@ LRESULT CALLBACK window_proc(
                 L"Diagnostics",
                 WS_CHILD |
                     WS_VISIBLE |
-                    WS_TABSTOP,
-                686, 286, 102, 30,
+                    WS_TABSTOP |
+                    BS_OWNERDRAW,
+                686, 326, 102, 32,
                 window,
                 reinterpret_cast<HMENU>(
                     IdOpenDiagnostics),
@@ -2331,6 +2634,39 @@ LRESULT CALLBACK window_proc(
         return 0;
     }
 
+    case kUiRegionChanged:
+        if (app->ui.capture_mode ==
+                CaptureMode::Region &&
+            app->overlay_created &&
+            app->overlay.
+                boundary_editable()) {
+            const RecorderTarget *target =
+                selected_target(*app);
+
+            if (target) {
+                RECT bounds{};
+                if (arssyut::app::
+                        recorder_target_screen_rect(
+                            *target,
+                            bounds)) {
+                    app->ui.region_screen_rect =
+                        clamp_region_rect(
+                            app->overlay.
+                                boundary_rect(),
+                            bounds);
+                    app->ui.
+                        region_screen_rect_valid =
+                            true;
+
+                    update_capture_boundary(
+                        *app,
+                        nullptr);
+                    update_summary(*app);
+                }
+            }
+        }
+        return 0;
+
     case WM_COMMAND: {
         const int id =
             LOWORD(wparam);
@@ -2378,9 +2714,17 @@ LRESULT CALLBACK window_proc(
 
         case IdSource:
             if (code == CBN_SELCHANGE) {
+                if (app->ui.capture_mode ==
+                    CaptureMode::Region) {
+                    app->ui.
+                        region_screen_rect_valid =
+                            false;
+                }
+
                 update_capture_boundary(
                     *app,
                     nullptr);
+                update_summary(*app);
             }
             return 0;
 
