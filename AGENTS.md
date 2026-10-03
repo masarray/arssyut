@@ -618,6 +618,36 @@ experiment. The authoritative rules are now:
   stability, keycap proportions and click energy.
 
 
+### P6 compact product UI contract
+
+The recorder UI is a projection of authoritative engine/configuration state,
+not a second recorder implementation.
+
+Rules:
+- the default idle surface stays capture-first and compact: source, frame rate,
+  current configuration summary and one Record action;
+- do not reintroduce a large dashboard, oversized typography, giant circular
+  record control or one-card-per-setting layout;
+- Settings is progressive disclosure only. Opening/closing it must not mutate
+  recording settings by itself;
+- presentation toggles and Visual Style remain the same canonical controls used
+  to build RecorderConfig at session start;
+- unsupported features must not be represented as fake enabled controls or
+  large "next phase" cards;
+- active recording uses a small borderless floating bar; its status and elapsed
+  time derive from RecorderSnapshot;
+- Stop uses the same RecorderSession::request_stop authority as every other
+  stop path;
+- Ready/Failed are rendered inline in the idle workspace. Diagnostics stay
+  accessible without inventing a parallel error state;
+- keyboard activation for the primary Record/Stop action must route to the same
+  command handler as pointer activation;
+- UI work must not alter the locked P5D.7/P5E visual/color/encoder baseline;
+- capture exclusion remains active only during a real recording attempt;
+- P6 is not accepted until Windows CI passes and a real screenshot/interaction
+  review confirms compact layout, readable hierarchy, Settings disclosure,
+  recording mini-bar and result states.
+
 ---
 
 ## 12. Audio contract
