@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   windows-release:
-    name: Windows x64 Release
+    name: Native Windows x64 Release
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -52,7 +52,7 @@ jobs:
           Copy-Item "tools/app_package/README.txt" $package
           Copy-Item "third_party/lucide/LICENSE" (Join-Path $package "LUCIDE_LICENSE.txt")
 
-      - name: Upload Arssyut GUI recorder
+      - name: Upload native recorder
         uses: actions/upload-artifact@v4
         with:
           name: arssyut-recorder-windows-x64
@@ -60,18 +60,27 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Setup .NET 10 for P6UI
+  p6ui-windows:
+    name: P6UI Avalonia Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
-      - name: Restore P6UI Avalonia shell
+      - name: Restore
         run: dotnet restore src/ui/Arssyut.UI/Arssyut.UI.csproj
 
-      - name: Build P6UI Avalonia shell
+      - name: Build
         run: dotnet build src/ui/Arssyut.UI/Arssyut.UI.csproj -c Release --no-restore
 
-      - name: Publish P6UI Windows x64 preview
+      - name: Publish Windows x64 preview
         shell: pwsh
         run: |
           dotnet publish src/ui/Arssyut.UI/Arssyut.UI.csproj `
@@ -86,7 +95,7 @@ jobs:
 
           Copy-Item "docs/P6UI_THIRD_PARTY_NOTICES.md" (Join-Path "dist/arssyut-p6ui" "THIRD_PARTY_NOTICES.md")
 
-      - name: P6UI launch smoke
+      - name: Launch smoke
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
@@ -99,7 +108,7 @@ jobs:
 
           Stop-Process -Id $process.Id -Force
 
-      - name: Upload P6UI Avalonia preview
+      - name: Upload Avalonia preview
         uses: actions/upload-artifact@v4
         with:
           name: arssyut-p6ui-avalonia-windows-x64
