@@ -353,6 +353,7 @@ float4 apply_arvisual(float4 px, float2 uv)
     /* Symmetric neighborhood used for skin smoothing and luma clarity. */
     float3 smooth_src = src;
     float detail = 0.0;
+    float neighbor_luma = src_y;
     if (performance >= 0.25) {
         float3 nl = arvisual_tap(uv - float2(texel_size.x, 0.0));
         float3 nr = arvisual_tap(uv + float2(texel_size.x, 0.0));
@@ -370,8 +371,8 @@ float4 apply_arvisual(float4 px, float2 uv)
             smooth_src = (src * 4.0 + cross_sum) * 0.125;
         }
 
-        float blur_y = (arvisual_luminance(nl) + arvisual_luminance(nr) + arvisual_luminance(nu) + arvisual_luminance(nd)) * 0.25;
-        detail = src_y - blur_y;
+        neighbor_luma = (arvisual_luminance(nl) + arvisual_luminance(nr) + arvisual_luminance(nu) + arvisual_luminance(nd)) * 0.25;
+        detail = src_y - neighbor_luma;
     }
 
     /* Skin treatment follows local detail without replacing the grade with an
@@ -462,6 +463,38 @@ float4 apply_arvisual(float4 px, float2 uv)
     float text_soft_detail =
         detail /
         (1.0 + text_detail_abs * 12.0);
+
+    /*
+     * P5D.5 bright-background text calibration.
+     *
+     * The first real P5D triad showed that dark/gray text on white browser UI
+     * gained much less perceived weight after player downscale than white text
+     * on dark UI. Do not raise global sharpening: classify only a dark
+     * micro-stroke whose immediate neighborhood is bright and neutral.
+     *
+     * This is intentionally directional. Positive detail (light text on dark
+     * UI) receives the original P5D gain. Only negative detail can receive the
+     * additional 1.32x maximum reinforcement and slightly wider negative luma
+     * headroom. Saturated neighborhoods, skin and flat regions remain gated
+     * by the existing P5D masks.
+     */
+    float3 neighborhood_hsv =
+        arvisual_rgb2hsv(smooth_src);
+    float bright_neutral_neighborhood =
+        smoothstep(0.72, 0.94, neighbor_luma) *
+        (1.0 - smoothstep(0.08, 0.24, neighborhood_hsv.y));
+    float dark_stroke_confidence =
+        smoothstep(0.012, 0.060, -detail);
+    float dark_on_bright =
+        bright_neutral_neighborhood *
+        dark_stroke_confidence *
+        text_neutral;
+
+    float directional_gain =
+        text_soft_detail < 0.0
+            ? lerp(1.0, 1.32, dark_on_bright)
+            : 1.0;
+
     float signed_headroom =
         text_soft_detail >= 0.0
             ? (1.0 - smoothstep(0.90, 0.995, y))
@@ -474,11 +507,14 @@ float4 apply_arvisual(float4 px, float2 uv)
         scale_resilience *
         text_edge *
         text_chroma_weight *
+        directional_gain *
         (1.0 - skin_mask * 0.98) *
         signed_headroom;
 
+    float negative_limit =
+        lerp(-0.014, -0.018, dark_on_bright);
     text_delta =
-        clamp(text_delta, -0.014, 0.014);
+        clamp(text_delta, negative_limit, 0.014);
 
     color = arvisual_fit_gamut_preserve_luma(
         color,
