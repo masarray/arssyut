@@ -1567,15 +1567,18 @@ void complete_recording(
 void update_ui(AppWindow &app)
 {
     if (!app.session) {
-        app.visible_state =
-            RecorderState::Idle;
-        SetWindowTextW(
-            app.status_text,
-            L"Ready");
-        update_summary(app);
-        update_capture_boundary(
-            app,
-            nullptr);
+        if (app.visible_state !=
+            RecorderState::Idle) {
+            app.visible_state =
+                RecorderState::Idle;
+            SetWindowTextW(
+                app.status_text,
+                L"Ready");
+            update_summary(app);
+        }
+
+        // Idle overlays are event-driven. Repositioning the Region boundary
+        // from a 33 ms timer would fight the user's native move/resize loop.
         return;
     }
 
