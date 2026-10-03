@@ -59,3 +59,50 @@ jobs:
           path: dist/arssyut/*
           if-no-files-found: error
           retention-days: 90
+
+      - name: Setup .NET 10 for P6UI
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore P6UI Avalonia shell
+        run: dotnet restore src/ui/Arssyut.UI/Arssyut.UI.csproj
+
+      - name: Build P6UI Avalonia shell
+        run: dotnet build src/ui/Arssyut.UI/Arssyut.UI.csproj -c Release --no-restore
+
+      - name: Publish P6UI Windows x64 preview
+        shell: pwsh
+        run: |
+          dotnet publish src/ui/Arssyut.UI/Arssyut.UI.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o dist/arssyut-p6ui
+
+          Copy-Item "docs/P6UI_THIRD_PARTY_NOTICES.md" (Join-Path "dist/arssyut-p6ui" "THIRD_PARTY_NOTICES.md")
+
+      - name: P6UI launch smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 3
+
+          if ($process.HasExited) {
+            throw "Arssyut.UI.exe exited during launch smoke with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
+      - name: Upload P6UI Avalonia preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-p6ui-avalonia-windows-x64
+          path: dist/arssyut-p6ui/*
+          if-no-files-found: error
+          retention-days: 90
