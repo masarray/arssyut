@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Arssyut.UI.Preview;
 using Lucide.Avalonia;
@@ -16,17 +19,30 @@ public sealed partial class MainWindow : Window
     private readonly Button[] _microphoneOptions;
     private readonly Button[] _cameraOptions;
     private readonly PreviewRecorderSession _session = new();
+    private readonly SettingsPreviewState _settings;
+    private readonly bool _stressLongNames;
 
+    private readonly List<PreviewSourceItem> _sources = [];
     private RecordingControllerWindow? _controller;
+    private CaptureBoundaryWindow? _boundary;
+    private PreviewSourceItem? _selectedSource;
+    private PreviewCaptureMode _captureMode =
+        PreviewCaptureMode.Display;
+    private PixelRect? _regionRect;
+
     private string _microphoneDevice =
         "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
     private string _cameraDevice =
         "USB2.0 HD UVC Webcam";
 
     public MainWindow(
+        SettingsPreviewState settings,
         bool stressLongNames = false,
         bool autoStartRecording = false)
     {
+        _settings = settings;
+        _stressLongNames = stressLongNames;
+
         InitializeComponent();
 
         TransparencyLevelHint =
@@ -61,53 +77,93 @@ public sealed partial class MainWindow : Window
         _session.Changed +=
             (_, _) => ApplySessionState();
 
-        if (stressLongNames)
-            ApplyLongNameStressPreview();
+        _settings.Changed +=
+            Settings_OnChanged;
 
-        RefreshInputLabels();
-        ApplySessionState();
+        Opened +=
+            (_, _) =>
+            {
+                EnsureBoundary();
+                RefreshSources(
+                    keepCurrentSelection: false);
 
-        if (autoStartRecording)
-        {
-            Opened +=
-                (_, _) => StartPreviewRecording();
-        }
+                if (_stressLongNames)
+                    ApplyLongNameStressPreview();
+
+                RefreshInputLabels();
+                RefreshSettingsSurface();
+                ApplySessionState();
+
+                if (autoStartRecording)
+                    StartPreviewRecording();
+            };
+
+        Closed +=
+            (_, _) =>
+            {
+                _settings.Changed -=
+                    Settings_OnChanged;
+
+                if (_boundary is not null)
+                {
+                    _boundary.RegionChanged -=
+                        Boundary_OnRegionChanged;
+                    _boundary.Close();
+                    _boundary = null;
+                }
+            };
     }
 
     private void TitleBar_OnPointerPressed(
         object? sender,
         PointerPressedEventArgs e)
     {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        if (e.GetCurrentPoint(this).
+                Properties.
+                IsLeftButtonPressed)
+        {
             BeginMoveDrag(e);
+        }
     }
 
     private void Window_OnKeyDown(
         object? sender,
         KeyEventArgs e)
     {
-        if (e.Key == Key.F9)
+        if (HotkeyPreview.Matches(
+                e,
+                _settings.RecordHotkey))
         {
             StartPreviewRecording();
             e.Handled = true;
+            return;
         }
-        else if (e.Key == Key.Escape &&
-                 _session.Phase == PreviewRecordingPhase.Saved)
+
+        if (e.Key == Key.Escape &&
+            _session.Phase ==
+                PreviewRecordingPhase.Saved)
         {
             _session.Reset();
             e.Handled = true;
         }
     }
 
+    private void Settings_OnChanged(
+        object? sender,
+        EventArgs e) =>
+        RefreshSettingsSurface();
+
     private void Settings_OnClick(
         object? sender,
         RoutedEventArgs e)
     {
-        var settings = new SettingsWindow
-        {
-            WindowStartupLocation =
-                WindowStartupLocation.CenterOwner
-        };
+        var settings =
+            new SettingsWindow(
+                _settings)
+            {
+                WindowStartupLocation =
+                    WindowStartupLocation.CenterOwner
+            };
 
         settings.ShowDialog(this);
     }
@@ -134,48 +190,430 @@ public sealed partial class MainWindow : Window
 
         selected.Classes.Add("selected");
 
-        var mode =
-            selected.Tag?.ToString() ??
-            "Display";
+        _captureMode =
+            selected.Tag?.ToString() switch
+            {
+                "Window" =>
+                    PreviewCaptureMode.Window,
+                "Region" =>
+                    PreviewCaptureMode.Region,
+                "Game" =>
+                    PreviewCaptureMode.Game,
+                _ =>
+                    PreviewCaptureMode.Display
+            };
 
-        switch (mode)
+        RefreshSources(
+            keepCurrentSelection: false);
+    }
+
+    private void RefreshSources_OnClick(
+        object? sender,
+        RoutedEventArgs e) =>
+        RefreshSources(
+            keepCurrentSelection: true);
+
+    private void RefreshSources(
+        bool keepCurrentSelection)
+    {
+        var ownWindow =
+            TryGetPlatformHandle()?.Handle ??
+            IntPtr.Zero;
+
+        var previousId =
+            keepCurrentSelection
+                ? _selectedSource?.Id
+                : null;
+
+        _sources.Clear();
+        _sources.AddRange(
+            SourcePreviewCatalog.Enumerate(
+                _captureMode,
+                Screens,
+                ownWindow));
+
+        _selectedSource =
+            previousId is null
+                ? null
+                : _sources.FirstOrDefault(
+                    item =>
+                        string.Equals(
+                            item.Id,
+                            previousId,
+                            StringComparison.Ordinal));
+
+        _selectedSource ??=
+            _sources.FirstOrDefault(
+                item => item.IsPrimary) ??
+            _sources.FirstOrDefault();
+
+        RebuildSourceFlyout();
+        ApplySelectedSource();
+    }
+
+    private void RebuildSourceFlyout()
+    {
+        SourceListPanel.Children.Clear();
+
+        SourceFlyoutTitle.Text =
+            _captureMode switch
+            {
+                PreviewCaptureMode.Display =>
+                    "Displays",
+                PreviewCaptureMode.Window =>
+                    "Windows",
+                PreviewCaptureMode.Region =>
+                    "Region display",
+                PreviewCaptureMode.Game =>
+                    "Running applications",
+                _ =>
+                    "Sources"
+            };
+
+        SourceFlyoutSubtitle.Text =
+            _captureMode switch
+            {
+                PreviewCaptureMode.Display =>
+                    "Choose which monitor to capture",
+                PreviewCaptureMode.Window =>
+                    "Choose a visible top-level window",
+                PreviewCaptureMode.Region =>
+                    "Choose the display where the region begins",
+                PreviewCaptureMode.Game =>
+                    "Choose an application candidate for the future game backend",
+                _ =>
+                    "Choose the capture target"
+            };
+
+        SourceCountText.Text =
+            $"{_sources.Count} " +
+            (_sources.Count == 1
+                ? "source"
+                : "sources");
+
+        if (_sources.Count == 0)
         {
-            case "Window":
-                SourceIcon.Kind =
-                    LucideIconKind.AppWindow;
-                SourceTitle.Text =
-                    "Arssyut — Screen Recorder";
-                SourceSubtitle.Text =
-                    "Window capture · choose a target window";
-                break;
+            SourceListPanel.Children.Add(
+                new TextBlock
+                {
+                    Text =
+                        "No sources are available for this mode.",
+                    Classes =
+                    {
+                        "micro"
+                    },
+                    Margin =
+                        new Thickness(
+                            9,
+                            8,
+                            9,
+                            10)
+                });
 
-            case "Region":
-                SourceIcon.Kind =
-                    LucideIconKind.ScanLine;
-                SourceTitle.Text =
-                    "Custom region · 1280 × 720";
-                SourceSubtitle.Text =
-                    "Drag the native boundary to move or resize";
-                break;
-
-            case "Game":
-                SourceIcon.Kind =
-                    LucideIconKind.Gamepad2;
-                SourceTitle.Text =
-                    "Choose a game";
-                SourceSubtitle.Text =
-                    "Dedicated game capture backend is pending";
-                break;
-
-            default:
-                SourceIcon.Kind =
-                    LucideIconKind.Monitor;
-                SourceTitle.Text =
-                    "Display 1 · 1920 × 1080";
-                SourceSubtitle.Text =
-                    "Primary display · 60 Hz";
-                break;
+            return;
         }
+
+        foreach (var item in _sources)
+        {
+            var button =
+                new Button
+                {
+                    Tag = item,
+                    HorizontalAlignment =
+                        HorizontalAlignment.Stretch
+                };
+
+            button.Classes.Add(
+                "device-option");
+
+            if (_selectedSource?.Id ==
+                item.Id)
+            {
+                button.Classes.Add(
+                    "selected");
+            }
+
+            button.Click +=
+                SourceOption_OnClick;
+
+            var grid =
+                new Grid
+                {
+                    ColumnDefinitions =
+                        new ColumnDefinitions(
+                            "*,Auto")
+                };
+
+            var text =
+                new StackPanel
+                {
+                    Spacing = 2,
+                    VerticalAlignment =
+                        VerticalAlignment.Center
+                };
+
+            text.Children.Add(
+                new TextBlock
+                {
+                    Text = item.Title,
+                    FontWeight =
+                        FontWeight.Medium,
+                    TextTrimming =
+                        TextTrimming.CharacterEllipsis
+                });
+
+            var subtitle =
+                new TextBlock
+                {
+                    Text = item.Subtitle,
+                    TextTrimming =
+                        TextTrimming.CharacterEllipsis
+                };
+            subtitle.Classes.Add(
+                "micro");
+            text.Children.Add(
+                subtitle);
+
+            grid.Children.Add(
+                text);
+
+            if (item.IsPrimary)
+            {
+                var badge =
+                    new Border
+                    {
+                        Padding =
+                            new Thickness(
+                                7,
+                                3),
+                        CornerRadius =
+                            new CornerRadius(99),
+                        Background =
+                            Brush.Parse(
+                                "#1AFF5864"),
+                        VerticalAlignment =
+                            VerticalAlignment.Center,
+                        Child =
+                            new TextBlock
+                            {
+                                Text = "Primary",
+                                FontSize = 9.5,
+                                Foreground =
+                                    Brush.Parse(
+                                        "#FF7A84")
+                            }
+                    };
+
+                Grid.SetColumn(
+                    badge,
+                    1);
+                grid.Children.Add(
+                    badge);
+            }
+
+            button.Content =
+                grid;
+
+            SourceListPanel.Children.Add(
+                button);
+        }
+    }
+
+    private void SourceOption_OnClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (sender is not Button
+            {
+                Tag:
+                    PreviewSourceItem item
+            })
+            return;
+
+        _selectedSource =
+            item;
+
+        if (_captureMode ==
+            PreviewCaptureMode.Region)
+        {
+            _regionRect =
+                CreateDefaultRegion(
+                    item.Bounds);
+        }
+
+        RebuildSourceFlyout();
+        ApplySelectedSource();
+        SourceFlyout.Hide();
+    }
+
+    private void ApplySelectedSource()
+    {
+        if (_selectedSource is null)
+        {
+            SourceTitle.Text =
+                "No source";
+            SourceSubtitle.Text =
+                "Refresh or choose another capture mode";
+            SourceIcon.Kind =
+                LucideIconKind.CircleHelp;
+            _boundary?.HideBoundary();
+            return;
+        }
+
+        SourceIcon.Kind =
+            _captureMode switch
+            {
+                PreviewCaptureMode.Window =>
+                    LucideIconKind.AppWindow,
+                PreviewCaptureMode.Region =>
+                    LucideIconKind.ScanLine,
+                PreviewCaptureMode.Game =>
+                    LucideIconKind.Gamepad2,
+                _ =>
+                    LucideIconKind.Monitor
+            };
+
+        if (_captureMode ==
+            PreviewCaptureMode.Region)
+        {
+            _regionRect ??=
+                CreateDefaultRegion(
+                    _selectedSource.Bounds);
+
+            var region =
+                _regionRect.Value;
+
+            SourceTitle.Text =
+                $"Custom region · {region.Width} × {region.Height}";
+            SourceSubtitle.Text =
+                $"{_selectedSource.Title} · drag border or handles to adjust";
+        }
+        else
+        {
+            SourceTitle.Text =
+                _selectedSource.Title;
+            SourceSubtitle.Text =
+                _selectedSource.Subtitle;
+        }
+
+        UpdateBoundary();
+        UpdateReadyDetail();
+    }
+
+    private void EnsureBoundary()
+    {
+        if (_boundary is not null)
+            return;
+
+        _boundary =
+            new CaptureBoundaryWindow();
+
+        _boundary.RegionChanged +=
+            Boundary_OnRegionChanged;
+    }
+
+    private void UpdateBoundary()
+    {
+        if (_boundary is null ||
+            _selectedSource is null)
+            return;
+
+        var rect =
+            _captureMode ==
+                PreviewCaptureMode.Region
+                ? _regionRect ??
+                    CreateDefaultRegion(
+                        _selectedSource.Bounds)
+                : _selectedSource.Bounds;
+
+        var center =
+            new PixelPoint(
+                rect.X +
+                    rect.Width / 2,
+                rect.Y +
+                    rect.Height / 2);
+
+        var scaling =
+            Screens.ScreenFromPoint(
+                center)?.Scaling ??
+            Screens.Primary?.Scaling ??
+            1.0;
+
+        _boundary.ShowForRect(
+            rect,
+            scaling,
+            _captureMode ==
+                PreviewCaptureMode.Region);
+    }
+
+    private void Boundary_OnRegionChanged(
+        object? sender,
+        EventArgs e)
+    {
+        if (_captureMode !=
+                PreviewCaptureMode.Region ||
+            _boundary is null)
+            return;
+
+        _regionRect =
+            _boundary.CurrentPixelRect;
+
+        SourceTitle.Text =
+            $"Custom region · {_regionRect.Value.Width} × {_regionRect.Value.Height}";
+        UpdateReadyDetail();
+    }
+
+    private static PixelRect CreateDefaultRegion(
+        PixelRect display)
+    {
+        var maxWidth =
+            Math.Max(
+                320,
+                (int)Math.Round(
+                    display.Width * 0.74));
+
+        var width =
+            Math.Min(
+                display.Width - 40,
+                maxWidth);
+
+        width =
+            Math.Max(
+                320,
+                width);
+
+        var height =
+            (int)Math.Round(
+                width * 9.0 / 16.0);
+
+        var maxHeight =
+            Math.Max(
+                180,
+                display.Height - 40);
+
+        if (height > maxHeight)
+        {
+            height =
+                maxHeight;
+            width =
+                Math.Max(
+                    320,
+                    (int)Math.Round(
+                        height * 16.0 / 9.0));
+        }
+
+        var x =
+            display.X +
+            (display.Width - width) / 2;
+        var y =
+            display.Y +
+            (display.Height - height) / 2;
+
+        return new PixelRect(
+            x,
+            y,
+            width,
+            height);
     }
 
     private void MicrophoneDevice_OnClick(
@@ -245,9 +683,11 @@ public sealed partial class MainWindow : Window
         Button selected)
     {
         foreach (var option in options)
-            option.Classes.Remove("selected");
+            option.Classes.Remove(
+                "selected");
 
-        selected.Classes.Add("selected");
+        selected.Classes.Add(
+            "selected");
     }
 
     private void RefreshInputLabels()
@@ -268,6 +708,18 @@ public sealed partial class MainWindow : Window
             _session.CameraEnabled;
     }
 
+    private void RefreshSettingsSurface()
+    {
+        RecordHotkeyText.Text =
+            _settings.RecordHotkey;
+
+        RecordButton.SetValue(
+            AutomationProperties.HelpTextProperty,
+            $"Starts the interaction preview. Shortcut {_settings.RecordHotkey}.");
+
+        UpdateReadyDetail();
+    }
+
     private void Record_OnClick(
         object? sender,
         RoutedEventArgs e) =>
@@ -284,7 +736,8 @@ public sealed partial class MainWindow : Window
 
         _controller =
             new RecordingControllerWindow(
-                _session);
+                _session,
+                _settings);
 
         _controller.StopRequested +=
             Controller_OnStopRequested;
@@ -314,7 +767,7 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e)
     {
         StatusDetail.Text =
-            "Preview action · native output path will open after P6UI.4";
+            "Preview action · native output path binds in P6UI.4";
     }
 
     private void ShowFolder_OnClick(
@@ -322,7 +775,7 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e)
     {
         StatusDetail.Text =
-            "Preview action · output folder binding arrives with native bridge";
+            "Preview action · folder binding arrives with native bridge";
     }
 
     private void ApplySessionState()
@@ -333,9 +786,9 @@ public sealed partial class MainWindow : Window
         {
             case PreviewRecordingPhase.Recording:
                 StatusDot.Fill =
-                    Brush.Parse("#FF4D57");
+                    Brush.Parse("#FF5360");
                 StatusText.Foreground =
-                    Brush.Parse("#FF4D57");
+                    Brush.Parse("#FF6671");
                 StatusText.Text =
                     "Recording";
                 StatusDetail.Text =
@@ -384,8 +837,6 @@ public sealed partial class MainWindow : Window
                     Brush.Parse("#49D49D");
                 StatusText.Text =
                     "Ready";
-                StatusDetail.Text =
-                    "Ready to record · F9 starts";
                 SavedActions.IsVisible =
                     false;
                 RecordText.Text =
@@ -395,18 +846,41 @@ public sealed partial class MainWindow : Window
                 RecordButton.SetValue(
                     AutomationProperties.NameProperty,
                     "Start recording");
+                UpdateReadyDetail();
                 break;
         }
+    }
+
+    private void UpdateReadyDetail()
+    {
+        if (_session.Phase is
+            PreviewRecordingPhase.Recording or
+            PreviewRecordingPhase.Paused or
+            PreviewRecordingPhase.Saved)
+            return;
+
+        var source =
+            _captureMode switch
+            {
+                PreviewCaptureMode.Window =>
+                    "Window",
+                PreviewCaptureMode.Region =>
+                    _regionRect is { } rect
+                        ? $"Region {rect.Width}×{rect.Height}"
+                        : "Region",
+                PreviewCaptureMode.Game =>
+                    "Game",
+                _ =>
+                    "Display"
+            };
+
+        StatusDetail.Text =
+            $"{source} · 60 fps · Smart Zoom on · {_settings.RecordHotkey}";
     }
 
     public void ApplyLongNameStressPreview()
     {
         Width = MinWidth;
-
-        SourceTitle.Text =
-            "Display 1 — Samsung Odyssey Neo G9 Super Ultra Wide · 7680 × 2160";
-        SourceSubtitle.Text =
-            "Primary display · HDR · 240 Hz · extremely long display descriptor";
 
         _microphoneDevice =
             "Professional USB Condenser Microphone — Conference Room Interface Channel 1/2";
@@ -419,6 +893,11 @@ public sealed partial class MainWindow : Window
         SelectDeviceOption(
             _cameraOptions,
             CameraOptionLong);
+
+        SourceTitle.Text =
+            "Display 1 — Samsung Odyssey Neo G9 Super Ultra Wide";
+        SourceSubtitle.Text =
+            "7680 × 2160 · HDR · 240 Hz · extremely long display descriptor";
 
         RefreshInputLabels();
     }
