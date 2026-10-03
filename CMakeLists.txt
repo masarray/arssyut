@@ -297,6 +297,14 @@ if(ARSSYUT_BUILD_TESTS)
             PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}/src
         )
+        target_compile_definitions(
+            arssyut_region_geometry_tests
+            PRIVATE
+                WIN32_LEAN_AND_MEAN
+                NOMINMAX
+                _WIN32_WINNT=0x0A00
+                WINVER=0x0A00
+        )
         target_link_libraries(
             arssyut_region_geometry_tests
             PRIVATE
