@@ -428,7 +428,30 @@ sharpen filter:
   is bounded to -0.018;
 - positive-detail/light-on-dark text must remain on the original P5D response;
 - changes to P5D.5 require a matched white-browser + dark-IDE real-recording
-  comparison at both native and fit-to-player playback sizes.
+  comparison at both native and fit-to-player playback sizes;
+- P5D.6 UI-structure preservation is a separate shallow-edge path; do not
+  solve disappearing borders by increasing global text-legibility strength;
+- Pixel Accurate must keep `ui_structure == 0`;
+- Clean Screen may use stronger UI-structure preservation than Vivid
+  Presentation, but both must remain bounded product constants;
+- structure preservation may operate only on shallow neutral/low-chroma detail
+  and must exclude strong text/icon edges;
+- darker neutral structure may be reinforced only in bright context, and
+  lighter neutral structure only in dark context;
+- P5D.6 structure delta is hard bounded to [-0.010, +0.007] luma;
+- UI-structure preservation must run after final tone shaping so later grade
+  stages cannot erase the protected separator again;
+- P5D.6 may not add render passes, resource allocation, readback or CPU
+  structure detection;
+- the default encoder must prefer unconstrained bitrate-controlled VBR rather
+  than quality-VBR, because the recording bitrate budget must remain
+  authoritative for screen-content fidelity;
+- explicit VBR negotiation must set the requested mean bitrate; QualityVsSpeed
+  is optional and may fall back independently;
+- unsupported rate-control attributes must fall back cleanly instead of
+  failing recording startup;
+- any rate-control change requires diagnostics proving the negotiated mode and
+  a real MP4 bitrate/visual check.
 
 ---
 
