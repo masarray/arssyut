@@ -64,9 +64,12 @@ private:
     HWND boundary_ = nullptr;
     HWND hide_main_ = nullptr;
 
+    HWND fps_label_ = nullptr;
     HWND fps_ = nullptr;
+    HWND visual_label_ = nullptr;
     HWND visual_ = nullptr;
 
+    HWND output_label_ = nullptr;
     HWND output_path_ = nullptr;
     HWND browse_output_ = nullptr;
 
