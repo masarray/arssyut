@@ -107,6 +107,8 @@ private:
     bool camera_on_ = false;
     bool boundary_editable_ = false;
     bool buffered_paint_initialized_ = false;
+    RECT boundary_rect_cache_{};
+    bool boundary_rect_valid_ = false;
 
     std::wstring toolbar_status_;
     std::wstring toolbar_elapsed_;
