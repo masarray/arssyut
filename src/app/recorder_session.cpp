@@ -1171,6 +1171,15 @@ void RecorderSession::write_diagnostics(
                 utf8(
                     config_.target.label));
 
+        auto applied_visual =
+            config_.visual;
+        arssyut::visual::apply_adaptive(
+            applied_visual,
+            visual_adaptive);
+        applied_visual =
+            arssyut::visual::sanitize(
+                applied_visual);
+
         out
             << "{\n"
             << "  \"schema\": \"arssyut-diagnostics-v1\",\n"
@@ -1334,7 +1343,21 @@ void RecorderSession::write_diagnostics(
             << visual_adaptive.color_risk << ",\n"
             << "  \"visual_adaptive_hot_risk\": "
             << visual_adaptive.hot_risk << ",\n"
-            << "  \"visual_analysis_available\": 
+            << "  \"visual_applied_smart_exposure\": "
+            << applied_visual.smart_exposure << ",\n"
+            << "  \"visual_applied_smart_pop\": "
+            << applied_visual.smart_pop << ",\n"
+            << "  \"visual_applied_smart_highlight\": "
+            << applied_visual.smart_highlight << ",\n"
+            << "  \"visual_applied_smart_shadow\": "
+            << applied_visual.smart_shadow << ",\n"
+            << "  \"visual_applied_smart_strength\": "
+            << applied_visual.smart_strength << ",\n"
+            << "  \"visual_applied_smart_chroma_limit\": "
+            << applied_visual.smart_chroma_limit << ",\n"
+            << "  \"visual_applied_screen_ui\": "
+            << applied_visual.smart_screen_ui << ",\n"
+            << "  \"visual_analysis_available\": "
             << (snapshot_value.visual_analysis_available ? "true" : "false")
             << ",\n"
             << "  \"visual_analysis_submitted\": "
