@@ -492,6 +492,70 @@ void ArVisualSceneModel::update_adaptive() noexcept
     adaptive_.white_ui =
         bright_neutral_ui;
 
+    /*
+     * P5E screen-native confidence.
+     *
+     * Screen UI is characterized by authored flat neutral surfaces much more
+     * than by a camera histogram. This intentionally uses only local luma /
+     * saturation topology from the fixed 64x36 sample: no OCR, window
+     * detection or application-specific heuristics.
+     */
+    const float low_chroma_ui =
+        1.0f -
+        std::clamp(
+            (s.mean_saturation - 0.10f) / 0.20f,
+            0.0f,
+            1.0f);
+    const float neutral_flat_score =
+        std::clamp(
+            (s.neutral_flat_frac - 0.24f) / 0.56f,
+            0.0f,
+            1.0f);
+    const float flat_score =
+        std::clamp(
+            (s.flat_frac - 0.38f) / 0.48f,
+            0.0f,
+            1.0f);
+
+    const float screen_ui =
+        std::max(
+            bright_neutral_ui,
+            neutral_flat_score *
+                low_chroma_ui *
+                (0.72f + flat_score * 0.28f));
+
+    const float bright_surface =
+        std::clamp(
+            (s.bright_neutral_flat_frac - 0.04f) /
+                0.20f,
+            0.0f,
+            1.0f);
+    const float dark_surface =
+        std::clamp(
+            (s.dark_neutral_flat_frac - 0.04f) /
+                0.24f,
+            0.0f,
+            1.0f);
+
+    const float mixed_ui =
+        std::min(
+            bright_surface,
+            dark_surface) *
+        screen_ui;
+
+    adaptive_.screen_ui =
+        std::clamp(
+            std::max(
+                screen_ui,
+                mixed_ui),
+            0.0f,
+            1.0f);
+    adaptive_.mixed_ui =
+        std::clamp(
+            mixed_ui,
+            0.0f,
+            1.0f);
+
     const float upper_key =
         s.p90_luma * 0.72f +
         s.p98_luma * 0.28f;
@@ -570,6 +634,12 @@ void ArVisualSceneModel::update_adaptive() noexcept
             vivid_pressure,
             hot_pressure
         });
+
+    adaptive_.color_risk =
+        color_risk;
+    adaptive_.hot_risk =
+        hot_pressure;
+
     const float muted_lift =
         std::clamp(
             (0.18f - s.mean_saturation) * 0.16f,
@@ -648,22 +718,96 @@ void apply_adaptive(
     ArVisualGradeSettings &grade,
     const ArVisualAdaptiveState &adaptive) noexcept
 {
+    /*
+     * P5E keeps the scene model capable of expressing camera-style pressure,
+     * then converts that evidence according to the selected product mode.
+     * screen_native therefore changes policy, not measurement.
+     *
+     * For screen UI, global exposure/shadow/neutral-highlight normalization is
+     * strongly suppressed. Color/hot-vivid risk remains authoritative and may
+     * still reduce pop, strength and chroma ceiling.
+     */
+    const float screen_confidence =
+        std::clamp(
+            std::max(
+                adaptive.screen_ui,
+                adaptive.mixed_ui),
+            0.0f,
+            1.0f);
+
+    const float screen_weight =
+        std::clamp(
+            grade.screen_native *
+                screen_confidence,
+            0.0f,
+            1.0f);
+
+    const auto blend =
+        [screen_weight](
+            float camera_value,
+            float screen_value) noexcept {
+            return camera_value +
+                (screen_value - camera_value) *
+                    screen_weight;
+        };
+
+    const float screen_exposure =
+        adaptive.exposure * 0.05f;
+    const float screen_highlight =
+        std::max(
+            adaptive.hot_risk,
+            adaptive.highlight * 0.10f);
+    const float screen_shadow =
+        adaptive.shadow * 0.08f;
+    const float screen_pop =
+        std::min(
+            adaptive.pop,
+            1.0f);
+    const float screen_strength =
+        std::clamp(
+            1.0f -
+                adaptive.color_risk * 0.34f -
+                adaptive.hot_risk * 0.08f,
+            0.66f,
+            1.0f);
+    const float screen_chroma_limit =
+        std::clamp(
+            0.985f -
+                adaptive.color_risk * 0.060f -
+                adaptive.hot_risk * 0.015f,
+            0.91f,
+            0.985f);
+
     grade.smart_exposure =
-        adaptive.exposure;
+        blend(
+            adaptive.exposure,
+            screen_exposure);
     grade.smart_pop =
-        adaptive.pop;
+        blend(
+            adaptive.pop,
+            screen_pop);
     grade.smart_highlight =
-        adaptive.highlight;
+        blend(
+            adaptive.highlight,
+            screen_highlight);
     grade.smart_shadow =
-        adaptive.shadow;
+        blend(
+            adaptive.shadow,
+            screen_shadow);
     grade.smart_strength =
-        adaptive.strength;
+        blend(
+            adaptive.strength,
+            screen_strength);
     grade.smart_chroma_limit =
-        adaptive.chroma_limit;
+        blend(
+            adaptive.chroma_limit,
+            screen_chroma_limit);
     grade.smart_clean =
         adaptive.clean;
     grade.smart_separation =
         adaptive.separation;
+    grade.smart_screen_ui =
+        screen_weight;
 }
 
 } // namespace arssyut::visual
