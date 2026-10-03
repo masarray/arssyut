@@ -1,6 +1,7 @@
 #include "app/device_catalog.hpp"
 #include "app/lucide_icons.hpp"
 #include "app/recorder_overlay.hpp"
+#include "app/region_geometry.hpp"
 #include "app/recorder_session.hpp"
 #include "app/recorder_settings_window.hpp"
 #include "app/recorder_ui_model.hpp"
@@ -745,114 +746,6 @@ void refresh_sources(AppWindow &app)
     return result;
 }
 
-[[nodiscard]] RECT clamp_region_rect(
-    RECT rect,
-    RECT bounds) noexcept
-{
-    const LONG bounds_width =
-        bounds.right - bounds.left;
-    const LONG bounds_height =
-        bounds.bottom - bounds.top;
-
-    LONG width =
-        std::max<LONG>(
-            320,
-            rect.right - rect.left);
-    LONG height =
-        std::max<LONG>(
-            180,
-            rect.bottom - rect.top);
-
-    width =
-        std::min(
-            width,
-            bounds_width);
-    height =
-        std::min(
-            height,
-            bounds_height);
-
-    LONG left =
-        std::clamp(
-            rect.left,
-            bounds.left,
-            bounds.right - width);
-    LONG top =
-        std::clamp(
-            rect.top,
-            bounds.top,
-            bounds.bottom - height);
-
-    return {
-        left,
-        top,
-        left + width,
-        top + height};
-}
-
-[[nodiscard]] RECT default_region_rect(
-    RECT bounds) noexcept
-{
-    const LONG bounds_width =
-        bounds.right - bounds.left;
-    const LONG bounds_height =
-        bounds.bottom - bounds.top;
-
-    LONG width =
-        std::max<LONG>(
-            320,
-            static_cast<LONG>(
-                std::lround(
-                    static_cast<double>(
-                        bounds_width) *
-                    0.68)));
-
-    width =
-        std::min(
-            width,
-            bounds_width);
-
-    LONG height =
-        std::max<LONG>(
-            180,
-            static_cast<LONG>(
-                std::lround(
-                    static_cast<double>(
-                        width) *
-                    9.0 /
-                    16.0)));
-
-    if (height > bounds_height) {
-        height =
-            bounds_height;
-        width =
-            std::min(
-                bounds_width,
-                static_cast<LONG>(
-                    std::lround(
-                        static_cast<double>(
-                            height) *
-                        16.0 /
-                        9.0)));
-    }
-
-    RECT rect{};
-    rect.left =
-        bounds.left +
-        (bounds_width - width) / 2;
-    rect.top =
-        bounds.top +
-        (bounds_height - height) / 2;
-    rect.right =
-        rect.left + width;
-    rect.bottom =
-        rect.top + height;
-
-    return clamp_region_rect(
-        rect,
-        bounds);
-}
-
 [[nodiscard]] bool ensure_region_rect(
     AppWindow &app,
     const RecorderTarget &target)
@@ -868,16 +761,19 @@ void refresh_sources(AppWindow &app)
     if (!app.ui.
             region_screen_rect_valid) {
         app.ui.region_screen_rect =
-            default_region_rect(bounds);
+            arssyut::app::
+                default_region_rect(
+                    bounds);
         app.ui.region_screen_rect_valid =
             true;
         return true;
     }
 
     app.ui.region_screen_rect =
-        clamp_region_rect(
-            app.ui.region_screen_rect,
-            bounds);
+        arssyut::app::
+            clamp_region_rect(
+                app.ui.region_screen_rect,
+                bounds);
 
     return true;
 }
@@ -901,68 +797,30 @@ void refresh_sources(AppWindow &app)
         return false;
     }
 
-    RECT region =
-        clamp_region_rect(
-            app.ui.region_screen_rect,
-            bounds);
+    arssyut::app::
+        RegionCropMapping mapping;
 
-    LONG width =
-        region.right - region.left;
-    LONG height =
-        region.bottom - region.top;
-
-    // NV12/H.264 requires chroma-aligned dimensions. Keep the user's region
-    // spatially stable and trim at most one pixel from right/bottom.
-    width &= ~1L;
-    height &= ~1L;
-
-    if (width < 320 ||
-        height < 180) {
+    if (!arssyut::app::
+            map_region_to_crop(
+                bounds,
+                app.ui.
+                    region_screen_rect,
+                mapping)) {
         return false;
     }
 
-    region.right =
-        region.left + width;
-    region.bottom =
-        region.top + height;
-
-    const LONG crop_left =
-        region.left - bounds.left;
-    const LONG crop_top =
-        region.top - bounds.top;
-
-    config.crop = {
-        static_cast<std::uint32_t>(
-            std::max<LONG>(
-                0,
-                crop_left)),
-        static_cast<std::uint32_t>(
-            std::max<LONG>(
-                0,
-                crop_top)),
-        static_cast<std::uint32_t>(
-            std::max<LONG>(
-                0,
-                crop_left + width)),
-        static_cast<std::uint32_t>(
-            std::max<LONG>(
-                0,
-                crop_top + height))};
-
-    config.output_size = {
-        static_cast<std::uint32_t>(
-            width),
-        static_cast<std::uint32_t>(
-            height)};
-
+    config.crop =
+        mapping.crop;
+    config.output_size =
+        mapping.output_size;
     config.presentation_screen_rect =
-        region;
+        mapping.screen_rect;
     config.
         presentation_screen_rect_valid =
             true;
 
     app.ui.region_screen_rect =
-        region;
+        mapping.screen_rect;
     app.ui.region_screen_rect_valid =
         true;
 
@@ -2776,10 +2634,11 @@ LRESULT CALLBACK window_proc(
                             *target,
                             bounds)) {
                     app->ui.region_screen_rect =
-                        clamp_region_rect(
-                            app->overlay.
-                                boundary_rect(),
-                            bounds);
+                        arssyut::app::
+                            clamp_region_rect(
+                                app->overlay.
+                                    boundary_rect(),
+                                bounds);
                     app->ui.
                         region_screen_rect_valid =
                             true;
