@@ -59,6 +59,17 @@ public sealed partial class SettingsWindow : Window
         RoutedEventArgs e) =>
         Close();
 
+    private void Window_OnKeyDown(
+        object? sender,
+        KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+            e.Handled = true;
+        }
+    }
+
     private void Nav_OnClick(
         object? sender,
         RoutedEventArgs e)
