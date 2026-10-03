@@ -153,6 +153,150 @@ bool ArVisualSceneModel::observe_bgra8(
         }
     }
 
+    /*
+     * P5E screen-topology pass.
+     *
+     * The production analyzer is a fixed 64x36 texture, so a second pass over
+     * ~2304 pixels is cheap and avoids any heap/storage growth. We measure
+     * authored flat neutral surfaces and local edge density rather than trying
+     * to recognize text/windows semantically.
+     */
+    std::uint32_t topology_samples = 0;
+    std::uint32_t flat = 0;
+    std::uint32_t neutral_flat = 0;
+    std::uint32_t bright_neutral_flat = 0;
+    std::uint32_t dark_neutral_flat = 0;
+    std::uint32_t edges = 0;
+
+    const auto sample_y_sat =
+        [](const std::uint8_t *sample,
+           float &y,
+           float &saturation) noexcept -> bool {
+            const float b =
+                sample[0] * (1.0f / 255.0f);
+            const float g =
+                sample[1] * (1.0f / 255.0f);
+            const float r =
+                sample[2] * (1.0f / 255.0f);
+            const float a =
+                sample[3] * (1.0f / 255.0f);
+
+            y =
+                0.2126f * r +
+                0.7152f * g +
+                0.0722f * b;
+
+            const float max_c =
+                std::max({r, g, b});
+            if (a < 0.035f ||
+                (y < 0.020f &&
+                 max_c < 0.035f)) {
+                saturation = 0.0f;
+                return false;
+            }
+
+            const float min_c =
+                std::min({r, g, b});
+            saturation =
+                max_c > 0.001f
+                    ? (max_c - min_c) / max_c
+                    : 0.0f;
+            return true;
+        };
+
+    for (std::uint32_t row = 0;
+         row < height;
+         ++row) {
+        const std::uint8_t *row_px =
+            pixels +
+            static_cast<std::size_t>(row) *
+                row_pitch;
+
+        for (std::uint32_t col = 0;
+             col < width;
+             ++col) {
+            const std::uint8_t *px =
+                row_px +
+                static_cast<std::size_t>(col) *
+                    4u;
+
+            float y = 0.0f;
+            float saturation = 0.0f;
+            if (!sample_y_sat(
+                    px,
+                    y,
+                    saturation)) {
+                continue;
+            }
+
+            float max_delta = 0.0f;
+            bool have_neighbor = false;
+
+            if (col + 1 < width) {
+                float neighbor_y = 0.0f;
+                float neighbor_sat = 0.0f;
+                if (sample_y_sat(
+                        px + 4,
+                        neighbor_y,
+                        neighbor_sat)) {
+                    max_delta =
+                        std::max(
+                            max_delta,
+                            std::abs(
+                                y -
+                                neighbor_y));
+                    have_neighbor = true;
+                }
+            }
+
+            if (row + 1 < height) {
+                const std::uint8_t *below =
+                    pixels +
+                    static_cast<std::size_t>(
+                        row + 1) *
+                        row_pitch +
+                    static_cast<std::size_t>(col) *
+                        4u;
+
+                float neighbor_y = 0.0f;
+                float neighbor_sat = 0.0f;
+                if (sample_y_sat(
+                        below,
+                        neighbor_y,
+                        neighbor_sat)) {
+                    max_delta =
+                        std::max(
+                            max_delta,
+                            std::abs(
+                                y -
+                                neighbor_y));
+                    have_neighbor = true;
+                }
+            }
+
+            if (!have_neighbor)
+                continue;
+
+            ++topology_samples;
+
+            if (max_delta <= 0.018f) {
+                ++flat;
+
+                if (saturation < 0.12f) {
+                    ++neutral_flat;
+
+                    if (y >= 0.72f)
+                        ++bright_neutral_flat;
+                    if (y <= 0.24f)
+                        ++dark_neutral_flat;
+                }
+            }
+
+            if (max_delta >= 0.045f)
+                ++edges;
+        }
+    }
+
     if (active < 8)
         return false;
 
@@ -204,6 +348,31 @@ bool ArVisualSceneModel::observe_bgra8(
         static_cast<float>(colored) *
         inv_active;
 
+    const float inv_topology =
+        topology_samples > 0
+            ? 1.0f /
+                static_cast<float>(
+                    topology_samples)
+            : 0.0f;
+
+    const float frac_flat =
+        static_cast<float>(flat) *
+        inv_topology;
+    const float frac_neutral_flat =
+        static_cast<float>(neutral_flat) *
+        inv_topology;
+    const float frac_bright_neutral_flat =
+        static_cast<float>(
+            bright_neutral_flat) *
+        inv_topology;
+    const float frac_dark_neutral_flat =
+        static_cast<float>(
+            dark_neutral_flat) *
+        inv_topology;
+    const float frac_edges =
+        static_cast<float>(edges) *
+        inv_topology;
+
     auto &s = stats_;
 
     if (!s.primed) {
@@ -219,6 +388,14 @@ bool ArVisualSceneModel::observe_bgra8(
         s.hot_vivid_frac = frac_hot_vivid;
         s.neutral_frac = frac_neutral;
         s.colored_frac = frac_colored;
+        s.flat_frac = frac_flat;
+        s.neutral_flat_frac =
+            frac_neutral_flat;
+        s.bright_neutral_flat_frac =
+            frac_bright_neutral_flat;
+        s.dark_neutral_flat_frac =
+            frac_dark_neutral_flat;
+        s.edge_frac = frac_edges;
         s.primed = true;
     } else {
         const float dt =
@@ -254,6 +431,22 @@ bool ArVisualSceneModel::observe_bgra8(
             (frac_neutral - s.neutral_frac) * alpha;
         s.colored_frac +=
             (frac_colored - s.colored_frac) * alpha;
+        s.flat_frac +=
+            (frac_flat - s.flat_frac) * alpha;
+        s.neutral_flat_frac +=
+            (frac_neutral_flat -
+             s.neutral_flat_frac) *
+            alpha;
+        s.bright_neutral_flat_frac +=
+            (frac_bright_neutral_flat -
+             s.bright_neutral_flat_frac) *
+            alpha;
+        s.dark_neutral_flat_frac +=
+            (frac_dark_neutral_flat -
+             s.dark_neutral_flat_frac) *
+            alpha;
+        s.edge_frac +=
+            (frac_edges - s.edge_frac) * alpha;
     }
 
     update_adaptive();
