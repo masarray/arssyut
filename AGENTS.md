@@ -649,9 +649,21 @@ Rules:
   unsupported recording request rather than pretend the stream was recorded;
 - Settings is a separate categorized configuration window. Opening or closing
   it does not mutate recorder session truth;
-- unsupported Region/Game backends may be represented in the P6R UX preview
-  because the user explicitly requested UX-first development, but Record must
-  reject them until the backend milestone is complete;
+- Region is no longer decorative UX: its editable virtual-screen rectangle is
+  mapped once into a canonical source CropRect before session start. The
+  compositor receives that crop directly, while presentation input normalizes
+  against the same region. Never create a second Region capture/compositor path;
+- Region editing is event-driven. The idle UI timer must not continuously
+  overwrite an in-progress native move/resize loop. Boundary changes publish
+  back to the UI model only after the native interaction completes;
+- Game may remain represented as an explicit future backend, but Record must
+  reject it until the dedicated backend milestone is complete;
+- recording overlays must avoid capture-cadence repaint work. Cache unchanged
+  toolbar state, use buffered painting for the toolbar surface, and invalidate
+  only on actual state/timer/icon changes;
+- interactive controls use one compact visual system. Do not mix default gray
+  Win32 pushbuttons into the product recorder shell; vector icon geometry and
+  button chrome must remain centered, DPI-scaled and tactile;
 - UI work must not alter the locked P5D.7/P5E visual/color/encoder baseline;
 - P6R cannot merge until Windows CI passes and real GUI testing confirms the
   previous Record/Stop freeze is gone, capture boundary/toolbar behavior is
