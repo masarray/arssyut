@@ -480,8 +480,14 @@ float4 apply_arvisual(float4 px, float2 uv)
      */
     float3 neighborhood_hsv =
         arvisual_rgb2hsv(smooth_src);
+    /*
+     * A one-pixel vertical glyph edge has bright neighbors left/right but
+     * same-stroke neighbors above/below, so the cardinal average is lower
+     * than the actual page background. Calibrate the confidence ramp for that
+     * real raster topology rather than requiring an isolated dark pixel.
+     */
     float bright_neutral_neighborhood =
-        smoothstep(0.72, 0.94, neighbor_luma) *
+        smoothstep(0.64, 0.88, neighbor_luma) *
         (1.0 - smoothstep(0.08, 0.24, neighborhood_hsv.y));
     float dark_stroke_confidence =
         smoothstep(0.012, 0.060, -detail);
