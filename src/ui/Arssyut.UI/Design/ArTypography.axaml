@@ -1,0 +1,17 @@
+<ResourceDictionary
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+  <FontFamily x:Key="ArFont.Inter">fonts:Inter#Inter</FontFamily>
+
+  <sys:Double x:Key="ArType.Micro">11</sys:Double>
+  <sys:Double x:Key="ArType.Body">12</sys:Double>
+  <sys:Double x:Key="ArType.Control">12</sys:Double>
+  <sys:Double x:Key="ArType.Section">13</sys:Double>
+  <sys:Double x:Key="ArType.Title">16</sys:Double>
+
+  <FontWeight x:Key="ArWeight.Regular">Regular</FontWeight>
+  <FontWeight x:Key="ArWeight.Medium">Medium</FontWeight>
+  <FontWeight x:Key="ArWeight.SemiBold">SemiBold</FontWeight>
+</ResourceDictionary>
