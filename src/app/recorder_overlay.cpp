@@ -1,8 +1,12 @@
 #include "app/recorder_overlay.hpp"
+#include "app/lucide_icons.hpp"
+#include "app/recorder_ui_model.hpp"
 
 #ifdef _WIN32
 
 #include <dwmapi.h>
+#include <uxtheme.h>
+#include <windowsx.h>
 
 #include <algorithm>
 
@@ -97,6 +101,9 @@ RecorderOverlay::~RecorderOverlay()
         DeleteObject(small_font_);
     if (timer_font_)
         DeleteObject(timer_font_);
+
+    if (buffered_paint_initialized_)
+        BufferedPaintUnInit();
 }
 
 bool RecorderOverlay::create(
@@ -110,6 +117,9 @@ bool RecorderOverlay::create(
     instance_ = instance;
     owner_ = owner;
     commands_ = commands;
+
+    buffered_paint_initialized_ =
+        SUCCEEDED(BufferedPaintInit());
 
     WNDCLASSEXW toolbar_class{};
     toolbar_class.cbSize =
@@ -186,7 +196,7 @@ bool RecorderOverlay::create(
                 WS_EX_NOACTIVATE,
             kToolbarClass,
             L"",
-            WS_POPUP,
+            WS_POPUP | WS_CLIPCHILDREN,
             0, 0, 330, 54,
             nullptr,
             nullptr,
@@ -399,20 +409,46 @@ void RecorderOverlay::update_toolbar(
     if (!toolbar_)
         return;
 
+    const bool status_changed =
+        toolbar_status_ != status;
+    const bool elapsed_changed =
+        toolbar_elapsed_ != elapsed;
+    const bool pause_changed =
+        paused_ != paused ||
+        pause_enabled_ != pause_enabled;
+    const bool microphone_changed =
+        microphone_on_ != microphone_on;
+    const bool camera_changed =
+        camera_on_ != camera_on;
+
     paused_ = paused;
+    pause_enabled_ = pause_enabled;
     microphone_on_ = microphone_on;
     camera_on_ = camera_on;
 
-    SetWindowTextW(
-        status_,
-        status.c_str());
-    SetWindowTextW(
-        elapsed_,
-        elapsed.c_str());
+    if (status_changed) {
+        toolbar_status_ = status;
+        SetWindowTextW(
+            status_,
+            status.c_str());
+    }
 
-    EnableWindow(
-        pause_,
-        pause_enabled ? TRUE : FALSE);
+    if (elapsed_changed) {
+        toolbar_elapsed_ = elapsed;
+        SetWindowTextW(
+            elapsed_,
+            elapsed.c_str());
+    }
+
+    if (pause_changed) {
+        EnableWindow(
+            pause_,
+            pause_enabled ? TRUE : FALSE);
+        InvalidateRect(
+            pause_,
+            nullptr,
+            FALSE);
+    }
 
     // P6R exposes the intended recorder toolbar grammar now, but these
     // actions must not claim runtime support before their backends exist.
@@ -423,10 +459,29 @@ void RecorderOverlay::update_toolbar(
         camera_,
         FALSE);
 
-    InvalidateRect(
-        toolbar_,
-        nullptr,
-        FALSE);
+    if (microphone_changed) {
+        InvalidateRect(
+            microphone_,
+            nullptr,
+            FALSE);
+    }
+
+    if (camera_changed) {
+        InvalidateRect(
+            camera_,
+            nullptr,
+            FALSE);
+    }
+
+    // Do not repaint the entire toolbar at capture cadence. Status/timer
+    // changes are sparse and child controls repaint themselves.
+    if (status_changed ||
+        elapsed_changed) {
+        InvalidateRect(
+            toolbar_,
+            nullptr,
+            FALSE);
+    }
 }
 
 void RecorderOverlay::hide_toolbar()
@@ -442,7 +497,8 @@ void RecorderOverlay::hide_toolbar()
 
 void RecorderOverlay::show_boundary(
     RECT screen_rect,
-    bool exclude_from_capture)
+    bool exclude_from_capture,
+    bool editable)
 {
     if (!boundary_)
         return;
@@ -454,6 +510,27 @@ void RecorderOverlay::show_boundary(
         hide_boundary();
         return;
     }
+
+    boundary_editable_ = editable;
+
+    LONG_PTR ex_style =
+        GetWindowLongPtrW(
+            boundary_,
+            GWL_EXSTYLE);
+
+    if (editable) {
+        ex_style &=
+            ~static_cast<LONG_PTR>(
+                WS_EX_TRANSPARENT);
+    } else {
+        ex_style |=
+            WS_EX_TRANSPARENT;
+    }
+
+    SetWindowLongPtrW(
+        boundary_,
+        GWL_EXSTYLE,
+        ex_style);
 
     set_capture_exclusion(
         boundary_,
@@ -474,12 +551,23 @@ void RecorderOverlay::show_boundary(
         width,
         height,
         SWP_NOACTIVATE |
-            SWP_SHOWWINDOW);
+            SWP_SHOWWINDOW |
+            SWP_FRAMECHANGED);
 
     InvalidateRect(
         boundary_,
         nullptr,
         TRUE);
+}
+
+RECT RecorderOverlay::boundary_rect() const noexcept
+{
+    RECT rect{};
+    if (boundary_)
+        GetWindowRect(
+            boundary_,
+            &rect);
+    return rect;
 }
 
 void RecorderOverlay::hide_boundary()
@@ -552,19 +640,18 @@ void RecorderOverlay::draw_toolbar_button(
     if (id == commands_.stop)
         fill_color = kRecord;
     else if (active)
-        fill_color = RGB(32, 83, 78);
+        fill_color = RGB(107, 32, 36);
     else if (!enabled)
         fill_color = RGB(30, 33, 38);
 
     HBRUSH fill =
-        CreateSolidBrush(
-            fill_color);
+        CreateSolidBrush(fill_color);
     HPEN pen =
         CreatePen(
             PS_SOLID,
             1,
             active
-                ? kActive
+                ? RGB(238, 86, 86)
                 : kToolbarBorder);
 
     HGDIOBJ old_brush =
@@ -581,137 +668,63 @@ void RecorderOverlay::draw_toolbar_button(
         9,
         9);
 
-    const COLORREF icon =
+    const COLORREF icon_color =
         enabled
-            ? RGB(244, 246, 249)
-            : RGB(100, 105, 112);
+            ? RGB(250, 251, 252)
+            : RGB(102, 108, 116);
 
-    HPEN icon_pen =
-        CreatePen(
-            PS_SOLID,
+    RECT icon_rect = rect;
+
+    if (id == commands_.stop) {
+        icon_rect.left += 11;
+        icon_rect.right =
+            icon_rect.left + 16;
+        icon_rect.top += 10;
+        icon_rect.bottom -= 10;
+
+        draw_lucide_icon(
+            dc,
+            LucideIcon::Stop,
+            icon_rect,
+            icon_color,
             2,
-            icon);
-    SelectObject(dc, icon_pen);
-
-    const int cx =
-        (rect.left + rect.right) / 2;
-    const int cy =
-        (rect.top + rect.bottom) / 2;
-
-    if (id == commands_.pause) {
-        MoveToEx(
-            dc,
-            cx - 4,
-            cy - 7,
-            nullptr);
-        LineTo(
-            dc,
-            cx - 4,
-            cy + 7);
-        MoveToEx(
-            dc,
-            cx + 4,
-            cy - 7,
-            nullptr);
-        LineTo(
-            dc,
-            cx + 4,
-            cy + 7);
-    } else if (
-        id == commands_.microphone) {
-        RoundRect(
-            dc,
-            cx - 4,
-            cy - 8,
-            cx + 4,
-            cy + 4,
-            6,
-            6);
-        Arc(
-            dc,
-            cx - 8,
-            cy - 3,
-            cx + 8,
-            cy + 9,
-            cx - 8,
-            cy + 1,
-            cx + 8,
-            cy + 1);
-        MoveToEx(
-            dc,
-            cx,
-            cy + 7,
-            nullptr);
-        LineTo(
-            dc,
-            cx,
-            cy + 11);
-        MoveToEx(
-            dc,
-            cx - 5,
-            cy + 11,
-            nullptr);
-        LineTo(
-            dc,
-            cx + 5,
-            cy + 11);
-    } else if (
-        id == commands_.camera) {
-        Rectangle(
-            dc,
-            cx - 8,
-            cy - 6,
-            cx + 5,
-            cy + 7);
-        MoveToEx(
-            dc,
-            cx + 5,
-            cy - 3,
-            nullptr);
-        LineTo(
-            dc,
-            cx + 11,
-            cy - 7);
-        LineTo(
-            dc,
-            cx + 11,
-            cy + 8);
-        LineTo(
-            dc,
-            cx + 5,
-            cy + 4);
-    } else if (
-        id == commands_.stop) {
-        HBRUSH white =
-            CreateSolidBrush(icon);
-        RECT stop_rect{
-            rect.left + 12,
-            cy - 5,
-            rect.left + 22,
-            cy + 5};
-        FillRect(
-            dc,
-            &stop_rect,
-            white);
-        DeleteObject(white);
+            true);
 
         RECT text_rect{
-            rect.left + 26,
+            rect.left + 30,
             rect.top,
-            rect.right - 4,
+            rect.right - 5,
             rect.bottom};
         draw_centered_text(
             dc,
             text_rect,
             L"Stop",
             small_font_,
-            icon);
+            icon_color);
+    } else {
+        InflateRect(
+            &icon_rect,
+            -9,
+            -8);
+
+        LucideIcon icon =
+            LucideIcon::Pause;
+        if (id == commands_.microphone)
+            icon = LucideIcon::Mic;
+        else if (id == commands_.camera)
+            icon = LucideIcon::Video;
+
+        draw_lucide_icon(
+            dc,
+            icon,
+            icon_rect,
+            icon_color,
+            2,
+            false);
     }
 
     SelectObject(dc, old_pen);
     SelectObject(dc, old_brush);
-
-    DeleteObject(icon_pen);
     DeleteObject(pen);
     DeleteObject(fill);
 }
@@ -801,6 +814,66 @@ void RecorderOverlay::paint_boundary(HDC dc)
     SelectObject(dc, old_brush);
     DeleteObject(handle_pen);
     DeleteObject(handle);
+
+    if (boundary_editable_) {
+        const int pill_width =
+            std::min(
+                176L,
+                std::max(
+                    112L,
+                    client.right / 3));
+        RECT pill{
+            (client.right - pill_width) / 2,
+            6,
+            (client.right + pill_width) / 2,
+            30};
+
+        HBRUSH pill_brush =
+            CreateSolidBrush(
+                RGB(27, 30, 35));
+        HPEN pill_pen =
+            CreatePen(
+                PS_SOLID,
+                1,
+                RGB(68, 73, 82));
+
+        old_brush =
+            SelectObject(
+                dc,
+                pill_brush);
+        old_pen =
+            SelectObject(
+                dc,
+                pill_pen);
+
+        RoundRect(
+            dc,
+            pill.left,
+            pill.top,
+            pill.right,
+            pill.bottom,
+            10,
+            10);
+
+        SelectObject(dc, old_pen);
+        SelectObject(dc, old_brush);
+        DeleteObject(pill_pen);
+        DeleteObject(pill_brush);
+
+        wchar_t label[96]{};
+        swprintf_s(
+            label,
+            L"Drag · %ld × %ld",
+            client.right,
+            client.bottom);
+
+        draw_centered_text(
+            dc,
+            pill,
+            label,
+            small_font_,
+            RGB(242, 244, 247));
+    }
 }
 
 LRESULT CALLBACK RecorderOverlay::toolbar_proc(
@@ -839,11 +912,38 @@ LRESULT CALLBACK RecorderOverlay::toolbar_proc(
     switch (message) {
     case WM_PAINT: {
         PAINTSTRUCT paint{};
-        HDC dc =
+        HDC target =
             BeginPaint(
                 window,
                 &paint);
-        self->paint_toolbar(dc);
+
+        RECT client{};
+        GetClientRect(
+            window,
+            &client);
+
+        HDC dc = target;
+        HPAINTBUFFER buffer = nullptr;
+
+        if (self->
+                buffered_paint_initialized_) {
+            buffer =
+                BeginBufferedPaint(
+                    target,
+                    &client,
+                    BPBF_COMPATIBLEBITMAP,
+                    nullptr,
+                    &dc);
+        }
+
+        self->paint_toolbar(
+            dc ? dc : target);
+
+        if (buffer)
+            EndBufferedPaint(
+                buffer,
+                TRUE);
+
         EndPaint(
             window,
             &paint);
@@ -948,8 +1048,91 @@ LRESULT CALLBACK RecorderOverlay::boundary_proc(
             lparam);
 
     switch (message) {
-    case WM_NCHITTEST:
+    case WM_NCHITTEST: {
+        if (!self->boundary_editable_)
+            return HTTRANSPARENT;
+
+        RECT rect{};
+        GetWindowRect(
+            window,
+            &rect);
+
+        const int x =
+            GET_X_LPARAM(lparam) -
+            rect.left;
+        const int y =
+            GET_Y_LPARAM(lparam) -
+            rect.top;
+        const int width =
+            rect.right - rect.left;
+        const int height =
+            rect.bottom - rect.top;
+
+        constexpr int edge = 10;
+
+        const bool left =
+            x <= edge;
+        const bool right =
+            x >= width - edge;
+        const bool top =
+            y <= edge;
+        const bool bottom =
+            y >= height - edge;
+
+        if (top && left)
+            return HTTOPLEFT;
+        if (top && right)
+            return HTTOPRIGHT;
+        if (bottom && left)
+            return HTBOTTOMLEFT;
+        if (bottom && right)
+            return HTBOTTOMRIGHT;
+        if (left)
+            return HTLEFT;
+        if (right)
+            return HTRIGHT;
+        if (top)
+            return HTTOP;
+        if (bottom)
+            return HTBOTTOM;
+
+        const int pill_left =
+            width / 2 - 96;
+        const int pill_right =
+            width / 2 + 96;
+
+        if (y >= 4 &&
+            y <= 34 &&
+            x >= pill_left &&
+            x <= pill_right) {
+            return HTCAPTION;
+        }
+
         return HTTRANSPARENT;
+    }
+
+    case WM_GETMINMAXINFO: {
+        if (self->boundary_editable_) {
+            auto *info =
+                reinterpret_cast<
+                    MINMAXINFO *>(lparam);
+            info->ptMinTrackSize.x = 320;
+            info->ptMinTrackSize.y = 180;
+            return 0;
+        }
+        break;
+    }
+
+    case WM_EXITSIZEMOVE:
+        if (self->boundary_editable_ &&
+            self->owner_) {
+            PostMessageW(
+                self->owner_,
+                kUiRegionChanged,
+                0,
+                0);
+        }
+        return 0;
 
     case WM_PAINT: {
         PAINTSTRUCT paint{};
