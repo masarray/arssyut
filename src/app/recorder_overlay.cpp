@@ -213,32 +213,6 @@ bool RecorderOverlay::create(
         &dark,
         sizeof(dark));
 
-    status_ =
-        CreateWindowExW(
-            0,
-            L"STATIC",
-            L"Recording",
-            WS_CHILD | WS_VISIBLE,
-            14, 8, 74, 18,
-            toolbar_,
-            nullptr,
-            instance_,
-            nullptr);
-    set_font(status_, small_font_);
-
-    elapsed_ =
-        CreateWindowExW(
-            0,
-            L"STATIC",
-            L"00:00",
-            WS_CHILD | WS_VISIBLE,
-            14, 27, 74, 18,
-            toolbar_,
-            nullptr,
-            instance_,
-            nullptr);
-    set_font(elapsed_, timer_font_);
-
     pause_ =
         CreateWindowExW(
             0,
@@ -426,19 +400,11 @@ void RecorderOverlay::update_toolbar(
     microphone_on_ = microphone_on;
     camera_on_ = camera_on;
 
-    if (status_changed) {
+    if (status_changed)
         toolbar_status_ = status;
-        SetWindowTextW(
-            status_,
-            status.c_str());
-    }
 
-    if (elapsed_changed) {
+    if (elapsed_changed)
         toolbar_elapsed_ = elapsed;
-        SetWindowTextW(
-            elapsed_,
-            elapsed.c_str());
-    }
 
     if (pause_changed) {
         EnableWindow(
@@ -613,6 +579,62 @@ void RecorderOverlay::paint_toolbar(HDC dc)
 
     DeleteObject(border);
     DeleteObject(fill);
+
+    RECT status_rect{
+        14,
+        7,
+        88,
+        25};
+    RECT timer_rect{
+        14,
+        26,
+        88,
+        46};
+
+    HGDIOBJ old_font =
+        SelectObject(
+            dc,
+            small_font_);
+    SetBkMode(
+        dc,
+        TRANSPARENT);
+    SetTextColor(
+        dc,
+        kRecord);
+
+    DrawTextW(
+        dc,
+        toolbar_status_.empty()
+            ? L"Recording"
+            : toolbar_status_.c_str(),
+        -1,
+        &status_rect,
+        DT_LEFT |
+            DT_VCENTER |
+            DT_SINGLELINE |
+            DT_END_ELLIPSIS);
+
+    SelectObject(
+        dc,
+        timer_font_);
+    SetTextColor(
+        dc,
+        kText);
+
+    DrawTextW(
+        dc,
+        toolbar_elapsed_.empty()
+            ? L"00:00"
+            : toolbar_elapsed_.c_str(),
+        -1,
+        &timer_rect,
+        DT_LEFT |
+            DT_VCENTER |
+            DT_SINGLELINE);
+
+    SelectObject(
+        dc,
+        old_font);
 }
 
 void RecorderOverlay::draw_toolbar_button(
@@ -952,28 +974,6 @@ LRESULT CALLBACK RecorderOverlay::toolbar_proc(
 
     case WM_ERASEBKGND:
         return 1;
-
-    case WM_CTLCOLORSTATIC: {
-        HDC dc =
-            reinterpret_cast<HDC>(
-                wparam);
-        HWND control =
-            reinterpret_cast<HWND>(
-                lparam);
-
-        SetBkMode(
-            dc,
-            TRANSPARENT);
-        SetTextColor(
-            dc,
-            control == self->status_
-                ? kRecord
-                : kText);
-
-        return reinterpret_cast<INT_PTR>(
-            GetStockObject(
-                NULL_BRUSH));
-    }
 
     case WM_DRAWITEM: {
         const auto *item =
