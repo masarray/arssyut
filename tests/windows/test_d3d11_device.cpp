@@ -125,6 +125,54 @@ Microsoft::WRL::ComPtr<ID3D11Texture2D> create_split_texture(
 
     return texture;
 }
+Microsoft::WRL::ComPtr<ID3D11Texture2D> create_vertical_stripe_texture(
+    ID3D11Device *device,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t background_bgra,
+    std::uint32_t stripe_bgra)
+{
+    if (!device || width < 3 || height == 0)
+        return {};
+
+    std::vector<std::uint32_t> pixels(
+        static_cast<std::size_t>(width) *
+            static_cast<std::size_t>(height),
+        background_bgra);
+
+    const std::uint32_t stripe_x = width / 2;
+    for (std::uint32_t y = 0; y < height; ++y) {
+        pixels[
+            static_cast<std::size_t>(y) * width +
+            stripe_x] = stripe_bgra;
+    }
+
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+    D3D11_SUBRESOURCE_DATA initial{};
+    initial.pSysMem = pixels.data();
+    initial.SysMemPitch =
+        width * sizeof(std::uint32_t);
+
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> texture;
+    if (FAILED(device->CreateTexture2D(
+            &desc,
+            &initial,
+            texture.GetAddressOf()))) {
+        return {};
+    }
+
+    return texture;
+}
+
 
 bool read_texture_pixel(
     ID3D11Device *device,
@@ -1771,6 +1819,139 @@ void test_screen_text_legibility(
         channel(min_base_right) -
             channel(min_base_left),
         "P5D scale-aware legibility survives 2x source minification");
+
+    /*
+     * P5D.5 real-recording calibration: black/gray text on a bright neutral
+     * browser background needs more stroke survival than the already-good
+     * white-on-dark IDE path. Use one-pixel neutral stripe fixtures to prove
+     * that the additional gain is directional rather than global.
+     */
+    constexpr std::uint32_t bright_ui = 0xFFE8E8E8u;
+    constexpr std::uint32_t dark_text = 0xFF505050u;
+    constexpr std::uint32_t dark_ui = 0xFF303030u;
+    constexpr std::uint32_t light_text = 0xFFD0D0D0u;
+
+    auto dark_on_bright =
+        create_vertical_stripe_texture(
+            owner.device(),
+            64,
+            64,
+            bright_ui,
+            dark_text);
+    auto light_on_dark =
+        create_vertical_stripe_texture(
+            owner.device(),
+            64,
+            64,
+            dark_ui,
+            light_text);
+
+    test.expect(
+        dark_on_bright != nullptr &&
+            light_on_dark != nullptr,
+        "P5D.5 directional text fixtures created");
+    if (!dark_on_bright || !light_on_dark)
+        return;
+
+    baseline.text_legibility = 0.0f;
+
+    std::uint32_t dark_base = 0;
+    std::uint32_t light_base = 0;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            dark_on_bright.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &baseline).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            dark_base),
+        "P5D.5 dark-on-bright baseline can be inspected");
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            light_on_dark.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &baseline).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            light_base),
+        "P5D.5 light-on-dark baseline can be inspected");
+
+    enhanced.text_legibility = 0.80f;
+
+    std::uint32_t dark_enhanced = 0;
+    std::uint32_t light_enhanced = 0;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            dark_on_bright.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &enhanced).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            dark_enhanced),
+        "P5D.5 dark-on-bright enhanced stroke can be inspected");
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            light_on_dark.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &enhanced).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            light_enhanced),
+        "P5D.5 light-on-dark enhanced stroke can be inspected");
+
+    const int dark_reinforcement =
+        channel(dark_base) -
+        channel(dark_enhanced);
+    const int light_reinforcement =
+        channel(light_enhanced) -
+        channel(light_base);
+
+    test.expect(
+        dark_reinforcement > 0,
+        "P5D.5 makes a dark neutral stroke more solid on bright UI");
+    test.expect(
+        light_reinforcement > 0,
+        "P5D retains the validated light-on-dark text reinforcement");
+    test.expect(
+        dark_reinforcement >
+            light_reinforcement,
+        "P5D.5 adds directional strength only to dark-on-bright text");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "P5D.5 directional calibration allocates no compositor resources");
 }
 
 void test_arvisual_async_scene_analyzer(
