@@ -5,7 +5,6 @@
 #include <Windows.h>
 #include <propsys.h>
 #include <propvarutil.h>
-#include <Functiondiscoverykeys_devpkey.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mmdeviceapi.h>
@@ -19,6 +18,16 @@ namespace arssyut::app {
 namespace {
 
 using Microsoft::WRL::ComPtr;
+
+constexpr PROPERTYKEY kDeviceFriendlyName{
+    {
+        0xa45c254e,
+        0xdf1c,
+        0x4efd,
+        {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}
+    },
+    14
+};
 
 class ScopedCom final {
 public:
@@ -105,7 +114,7 @@ enumerate_microphones()
                     &properties)) &&
             SUCCEEDED(
                 properties->GetValue(
-                    PKEY_Device_FriendlyName,
+                    kDeviceFriendlyName,
                     &name_value)) &&
             name_value.vt == VT_LPWSTR &&
             name_value.pwszVal) {
