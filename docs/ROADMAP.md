@@ -760,13 +760,43 @@ Visual acceptance required before native binding:
 
 #### P6UI.2 — interaction prototype completion
 
-Next:
-- device popovers instead of permanent wide device selectors;
-- contextual Saved result actions;
-- floating recording-controller visual prototype;
-- refined hover/pressed/focus/motion states;
-- keyboard navigation and accessibility names;
-- mock long source/device names and DPI stress cases.
+**Status: IMPLEMENTED ON FEATURE BRANCH / REAL VISUAL ACCEPTANCE PENDING**
+
+Implemented:
+- microphone and camera selectors are compact device modules with flyout
+  pickers instead of permanent wide selectors;
+- device flyouts include realistic alternate devices plus deliberately long
+  labels to exercise truncation and layout resilience;
+- input enable state is part of the shared UI-preview session rather than a
+  second transport state;
+- the idle footer shows one primary Record action only;
+- after Stop, the footer becomes contextual Saved state with Open and Folder
+  result actions instead of permanently occupying recorder space;
+- recording launches a separate topmost floating controller prototype with
+  elapsed time, Mic, Camera, Pause/Resume and Stop;
+- the main recorder hides while the floating controller is active and returns
+  to the Saved state when the preview session stops;
+- F9 is the local preview Record/Stop shortcut and F10 is Pause/Resume while
+  the floating controller is focused;
+- Settings closes with Escape and primary recorder controls carry explicit
+  automation names/help text;
+- hover/pressed/focus-visible states now use one restrained transition grammar
+  and recording-red focus indication;
+- a deterministic PreviewRecorderSession state machine gates
+  Ready -> Recording -> Paused -> Recording -> Saved -> Ready behavior;
+- CI runs both a normal launch smoke and an interaction stress smoke using
+  `--stress-long-names --controller-preview`;
+- the stress scenario constrains the main window to its minimum width while
+  loading long display/microphone/camera names.
+
+Acceptance still required:
+- real screenshot review at 100%, 125%, 150% and 200% Windows scaling;
+- confirm Inter/Lucide remain crisp at high DPI;
+- confirm device flyouts never clip off-screen on common desktop layouts;
+- confirm floating controller placement and density feel correct on real
+  multi-monitor Windows;
+- confirm keyboard focus order and focus-visible rings remain calm rather than
+  visually noisy.
 
 #### P6UI.3 — Settings acceptance
 
