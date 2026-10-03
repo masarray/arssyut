@@ -556,7 +556,13 @@ void RecorderSession::worker_main() noexcept
             memory_end,
             writer.submitted_frames(),
             writer.backpressure_events(),
-            pipeline->compositor().resource_generation());
+            pipeline->compositor().resource_generation(),
+            false,
+            {},
+            {},
+            writer.active_profile(),
+            writer.quality_vbr_applied(),
+            writer.requested_quality());
 
         state_.store(
             RecorderState::Failed,
@@ -619,7 +625,13 @@ void RecorderSession::worker_main() noexcept
             memory_end,
             writer.submitted_frames(),
             writer.backpressure_events(),
-            pipeline->compositor().resource_generation());
+            pipeline->compositor().resource_generation(),
+            false,
+            {},
+            {},
+            writer.active_profile(),
+            writer.quality_vbr_applied(),
+            writer.requested_quality());
 
         state_.store(
             RecorderState::Failed,
@@ -655,7 +667,13 @@ void RecorderSession::worker_main() noexcept
                 memory_end,
                 writer.submitted_frames(),
                 writer.backpressure_events(),
-                pipeline->compositor().resource_generation());
+                pipeline->compositor().resource_generation(),
+                false,
+                {},
+                {},
+                writer.active_profile(),
+                writer.quality_vbr_applied(),
+                writer.requested_quality());
 
             state_.store(
                 RecorderState::Failed,
@@ -705,7 +723,13 @@ void RecorderSession::worker_main() noexcept
             memory_end,
             writer.submitted_frames(),
             writer.backpressure_events(),
-            pipeline->compositor().resource_generation());
+            pipeline->compositor().resource_generation(),
+            false,
+            {},
+            {},
+            writer.active_profile(),
+            writer.quality_vbr_applied(),
+            writer.requested_quality());
 
         state_.store(
             RecorderState::Failed,
