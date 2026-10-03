@@ -358,12 +358,13 @@ void RecorderSettingsWindow::create_controls()
     set_font(hide_main_, normal_font_);
     apply_dark_theme(hide_main_);
 
-    create_label(
-        window_,
-        instance_,
-        L"Frame rate",
-        178, 76, 120, 22,
-        small_font_);
+    fps_label_ =
+        create_label(
+            window_,
+            instance_,
+            L"Frame rate",
+            178, 76, 120, 22,
+            small_font_);
     fps_ =
         CreateWindowExW(
             0,
@@ -393,12 +394,13 @@ void RecorderSettingsWindow::create_controls()
         reinterpret_cast<LPARAM>(
             L"30 fps"));
 
-    create_label(
-        window_,
-        instance_,
-        L"Visual style",
-        178, 150, 120, 22,
-        small_font_);
+    visual_label_ =
+        create_label(
+            window_,
+            instance_,
+            L"Visual style",
+            178, 150, 120, 22,
+            small_font_);
     visual_ =
         CreateWindowExW(
             0,
@@ -434,12 +436,13 @@ void RecorderSettingsWindow::create_controls()
         reinterpret_cast<LPARAM>(
             L"Vivid Presentation"));
 
-    create_label(
-        window_,
-        instance_,
-        L"Output folder",
-        178, 76, 180, 22,
-        small_font_);
+    output_label_ =
+        create_label(
+            window_,
+            instance_,
+            L"Output folder",
+            178, 76, 180, 22,
+            small_font_);
     output_path_ =
         CreateWindowExW(
             WS_EX_CLIENTEDGE,
@@ -915,9 +918,12 @@ void RecorderSettingsWindow::show_page(
     show_control(boundary_, page == 0);
     show_control(hide_main_, page == 0);
 
+    show_control(fps_label_, page == 1);
     show_control(fps_, page == 1);
+    show_control(visual_label_, page == 1);
     show_control(visual_, page == 1);
 
+    show_control(output_label_, page == 2);
     show_control(
         output_path_,
         page == 2);
