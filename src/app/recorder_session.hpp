@@ -47,7 +47,7 @@ struct RecorderConfig {
     std::filesystem::path output_path;
     arssyut::core::FrameSize output_size{1920, 1080};
     arssyut::core::FrameRate frame_rate{60, 1};
-    std::uint32_t bitrate_bps = 12'000'000;
+    std::uint32_t bitrate_bps = 18'000'000;
     arssyut::presentation::PresentationSettings presentation{};
     arssyut::visual::ArVisualProductMode visual_mode =
         arssyut::visual::ArVisualProductMode::PixelAccurate;
@@ -135,7 +135,11 @@ private:
         std::uint64_t resource_generation,
         bool visual_analysis_primed = false,
         arssyut::visual::ArVisualSceneStats visual_scene_stats = {},
-        arssyut::visual::ArVisualAdaptiveState visual_adaptive = {}) noexcept;
+        arssyut::visual::ArVisualAdaptiveState visual_adaptive = {},
+        arssyut::windows::MfH264Profile encoder_profile =
+            arssyut::windows::MfH264Profile::Main,
+        bool encoder_quality_vbr = false,
+        std::uint32_t encoder_quality = 0) noexcept;
 
     RecorderConfig config_{};
     std::thread worker_;

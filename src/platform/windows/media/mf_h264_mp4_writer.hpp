@@ -45,11 +45,26 @@ enum class MfWriterStage : std::uint16_t {
 [[nodiscard]] const char *mf_writer_stage_name(
     MfWriterStage stage) noexcept;
 
+enum class MfH264Profile : std::uint8_t {
+    Main = 0,
+    High,
+};
+
+[[nodiscard]] const char *mf_h264_profile_name(
+    MfH264Profile profile) noexcept;
+
 struct MfVideoWriterConfig {
     arssyut::core::FrameSize size{1920, 1080};
     arssyut::core::FrameRate frame_rate{60, 1};
-    std::uint32_t bitrate_bps = 12'000'000;
+    std::uint32_t bitrate_bps = 18'000'000;
     std::uint32_t surface_count = 6;
+
+    // P5D screen-content quality policy. High Profile is broadly available on
+    // supported Windows versions. Quality-VBR is best-effort and falls back
+    // to the prior encoder negotiation if the active MFT rejects it.
+    bool prefer_high_profile = true;
+    bool prefer_quality_vbr = true;
+    std::uint32_t quality = 86;
 };
 
 class MfH264Mp4Writer final {
@@ -107,6 +122,21 @@ public:
         return failure_stage_.load(std::memory_order_acquire);
     }
 
+    [[nodiscard]] MfH264Profile active_profile() const noexcept
+    {
+        return active_profile_;
+    }
+
+    [[nodiscard]] bool quality_vbr_applied() const noexcept
+    {
+        return quality_vbr_applied_;
+    }
+
+    [[nodiscard]] std::uint32_t requested_quality() const noexcept
+    {
+        return config_.quality;
+    }
+
     [[nodiscard]] const std::filesystem::path &path() const noexcept
     {
         return path_;
@@ -161,6 +191,8 @@ private:
     UINT dxgi_reset_token_ = 0;
     bool mf_started_ = false;
     bool open_ = false;
+    MfH264Profile active_profile_ = MfH264Profile::Main;
+    bool quality_vbr_applied_ = false;
 
     std::atomic<std::uint64_t> submitted_frames_{0};
     std::atomic<std::uint64_t> backpressure_events_{0};

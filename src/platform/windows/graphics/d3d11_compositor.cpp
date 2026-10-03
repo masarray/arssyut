@@ -180,6 +180,7 @@ float4 apply_arvisual(float4 px, float2 uv)
     const float smart_clean = arvisual4.w;
     const float smart_separation = arvisual5.x;
     const float2 texel_size = max(arvisual5.yz, float2(0.0000001, 0.0000001));
+    const float text_legibility = saturate(arvisual5.w);
 
     float alpha = px.a;
     float3 src = saturate(px.rgb * ((alpha > 0.0) ? (1.0 / alpha) : 0.0));
@@ -419,6 +420,69 @@ float4 apply_arvisual(float4 px, float2 uv)
        old unconditional 0.84 knee turned a flat diffuse white into gray. The
        final scene-aware shoulder still constrains the actual target. */
     color = arvisual_fit_gamut_preserve_luma(color, y + clarity_delta);
+
+    /*
+     * P5D screen-text legibility.
+     *
+     * Reuse the already-computed symmetric source-neighborhood detail rather
+     * than adding another sharpen pass. Reinforce only luminance micro-edges;
+     * chroma is never sharpened. Neutral UI/text receives the full effect,
+     * saturated edges receive a deliberately reduced dose, and skin is nearly
+     * excluded. A small scale-aware boost helps 4K->1080/minified desktop
+     * capture survive later player scaling without creating one-pixel halos.
+     */
+    y = arvisual_luminance(color);
+    float text_detail_abs = abs(detail);
+    float text_edge =
+        smoothstep(0.006, 0.030, text_detail_abs) *
+        (1.0 - smoothstep(0.16, 0.30, text_detail_abs));
+    float text_neutral =
+        1.0 - smoothstep(0.10, 0.34, src_hsv.y);
+    float text_chroma_weight =
+        lerp(0.24, 1.0, text_neutral);
+
+    float2 crop_pixels =
+        abs(uv_rect.zw - uv_rect.xy) /
+        max(texel_size, float2(0.0000001, 0.0000001));
+    float safe_camera_zoom =
+        max(camera_keyboard.z, 1.0);
+    float2 source_per_output =
+        crop_pixels /
+        max(
+            output_info.xy * safe_camera_zoom,
+            float2(1.0, 1.0));
+    float minification =
+        max(source_per_output.x, source_per_output.y);
+    float scale_resilience =
+        lerp(
+            1.0,
+            1.22,
+            smoothstep(1.0, 2.2, minification));
+
+    float text_soft_detail =
+        detail /
+        (1.0 + text_detail_abs * 12.0);
+    float signed_headroom =
+        text_soft_detail >= 0.0
+            ? (1.0 - smoothstep(0.90, 0.995, y))
+            : smoothstep(0.005, 0.080, y);
+
+    float text_delta =
+        text_soft_detail *
+        text_legibility *
+        0.30 *
+        scale_resilience *
+        text_edge *
+        text_chroma_weight *
+        (1.0 - skin_mask * 0.98) *
+        signed_headroom;
+
+    text_delta =
+        clamp(text_delta, -0.014, 0.014);
+
+    color = arvisual_fit_gamut_preserve_luma(
+        color,
+        y + text_delta);
 
     /* Perceptual punch and gloss consume luma headroom instead of adding RGB. */
     y = arvisual_luminance(color);
@@ -807,7 +871,7 @@ struct PresentationConstants {
     float arvisual_smart_separation;
     float arvisual_texel_x;
     float arvisual_texel_y;
-    float arvisual_reserved;
+    float arvisual_text_legibility;
 
     float clicks[16]{};
 };
@@ -1856,7 +1920,8 @@ Status D3D11Compositor::render_retained(
         std::max(
             static_cast<float>(source_size.height),
             1.0f);
-    constants.arvisual_reserved = 0.0f;
+    constants.arvisual_text_legibility =
+        grade.text_legibility;
 
     for (std::size_t i = 0;
          i < state.clicks.size();

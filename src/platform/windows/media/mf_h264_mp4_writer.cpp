@@ -87,6 +87,18 @@ inline constexpr GUID kArssyutSurfaceSlot = {
 
 } // namespace
 
+const char *mf_h264_profile_name(
+    MfH264Profile profile) noexcept
+{
+    switch (profile) {
+    case MfH264Profile::High:
+        return "high";
+    case MfH264Profile::Main:
+    default:
+        return "main";
+    }
+}
+
 const char *mf_writer_stage_name(
     MfWriterStage stage) noexcept
 {
@@ -247,6 +259,8 @@ Status MfH264Mp4Writer::open(
     failure_stage_.store(
         MfWriterStage::None,
         std::memory_order_release);
+    active_profile_ = MfH264Profile::Main;
+    quality_vbr_applied_ = false;
 
     if (open_ ||
         !device ||
@@ -279,6 +293,11 @@ Status MfH264Mp4Writer::open(
             3U,
             static_cast<std::uint32_t>(
                 max_surface_count));
+    config.quality =
+        std::clamp<std::uint32_t>(
+            config.quality,
+            1U,
+            100U);
 
     config_ = config;
     path_ = path;
@@ -395,11 +414,19 @@ Status MfH264Mp4Writer::open(
             MfWriterStage::ConfigureOutputType,
             hr);
 
-    // Microsoft H.264 encoder documents MF_MT_MPEG2_PROFILE as a required
-    // output attribute. Main is the recommended broadly-supported default.
+    // P5D prefers High Profile for better compression efficiency on detailed
+    // screen content. If AddStream rejects it, fall back to Main rather than
+    // turning a quality preference into a recorder startup failure.
+    active_profile_ =
+        config_.prefer_high_profile
+            ? MfH264Profile::High
+            : MfH264Profile::Main;
+
     hr = output_type->SetUINT32(
         MF_MT_MPEG2_PROFILE,
-        eAVEncH264VProfile_Main);
+        active_profile_ == MfH264Profile::High
+            ? eAVEncH264VProfile_High
+            : eAVEncH264VProfile_Main);
     if (FAILED(hr))
         return fail_hr(
             MfWriterStage::ConfigureOutputType,
@@ -408,6 +435,26 @@ Status MfH264Mp4Writer::open(
     hr = writer_->AddStream(
         output_type.Get(),
         &stream_index_);
+
+    if (FAILED(hr) &&
+        active_profile_ == MfH264Profile::High) {
+        active_profile_ =
+            MfH264Profile::Main;
+
+        const HRESULT profile_hr =
+            output_type->SetUINT32(
+                MF_MT_MPEG2_PROFILE,
+                eAVEncH264VProfile_Main);
+        if (FAILED(profile_hr))
+            return fail_hr(
+                MfWriterStage::ConfigureOutputType,
+                profile_hr);
+
+        hr = writer_->AddStream(
+            output_type.Get(),
+            &stream_index_);
+    }
+
     if (FAILED(hr))
         return fail_hr(
             MfWriterStage::AddOutputStream,
@@ -440,10 +487,56 @@ Status MfH264Mp4Writer::open(
     // MF_MT_DEFAULT_STRIDE is optional when the contiguous stride equals the
     // width in bytes (NV12 luma plane here). Omitting it avoids over-
     // constraining hardware encoder negotiation on some drivers.
+    //
+    // Prefer quality-based VBR for screen content. Microsoft documents both
+    // CODECAPI_AVEncCommonRateControlMode and CODECAPI_AVEncCommonQuality for
+    // the H.264 encoder. Some hardware MFTs expose a smaller property surface,
+    // so rejection is a soft fallback to the prior unconstrained negotiation.
+    Microsoft::WRL::ComPtr<IMFAttributes> encoding_parameters;
+
+    if (config_.prefer_quality_vbr) {
+        HRESULT params_hr =
+            MFCreateAttributes(
+                encoding_parameters.GetAddressOf(),
+                2);
+
+        if (SUCCEEDED(params_hr)) {
+            params_hr =
+                encoding_parameters->SetUINT32(
+                    CODECAPI_AVEncCommonRateControlMode,
+                    static_cast<UINT32>(
+                        eAVEncCommonRateControlMode_Quality));
+        }
+
+        if (SUCCEEDED(params_hr)) {
+            params_hr =
+                encoding_parameters->SetUINT32(
+                    CODECAPI_AVEncCommonQuality,
+                    std::clamp<std::uint32_t>(
+                        config_.quality,
+                        1U,
+                        100U));
+        }
+
+        if (FAILED(params_hr))
+            encoding_parameters.Reset();
+    }
+
     hr = writer_->SetInputMediaType(
         stream_index_,
         input_type.Get(),
-        nullptr);
+        encoding_parameters.Get());
+
+    if (SUCCEEDED(hr) && encoding_parameters) {
+        quality_vbr_applied_ = true;
+    } else if (FAILED(hr) && encoding_parameters) {
+        quality_vbr_applied_ = false;
+        hr = writer_->SetInputMediaType(
+            stream_index_,
+            input_type.Get(),
+            nullptr);
+    }
+
     if (FAILED(hr))
         return fail_hr(
             MfWriterStage::SetInputMediaType,

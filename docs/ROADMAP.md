@@ -436,6 +436,34 @@ Correction:
 Preset values for Clean Screen and Vivid Presentation remain unchanged in this
 pass.
 
+### P5D — screen text fidelity
+
+P5D addresses a separate real-recording finding: small desktop text can look
+perceptually thinner after capture, resampling, NV12 4:2:0 encoding and player
+scaling.
+
+Implemented scope:
+- adds an explicit bounded text-legibility parameter to the existing visual
+  product-mode state;
+- Pixel Accurate remains 0.00 and pixel-faithful;
+- Clean Screen uses 0.56;
+- Vivid Presentation uses 0.34;
+- reuses the existing P5A neighborhood/detail samples rather than adding a
+  second sharpen pass;
+- reinforces luminance micro-edges only, with strong neutral-text preference,
+  reduced saturated-edge dose and near-total skin exclusion;
+- adds a small scale-aware boost only when the source is being minified;
+- keeps the stable linear sampler rather than introducing nearest-neighbor
+  shimmer;
+- prefers H.264 High Profile with safe Main fallback;
+- prefers quality-based VBR at quality 86 with safe default-negotiation
+  fallback;
+- raises fallback 1080p60 bitrate budget to 18 Mbps and 1080p30 to 12 Mbps;
+- keeps NV12 4:2:0 as the compatibility-first production path;
+- diagnostics expose text-legibility and encoder-quality negotiation.
+
+See `docs/P5D_SCREEN_TEXT_FIDELITY.md`.
+
 ### Gates
 
 Visual test scenes:

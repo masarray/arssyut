@@ -574,7 +574,7 @@ void start_recording(AppWindow &app)
     config.output_size = {1920, 1080};
     config.frame_rate = {fps, 1};
     config.bitrate_bps =
-        fps == 60 ? 12'000'000U : 8'000'000U;
+        fps == 60 ? 18'000'000U : 12'000'000U;
 
     config.presentation.smart_zoom =
         SendMessageW(

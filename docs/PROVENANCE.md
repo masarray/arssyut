@@ -77,6 +77,29 @@ ownership, tests, and build/CI files.
 | Failure policy | Analyzer unavailability/readback failure does not fail recording; P5A static grade or last valid adaptive values continue. |
 | Parity/safety test | Portable tests cover neutral, calibrated bright-neutral-UI, hot-vivid, dark, EMA and exclusion behavior. Windows WARP tests cover two-slot backpressure, asynchronous headless Flush1 submission, DONOTFLUSH read-later completion, adaptive grade effect, calibration evidence export and resource stability. |
 
+## Original implementation — P5D screen text fidelity
+
+P5D does **not** transplant implementation source from another repository.
+
+Design references:
+- Microsoft ClearType / DirectWrite / DirectComposition documentation for
+  sub-pixel text behavior and scaling/intermediate-surface constraints;
+- AMD FidelityFX CAS documentation for the general principle of
+  contrast-adaptive rather than uniform sharpening;
+- Microsoft Media Foundation H.264 encoder documentation for High Profile and
+  quality-based VBR controls.
+
+Local implementation:
+- `src/visual/arvisual_grade.hpp` — bounded `text_legibility` state;
+- `src/visual/arvisual_modes.hpp` — product-mode mapping;
+- `src/platform/windows/graphics/d3d11_compositor.cpp` — original luma-only
+  micro-edge reinforcement that reuses existing P5A neighborhood samples;
+- `src/platform/windows/media/mf_h264_mp4_writer.*` — High Profile and
+  quality-VBR preference with compatibility fallback.
+
+No FidelityFX CAS source/header/shader code is copied or vendored. The P5D
+shader is an independent Arssyut implementation.
+
 ## Required entry for every future transplant
 
 Before merging copied/adapted implementation source, add:

@@ -395,6 +395,32 @@ Product-mode tuning must be evidence-driven:
   as bright neutral UI;
 - changes to this classifier require another matched Pixel/Clean/Vivid triad.
 
+### P5D screen-text fidelity lock
+
+Text legibility is a screen-content preservation feature, not a generic
+sharpen filter:
+
+- Pixel Accurate must keep `text_legibility == 0` and remain pixel-faithful;
+- Clean Screen may use a stronger text-legibility dose than Vivid
+  Presentation, but both remain bounded constants in the existing grade state;
+- text enhancement may modify luma only. Do not sharpen chroma;
+- reuse the existing P5A symmetric neighborhood/detail samples. Do not add a
+  second full-frame sharpen/blur pass for this feature;
+- flat neutral regions must remain materially unchanged;
+- skin must receive near-zero text-legibility dose;
+- saturated edges must receive a lower dose than neutral text/UI edges;
+- downscale/minification compensation must remain bounded and derived from the
+  source/output geometry;
+- do not replace the stable linear sampler with nearest-neighbor scaling;
+- no OCR, CPU text detection, glyph history, per-frame texture allocation or
+  synchronous GPU readback;
+- H.264 High Profile and quality-VBR are preferences, not hard startup
+  requirements. Unsupported encoder quality settings must fall back cleanly;
+- NV12 4:2:0 remains the compatibility-first default. Any 4:4:4 path is a
+  future explicit archival mode, never a silent replacement;
+- text-fidelity changes require direct 1080p60 playback validation at both
+  native size and player-fit scaling.
+
 ---
 
 ## 11. Input visualization and privacy contract
