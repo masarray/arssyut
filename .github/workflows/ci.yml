@@ -124,6 +124,19 @@ jobs:
 
           Stop-Process -Id $process.Id -Force
 
+      - name: Settings acceptance smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--settings-preview","--settings-stress" -PassThru
+          Start-Sleep -Seconds 4
+
+          if ($process.HasExited) {
+            throw "P6UI Settings acceptance scenario exited with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
       - name: Upload Avalonia preview
         uses: actions/upload-artifact@v4
         with:
