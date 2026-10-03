@@ -142,20 +142,35 @@ BGRA -> D3D11 Video Processor -> NV12 -> H.264
 
 NV12 4:2:0 remains the compatibility-first default.
 
-P5D changes encoder policy rather than replacing the media architecture:
+P5D.6 keeps High Profile but corrects the rate-control policy after real
+recordings showed that quality-VBR could collapse almost-static desktop
+captures far below the requested 18 Mbps budget.
+
+Microsoft documents two important semantics:
+
+- quality-VBR uses `AVEncCommonQuality` and does not use the mean bitrate as
+  the controlling target;
+- unconstrained VBR attempts to achieve the target bitrate carried by
+  `MF_MT_AVG_BITRATE` / `AVEncCommonMeanBitRate`.
+
+The production policy is therefore:
 
 - prefer H.264 High Profile;
 - fall back to Main if the active encoder rejects High during stream
   negotiation;
-- prefer quality-based VBR with quality 86;
-- if the active hardware MFT rejects quality parameters, retry the same input
-  type with the previous/default encoder negotiation;
-- 1080p60 fallback bitrate budget increases from 12 Mbps to 18 Mbps;
-- 1080p30 fallback bitrate budget increases from 8 Mbps to 12 Mbps;
-- diagnostics record requested bitrate, actual negotiated profile,
-  quality-VBR acceptance, requested quality, NV12, and 4:2:0.
+- prefer **unconstrained bitrate-controlled VBR**;
+- set both `MF_MT_AVG_BITRATE` and `AVEncCommonMeanBitRate` to the requested
+  recording budget;
+- request `AVEncCommonQualityVsSpeed=85` as a high-complexity preference;
+- if an MFT rejects QualityVsSpeed, retry VBR + mean bitrate without it;
+- if explicit VBR attributes are rejected entirely, retry normal Sink Writer
+  negotiation rather than failing recorder startup;
+- 1080p60 budget remains 18 Mbps and 1080p30 remains 12 Mbps;
+- diagnostics record negotiated profile, rate-control mode, bitrate-VBR
+  acceptance, QualityVsSpeed acceptance/value, NV12, and 4:2:0.
 
-Quality preferences are never allowed to turn into a recording startup failure.
+Rate-control preferences are never allowed to turn into a recording startup
+failure.
 
 ## Why 4:4:4 is not the default
 
@@ -265,3 +280,51 @@ render pass or resources, and leaves Pixel Accurate unchanged.
 Windows/WARP regression fixtures explicitly compare neutral dark-on-bright and
 light-on-dark strokes. Both must retain reinforcement while dark-on-bright gets
 the larger calibrated dose.
+
+## P5D.6 — low-contrast UI structure preservation
+
+Direct comparison against the original browser/GitHub/Linear UI showed a
+second fidelity class that text sharpening must not own: subtle neutral 1px
+card borders and separators.
+
+Typical examples are a light-gray line on a near-white card or a slightly
+lighter separator inside a dark neutral panel. These structures can be visually
+important while carrying much less contrast than text strokes.
+
+P5D.6 adds a separate `ui_structure` product-mode control:
+
+| Mode | UI structure |
+|---|---:|
+| Pixel Accurate | 0.00 |
+| Clean Screen | 0.72 |
+| Vivid Presentation | 0.38 |
+
+The shader reuses the same retained source neighborhood already sampled by
+P5D. No extra pass or texture fetch group is added.
+
+The classifier requires:
+
+- shallow local detail only;
+- source and neighborhood both neutral/low-chroma;
+- a bright context for a darker line, or a dark context for a lighter line;
+- strong-edge exclusion so text/icon edges do not receive a second sharpen
+  path;
+- skin exclusion.
+
+The preservation is applied **after final tone shaping** so earlier contrast,
+clean-white or highlight logic cannot flatten the separator again.
+
+Hard local luma limits remain deliberately tiny:
+
+- negative structure delta >= -0.010;
+- positive structure delta <= +0.007.
+
+This preserves visibility without turning subtle cards into outlined boxes.
+
+Windows/WARP gates cover:
+
+- gray 1px border on bright neutral UI;
+- gray 1px separator on dark neutral UI;
+- unchanged flat background;
+- strong-edge exclusion;
+- zero compositor resource-generation growth.
