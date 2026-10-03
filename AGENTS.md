@@ -618,35 +618,44 @@ experiment. The authoritative rules are now:
   stability, keycap proportions and click energy.
 
 
-### P6 compact product UI contract
+### P6R recorder workspace contract
 
 The recorder UI is a projection of authoritative engine/configuration state,
 not a second recorder implementation.
 
 Rules:
-- the default idle surface stays capture-first and compact: source, frame rate,
-  current configuration summary and one Record action;
-- do not reintroduce a large dashboard, oversized typography, giant circular
-  record control or one-card-per-setting layout;
-- Settings is progressive disclosure only. Opening/closing it must not mutate
-  recording settings by itself;
-- presentation toggles and Visual Style remain the same canonical controls used
-  to build RecorderConfig at session start;
-- unsupported features must not be represented as fake enabled controls or
-  large "next phase" cards;
-- active recording uses a small borderless floating bar; its status and elapsed
-  time derive from RecorderSnapshot;
-- Stop uses the same RecorderSession::request_stop authority as every other
-  stop path;
-- Ready/Failed are rendered inline in the idle workspace. Diagnostics stay
-  accessible without inventing a parallel error state;
-- keyboard activation for the primary Record/Stop action must route to the same
-  command handler as pointer activation;
+- Capture Mode is a first-class product concept. Display, Window, Region and
+  Game must remain distinguishable user intents even when their capture
+  backends differ;
+- never silently record a different source/backend than the mode selected by
+  the user;
+- the capture boundary is a real product surface. Display/Window boundary
+  geometry comes from the selected target; Smart Zoom viewport geometry comes
+  from the same PresentationFrameState camera values consumed by the
+  compositor;
+- the boundary/toolbar must not become a second camera, capture or timeline
+  authority;
+- do not restyle/morph the main HWND into the recording toolbar. Active controls
+  are separate overlay windows so window-style changes cannot stall or corrupt
+  the main UI;
+- the UI message pump must never block on RecorderSession::wait() during normal
+  Record/Stop/finalize transitions. Joining is allowed only after a published
+  worker-finished state or during explicit application shutdown;
+- recording toolbar actions route to canonical session/input authorities;
+- Pause remains disabled until an explicit Paused engine state and timestamp
+  continuity contract exist;
+- microphone/camera selectors must enumerate real OS devices; until their
+  capture backends are connected, the product must block or clearly reject the
+  unsupported recording request rather than pretend the stream was recorded;
+- Settings is a separate categorized configuration window. Opening or closing
+  it does not mutate recorder session truth;
+- unsupported Region/Game backends may be represented in the P6R UX preview
+  because the user explicitly requested UX-first development, but Record must
+  reject them until the backend milestone is complete;
 - UI work must not alter the locked P5D.7/P5E visual/color/encoder baseline;
-- capture exclusion remains active only during a real recording attempt;
-- P6 is not accepted until Windows CI passes and a real screenshot/interaction
-  review confirms compact layout, readable hierarchy, Settings disclosure,
-  recording mini-bar and result states.
+- P6R cannot merge until Windows CI passes and real GUI testing confirms the
+  previous Record/Stop freeze is gone, capture boundary/toolbar behavior is
+  correct, and device/settings UX is understandable.
 
 ---
 
