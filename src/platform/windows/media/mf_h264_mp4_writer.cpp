@@ -85,6 +85,49 @@ inline constexpr GUID kArssyutSurfaceSlot = {
     return Status::success();
 }
 
+[[nodiscard]] Status set_bt709_studio_attributes(
+    IMFMediaType *type) noexcept
+{
+    if (!type)
+        return Status::failure(StatusCode::InvalidArgument);
+
+    /*
+     * P5D.7 color authority:
+     * - compositor/video-processor input is full-range SDR RGB;
+     * - NV12 and H.264 are studio-range BT.709.
+     *
+     * These Media Foundation attributes must agree with the D3D11 Video
+     * Processor color spaces. Leaving them unknown lets downstream encoders,
+     * muxers or players guess and can collapse near-white/near-black UI
+     * levels.
+     */
+    HRESULT hr = type->SetUINT32(
+        MF_MT_VIDEO_PRIMARIES,
+        MFVideoPrimaries_BT709);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_TRANSFER_FUNCTION,
+        MFVideoTransFunc_709);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_YUV_MATRIX,
+        MFVideoTransferMatrix_BT709);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_VIDEO_NOMINAL_RANGE,
+        MFNominalRange_16_235);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    return Status::success();
+}
+
 } // namespace
 
 const char *mf_h264_profile_name(
@@ -108,6 +151,18 @@ const char *mf_rate_control_mode_name(
     case MfRateControlMode::Default:
     default:
         return "default";
+    }
+}
+
+const char *mf_color_pipeline_mode_name(
+    MfColorPipelineMode mode) noexcept
+{
+    switch (mode) {
+    case MfColorPipelineMode::Context1Explicit:
+        return "d3d11_context1_bt709";
+    case MfColorPipelineMode::LegacyExplicit:
+    default:
+        return "d3d11_legacy_explicit_bt709";
     }
 }
 
@@ -275,6 +330,9 @@ Status MfH264Mp4Writer::open(
     active_rate_control_ =
         MfRateControlMode::Default;
     quality_vs_speed_applied_ = false;
+    active_color_pipeline_ =
+        MfColorPipelineMode::LegacyExplicit;
+    color_pipeline_authoritative_ = false;
 
     if (open_ ||
         !device ||
@@ -420,6 +478,13 @@ Status MfH264Mp4Writer::open(
             MfWriterStage::ConfigureOutputType,
             hr);
 
+    status = set_bt709_studio_attributes(
+        output_type.Get());
+    if (!status.ok())
+        return fail_status(
+            MfWriterStage::ConfigureOutputType,
+            status);
+
     hr = output_type->SetUINT32(
         MF_MT_AVG_BITRATE,
         config_.bitrate_bps);
@@ -497,6 +562,13 @@ Status MfH264Mp4Writer::open(
         return fail_hr(
             MfWriterStage::ConfigureInputType,
             hr);
+
+    status = set_bt709_studio_attributes(
+        input_type.Get());
+    if (!status.ok())
+        return fail_status(
+            MfWriterStage::ConfigureInputType,
+            status);
 
     // MF_MT_DEFAULT_STRIDE is optional when the contiguous stride equals the
     // width in bytes (NV12 luma plane here). Omitting it avoids over-
