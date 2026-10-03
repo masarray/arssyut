@@ -850,6 +850,39 @@ The recording overlay must be low-overhead, capture-safe, and excluded from capt
 
 ---
 
+### P6UI Avalonia presentation contract
+
+The final desktop presentation shell is Avalonia. The Win32/GDI shell is a
+frozen functional prototype and fallback during migration.
+
+Rules:
+- do not add new visual/product features to `windows_main.cpp` or the legacy
+  Win32 Settings window; only baseline-preserving bug fixes are allowed;
+- C++ remains authoritative for capture, Region, timing, ArZoom, ArVisual,
+  encoder/mux, diagnostics and recovery;
+- no recorder/capture/media logic may move into Avalonia code-behind or
+  view-models;
+- UI-to-native integration must use one narrow, versioned ownership boundary;
+- use semantic resources from `Design/ArColors.axaml`,
+  `ArTokens.axaml`, and `ArTypography.axaml`; screen-local magic colors,
+  arbitrary radius scales and one-off button metrics are prohibited;
+- Inter is provided through `Avalonia.Fonts.Inter`; do not add loose font
+  files to the repository;
+- product icons use `Lucide.Avalonia` directly; do not redraw or approximate
+  Lucide geometry;
+- default product palette is graphite + white + recording red; green is
+  reserved for success/ready semantics;
+- Mica/Acrylic are progressive enhancements and must have an opaque readable
+  fallback;
+- main recorder UI remains capture-first. Deep configuration belongs in
+  Settings;
+- Pause/Resume and result actions are contextual; do not expose disabled
+  mystery controls merely to fill space;
+- P6UI.1-3 may use deterministic UI simulation before native binding so visual
+  architecture can be accepted without distorting the recorder engine;
+- every Avalonia release preview must pass Windows build + launch smoke and
+  real DPI screenshot review before the next binding milestone.
+
 ## 19. Testing gates
 
 Changes must add the smallest meaningful test at the owning layer.
