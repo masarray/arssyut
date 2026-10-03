@@ -2144,6 +2144,100 @@ void draw_secondary_button(
             DT_END_ELLIPSIS);
 }
 
+void draw_combo_item(
+    AppWindow &app,
+    const DRAWITEMSTRUCT &item)
+{
+    HWND combo = item.hwndItem;
+    if (!combo)
+        return;
+
+    HDC dc = item.hDC;
+    RECT rect = item.rcItem;
+
+    const bool enabled =
+        IsWindowEnabled(combo) != FALSE;
+    const bool selected =
+        (item.itemState &
+         ODS_SELECTED) != 0;
+
+    HBRUSH fill =
+        CreateSolidBrush(
+            selected
+                ? RGB(49, 39, 43)
+                : RGB(25, 29, 34));
+
+    FillRect(
+        dc,
+        &rect,
+        fill);
+    DeleteObject(fill);
+
+    int index =
+        static_cast<int>(
+            item.itemID);
+
+    if (index < 0) {
+        index =
+            static_cast<int>(
+                SendMessageW(
+                    combo,
+                    CB_GETCURSEL,
+                    0,
+                    0));
+    }
+
+    wchar_t text[384]{};
+    if (index >= 0) {
+        SendMessageW(
+            combo,
+            CB_GETLBTEXT,
+            static_cast<WPARAM>(
+                index),
+            reinterpret_cast<LPARAM>(
+                text));
+    }
+
+    RECT text_rect = rect;
+    text_rect.left += 8;
+    text_rect.right -= 6;
+
+    SelectObject(
+        dc,
+        app.tiny_font);
+    SetBkMode(
+        dc,
+        TRANSPARENT);
+    SetTextColor(
+        dc,
+        enabled
+            ? RGB(238, 241, 245)
+            : RGB(102, 108, 116));
+
+    DrawTextW(
+        dc,
+        text,
+        -1,
+        &text_rect,
+        DT_LEFT |
+            DT_VCENTER |
+            DT_SINGLELINE |
+            DT_END_ELLIPSIS |
+            DT_NOPREFIX);
+
+    if ((item.itemState &
+         ODS_FOCUS) != 0) {
+        RECT focus = rect;
+        InflateRect(
+            &focus,
+            -2,
+            -2);
+        DrawFocusRect(
+            dc,
+            &focus);
+    }
+}
+
 LRESULT CALLBACK window_proc(
     HWND window,
     UINT message,
@@ -2363,6 +2457,8 @@ LRESULT CALLBACK window_proc(
                     WS_VISIBLE |
                     WS_TABSTOP |
                     CBS_DROPDOWNLIST |
+                    CBS_OWNERDRAWFIXED |
+                    CBS_HASSTRINGS |
                     WS_VSCROLL,
                 416, 104, 278, 190,
                 window,
@@ -2456,6 +2552,8 @@ LRESULT CALLBACK window_proc(
                     WS_VISIBLE |
                     WS_TABSTOP |
                     CBS_DROPDOWNLIST |
+                    CBS_OWNERDRAWFIXED |
+                    CBS_HASSTRINGS |
                     WS_VSCROLL,
                 220, 240, 184, 160,
                 window,
@@ -2496,6 +2594,8 @@ LRESULT CALLBACK window_proc(
                     WS_VISIBLE |
                     WS_TABSTOP |
                     CBS_DROPDOWNLIST |
+                    CBS_OWNERDRAWFIXED |
+                    CBS_HASSTRINGS |
                     WS_VSCROLL,
                 512, 240, 174, 160,
                 window,
@@ -2900,6 +3000,20 @@ LRESULT CALLBACK window_proc(
         }
         break;
 
+    case WM_MEASUREITEM: {
+        auto *measure =
+            reinterpret_cast<
+                MEASUREITEMSTRUCT *>(lparam);
+
+        if (measure &&
+            measure->CtlType ==
+                ODT_COMBOBOX) {
+            measure->itemHeight = 24;
+            return TRUE;
+        }
+        break;
+    }
+
     case WM_DRAWITEM: {
         const auto *item =
             reinterpret_cast<
@@ -2907,6 +3021,14 @@ LRESULT CALLBACK window_proc(
 
         if (!item)
             break;
+
+        if (item->CtlType ==
+            ODT_COMBOBOX) {
+            draw_combo_item(
+                *app,
+                *item);
+            return TRUE;
+        }
 
         switch (static_cast<int>(
             wparam)) {
