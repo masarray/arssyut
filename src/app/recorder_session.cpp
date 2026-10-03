@@ -812,10 +812,24 @@ void RecorderSession::worker_main() noexcept
     TimePoint next_target_rect_refresh = start;
 
     RECT presentation_target_rect{};
-    bool presentation_target_valid =
-        target_screen_rect(
-            config_.target,
-            presentation_target_rect);
+    bool presentation_target_valid = false;
+
+    if (config_.
+            presentation_screen_rect_valid) {
+        presentation_target_rect =
+            config_.
+                presentation_screen_rect;
+        presentation_target_valid =
+            presentation_target_rect.right >
+                presentation_target_rect.left &&
+            presentation_target_rect.bottom >
+                presentation_target_rect.top;
+    } else {
+        presentation_target_valid =
+            target_screen_rect(
+                config_.target,
+                presentation_target_rect);
+    }
 
     PresentationFrameState presentation_state{};
 
@@ -828,10 +842,13 @@ void RecorderSession::worker_main() noexcept
 
         if (presentation_enabled &&
             !(now < next_target_rect_refresh)) {
-            presentation_target_valid =
-                target_screen_rect(
-                    config_.target,
-                    presentation_target_rect);
+            if (!config_.
+                    presentation_screen_rect_valid) {
+                presentation_target_valid =
+                    target_screen_rect(
+                        config_.target,
+                        presentation_target_rect);
+            }
 
             next_target_rect_refresh = {
                 now.ticks_100ns +
@@ -926,7 +943,7 @@ void RecorderSession::worker_main() noexcept
             pipeline->process_due(
                 device->immediate_context(),
                 now,
-                {},
+                config_.crop,
                 config_.output_size,
                 presentation_enabled
                     ? &presentation_state
