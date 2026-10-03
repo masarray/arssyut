@@ -48,9 +48,16 @@ public:
 
     void show_boundary(
         RECT screen_rect,
-        bool exclude_from_capture);
+        bool exclude_from_capture,
+        bool editable = false);
 
     void hide_boundary();
+
+    [[nodiscard]] RECT boundary_rect() const noexcept;
+    [[nodiscard]] bool boundary_editable() const noexcept
+    {
+        return boundary_editable_;
+    }
 
     [[nodiscard]] bool toolbar_visible() const noexcept
     {
@@ -95,8 +102,14 @@ private:
 
     bool toolbar_visible_ = false;
     bool paused_ = false;
+    bool pause_enabled_ = false;
     bool microphone_on_ = false;
     bool camera_on_ = false;
+    bool boundary_editable_ = false;
+    bool buffered_paint_initialized_ = false;
+
+    std::wstring toolbar_status_;
+    std::wstring toolbar_elapsed_;
 };
 
 } // namespace arssyut::app
