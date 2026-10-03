@@ -8,6 +8,7 @@
 #include "core/video/frame_scheduler.hpp"
 
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <wrl/client.h>
@@ -60,6 +61,14 @@ enum class MfRateControlMode : std::uint8_t {
 
 [[nodiscard]] const char *mf_rate_control_mode_name(
     MfRateControlMode mode) noexcept;
+
+enum class MfColorPipelineMode : std::uint8_t {
+    LegacyExplicit = 0,
+    Context1Explicit,
+};
+
+[[nodiscard]] const char *mf_color_pipeline_mode_name(
+    MfColorPipelineMode mode) noexcept;
 
 struct MfVideoWriterConfig {
     arssyut::core::FrameSize size{1920, 1080};
@@ -159,6 +168,16 @@ public:
         return config_.quality_vs_speed;
     }
 
+    [[nodiscard]] MfColorPipelineMode active_color_pipeline() const noexcept
+    {
+        return active_color_pipeline_;
+    }
+
+    [[nodiscard]] bool color_pipeline_authoritative() const noexcept
+    {
+        return color_pipeline_authoritative_;
+    }
+
     [[nodiscard]] const std::filesystem::path &path() const noexcept
     {
         return path_;
@@ -201,6 +220,7 @@ private:
 
     Microsoft::WRL::ComPtr<ID3D11VideoDevice> video_device_;
     Microsoft::WRL::ComPtr<ID3D11VideoContext> video_context_;
+    Microsoft::WRL::ComPtr<ID3D11VideoContext1> video_context1_;
     Microsoft::WRL::ComPtr<ID3D11VideoProcessorEnumerator> video_enumerator_;
     Microsoft::WRL::ComPtr<ID3D11VideoProcessor> video_processor_;
 
@@ -217,6 +237,9 @@ private:
     MfRateControlMode active_rate_control_ =
         MfRateControlMode::Default;
     bool quality_vs_speed_applied_ = false;
+    MfColorPipelineMode active_color_pipeline_ =
+        MfColorPipelineMode::LegacyExplicit;
+    bool color_pipeline_authoritative_ = false;
 
     std::atomic<std::uint64_t> submitted_frames_{0};
     std::atomic<std::uint64_t> backpressure_events_{0};
