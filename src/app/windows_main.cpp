@@ -2014,7 +2014,8 @@ LRESULT CALLBACK window_proc(
                     32,
                     window,
                     reinterpret_cast<HMENU>(
-                        modes[i].id),
+                        static_cast<INT_PTR>(
+                            modes[i].id)),
                     GetModuleHandleW(
                         nullptr),
                     nullptr);
@@ -2770,8 +2771,7 @@ int WINAPI wWinMain(
     int show_command)
 {
     SetProcessDpiAwarenessContext(
-        DPI_AWARENESS_CONTEXT_
-            PER_MONITOR_AWARE_V2);
+        DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
     INITCOMMONCONTROLSEX common{};
     common.dwSize =
