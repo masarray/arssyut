@@ -479,7 +479,8 @@ Evidence:
 Correction:
 - do not raise global Clean/Vivid text-legibility values;
 - classify only negative-detail strokes inside bright neutral neighborhoods;
-- allow up to 1.32x directional gain for that topology;
+- allow up to 1.45x directional gain for that topology while retaining the
+  same hard negative-luma cap;
 - widen only the negative local luma cap from -0.014 toward -0.018;
 - keep positive-detail / light-on-dark text on the original P5D response;
 - retain all neutral/chroma/skin/micro-edge gates and the no-resource-churn
