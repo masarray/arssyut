@@ -97,7 +97,11 @@ Local implementation:
 - `src/platform/windows/media/mf_h264_mp4_writer.*` — High Profile plus
   bitrate-controlled unconstrained VBR with tiered compatibility fallback;
 - P5D.6 also extends the original compositor with bounded low-contrast neutral
-  UI-structure preservation.
+  UI-structure preservation;
+- P5D.7 adds an original explicit SDR color contract: full-range BT.709 RGB
+  into the D3D11 Video Processor, studio-range BT.709 NV12/H.264 out, matching
+  Media Foundation nominal-range/matrix/transfer/primaries metadata and an
+  end-to-end gray-ladder H.264 round-trip regression gate.
 
 No FidelityFX CAS source/header/shader code is copied or vendored. The P5D
 shader is an independent Arssyut implementation.

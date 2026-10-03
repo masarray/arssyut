@@ -451,7 +451,22 @@ sharpen filter:
 - unsupported rate-control attributes must fall back cleanly instead of
   failing recording startup;
 - any rate-control change requires diagnostics proving the negotiated mode and
-  a real MP4 bitrate/visual check.
+  a real MP4 bitrate/visual check;
+- SDR screen recording has one canonical color contract: full-range RGB
+  desktop input -> studio-range BT.709 NV12/H.264 output;
+- do not leave Video Processor input/output color spaces on driver defaults;
+- prefer `ID3D11VideoContext1` with
+  `RGB_FULL_G22_NONE_P709 -> YCBCR_STUDIO_G22_LEFT_P709`;
+- if Context1 is unavailable, the legacy D3D11 Video Processor color-space API
+  must still set full RGB input, BT.709 matrix and 16-235 YUV nominal range
+  explicitly;
+- NV12 input and H.264 output media types must carry BT.709 primaries,
+  BT.709 transfer, BT.709 YUV matrix and `MFNominalRange_16_235`;
+- do not compensate for range/colorimetry bugs by retuning ArVisual;
+- color-pipeline changes require the real Media Foundation gray-ladder
+  encode/decode gate, including near-white and near-black separation;
+- real validation must inspect player-visible gray hierarchy and emitted MP4
+  metadata before screen-native grading work proceeds.
 
 ---
 

@@ -512,6 +512,32 @@ Encoder correction:
 - request QualityVsSpeed 85, with VBR-only and default-negotiation fallbacks;
 - CI must prove bitrate-VBR negotiation on the Windows runner.
 
+### P5D.7 — color pipeline authority
+
+Real P5D.6 validation showed that 1px neutral borders returned while larger
+gray UI surfaces could still collapse toward white/black. Inspection identified
+an ambiguous RGB->NV12/H.264 range/colorimetry contract rather than a reason to
+retune ArVisual.
+
+Implemented correction:
+- declare compositor input as full-range SDR RGB / BT.709;
+- declare NV12 output as studio-range BT.709 YCbCr;
+- prefer `ID3D11VideoContext1` explicit DXGI color spaces;
+- retain an explicit legacy D3D11 color-space fallback rather than driver
+  defaults;
+- tag both NV12 input and H.264 output media types with BT.709
+  primaries/transfer/matrix and 16-235 nominal range;
+- diagnostics persist the active color-pipeline authority and range contract;
+- upgrade the Media Foundation integration gate to a real gray-ladder
+  BGRA->NV12->H.264->decode round trip;
+- require near-white and near-black levels to remain distinct.
+
+No Clean/Vivid grading parameters change in P5D.7. Screen-native ArVisual
+retuning begins only after the corrected color pipeline is validated in a real
+recording.
+
+See `docs/P5D7_COLOR_PIPELINE_AUTHORITY.md`.
+
 ### Gates
 
 Visual test scenes:

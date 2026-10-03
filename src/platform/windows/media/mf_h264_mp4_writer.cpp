@@ -85,6 +85,49 @@ inline constexpr GUID kArssyutSurfaceSlot = {
     return Status::success();
 }
 
+[[nodiscard]] Status set_bt709_studio_attributes(
+    IMFMediaType *type) noexcept
+{
+    if (!type)
+        return Status::failure(StatusCode::InvalidArgument);
+
+    /*
+     * P5D.7 color authority:
+     * - compositor/video-processor input is full-range SDR RGB;
+     * - NV12 and H.264 are studio-range BT.709.
+     *
+     * These Media Foundation attributes must agree with the D3D11 Video
+     * Processor color spaces. Leaving them unknown lets downstream encoders,
+     * muxers or players guess and can collapse near-white/near-black UI
+     * levels.
+     */
+    HRESULT hr = type->SetUINT32(
+        MF_MT_VIDEO_PRIMARIES,
+        MFVideoPrimaries_BT709);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_TRANSFER_FUNCTION,
+        MFVideoTransFunc_709);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_YUV_MATRIX,
+        MFVideoTransferMatrix_BT709);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_VIDEO_NOMINAL_RANGE,
+        MFNominalRange_16_235);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    return Status::success();
+}
+
 } // namespace
 
 const char *mf_h264_profile_name(
@@ -108,6 +151,18 @@ const char *mf_rate_control_mode_name(
     case MfRateControlMode::Default:
     default:
         return "default";
+    }
+}
+
+const char *mf_color_pipeline_mode_name(
+    MfColorPipelineMode mode) noexcept
+{
+    switch (mode) {
+    case MfColorPipelineMode::Context1Explicit:
+        return "d3d11_context1_bt709";
+    case MfColorPipelineMode::LegacyExplicit:
+    default:
+        return "d3d11_legacy_explicit_bt709";
     }
 }
 
@@ -275,6 +330,9 @@ Status MfH264Mp4Writer::open(
     active_rate_control_ =
         MfRateControlMode::Default;
     quality_vs_speed_applied_ = false;
+    active_color_pipeline_ =
+        MfColorPipelineMode::LegacyExplicit;
+    color_pipeline_authoritative_ = false;
 
     if (open_ ||
         !device ||
@@ -420,6 +478,13 @@ Status MfH264Mp4Writer::open(
             MfWriterStage::ConfigureOutputType,
             hr);
 
+    status = set_bt709_studio_attributes(
+        output_type.Get());
+    if (!status.ok())
+        return fail_status(
+            MfWriterStage::ConfigureOutputType,
+            status);
+
     hr = output_type->SetUINT32(
         MF_MT_AVG_BITRATE,
         config_.bitrate_bps);
@@ -497,6 +562,13 @@ Status MfH264Mp4Writer::open(
         return fail_hr(
             MfWriterStage::ConfigureInputType,
             hr);
+
+    status = set_bt709_studio_attributes(
+        input_type.Get());
+    if (!status.ok())
+        return fail_status(
+            MfWriterStage::ConfigureInputType,
+            status);
 
     // MF_MT_DEFAULT_STRIDE is optional when the contiguous stride equals the
     // width in bytes (NV12 luma plane here). Omitting it avoids over-
@@ -659,6 +731,15 @@ Status MfH264Mp4Writer::create_video_processor(
     if (FAILED(hr) || !video_context_)
         return unsupported(hr);
 
+    /*
+     * ID3D11VideoContext1 gives an unambiguous DXGI color-space contract.
+     * Windows 10 should expose it; retain an explicit legacy D3D11 color-space
+     * fallback so older/quirky drivers do not turn color authority into a
+     * startup failure.
+     */
+    (void)video_context_.As(
+        &video_context1_);
+
     D3D11_VIDEO_PROCESSOR_CONTENT_DESC content{};
     content.InputFrameFormat =
         D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
@@ -739,6 +820,61 @@ Status MfH264Mp4Writer::create_video_processor(
         video_processor_.Get(),
         TRUE,
         &rect);
+
+    /*
+     * P5D.7: explicit desktop RGB -> video YCbCr contract.
+     *
+     * Source compositor texture:
+     *   full-range SDR RGB, BT.709/sRGB primaries.
+     *
+     * Encoder surface:
+     *   studio-range NV12, BT.709 matrix/transfer.
+     *
+     * The prior implicit/default state could let the processor emit full-range
+     * Y while the H.264 path was interpreted as studio-range, collapsing
+     * near-white gray UI into white and near-black hierarchy into black.
+     */
+    if (video_context1_) {
+        video_context1_->VideoProcessorSetStreamColorSpace1(
+            video_processor_.Get(),
+            0,
+            DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
+        video_context1_->VideoProcessorSetOutputColorSpace1(
+            video_processor_.Get(),
+            DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709);
+
+        active_color_pipeline_ =
+            MfColorPipelineMode::Context1Explicit;
+    } else {
+        D3D11_VIDEO_PROCESSOR_COLOR_SPACE input_color{};
+        input_color.Usage = 1;
+        input_color.RGB_Range = 0; // full-range RGB
+        input_color.YCbCr_Matrix = 1; // BT.709 when conversion is required
+        input_color.YCbCr_xvYCC = 0;
+        input_color.Nominal_Range =
+            D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_0_255;
+
+        D3D11_VIDEO_PROCESSOR_COLOR_SPACE output_color{};
+        output_color.Usage = 1;
+        output_color.RGB_Range = 0;
+        output_color.YCbCr_Matrix = 1; // BT.709
+        output_color.YCbCr_xvYCC = 0;
+        output_color.Nominal_Range =
+            D3D11_VIDEO_PROCESSOR_NOMINAL_RANGE_16_235;
+
+        video_context_->VideoProcessorSetStreamColorSpace(
+            video_processor_.Get(),
+            0,
+            &input_color);
+        video_context_->VideoProcessorSetOutputColorSpace(
+            video_processor_.Get(),
+            &output_color);
+
+        active_color_pipeline_ =
+            MfColorPipelineMode::LegacyExplicit;
+    }
+
+    color_pipeline_authoritative_ = true;
 
     return Status::success();
 }
@@ -1187,6 +1323,7 @@ void MfH264Mp4Writer::teardown() noexcept
 
     video_processor_.Reset();
     video_enumerator_.Reset();
+    video_context1_.Reset();
     video_context_.Reset();
     video_device_.Reset();
 
