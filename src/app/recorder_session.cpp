@@ -561,8 +561,9 @@ void RecorderSession::worker_main() noexcept
             {},
             {},
             writer.active_profile(),
-            writer.quality_vbr_applied(),
-            writer.requested_quality());
+            writer.active_rate_control(),
+            writer.quality_vs_speed_applied(),
+            writer.requested_quality_vs_speed());
 
         state_.store(
             RecorderState::Failed,
@@ -630,8 +631,9 @@ void RecorderSession::worker_main() noexcept
             {},
             {},
             writer.active_profile(),
-            writer.quality_vbr_applied(),
-            writer.requested_quality());
+            writer.active_rate_control(),
+            writer.quality_vs_speed_applied(),
+            writer.requested_quality_vs_speed());
 
         state_.store(
             RecorderState::Failed,
@@ -672,8 +674,9 @@ void RecorderSession::worker_main() noexcept
                 {},
                 {},
                 writer.active_profile(),
-                writer.quality_vbr_applied(),
-                writer.requested_quality());
+                writer.active_rate_control(),
+                writer.quality_vs_speed_applied(),
+                writer.requested_quality_vs_speed());
 
             state_.store(
                 RecorderState::Failed,
@@ -728,8 +731,9 @@ void RecorderSession::worker_main() noexcept
             {},
             {},
             writer.active_profile(),
-            writer.quality_vbr_applied(),
-            writer.requested_quality());
+            writer.active_rate_control(),
+            writer.quality_vs_speed_applied(),
+            writer.requested_quality_vs_speed());
 
         state_.store(
             RecorderState::Failed,
@@ -1130,8 +1134,9 @@ void RecorderSession::write_diagnostics(
     arssyut::visual::ArVisualSceneStats visual_scene_stats,
     arssyut::visual::ArVisualAdaptiveState visual_adaptive,
     arssyut::windows::MfH264Profile encoder_profile,
-    bool encoder_quality_vbr,
-    std::uint32_t encoder_quality) noexcept
+    arssyut::windows::MfRateControlMode encoder_rate_control,
+    bool encoder_quality_vs_speed_applied,
+    std::uint32_t encoder_quality_vs_speed) noexcept
 {
     try {
         const auto snapshot_value =
@@ -1174,11 +1179,26 @@ void RecorderSession::write_diagnostics(
             << arssyut::windows::mf_h264_profile_name(
                    encoder_profile)
             << "\",\n"
-            << "  \"encoder_quality_vbr\": "
-            << (encoder_quality_vbr ? "true" : "false")
+            << "  \"encoder_rate_control\": \""
+            << arssyut::windows::mf_rate_control_mode_name(
+                   encoder_rate_control)
+            << "\",\n"
+            << "  \"encoder_bitrate_vbr\": "
+            << (encoder_rate_control ==
+                        arssyut::windows::MfRateControlMode::
+                            UnconstrainedVbr
+                    ? "true"
+                    : "false")
             << ",\n"
-            << "  \"encoder_quality\": "
-            << encoder_quality << ",\n"
+            << "  \"encoder_quality_vs_speed_applied\": "
+            << (encoder_quality_vs_speed_applied
+                    ? "true"
+                    : "false")
+            << ",\n"
+            << "  \"encoder_quality_vs_speed\": "
+            << encoder_quality_vs_speed << ",\n"
+            << "  \"encoder_quality_vbr\": false,\n"
+            << "  \"encoder_quality\": 0,\n"
             << "  \"encoder_pixel_format\": \"nv12\",\n"
             << "  \"encoder_chroma_subsampling\": \"4:2:0\",\n"
             << "  \"arvisual_mode\": \""
@@ -1218,6 +1238,8 @@ void RecorderSession::write_diagnostics(
             << config_.visual.performance << ",\n"
             << "  \"arvisual_base_text_legibility\": "
             << config_.visual.text_legibility << ",\n"
+            << "  \"arvisual_base_ui_structure\": "
+            << config_.visual.ui_structure << ",\n"
             << "  \"visual_analysis_primed\": "
             << (visual_analysis_primed ? "true" : "false")
             << ",\n"
