@@ -1123,7 +1123,9 @@ void RecorderSession::worker_main() noexcept
         writer.active_profile(),
         writer.active_rate_control(),
         writer.quality_vs_speed_applied(),
-        writer.requested_quality_vs_speed());
+        writer.requested_quality_vs_speed(),
+        writer.active_color_pipeline(),
+        writer.color_pipeline_authoritative());
 
     state_.store(
         failed
