@@ -638,115 +638,6 @@ void refresh_sources(AppWindow &app)
     }
 }
 
-[[nodiscard]] RECT camera_viewport_rect(
-    RECT target,
-    const RecorderSnapshot *snapshot)
-{
-    if (!snapshot)
-        return target;
-
-    const LONG source_width =
-        target.right - target.left;
-    const LONG source_height =
-        target.bottom - target.top;
-
-    if (source_width <= 0 ||
-        source_height <= 0) {
-        return target;
-    }
-
-    const float zoom =
-        std::clamp(
-            snapshot->
-                presentation_camera_zoom,
-            1.0f,
-            4.0f);
-
-    const float center_x =
-        std::clamp(
-            snapshot->
-                presentation_camera_center_x,
-            0.0f,
-            1.0f);
-    const float center_y =
-        std::clamp(
-            snapshot->
-                presentation_camera_center_y,
-            0.0f,
-            1.0f);
-
-    const float viewport_width =
-        static_cast<float>(
-            source_width) / zoom;
-    const float viewport_height =
-        static_cast<float>(
-            source_height) / zoom;
-
-    float left =
-        static_cast<float>(target.left) +
-        center_x *
-            static_cast<float>(
-                source_width) -
-        viewport_width * 0.5f;
-
-    float top =
-        static_cast<float>(target.top) +
-        center_y *
-            static_cast<float>(
-                source_height) -
-        viewport_height * 0.5f;
-
-    const float min_left =
-        static_cast<float>(target.left);
-    const float max_left =
-        static_cast<float>(
-            target.right) -
-        viewport_width;
-
-    const float min_top =
-        static_cast<float>(target.top);
-    const float max_top =
-        static_cast<float>(
-            target.bottom) -
-        viewport_height;
-
-    left =
-        std::clamp(
-            left,
-            min_left,
-            std::max(
-                min_left,
-                max_left));
-
-    top =
-        std::clamp(
-            top,
-            min_top,
-            std::max(
-                min_top,
-                max_top));
-
-    RECT result{};
-    result.left =
-        static_cast<LONG>(
-            std::lround(left));
-    result.top =
-        static_cast<LONG>(
-            std::lround(top));
-    result.right =
-        result.left +
-        static_cast<LONG>(
-            std::lround(
-                viewport_width));
-    result.bottom =
-        result.top +
-        static_cast<LONG>(
-            std::lround(
-                viewport_height));
-
-    return result;
-}
-
 [[nodiscard]] bool ensure_region_rect(
     AppWindow &app,
     const RecorderTarget &target)
@@ -889,9 +780,15 @@ void update_capture_boundary(
 
     if (recording) {
         rect =
-            camera_viewport_rect(
-                rect,
-                snapshot);
+            arssyut::app::
+                camera_viewport_rect(
+                    rect,
+                    snapshot->
+                        presentation_camera_center_x,
+                    snapshot->
+                        presentation_camera_center_y,
+                    snapshot->
+                        presentation_camera_zoom);
     }
 
     app.overlay.show_boundary(
