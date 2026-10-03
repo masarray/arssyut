@@ -312,6 +312,11 @@ void test_product_modes(TestContext &test)
             vivid.text_legibility > 0.0f,
         "P5D keeps Pixel Accurate untouched and gives Clean the stronger text-legibility dose");
 
+    test.expect(
+        pixel.ui_structure == 0.0f &&
+            clean.ui_structure > vivid.ui_structure &&
+            vivid.ui_structure > 0.0f,
+        "P5D.6 keeps Pixel Accurate untouched and gives Clean stronger UI-structure preservation");
 
     test.expect(
         std::abs(vivid.enhance - 0.78f) < 0.00001f &&
