@@ -800,13 +800,43 @@ Acceptance still required:
 
 #### P6UI.3 — Settings acceptance
 
-Required:
-- finish every Settings category using one row grammar;
-- output-folder picker preview;
-- hotkey editor;
-- camera placement preview;
-- audio device/meter preview;
-- no backend side effects yet.
+**Status: IMPLEMENTED ON FEATURE BRANCH / REAL VISUAL ACCEPTANCE PENDING**
+
+Implemented:
+- every Settings category now uses the same compact setting-row grammar:
+  label + short description + one right-aligned control or preview surface;
+- Output uses the Avalonia storage-provider folder picker and updates only
+  SettingsPreviewState; it does not write native recorder configuration;
+- output filename policy, container summary and post-recording behavior are
+  presented without exposing unsupported native mutations;
+- Audio presents system playback and microphone device selectors plus
+  deterministic animated level meters so spacing, labels and meter density can
+  be accepted before live WASAPI binding;
+- Camera presents realistic device options and an interactive 4-corner
+  picture-in-picture placement preview using one canonical CameraPlacement
+  preview state;
+- Hotkeys has interactive capture for Record/Stop, Pause/Resume and microphone
+  toggle, Escape-to-cancel and duplicate-shortcut conflict feedback;
+- Advanced explicitly exposes native-engine ownership and a preview-only Reset;
+- SettingsPreviewState owns preview folder/hotkey/camera/device values so
+  code-behind remains a UI simulator rather than native configuration truth;
+- Settings can be launched standalone with `--settings-preview`, while
+  `--settings-stress` loads long folder/device labels for layout testing;
+- deterministic interaction tests cover folder selection state, hotkey
+  conflicts, camera placement and Reset;
+- Windows CI launches the standalone Settings stress scenario in addition to
+  the main recorder and floating-controller smokes.
+
+Acceptance still required:
+- real screenshots of all categories at 100%, 125%, 150% and 200% scaling;
+- confirm long device/folder names truncate cleanly rather than expanding rows;
+- confirm folder picker placement/focus feels native but preserves Arssyut
+  visual continuity on return;
+- confirm camera preview remains useful without making Settings card-heavy;
+- confirm hotkey capture and focus-visible feedback are understandable by
+  keyboard-only users;
+- confirm Audio meter motion is subtle enough for Settings and not visually
+  distracting.
 
 #### P6UI.4 — native bridge
 
