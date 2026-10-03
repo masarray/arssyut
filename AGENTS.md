@@ -466,7 +466,31 @@ sharpen filter:
 - color-pipeline changes require the real Media Foundation gray-ladder
   encode/decode gate, including near-white and near-black separation;
 - real validation must inspect player-visible gray hierarchy and emitted MP4
-  metadata before screen-native grading work proceeds.
+  metadata before screen-native grading work proceeds;
+- P5E is a policy evolution of the existing ArVisual engine, not permission to
+  create a second screen-only shader or analyzer;
+- Clean/Vivid are screen-recorder modes. Screen topology confidence strengthens
+  their screen prior; it is not the sole switch that can return them to
+  camera-style global exposure normalization;
+- screen-native Smart Auto must treat exposure/shadow/neutral-highlight
+  pressure primarily as evidence, not a command to normalize authored UI;
+- true hot-vivid and saturation risk must remain authoritative safety signals;
+- positive muted-scene pop preload must not be applied to high-confidence
+  screen UI;
+- flat neutral UI surfaces may be luma-anchored only through a bounded late
+  shader path; text and 1px separators remain owned by P5D/P5D.5/P5D.6;
+- Pixel Accurate must keep screen_native=0 and neutral_surface_anchor=0;
+- Clean Screen must remain the strongest neutral-surface preservation mode;
+- Vivid Presentation may retain more creative latitude but still uses
+  screen-native policy;
+- P5E screen topology analysis must reuse the fixed P5B 64x36 sample with no
+  per-sample heap allocation, OCR, app detection or new readback path;
+- P5E must not add a render pass, texture, staging surface or constant-buffer
+  allocation. Reuse existing retained resources/constant slots;
+- diagnostics must distinguish raw analyzer pressure from the Smart Auto values
+  actually applied to the shader;
+- changes to screen-native policy require matched white UI, dark UI, mixed UI
+  and saturated-media real recordings.
 
 ---
 
