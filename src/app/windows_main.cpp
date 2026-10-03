@@ -1783,44 +1783,33 @@ void draw_primary_button(
             cx + 4,
             cy + 6);
     } else {
-        HBRUSH dot =
+        HBRUSH glyph =
             CreateSolidBrush(icon);
-        Ellipse(
+        HGDIOBJ previous_brush =
+            SelectObject(dc, glyph);
+
+        if (active_state(
+                app.visible_state)) {
+            Rectangle(
+                dc,
+                cx - 6,
+                cy - 6,
+                cx + 6,
+                cy + 6);
+        } else {
+            Ellipse(
+                dc,
+                cx - 7,
+                cy - 7,
+                cx + 7,
+                cy + 7);
+        }
+
+        SelectObject(
             dc,
-            cx - 6,
-            cy - 6,
-            cx + 6,
-            cy + 6);
-        DeleteObject(dot);
+            previous_brush);
+        DeleteObject(glyph);
     }
-
-    RECT text_rect{
-        rect.left + 34,
-        rect.top,
-        rect.right - 5,
-        rect.bottom};
-
-    SelectObject(
-        dc,
-        app.record_font);
-
-    SetBkMode(
-        dc,
-        TRANSPARENT);
-    SetTextColor(
-        dc,
-        icon);
-
-    DrawTextW(
-        dc,
-        pause
-            ? L"Pause"
-            : L"REC",
-        -1,
-        &text_rect,
-        DT_LEFT |
-            DT_VCENTER |
-            DT_SINGLELINE);
 
     SelectObject(dc, old_pen);
     SelectObject(dc, old_brush);
@@ -2222,7 +2211,7 @@ LRESULT CALLBACK window_proc(
                     WS_VISIBLE |
                     WS_TABSTOP |
                     BS_OWNERDRAW,
-                744, 238, 54, 38,
+                744, 238, 44, 38,
                 window,
                 reinterpret_cast<HMENU>(
                     IdRecord),
