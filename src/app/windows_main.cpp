@@ -1198,10 +1198,10 @@ void set_capture_mode(
     app.ui.capture_mode = mode;
     refresh_sources(app);
     sync_main_controls_from_model(app);
-    update_summary(app);
     update_capture_boundary(
         app,
         nullptr);
+    update_summary(app);
 }
 
 void set_recording_controls(
