@@ -563,7 +563,9 @@ void RecorderSession::worker_main() noexcept
             writer.active_profile(),
             writer.active_rate_control(),
             writer.quality_vs_speed_applied(),
-            writer.requested_quality_vs_speed());
+            writer.requested_quality_vs_speed(),
+            writer.active_color_pipeline(),
+            writer.color_pipeline_authoritative());
 
         state_.store(
             RecorderState::Failed,
@@ -633,7 +635,9 @@ void RecorderSession::worker_main() noexcept
             writer.active_profile(),
             writer.active_rate_control(),
             writer.quality_vs_speed_applied(),
-            writer.requested_quality_vs_speed());
+            writer.requested_quality_vs_speed(),
+            writer.active_color_pipeline(),
+            writer.color_pipeline_authoritative());
 
         state_.store(
             RecorderState::Failed,
@@ -676,7 +680,9 @@ void RecorderSession::worker_main() noexcept
                 writer.active_profile(),
                 writer.active_rate_control(),
                 writer.quality_vs_speed_applied(),
-                writer.requested_quality_vs_speed());
+                writer.requested_quality_vs_speed(),
+                writer.active_color_pipeline(),
+                writer.color_pipeline_authoritative());
 
             state_.store(
                 RecorderState::Failed,
@@ -733,7 +739,9 @@ void RecorderSession::worker_main() noexcept
             writer.active_profile(),
             writer.active_rate_control(),
             writer.quality_vs_speed_applied(),
-            writer.requested_quality_vs_speed());
+            writer.requested_quality_vs_speed(),
+            writer.active_color_pipeline(),
+            writer.color_pipeline_authoritative());
 
         state_.store(
             RecorderState::Failed,
@@ -1137,7 +1145,9 @@ void RecorderSession::write_diagnostics(
     arssyut::windows::MfH264Profile encoder_profile,
     arssyut::windows::MfRateControlMode encoder_rate_control,
     bool encoder_quality_vs_speed_applied,
-    std::uint32_t encoder_quality_vs_speed) noexcept
+    std::uint32_t encoder_quality_vs_speed,
+    arssyut::windows::MfColorPipelineMode encoder_color_pipeline,
+    bool encoder_color_pipeline_authoritative) noexcept
 {
     try {
         const auto snapshot_value =
@@ -1198,7 +1208,21 @@ void RecorderSession::write_diagnostics(
             << ",\n"
             << "  \"encoder_quality_vs_speed\": "
             << encoder_quality_vs_speed << ",\n"
-            << "  \"encoder_quality_vbr\": false,\n"
+            << "  \"encoder_color_pipeline\": \""
+            << arssyut::windows::mf_color_pipeline_mode_name(
+                   encoder_color_pipeline)
+            << "\",\n"
+            << "  \"encoder_color_pipeline_authoritative\": "
+            << (encoder_color_pipeline_authoritative
+                    ? "true"
+                    : "false")
+            << ",\n"
+            << "  \"encoder_rgb_input_range\": \"full_0_255\",\n"
+            << "  \"encoder_yuv_output_range\": \"studio_16_235\",\n"
+            << "  \"encoder_color_primaries\": \"bt709\",\n"
+            << "  \"encoder_transfer_function\": \"bt709\",\n"
+            << "  \"encoder_yuv_matrix\": \"bt709\",\n"
+            << "  \"encoder_quality_vbr\": false,\n
             << "  \"encoder_quality\": 0,\n"
             << "  \"encoder_pixel_format\": \"nv12\",\n"
             << "  \"encoder_chroma_subsampling\": \"4:2:0\",\n"
