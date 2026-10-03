@@ -173,7 +173,7 @@
                 Margin="0,14,0,0"
                 VerticalScrollBarVisibility="Auto">
 
-              <Panel>
+              <Grid>
 
                 <!-- General -->
                 <StackPanel x:Name="PageGeneral" IsVisible="False">
@@ -422,7 +422,7 @@
                   </Border>
                 </StackPanel>
 
-              </Panel>
+              </Grid>
             </ScrollViewer>
           </Grid>
         </Border>
