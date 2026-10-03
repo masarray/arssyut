@@ -225,6 +225,116 @@ bool map_region_to_crop(
     return true;
 }
 
+RECT camera_viewport_rect(
+    RECT source_screen_rect,
+    float center_x,
+    float center_y,
+    float zoom) noexcept
+{
+    const LONG source_width =
+        source_screen_rect.right -
+        source_screen_rect.left;
+    const LONG source_height =
+        source_screen_rect.bottom -
+        source_screen_rect.top;
+
+    if (source_width <= 0 ||
+        source_height <= 0) {
+        return source_screen_rect;
+    }
+
+    const float safe_zoom =
+        std::clamp(
+            zoom,
+            1.0f,
+            4.0f);
+    center_x =
+        std::clamp(
+            center_x,
+            0.0f,
+            1.0f);
+    center_y =
+        std::clamp(
+            center_y,
+            0.0f,
+            1.0f);
+
+    const float viewport_width =
+        static_cast<float>(
+            source_width) /
+        safe_zoom;
+    const float viewport_height =
+        static_cast<float>(
+            source_height) /
+        safe_zoom;
+
+    float left =
+        static_cast<float>(
+            source_screen_rect.left) +
+        center_x *
+            static_cast<float>(
+                source_width) -
+        viewport_width * 0.5f;
+
+    float top =
+        static_cast<float>(
+            source_screen_rect.top) +
+        center_y *
+            static_cast<float>(
+                source_height) -
+        viewport_height * 0.5f;
+
+    const float min_left =
+        static_cast<float>(
+            source_screen_rect.left);
+    const float max_left =
+        static_cast<float>(
+            source_screen_rect.right) -
+        viewport_width;
+    const float min_top =
+        static_cast<float>(
+            source_screen_rect.top);
+    const float max_top =
+        static_cast<float>(
+            source_screen_rect.bottom) -
+        viewport_height;
+
+    left =
+        std::clamp(
+            left,
+            min_left,
+            std::max(
+                min_left,
+                max_left));
+    top =
+        std::clamp(
+            top,
+            min_top,
+            std::max(
+                min_top,
+                max_top));
+
+    RECT result{};
+    result.left =
+        static_cast<LONG>(
+            std::lround(left));
+    result.top =
+        static_cast<LONG>(
+            std::lround(top));
+    result.right =
+        result.left +
+        static_cast<LONG>(
+            std::lround(
+                viewport_width));
+    result.bottom =
+        result.top +
+        static_cast<LONG>(
+            std::lround(
+                viewport_height));
+
+    return result;
+}
+
 } // namespace arssyut::app
 
 #endif
