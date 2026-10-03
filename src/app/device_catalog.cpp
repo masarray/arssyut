@@ -3,11 +3,12 @@
 #ifdef _WIN32
 
 #include <Windows.h>
+#include <propkeydef.h>
+#include <propsys.h>
 #include <Functiondiscoverykeys_devpkey.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mmdeviceapi.h>
-#include <propsys.h>
 #include <propvarutil.h>
 #include <wrl/client.h>
 
