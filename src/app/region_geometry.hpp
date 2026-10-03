@@ -28,6 +28,12 @@ struct RegionCropMapping {
     RECT selection_screen_rect,
     RegionCropMapping &mapping) noexcept;
 
+[[nodiscard]] RECT camera_viewport_rect(
+    RECT source_screen_rect,
+    float center_x,
+    float center_y,
+    float zoom) noexcept;
+
 } // namespace arssyut::app
 
 #endif
