@@ -914,14 +914,21 @@ void test_media_foundation_mp4(TestContext &test)
         "P5D encoder resolves a canonical H.264 profile");
 
     test.expect(
-        writer.requested_quality() == 86,
-        "P5D encoder carries the screen-quality target");
+        writer.requested_quality_vs_speed() == 85,
+        "P5D.6 encoder carries the high quality-vs-speed preference");
+
+    test.expect(
+        writer.bitrate_vbr_applied(),
+        "P5D.6 encoder negotiates bitrate-controlled unconstrained VBR");
 
     std::cout
-        << "P5D encoder profile="
+        << "P5D.6 encoder profile="
         << active_profile
-        << " quality_vbr="
-        << (writer.quality_vbr_applied() ? "true" : "false")
+        << " rate_control="
+        << arssyut::windows::mf_rate_control_mode_name(
+               writer.active_rate_control())
+        << " quality_vs_speed="
+        << (writer.quality_vs_speed_applied() ? "applied" : "fallback")
         << '\n';
 
     bool write_ok = true;
@@ -1969,6 +1976,204 @@ void test_screen_text_legibility(
     test.expect(
         compositor.resource_generation() == directional_generation,
         "P5D.5 directional calibration allocates no compositor resources");
+
+    /*
+     * P5D.6 real-recording calibration: shallow 1px neutral card borders and
+     * separators must survive the grade/encoder/player path without turning
+     * into dark outlines. Isolate UI-structure preservation from text
+     * legibility and use realistic low-contrast neutral stripe fixtures.
+     */
+    constexpr std::uint32_t bright_panel = 0xFFF4F4F4u;
+    constexpr std::uint32_t bright_border = 0xFFE4E4E4u;
+    constexpr std::uint32_t dark_panel = 0xFF242424u;
+    constexpr std::uint32_t dark_separator = 0xFF343434u;
+    constexpr std::uint32_t strong_dark_edge = 0xFF909090u;
+
+    auto bright_structure =
+        create_vertical_stripe_texture(
+            owner.device(),
+            64,
+            64,
+            bright_panel,
+            bright_border);
+    auto dark_structure =
+        create_vertical_stripe_texture(
+            owner.device(),
+            64,
+            64,
+            dark_panel,
+            dark_separator);
+    auto strong_structure =
+        create_vertical_stripe_texture(
+            owner.device(),
+            64,
+            64,
+            bright_panel,
+            strong_dark_edge);
+
+    test.expect(
+        bright_structure != nullptr &&
+            dark_structure != nullptr &&
+            strong_structure != nullptr,
+        "P5D.6 low-contrast UI structure fixtures created");
+    if (!bright_structure ||
+        !dark_structure ||
+        !strong_structure) {
+        return;
+    }
+
+    auto structure_baseline = baseline;
+    structure_baseline.text_legibility = 0.0f;
+    structure_baseline.ui_structure = 0.0f;
+
+    auto structure_grade = structure_baseline;
+    structure_grade.ui_structure = 0.80f;
+
+    std::uint32_t bright_base_center = 0;
+    std::uint32_t bright_base_flat = 0;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            bright_structure.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &structure_baseline).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            bright_base_center) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            8,
+            32,
+            bright_base_flat),
+        "P5D.6 bright-border baseline can be inspected");
+
+    const auto structure_generation =
+        compositor.resource_generation();
+
+    std::uint32_t bright_preserved_center = 0;
+    std::uint32_t bright_preserved_flat = 0;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            bright_structure.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &structure_grade).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            bright_preserved_center) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            8,
+            32,
+            bright_preserved_flat),
+        "P5D.6 bright-border preserved output can be inspected");
+
+    test.expect(
+        channel(bright_preserved_center) <
+            channel(bright_base_center),
+        "P5D.6 keeps a shallow gray border darker than bright UI");
+    test.expect(
+        std::abs(
+            channel(bright_preserved_flat) -
+            channel(bright_base_flat)) <= 1,
+        "P5D.6 leaves flat bright UI materially unchanged");
+
+    std::uint32_t dark_base_center = 0;
+    std::uint32_t dark_preserved_center = 0;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            dark_structure.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &structure_baseline).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            dark_base_center) &&
+        compositor.render(
+            owner.immediate_context(),
+            dark_structure.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &structure_grade).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            dark_preserved_center),
+        "P5D.6 dark-separator outputs can be inspected");
+
+    test.expect(
+        channel(dark_preserved_center) >
+            channel(dark_base_center),
+        "P5D.6 keeps a shallow gray separator visible on dark UI");
+
+    std::uint32_t strong_base_center = 0;
+    std::uint32_t strong_preserved_center = 0;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            strong_structure.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &structure_baseline).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            strong_base_center) &&
+        compositor.render(
+            owner.immediate_context(),
+            strong_structure.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &structure_grade).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            strong_preserved_center),
+        "P5D.6 strong-edge exclusion can be inspected");
+
+    test.expect(
+        std::abs(
+            channel(strong_preserved_center) -
+            channel(strong_base_center)) <= 1,
+        "P5D.6 does not duplicate text/strong-edge sharpening");
+
+    test.expect(
+        compositor.resource_generation() == structure_generation,
+        "P5D.6 UI-structure preservation allocates no compositor resources");
 }
 
 void test_arvisual_async_scene_analyzer(

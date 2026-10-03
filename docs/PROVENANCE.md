@@ -86,16 +86,18 @@ Design references:
   sub-pixel text behavior and scaling/intermediate-surface constraints;
 - AMD FidelityFX CAS documentation for the general principle of
   contrast-adaptive rather than uniform sharpening;
-- Microsoft Media Foundation H.264 encoder documentation for High Profile and
-  quality-based VBR controls.
+- Microsoft Media Foundation H.264 encoder documentation for High Profile,
+  unconstrained VBR / mean-bitrate control, and QualityVsSpeed controls.
 
 Local implementation:
 - `src/visual/arvisual_grade.hpp` — bounded `text_legibility` state;
 - `src/visual/arvisual_modes.hpp` — product-mode mapping;
 - `src/platform/windows/graphics/d3d11_compositor.cpp` — original luma-only
   micro-edge reinforcement that reuses existing P5A neighborhood samples;
-- `src/platform/windows/media/mf_h264_mp4_writer.*` — High Profile and
-  quality-VBR preference with compatibility fallback.
+- `src/platform/windows/media/mf_h264_mp4_writer.*` — High Profile plus
+  bitrate-controlled unconstrained VBR with tiered compatibility fallback;
+- P5D.6 also extends the original compositor with bounded low-contrast neutral
+  UI-structure preservation.
 
 No FidelityFX CAS source/header/shader code is copied or vendored. The P5D
 shader is an independent Arssyut implementation.

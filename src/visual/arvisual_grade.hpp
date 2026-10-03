@@ -34,6 +34,11 @@ struct ArVisualGradeSettings {
     // adds chroma. Pixel Accurate keeps this at zero.
     float text_legibility = 0.0f;
 
+    // P5D.6 low-contrast neutral UI structure preservation. Unlike text
+    // legibility this targets shallow 1px separators/card borders and is
+    // intentionally capped to only a few luma code values.
+    float ui_structure = 0.0f;
+
     // P5A neutral adaptive inputs. P5B will update these asynchronously.
     float smart_exposure = 0.0f;
     float smart_pop = 1.0f;
@@ -74,6 +79,8 @@ struct ArVisualGradeSettings {
         std::clamp(value.performance, 0.0f, 1.0f);
     value.text_legibility =
         std::clamp(value.text_legibility, 0.0f, 1.0f);
+    value.ui_structure =
+        std::clamp(value.ui_structure, 0.0f, 1.0f);
 
     value.smart_exposure =
         std::clamp(value.smart_exposure, -0.025f, 0.018f);

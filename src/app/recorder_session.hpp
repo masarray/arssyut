@@ -138,8 +138,10 @@ private:
         arssyut::visual::ArVisualAdaptiveState visual_adaptive = {},
         arssyut::windows::MfH264Profile encoder_profile =
             arssyut::windows::MfH264Profile::Main,
-        bool encoder_quality_vbr = false,
-        std::uint32_t encoder_quality = 0) noexcept;
+        arssyut::windows::MfRateControlMode encoder_rate_control =
+            arssyut::windows::MfRateControlMode::Default,
+        bool encoder_quality_vs_speed_applied = false,
+        std::uint32_t encoder_quality_vs_speed = 0) noexcept;
 
     RecorderConfig config_{};
     std::thread worker_;

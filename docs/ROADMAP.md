@@ -456,11 +456,13 @@ Implemented scope:
 - keeps the stable linear sampler rather than introducing nearest-neighbor
   shimmer;
 - prefers H.264 High Profile with safe Main fallback;
-- prefers quality-based VBR at quality 86 with safe default-negotiation
+- P5D.6 replaces quality-VBR with bitrate-controlled unconstrained VBR so the
+  18 Mbps / 12 Mbps recording budgets remain authoritative;
+- requests QualityVsSpeed 85 as a high-complexity preference with tiered
   fallback;
-- raises fallback 1080p60 bitrate budget to 18 Mbps and 1080p30 to 12 Mbps;
 - keeps NV12 4:2:0 as the compatibility-first production path;
-- diagnostics expose text-legibility and encoder-quality negotiation.
+- diagnostics expose text legibility, UI-structure preservation, negotiated
+  H.264 profile and rate-control mode.
 
 See `docs/P5D_SCREEN_TEXT_FIDELITY.md`.
 
@@ -485,6 +487,30 @@ Correction:
 - keep positive-detail / light-on-dark text on the original P5D response;
 - retain all neutral/chroma/skin/micro-edge gates and the no-resource-churn
   contract.
+
+### P5D.6 — low-contrast UI structure + bitrate-controlled encoder
+
+Original UI screenshots compared against the encoded Clean Screen recording
+showed that several neutral 1px card borders/separators lost enough contrast to
+nearly disappear. This is a separate fidelity problem from text stroke weight.
+
+Implemented correction:
+- add an explicit `ui_structure` preservation control;
+- Pixel Accurate remains 0.00, Clean Screen uses 0.72, Vivid Presentation 0.38;
+- classify only shallow neutral/low-chroma detail;
+- darker structure is reinforced only on bright neutral context;
+- lighter structure is reinforced only on dark neutral context;
+- strong edges/text/icons are excluded from this path;
+- apply structure preservation after final tone shaping;
+- hard local luma caps remain -0.010 / +0.007;
+- no new render pass, texture, readback or resource churn.
+
+Encoder correction:
+- retire quality-VBR as the preferred screen-recording mode;
+- prefer H.264 unconstrained VBR with requested mean bitrate;
+- set both media-type average bitrate and codec mean-bitrate attributes;
+- request QualityVsSpeed 85, with VBR-only and default-negotiation fallbacks;
+- CI must prove bitrate-VBR negotiation on the Windows runner.
 
 ### Gates
 
