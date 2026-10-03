@@ -477,53 +477,95 @@ void RecorderOverlay::show_boundary(
         return;
     }
 
+    const bool edit_changed =
+        boundary_editable_ != editable;
+
+    const bool had_rect =
+        boundary_rect_valid_;
+
+    const bool position_changed =
+        !had_rect ||
+        boundary_rect_cache_.left !=
+            screen_rect.left ||
+        boundary_rect_cache_.top !=
+            screen_rect.top;
+
+    const bool size_changed =
+        !had_rect ||
+        (boundary_rect_cache_.right -
+         boundary_rect_cache_.left) !=
+            (screen_rect.right -
+             screen_rect.left) ||
+        (boundary_rect_cache_.bottom -
+         boundary_rect_cache_.top) !=
+            (screen_rect.bottom -
+             screen_rect.top);
+
     boundary_editable_ = editable;
 
-    LONG_PTR ex_style =
-        GetWindowLongPtrW(
+    if (edit_changed) {
+        LONG_PTR ex_style =
+            GetWindowLongPtrW(
+                boundary_,
+                GWL_EXSTYLE);
+
+        if (editable) {
+            ex_style &=
+                ~static_cast<LONG_PTR>(
+                    WS_EX_TRANSPARENT);
+        } else {
+            ex_style |=
+                WS_EX_TRANSPARENT;
+        }
+
+        SetWindowLongPtrW(
             boundary_,
-            GWL_EXSTYLE);
-
-    if (editable) {
-        ex_style &=
-            ~static_cast<LONG_PTR>(
-                WS_EX_TRANSPARENT);
-    } else {
-        ex_style |=
-            WS_EX_TRANSPARENT;
+            GWL_EXSTYLE,
+            ex_style);
     }
-
-    SetWindowLongPtrW(
-        boundary_,
-        GWL_EXSTYLE,
-        ex_style);
 
     set_capture_exclusion(
         boundary_,
         exclude_from_capture);
 
-    const int width =
-        screen_rect.right -
-        screen_rect.left;
-    const int height =
-        screen_rect.bottom -
-        screen_rect.top;
+    if (position_changed ||
+        size_changed ||
+        edit_changed ||
+        !IsWindowVisible(boundary_)) {
+        UINT flags =
+            SWP_NOACTIVATE |
+            SWP_SHOWWINDOW;
 
-    SetWindowPos(
-        boundary_,
-        HWND_TOPMOST,
-        screen_rect.left,
-        screen_rect.top,
-        width,
-        height,
-        SWP_NOACTIVATE |
-            SWP_SHOWWINDOW |
-            SWP_FRAMECHANGED);
+        if (edit_changed)
+            flags |=
+                SWP_FRAMECHANGED;
 
-    InvalidateRect(
-        boundary_,
-        nullptr,
-        TRUE);
+        SetWindowPos(
+            boundary_,
+            HWND_TOPMOST,
+            screen_rect.left,
+            screen_rect.top,
+            screen_rect.right -
+                screen_rect.left,
+            screen_rect.bottom -
+                screen_rect.top,
+            flags);
+    }
+
+    boundary_rect_cache_ =
+        screen_rect;
+    boundary_rect_valid_ =
+        true;
+
+    // Moving an already rasterized border does not require repaint. Only a
+    // size/editability change alters pixels inside the layered window.
+    if (size_changed ||
+        edit_changed) {
+        InvalidateRect(
+            boundary_,
+            nullptr,
+            FALSE);
+    }
 }
 
 RECT RecorderOverlay::boundary_rect() const noexcept
@@ -542,6 +584,9 @@ void RecorderOverlay::hide_boundary()
         ShowWindow(
             boundary_,
             SW_HIDE);
+
+    boundary_rect_valid_ =
+        false;
 }
 
 void RecorderOverlay::paint_toolbar(HDC dc)
