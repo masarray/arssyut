@@ -14,15 +14,18 @@ namespace Arssyut.UI;
 public sealed partial class RecordingControllerWindow : Window
 {
     private readonly PreviewRecorderSession _session;
+    private readonly SettingsPreviewState _settings;
     private readonly DispatcherTimer _timer;
     private bool _closingFromStop;
 
     public event EventHandler? StopRequested;
 
     public RecordingControllerWindow(
-        PreviewRecorderSession session)
+        PreviewRecorderSession session,
+        SettingsPreviewState settings)
     {
         _session = session;
+        _settings = settings;
 
         InitializeComponent();
 
@@ -38,6 +41,13 @@ public sealed partial class RecordingControllerWindow : Window
             Interval = TimeSpan.FromMilliseconds(250)
         };
         _timer.Tick += (_, _) => RefreshState();
+
+        ToolTip.SetTip(
+            StopButton,
+            $"Stop recording ({_settings.RecordHotkey})");
+        ToolTip.SetTip(
+            PauseButton,
+            $"Pause / Resume ({_settings.PauseHotkey})");
 
         Opened += (_, _) =>
         {
@@ -90,12 +100,16 @@ public sealed partial class RecordingControllerWindow : Window
         object? sender,
         KeyEventArgs e)
     {
-        if (e.Key == Key.F9)
+        if (HotkeyPreview.Matches(
+                e,
+                _settings.RecordHotkey))
         {
             RequestStop();
             e.Handled = true;
         }
-        else if (e.Key == Key.F10)
+        else if (HotkeyPreview.Matches(
+                     e,
+                     _settings.PauseHotkey))
         {
             _session.TogglePause();
             RefreshState();
