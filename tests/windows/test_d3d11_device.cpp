@@ -1948,6 +1948,13 @@ void test_screen_text_legibility(
         channel(light_enhanced) -
         channel(light_base);
 
+    std::cout
+        << "P5D.5 reinforcement dark-on-bright="
+        << dark_reinforcement
+        << " light-on-dark="
+        << light_reinforcement
+        << '\n';
+
     test.expect(
         dark_reinforcement > 0,
         "P5D.5 makes a dark neutral stroke more solid on bright UI");
