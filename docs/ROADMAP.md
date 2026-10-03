@@ -712,6 +712,108 @@ Before merging:
 - P5D.7/P5E visual/encoder baseline remains unchanged.
 
 
+
+### P6UI — final Avalonia product shell
+
+**Status: P6UI.0 + P6UI.1 IMPLEMENTED ON FEATURE BRANCH / VISUAL ACCEPTANCE PENDING**
+
+Direct visual acceptance established that the P6R Win32/GDI shell is a
+functional prototype, not the final product UI.
+
+The P6R native baseline is frozen at branch:
+`milestone/p6r-native-functional`.
+
+The final presentation shell lives under:
+`src/ui/Arssyut.UI`.
+
+#### P6UI.0 — baseline split
+
+Implemented:
+- freeze P6R native functional baseline before UI migration;
+- preserve existing C++ capture/Region/ArZoom/ArVisual/encoder authority;
+- prohibit visual feature growth in the legacy Win32 shell;
+- keep the legacy shell buildable until native binding acceptance is complete.
+
+#### P6UI.1 — Avalonia design-system shell
+
+Implemented:
+- .NET 10 / Avalonia 12.1.3 preview project;
+- embedded Inter via `Avalonia.Fonts.Inter`;
+- real `Lucide.Avalonia` icon renderer;
+- semantic color/spacing/radius/control-height/typography tokens;
+- compact custom recorder chrome;
+- Mica -> Acrylic -> opaque fallback preference;
+- modern main recorder information architecture;
+- modern categorized Settings shell;
+- UI-only capture-mode / Record / Stop / Pause simulator;
+- Windows CI build, self-contained publish and launch smoke;
+- third-party notice packaging.
+
+Visual acceptance required before native binding:
+- real screenshots at 100/125/150/200% DPI;
+- no native white/gray control leakage;
+- Inter remains crisp at compact sizes;
+- Lucide icons preserve correct rounded strokes and optical alignment;
+- primary Record hierarchy is obvious without oversized controls;
+- Settings remains compact and readable;
+- translucent shell remains readable when Mica/Acrylic is unavailable.
+
+#### P6UI.2 — interaction prototype completion
+
+Next:
+- device popovers instead of permanent wide device selectors;
+- contextual Saved result actions;
+- floating recording-controller visual prototype;
+- refined hover/pressed/focus/motion states;
+- keyboard navigation and accessibility names;
+- mock long source/device names and DPI stress cases.
+
+#### P6UI.3 — Settings acceptance
+
+Required:
+- finish every Settings category using one row grammar;
+- output-folder picker preview;
+- hotkey editor;
+- camera placement preview;
+- audio device/meter preview;
+- no backend side effects yet.
+
+#### P6UI.4 — native bridge
+
+Only after P6UI.1-3 visual acceptance:
+- stable C ABI or equivalent narrow interop boundary;
+- source/device snapshots;
+- start/stop state;
+- result/diagnostic paths;
+- no recorder logic in C# view-models.
+
+#### P6UI.5 — floating controller + capture exclusion
+
+- bind authoritative recorder state;
+- capture-excluded floating surface;
+- no capture-cadence repaint work;
+- verify no flicker during real recording.
+
+#### P6UI.6 — Region integration
+
+- bind existing native Region editor/crop state;
+- preserve one Region authority;
+- keep Smart Zoom viewport/boundary synchronization;
+- no C# crop implementation.
+
+#### P6UI.7 — legacy shell retirement
+
+Retire the legacy presentation shell only after:
+- real Display/Window/Region recording passes through Avalonia;
+- result/failure states pass;
+- Settings/native bridge passes;
+- fallback/recovery behavior is preserved.
+
+See:
+- `docs/P6UI_AVALONIA_DESIGN_SYSTEM.md`
+- `docs/adr/ADR-002-ui-shell-technology.md`
+
+
 ---
 
 ## P7 — hardening
