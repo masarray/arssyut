@@ -414,6 +414,15 @@ void RecorderOverlay::update_toolbar(
         pause_,
         pause_enabled ? TRUE : FALSE);
 
+    // P6R exposes the intended recorder toolbar grammar now, but these
+    // actions must not claim runtime support before their backends exist.
+    EnableWindow(
+        microphone_,
+        FALSE);
+    EnableWindow(
+        camera_,
+        FALSE);
+
     InvalidateRect(
         toolbar_,
         nullptr,
