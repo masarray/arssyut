@@ -84,7 +84,7 @@ upstream sampling footprint.
 Transparent pixels and near-black letterbox/background pixels are excluded from
 exposure statistics.
 
-P5B retains the upstream measurements:
+P5B retains the upstream histogram measurements:
 
 - p10, median, p90 and p98 luma;
 - mean saturation;
@@ -96,8 +96,18 @@ P5B retains the upstream measurements:
 - neutral fraction;
 - colored fraction.
 
-Statistics use fixed 256-bin luma and saturation histograms. No per-sample heap
-allocation is required.
+P5E adds screen-topology evidence from a second pass over the same fixed 64x36
+sample:
+
+- flat fraction;
+- neutral-flat fraction;
+- bright-neutral-flat fraction;
+- dark-neutral-flat fraction;
+- local edge fraction.
+
+No additional GPU readback, OCR/app detection or per-sample heap allocation is
+introduced. Statistics still use the fixed 256-bin luma/saturation histograms
+plus bounded local comparisons over the same 2304 pixels.
 
 ## Temporal behavior
 
@@ -111,7 +121,7 @@ without requiring 60 readbacks per second.
 
 ## Adaptive outputs
 
-The model updates exactly the P5A adaptive inputs:
+The scene model still measures the camera-style P5A/P5B pressures:
 
 - smart exposure;
 - smart pop;
@@ -122,9 +132,17 @@ The model updates exactly the P5A adaptive inputs:
 - smart neutral clean;
 - smart hero-color separation.
 
-The asymmetry of upstream Smart Auto remains intentional: dangerous/highly
-saturated scenes can reduce the creative dose strongly, while muted scenes only
-receive a small positive lift.
+P5E additionally exposes screen UI, mixed UI, color-risk and hot-risk evidence.
+`apply_adaptive()` is now the policy boundary:
+
+- Pixel Accurate never enters the analyzer;
+- screen-native product modes strongly suppress camera-style global exposure,
+  shadow and neutral-highlight normalization;
+- positive muted-pop preload is suppressed for applied screen policy;
+- hot-vivid and saturation risk remain authoritative.
+
+Raw evidence remains observable in diagnostics even when the screen policy
+chooses not to apply it literally.
 
 ### P5C.2 screen-capture calibration layer
 
@@ -174,6 +192,11 @@ If analyzer resources cannot be created, or a readback/map fails:
 Recorder diagnostics expose:
 
 - `arvisual_smart_auto`;
+- P5E topology fields (`flat`, `neutral_flat`, bright/dark neutral flat,
+  edge fraction);
+- P5E classifier/risk fields (`screen_ui`, `mixed_ui`, `color_risk`,
+  `hot_risk`);
+- P5E applied Smart Auto fields so raw and applied pressure can be compared;
 - `visual_analysis_available`;
 - `visual_analysis_submitted`;
 - `visual_analysis_completed`;
