@@ -603,7 +603,24 @@ See docs/P5E_REAL_VISUAL_ACCEPTANCE.md for the locked evidence.
 
 ## P6 — Compact product UI/UX
 
+**Status: IMPLEMENTED ON FEATURE BRANCH / CI + REAL GUI ACCEPTANCE PENDING**
+
 The engine state machine already exists before this milestone.
+
+P6 implementation direction:
+- default idle surface is a compact capture-first workspace, not a dashboard;
+- primary row exposes source, frame rate and one Record action;
+- presentation effects and Visual Style are progressively disclosed under
+  Settings while their current values remain summarized in the collapsed view;
+- unsupported System Audio/Mic placeholders are removed rather than presented
+  as fake controls;
+- active recording becomes a borderless top-center mini bar with authoritative
+  engine status, elapsed time and one Stop action;
+- Ready/Failed return to the same workspace with inline result/diagnostic state;
+- F9 routes through the same Record/Stop command as pointer activation;
+- P5D.7/P5E visual and encoder constants remain untouched.
+
+See `docs/P6_COMPACT_PRODUCT_UI.md`.
 
 ### Surfaces
 
