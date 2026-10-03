@@ -305,6 +305,20 @@ void test_hot_vivid_scene(TestContext &test)
     test.expect(
         adaptive.chroma_limit <= 0.905f,
         "Hot vivid scene tightens chroma ceiling");
+
+    auto clean =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                CleanScreen);
+    arssyut::visual::apply_adaptive(
+        clean,
+        adaptive);
+
+    test.expect(
+        clean.smart_highlight > 0.95f &&
+            clean.smart_strength <= 0.61f &&
+            clean.smart_chroma_limit <= 0.905f,
+        "P5E screen policy never weakens true hot-vivid safety");
 }
 
 void test_dark_scene(TestContext &test)
