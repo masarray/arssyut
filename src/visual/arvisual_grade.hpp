@@ -29,6 +29,11 @@ struct ArVisualGradeSettings {
     float highlight_guard = 0.94f;
     float performance = 1.0f;
 
+    // P5D screen-content legibility. This is deliberately separate from
+    // generic clarity: it only reinforces bounded luma micro-edges and never
+    // adds chroma. Pixel Accurate keeps this at zero.
+    float text_legibility = 0.0f;
+
     // P5A neutral adaptive inputs. P5B will update these asynchronously.
     float smart_exposure = 0.0f;
     float smart_pop = 1.0f;
@@ -67,6 +72,8 @@ struct ArVisualGradeSettings {
         std::clamp(value.highlight_guard, 0.0f, 1.0f);
     value.performance =
         std::clamp(value.performance, 0.0f, 1.0f);
+    value.text_legibility =
+        std::clamp(value.text_legibility, 0.0f, 1.0f);
 
     value.smart_exposure =
         std::clamp(value.smart_exposure, -0.025f, 0.018f);
