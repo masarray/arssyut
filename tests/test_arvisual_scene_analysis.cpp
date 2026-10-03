@@ -307,6 +307,13 @@ void test_product_modes(TestContext &test)
         "Clean Screen keeps creative dose below Vivid Presentation");
 
     test.expect(
+        pixel.text_legibility == 0.0f &&
+            clean.text_legibility > vivid.text_legibility &&
+            vivid.text_legibility > 0.0f,
+        "P5D keeps Pixel Accurate untouched and gives Clean the stronger text-legibility dose");
+
+
+    test.expect(
         std::abs(vivid.enhance - 0.78f) < 0.00001f &&
             std::abs(vivid.color_pop - 0.86f) < 0.00001f &&
             std::abs(vivid.clarity - 0.68f) < 0.00001f &&
