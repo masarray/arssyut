@@ -1224,7 +1224,7 @@ void RecorderSession::write_diagnostics(
             << "  \"encoder_color_primaries\": \"bt709\",\n"
             << "  \"encoder_transfer_function\": \"bt709\",\n"
             << "  \"encoder_yuv_matrix\": \"bt709\",\n"
-            << "  \"encoder_quality_vbr\": false,\n
+            << "  \"encoder_quality_vbr\": false,\n"
             << "  \"encoder_quality\": 0,\n"
             << "  \"encoder_pixel_format\": \"nv12\",\n"
             << "  \"encoder_chroma_subsampling\": \"4:2:0\",\n"
