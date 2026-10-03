@@ -253,7 +253,8 @@ immediate neighborhood is bright and neutral, and the existing P5D edge and
 neutral-text gates are active.
 
 For that topology only, text gain can rise smoothly from 1.00x to at most
-1.32x and the negative luma cap may widen from -0.014 to at most -0.018.
+1.45x and the negative luma cap may widen from -0.014 to at most -0.018. The
+cap, not the multiplier alone, remains the final safety authority.
 
 Positive-detail text, including white/light text on dark IDE backgrounds,
 continues to use the original P5D path with no P5D.5 multiplier.
