@@ -293,6 +293,11 @@ Status MfH264Mp4Writer::open(
             3U,
             static_cast<std::uint32_t>(
                 max_surface_count));
+    config.quality =
+        std::clamp<std::uint32_t>(
+            config.quality,
+            1U,
+            100U);
 
     config_ = config;
     path_ = path;
