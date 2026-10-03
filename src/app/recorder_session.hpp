@@ -141,7 +141,10 @@ private:
         arssyut::windows::MfRateControlMode encoder_rate_control =
             arssyut::windows::MfRateControlMode::Default,
         bool encoder_quality_vs_speed_applied = false,
-        std::uint32_t encoder_quality_vs_speed = 0) noexcept;
+        std::uint32_t encoder_quality_vs_speed = 0,
+        arssyut::windows::MfColorPipelineMode encoder_color_pipeline =
+            arssyut::windows::MfColorPipelineMode::LegacyExplicit,
+        bool encoder_color_pipeline_authoritative = false) noexcept;
 
     RecorderConfig config_{};
     std::thread worker_;
