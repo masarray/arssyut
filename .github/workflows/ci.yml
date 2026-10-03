@@ -50,6 +50,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path $package | Out-Null
           Copy-Item "build/windows-x64/Release/arssyut.exe" $package
           Copy-Item "tools/app_package/README.txt" $package
+          Copy-Item "third_party/lucide/LICENSE" (Join-Path $package "LUCIDE_LICENSE.txt")
 
       - name: Upload Arssyut GUI recorder
         uses: actions/upload-artifact@v4
