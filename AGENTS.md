@@ -419,7 +419,16 @@ sharpen filter:
 - NV12 4:2:0 remains the compatibility-first default. Any 4:4:4 path is a
   future explicit archival mode, never a silent replacement;
 - text-fidelity changes require direct 1080p60 playback validation at both
-  native size and player-fit scaling.
+  native size and player-fit scaling;
+- P5D.5 directional reinforcement is allowed only for negative-detail strokes
+  inside bright neutral/low-chroma neighborhoods;
+- do not raise global text-legibility strength to compensate for white-browser
+  text if the already-validated dark-UI path would also become stronger;
+- P5D.5 dark-on-bright gain is bounded to 1.45x and the negative local luma cap
+  is bounded to -0.018;
+- positive-detail/light-on-dark text must remain on the original P5D response;
+- changes to P5D.5 require a matched white-browser + dark-IDE real-recording
+  comparison at both native and fit-to-player playback sizes.
 
 ---
 

@@ -220,3 +220,48 @@ Reject if:
 
 Accept only if text is easier to read after normal player scaling while the
 desktop still looks natural.
+
+## P5D.5 — bright-background text calibration
+
+The first complete P5D triad was reviewed on 2026-10-03 using matched Pixel
+Accurate, Clean Screen and Vivid Presentation recordings.
+
+Diagnostics confirmed that the intended production path was active:
+
+- H.264 High Profile;
+- quality-VBR accepted at quality 86;
+- NV12 4:2:0;
+- Pixel Accurate text legibility 0.00;
+- Clean Screen text legibility 0.56;
+- Vivid Presentation text legibility 0.34;
+- no encoder backpressure or presentation-input drops in the matched Clean/Vivid
+  samples.
+
+Frame-matched review showed an important asymmetry:
+
+- dark-UI / light-text regions gained a clear and natural readability benefit;
+- black/gray text on white browser UI improved at native 1080p, but much of
+  that benefit disappeared when the video was fit-to-player/downscaled.
+
+The correct response is not to raise global text-legibility strength, because
+dark UI is already at the desired sharpness.
+
+P5D.5 therefore adds a directional classifier inside the existing P5D shader.
+
+Additional reinforcement is allowed only when local detail is negative, the
+immediate neighborhood is bright and neutral, and the existing P5D edge and
+neutral-text gates are active.
+
+For that topology only, text gain can rise smoothly from 1.00x to at most
+1.45x and the negative luma cap may widen from -0.014 to at most -0.018. The
+cap, not the multiplier alone, remains the final safety authority.
+
+Positive-detail text, including white/light text on dark IDE backgrounds,
+continues to use the original P5D path with no P5D.5 multiplier.
+
+P5D.5 still changes luma only, uses the existing neighborhood samples, adds no
+render pass or resources, and leaves Pixel Accurate unchanged.
+
+Windows/WARP regression fixtures explicitly compare neutral dark-on-bright and
+light-on-dark strokes. Both must retain reinforcement while dark-on-bright gets
+the larger calibrated dose.
