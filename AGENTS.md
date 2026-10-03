@@ -896,6 +896,20 @@ Rules:
 - keyboard focus must remain visible for keyboard users, while pointer hover
   and focus feedback share the same restrained tokenized visual language.
 
+- Settings uses one row grammar across all categories; avoid page-specific
+  mini design systems, giant cards or native-white control fallbacks;
+- P6UI.3 SettingsPreviewState is explicitly non-authoritative. Folder choices,
+  hotkeys, camera placement, devices and level meters remain preview-only until
+  the P6UI.4 bridge maps them to versioned native configuration contracts;
+- hotkey preview capture must reject duplicate assignments and never register
+  global OS hotkeys during visual acceptance;
+- audio meters in Settings are deterministic presentation fixtures, not live
+  device capture and not a second audio engine;
+- camera placement preview owns only visual alignment state and must never
+  calculate compositor geometry that belongs to the native camera pipeline;
+- folder picker interaction may select a path for preview, but must not create,
+  delete or write files during P6UI.3 acceptance.
+
 ## 19. Testing gates
 
 Changes must add the smallest meaningful test at the owning layer.
