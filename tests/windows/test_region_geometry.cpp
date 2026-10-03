@@ -103,6 +103,56 @@ void test_even_nv12_alignment(
         "alignment preserves Region origin");
 }
 
+void test_camera_viewport(
+    TestContext &test)
+{
+    const RECT region{
+        100,
+        200,
+        1700,
+        1100};
+
+    const RECT centered =
+        arssyut::app::
+            camera_viewport_rect(
+                region,
+                0.5f,
+                0.5f,
+                2.0f);
+
+    test.expect(
+        centered.right -
+                centered.left ==
+            800 &&
+            centered.bottom -
+                centered.top ==
+            450,
+        "2x Smart Zoom boundary halves Region dimensions");
+
+    test.expect(
+        centered.left == 500 &&
+            centered.top == 425,
+        "centered Smart Zoom boundary preserves camera center");
+
+    const RECT edge =
+        arssyut::app::
+            camera_viewport_rect(
+                region,
+                0.0f,
+                0.0f,
+                2.0f);
+
+    test.expect(
+        edge.left == region.left &&
+            edge.top == region.top,
+        "Smart Zoom boundary clamps at Region top-left");
+
+    test.expect(
+        edge.right <= region.right &&
+            edge.bottom <= region.bottom,
+        "Smart Zoom boundary never escapes Region");
+}
+
 void test_clamp_and_default(
     TestContext &test)
 {
@@ -160,6 +210,7 @@ int main()
 
     test_negative_origin_mapping(test);
     test_even_nv12_alignment(test);
+    test_camera_viewport(test);
     test_clamp_and_default(test);
 
     std::cout
