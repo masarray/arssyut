@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Arssyut.UI.Preview;
 
 namespace Arssyut.UI;
 
@@ -49,11 +50,16 @@ public sealed partial class App : Application
                         "--settings-stress",
                         StringComparison.OrdinalIgnoreCase));
 
+            var previewSettings =
+                new SettingsPreviewState();
+
             desktop.MainWindow =
                 settingsPreview
                     ? new SettingsWindow(
+                        previewSettings,
                         settingsStress)
                     : new MainWindow(
+                        previewSettings,
                         stressLongNames,
                         controllerPreview);
         }
