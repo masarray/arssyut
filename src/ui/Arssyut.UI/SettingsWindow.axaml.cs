@@ -27,7 +27,7 @@ public sealed partial class SettingsWindow : Window
         58, 39, 33, 49
     ];
 
-    private readonly SettingsPreviewState _preview = new();
+    private readonly SettingsPreviewState _preview;
     private readonly Button[] _navButtons;
     private readonly Control[] _pages;
     private readonly Button[] _cameraAnchorButtons;
@@ -38,8 +38,10 @@ public sealed partial class SettingsWindow : Window
     private int _meterStep;
 
     public SettingsWindow(
+        SettingsPreviewState preview,
         bool stressLayout = false)
     {
+        _preview = preview;
         InitializeComponent();
 
         TransparencyLevelHint =
