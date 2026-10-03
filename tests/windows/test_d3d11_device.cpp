@@ -1906,6 +1906,187 @@ void test_arvisual_product_modes(
         "P5C mode changes allocate no compositor resources");
 }
 
+void test_screen_native_surface_anchor(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "P5E screen-native compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    auto clean =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                CleanScreen);
+    clean.smart_auto = false;
+    clean.smart_screen_ui = 1.0f;
+
+    auto unanchored = clean;
+    unanchored.neutral_surface_anchor = 0.0f;
+
+    const auto channel =
+        [](std::uint32_t bgra) {
+            return static_cast<int>(
+                bgra & 0xFFu);
+        };
+
+    constexpr std::array<std::uint8_t, 6>
+        gray_levels{
+            32, 64, 128, 192, 232, 246
+        };
+
+    std::uint64_t stable_generation = 0;
+    bool generation_initialized = false;
+
+    for (const auto gray : gray_levels) {
+        const std::uint32_t bgra =
+            0xFF000000u |
+            (static_cast<std::uint32_t>(gray) << 16) |
+            (static_cast<std::uint32_t>(gray) << 8) |
+            static_cast<std::uint32_t>(gray);
+
+        auto source =
+            create_solid_texture(
+                owner.device(),
+                16,
+                16,
+                bgra);
+        test.expect(
+            source != nullptr,
+            "P5E gray-ladder source created");
+        if (!source)
+            return;
+
+        std::uint32_t base_out = 0;
+        std::uint32_t anchored_out = 0;
+
+        test.expect(
+            compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 16, 16},
+                {64, 64},
+                nullptr,
+                &unanchored).ok() &&
+            read_texture_pixel(
+                owner.device(),
+                owner.immediate_context(),
+                compositor.output_texture(),
+                32,
+                32,
+                base_out),
+            "P5E unanchored neutral surface renders");
+
+        if (!generation_initialized) {
+            stable_generation =
+                compositor.resource_generation();
+            generation_initialized = true;
+        }
+
+        test.expect(
+            compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 16, 16},
+                {64, 64},
+                nullptr,
+                &clean).ok() &&
+            read_texture_pixel(
+                owner.device(),
+                owner.immediate_context(),
+                compositor.output_texture(),
+                32,
+                32,
+                anchored_out),
+            "P5E anchored neutral surface renders");
+
+        const int source_value =
+            static_cast<int>(gray);
+        const int anchored_error =
+            std::abs(
+                channel(anchored_out) -
+                source_value);
+        const int base_error =
+            std::abs(
+                channel(base_out) -
+                source_value);
+
+        test.expect(
+            anchored_error <= 4,
+            "P5E Clean Screen keeps flat neutral luma within a tight authored-value budget");
+
+        test.expect(
+            anchored_error <=
+                base_error,
+            "P5E neutral anchor never moves a flat gray farther from its source luma");
+
+        test.expect(
+            compositor.resource_generation() ==
+                stable_generation,
+            "P5E gray-ladder anchoring allocates no compositor resources");
+    }
+
+    constexpr std::uint32_t saturated_blue =
+        0xFFFF4010u;
+    auto colored_source =
+        create_solid_texture(
+            owner.device(),
+            16,
+            16,
+            saturated_blue);
+    test.expect(
+        colored_source != nullptr,
+        "P5E saturated non-neutral fixture created");
+    if (!colored_source)
+        return;
+
+    std::uint32_t colored_base = 0;
+    std::uint32_t colored_anchor = 0;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            colored_source.Get(),
+            {0, 0, 16, 16},
+            {64, 64},
+            nullptr,
+            &unanchored).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            colored_base) &&
+        compositor.render(
+            owner.immediate_context(),
+            colored_source.Get(),
+            {0, 0, 16, 16},
+            {64, 64},
+            nullptr,
+            &clean).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            colored_anchor),
+        "P5E colored anchor-exclusion outputs can be inspected");
+
+    test.expect(
+        colored_anchor == colored_base,
+        "P5E neutral-surface anchor does not alter saturated media/color regions");
+}
+
 void test_screen_text_legibility(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -2967,6 +3148,7 @@ int main()
     test_single_ring_click_compositor(test, device);
     test_arvisual_grade_compositor(test, device);
     test_arvisual_product_modes(test, device);
+    test_screen_native_surface_anchor(test, device);
     test_screen_text_legibility(test, device);
     test_arvisual_async_scene_analyzer(test, device);
     test_keyboard_overlay_compositor(test, device);

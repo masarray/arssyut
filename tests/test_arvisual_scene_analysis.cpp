@@ -50,6 +50,43 @@ std::vector<std::uint8_t> solid_bgra(
 
     return pixels;
 }
+std::vector<std::uint8_t> split_neutral_bgra(
+    std::uint8_t dark,
+    std::uint8_t bright)
+{
+    constexpr std::uint32_t width = 64;
+    constexpr std::uint32_t height = 36;
+
+    std::vector<std::uint8_t> pixels(
+        static_cast<std::size_t>(width) *
+        static_cast<std::size_t>(height) *
+        4u);
+
+    for (std::uint32_t y = 0;
+         y < height;
+         ++y) {
+        for (std::uint32_t x = 0;
+             x < width;
+             ++x) {
+            const std::uint8_t value =
+                x < width / 2
+                    ? dark
+                    : bright;
+            const std::size_t offset =
+                (static_cast<std::size_t>(y) *
+                     width +
+                 x) *
+                4u;
+            pixels[offset + 0] = value;
+            pixels[offset + 1] = value;
+            pixels[offset + 2] = value;
+            pixels[offset + 3] = 255;
+        }
+    }
+
+    return pixels;
+}
+
 
 void test_neutral_scene(TestContext &test)
 {
@@ -154,6 +191,85 @@ void test_bright_neutral_ui_scene(TestContext &test)
         "Neutral white UI still requests clean-white support");
 }
 
+void test_mixed_screen_ui_scene(TestContext &test)
+{
+    auto pixels =
+        split_neutral_bgra(
+            24,
+            246);
+
+    arssyut::visual::ArVisualSceneModel model;
+    test.expect(
+        model.observe_bgra8(
+            pixels.data(),
+            64u * 4u,
+            64,
+            36,
+            0.20f),
+        "Mixed light/dark UI produces an observation");
+
+    const auto &stats = model.stats();
+    const auto &adaptive = model.adaptive();
+
+    test.expect(
+        stats.neutral_flat_frac > 0.85f &&
+            stats.bright_neutral_flat_frac > 0.35f &&
+            stats.dark_neutral_flat_frac > 0.35f,
+        "Mixed UI exposes large authored flat neutral surfaces");
+
+    test.expect(
+        adaptive.screen_ui > 0.90f &&
+            adaptive.mixed_ui > 0.85f,
+        "Mixed light/dark UI reaches high screen-native confidence");
+
+    test.expect(
+        adaptive.exposure < -0.020f &&
+            adaptive.highlight > 0.70f &&
+            adaptive.shadow > 0.50f,
+        "Raw scene evidence still captures camera-style global pressure");
+
+    auto clean =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                CleanScreen);
+    arssyut::visual::apply_adaptive(
+        clean,
+        adaptive);
+
+    test.expect(
+        std::abs(clean.smart_exposure) < 0.003f,
+        "Clean Screen suppresses camera-style global exposure normalization");
+    test.expect(
+        clean.smart_highlight < 0.20f &&
+            clean.smart_shadow < 0.10f,
+        "Clean Screen treats authored light/dark UI as hierarchy, not exposure error");
+    test.expect(
+        clean.smart_strength > 0.95f &&
+            clean.smart_chroma_limit > 0.98f,
+        "Low-risk mixed UI retains near-neutral creative strength and chroma ceiling");
+    test.expect(
+        clean.smart_pop <= 1.0001f,
+        "Screen Smart Auto never preloads a muted-scene positive pop boost");
+    test.expect(
+        clean.smart_screen_ui > 0.90f,
+        "Applied Clean Screen state exposes screen-native confidence");
+
+    auto vivid =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                VividPresentation);
+    arssyut::visual::apply_adaptive(
+        vivid,
+        adaptive);
+
+    test.expect(
+        std::abs(vivid.smart_exposure) <
+            std::abs(adaptive.exposure) &&
+            vivid.smart_strength >
+                adaptive.strength,
+        "Vivid Presentation also moves toward screen semantics without becoming Pixel Accurate");
+}
+
 void test_hot_vivid_scene(TestContext &test)
 {
     auto pixels =
@@ -176,8 +292,10 @@ void test_hot_vivid_scene(TestContext &test)
         "Hot vivid scene is never classified as neutral white UI");
 
     test.expect(
-        adaptive.highlight > 0.95f,
-        "Hot vivid scene drives highlight protection");
+        adaptive.highlight > 0.95f &&
+            adaptive.hot_risk > 0.95f &&
+            adaptive.color_risk > 0.95f,
+        "Hot vivid scene drives explicit color/highlight risk protection");
     test.expect(
         adaptive.pop <= 0.53f,
         "Hot vivid scene strongly reduces creative pop");
@@ -187,6 +305,20 @@ void test_hot_vivid_scene(TestContext &test)
     test.expect(
         adaptive.chroma_limit <= 0.905f,
         "Hot vivid scene tightens chroma ceiling");
+
+    auto clean =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                CleanScreen);
+    arssyut::visual::apply_adaptive(
+        clean,
+        adaptive);
+
+    test.expect(
+        clean.smart_highlight > 0.95f &&
+            clean.smart_strength <= 0.61f &&
+            clean.smart_chroma_limit <= 0.905f,
+        "P5E screen policy never weakens true hot-vivid safety");
 }
 
 void test_dark_scene(TestContext &test)
@@ -319,6 +451,16 @@ void test_product_modes(TestContext &test)
         "P5D.6 keeps Pixel Accurate untouched and gives Clean stronger UI-structure preservation");
 
     test.expect(
+        pixel.screen_native == 0.0f &&
+            pixel.neutral_surface_anchor == 0.0f &&
+            clean.screen_native >
+                vivid.screen_native &&
+            clean.neutral_surface_anchor >
+                vivid.neutral_surface_anchor &&
+            vivid.screen_native > 0.0f,
+        "P5E makes Clean strongest screen-native mode while Pixel Accurate remains untouched");
+
+    test.expect(
         std::abs(vivid.enhance - 0.78f) < 0.00001f &&
             std::abs(vivid.color_pop - 0.86f) < 0.00001f &&
             std::abs(vivid.clarity - 0.68f) < 0.00001f &&
@@ -378,6 +520,7 @@ int main()
 
     test_neutral_scene(test);
     test_bright_neutral_ui_scene(test);
+    test_mixed_screen_ui_scene(test);
     test_hot_vivid_scene(test);
     test_dark_scene(test);
     test_time_based_ema(test);

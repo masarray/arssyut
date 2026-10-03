@@ -183,6 +183,9 @@ float4 apply_arvisual(float4 px, float2 uv)
     const float2 texel_size = max(arvisual5.yz, float2(0.0000001, 0.0000001));
     const float text_legibility = saturate(arvisual5.w);
     const float ui_structure = saturate(arvisual6.x);
+    const float screen_native = saturate(arvisual6.y);
+    const float neutral_surface_anchor = saturate(arvisual6.z);
+    const float smart_screen_ui = saturate(arvisual6.w);
 
     float alpha = px.a;
     float3 src = saturate(px.rgb * ((alpha > 0.0) ? (1.0 / alpha) : 0.0));
@@ -544,6 +547,54 @@ float4 apply_arvisual(float4 px, float2 uv)
     float final_knee = lerp(final_knee_base, 0.972, neutral_highlight);
     target_y = arvisual_soft_luma_shoulder(target_y, final_knee, smart_highlight + highlight_guard * 0.35);
     color = arvisual_fit_gamut_preserve_luma(color, target_y);
+
+    /*
+     * P5E neutral-surface luma anchor.
+     *
+     * Camera grading may reshape a deliberately authored gray surface even
+     * when that surface is perfectly valid UI. Flat low-chroma source regions
+     * are therefore constrained near their source luma before P5D.6 restores
+     * local separators. Text/strong edges are naturally excluded by the flat
+     * gate and continue through the dedicated P5D paths.
+     */
+    y = arvisual_luminance(color);
+    float surface_flat =
+        1.0 - smoothstep(0.0035, 0.024, abs(detail));
+    float surface_neutral =
+        1.0 - smoothstep(0.055, 0.20, src_hsv.y);
+    float surface_range_guard =
+        smoothstep(0.012, 0.055, src_y) *
+        (1.0 - smoothstep(0.982, 0.999, src_y));
+    float surface_screen_context =
+        lerp(0.72, 1.0, smart_screen_ui);
+
+    float surface_anchor_confidence =
+        saturate(
+            screen_native *
+            neutral_surface_anchor *
+            surface_screen_context *
+            surface_flat *
+            surface_neutral *
+            surface_range_guard *
+            (1.0 - skin_mask * 0.99));
+
+    float surface_luma_budget =
+        lerp(
+            0.018,
+            0.0045,
+            neutral_surface_anchor);
+    float bounded_surface_y =
+        clamp(
+            y,
+            src_y - surface_luma_budget,
+            src_y + surface_luma_budget);
+
+    color = arvisual_fit_gamut_preserve_luma(
+        color,
+        lerp(
+            y,
+            bounded_surface_y,
+            surface_anchor_confidence));
 
     /*
      * P5D.6 low-contrast UI structure preservation.
@@ -974,9 +1025,9 @@ struct PresentationConstants {
     float arvisual_text_legibility;
 
     float arvisual_ui_structure;
-    float arvisual_reserved6_y;
-    float arvisual_reserved6_z;
-    float arvisual_reserved6_w;
+    float arvisual_screen_native;
+    float arvisual_neutral_surface_anchor;
+    float arvisual_smart_screen_ui;
 
     float clicks[16]{};
 };
@@ -2029,6 +2080,12 @@ Status D3D11Compositor::render_retained(
         grade.text_legibility;
     constants.arvisual_ui_structure =
         grade.ui_structure;
+    constants.arvisual_screen_native =
+        grade.screen_native;
+    constants.arvisual_neutral_surface_anchor =
+        grade.neutral_surface_anchor;
+    constants.arvisual_smart_screen_ui =
+        grade.smart_screen_ui;
 
     for (std::size_t i = 0;
          i < state.clicks.size();

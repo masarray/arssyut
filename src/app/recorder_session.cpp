@@ -1171,6 +1171,15 @@ void RecorderSession::write_diagnostics(
                 utf8(
                     config_.target.label));
 
+        auto applied_visual =
+            config_.visual;
+        arssyut::visual::apply_adaptive(
+            applied_visual,
+            visual_adaptive);
+        applied_visual =
+            arssyut::visual::sanitize(
+                applied_visual);
+
         out
             << "{\n"
             << "  \"schema\": \"arssyut-diagnostics-v1\",\n"
@@ -1267,6 +1276,10 @@ void RecorderSession::write_diagnostics(
             << config_.visual.text_legibility << ",\n"
             << "  \"arvisual_base_ui_structure\": "
             << config_.visual.ui_structure << ",\n"
+            << "  \"arvisual_base_screen_native\": "
+            << config_.visual.screen_native << ",\n"
+            << "  \"arvisual_base_neutral_surface_anchor\": "
+            << config_.visual.neutral_surface_anchor << ",\n"
             << "  \"visual_analysis_primed\": "
             << (visual_analysis_primed ? "true" : "false")
             << ",\n"
@@ -1294,6 +1307,16 @@ void RecorderSession::write_diagnostics(
             << visual_scene_stats.neutral_frac << ",\n"
             << "  \"visual_scene_colored_frac\": "
             << visual_scene_stats.colored_frac << ",\n"
+            << "  \"visual_scene_flat_frac\": "
+            << visual_scene_stats.flat_frac << ",\n"
+            << "  \"visual_scene_neutral_flat_frac\": "
+            << visual_scene_stats.neutral_flat_frac << ",\n"
+            << "  \"visual_scene_bright_neutral_flat_frac\": "
+            << visual_scene_stats.bright_neutral_flat_frac << ",\n"
+            << "  \"visual_scene_dark_neutral_flat_frac\": "
+            << visual_scene_stats.dark_neutral_flat_frac << ",\n"
+            << "  \"visual_scene_edge_frac\": "
+            << visual_scene_stats.edge_frac << ",\n"
             << "  \"visual_adaptive_exposure\": "
             << visual_adaptive.exposure << ",\n"
             << "  \"visual_adaptive_pop\": "
@@ -1312,6 +1335,28 @@ void RecorderSession::write_diagnostics(
             << visual_adaptive.separation << ",\n"
             << "  \"visual_adaptive_white_ui\": "
             << visual_adaptive.white_ui << ",\n"
+            << "  \"visual_adaptive_screen_ui\": "
+            << visual_adaptive.screen_ui << ",\n"
+            << "  \"visual_adaptive_mixed_ui\": "
+            << visual_adaptive.mixed_ui << ",\n"
+            << "  \"visual_adaptive_color_risk\": "
+            << visual_adaptive.color_risk << ",\n"
+            << "  \"visual_adaptive_hot_risk\": "
+            << visual_adaptive.hot_risk << ",\n"
+            << "  \"visual_applied_smart_exposure\": "
+            << applied_visual.smart_exposure << ",\n"
+            << "  \"visual_applied_smart_pop\": "
+            << applied_visual.smart_pop << ",\n"
+            << "  \"visual_applied_smart_highlight\": "
+            << applied_visual.smart_highlight << ",\n"
+            << "  \"visual_applied_smart_shadow\": "
+            << applied_visual.smart_shadow << ",\n"
+            << "  \"visual_applied_smart_strength\": "
+            << applied_visual.smart_strength << ",\n"
+            << "  \"visual_applied_smart_chroma_limit\": "
+            << applied_visual.smart_chroma_limit << ",\n"
+            << "  \"visual_applied_screen_ui\": "
+            << applied_visual.smart_screen_ui << ",\n"
             << "  \"visual_analysis_available\": "
             << (snapshot_value.visual_analysis_available ? "true" : "false")
             << ",\n"

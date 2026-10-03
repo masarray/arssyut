@@ -106,6 +106,30 @@ Local implementation:
 No FidelityFX CAS source/header/shader code is copied or vendored. The P5D
 shader is an independent Arssyut implementation.
 
+## Original implementation — P5E screen-native visual engine
+
+P5E does **not** transplant screen-behavior code from the ArVisual OBS
+repository.
+
+It deliberately diverges from camera-oriented adaptive policy after real
+desktop recordings established that authored light/dark UI hierarchy must not
+be treated as exposure error.
+
+Original local implementation:
+
+- `src/visual/arvisual_scene_analysis.*` — flat/neutral screen-topology
+  statistics, screen/mixed-UI confidence, and explicit color/hot-risk evidence;
+- `src/visual/arvisual_grade.hpp` / `arvisual_modes.hpp` — screen-native
+  product prior and neutral-surface anchor;
+- `src/platform/windows/graphics/d3d11_compositor.cpp` — late bounded
+  flat-neutral luma anchor using existing P5D neighborhood samples;
+- recorder diagnostics distinguish raw analyzer pressure from applied
+  screen-native Smart Auto state.
+
+The pinned P5A/P5B upstream implementation remains the provenance source for the
+base creative grade, histogram statistics and camera-style pressure model.
+P5E's screen policy/topology/neutral anchor are original Arssyut behavior.
+
 ## Required entry for every future transplant
 
 Before merging copied/adapted implementation source, add:

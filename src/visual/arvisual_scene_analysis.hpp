@@ -20,6 +20,15 @@ struct ArVisualSceneStats {
     float hot_vivid_frac = 0.0f;
     float neutral_frac = 0.30f;
     float colored_frac = 0.10f;
+
+    // P5E screen topology evidence from the same fixed 64x36 analysis frame.
+    // These are local-structure statistics, not semantic/OCR classification.
+    float flat_frac = 0.0f;
+    float neutral_flat_frac = 0.0f;
+    float bright_neutral_flat_frac = 0.0f;
+    float dark_neutral_flat_frac = 0.0f;
+    float edge_frac = 0.0f;
+
     bool primed = false;
 };
 
@@ -33,6 +42,14 @@ struct ArVisualAdaptiveState {
     float clean = 0.0f;
     float separation = 0.0f;
     float white_ui = 0.0f;
+
+    // P5E classifier/risk evidence. screen_ui is the broad screen-content
+    // confidence; mixed_ui captures authored simultaneous dark + bright
+    // neutral surfaces. color_risk/hot_risk remain true safety signals.
+    float screen_ui = 0.0f;
+    float mixed_ui = 0.0f;
+    float color_risk = 0.0f;
+    float hot_risk = 0.0f;
 };
 
 class ArVisualSceneModel final {

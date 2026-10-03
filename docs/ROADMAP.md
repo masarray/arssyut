@@ -538,6 +538,33 @@ recording.
 
 See `docs/P5D7_COLOR_PIPELINE_AUTHORITY.md`.
 
+### P5E — screen-native visual engine
+
+P5D.7 real validation confirmed the SDR range/colorimetry pipeline was fixed:
+gray surface hierarchy returned and P5D text/border preservation remained
+healthy. The remaining issue was policy: mixed light/dark UI could still drive
+camera-style exposure, highlight and shadow normalization.
+
+Implemented scope:
+- keep one ArVisual shader/analysis engine; do not fork a separate screen
+  renderer;
+- add flat/neutral/bright-neutral/dark-neutral/edge topology evidence from the
+  same fixed 64x36 P5B sample with no heap allocation;
+- classify broad screen UI and mixed light/dark UI without OCR/app detection;
+- keep raw camera-style pressure measurable, but reinterpret it through a
+  product-mode screen prior;
+- Clean Screen uses screen-native=1.00 and neutral-surface anchor=0.94;
+- Vivid Presentation uses screen-native=0.72 and neutral-surface anchor=0.62;
+- suppress global exposure/shadow/neutral-highlight normalization on screen
+  content while retaining hot-vivid/color-risk protection;
+- remove positive muted-pop preload from applied screen policy;
+- add a late flat-neutral luma anchor before P5D.6 separator preservation;
+- reuse the existing `arvisual6` constant-buffer vector; no new GPU resources
+  or render pass;
+- diagnostics separate raw analyzer pressure from applied Smart Auto values.
+
+See `docs/P5E_SCREEN_NATIVE_VISUAL_ENGINE.md`.
+
 ### Gates
 
 Visual test scenes:
