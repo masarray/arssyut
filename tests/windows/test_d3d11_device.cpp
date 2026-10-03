@@ -1482,6 +1482,277 @@ void test_arvisual_product_modes(
         "P5C mode changes allocate no compositor resources");
 }
 
+void test_screen_text_legibility(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t dark_gray = 0xFF505050u;
+    constexpr std::uint32_t light_gray = 0xFFD0D0D0u;
+
+    auto source =
+        create_split_texture(
+            owner.device(),
+            64,
+            64,
+            dark_gray,
+            light_gray);
+    test.expect(
+        source != nullptr,
+        "P5D neutral text-edge fixture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "P5D text-fidelity compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    const auto pixel_grade =
+        arssyut::visual::grade_for_mode(
+            arssyut::visual::ArVisualProductMode::
+                PixelAccurate);
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &pixel_grade).ok(),
+        "P5D Pixel Accurate edge fixture renders");
+
+    std::uint32_t pixel_dark = 0;
+    std::uint32_t pixel_light = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            8,
+            32,
+            pixel_dark) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            55,
+            32,
+            pixel_light),
+        "P5D Pixel Accurate fixture pixels can be inspected");
+
+    test.expect(
+        pixel_dark == dark_gray &&
+            pixel_light == light_gray,
+        "P5D Pixel Accurate preserves neutral screen pixels exactly at 1:1");
+
+    arssyut::visual::ArVisualGradeSettings baseline;
+    baseline.enabled = true;
+    baseline.smart_auto = false;
+    baseline.master = 0.0f;
+    baseline.enhance = 0.0f;
+    baseline.color_pop = 0.0f;
+    baseline.clean_white = 0.0f;
+    baseline.clarity = 0.0f;
+    baseline.skin_protect = 0.0f;
+    baseline.skin_beauty = 0.0f;
+    baseline.healthy_tone = 0.0f;
+    baseline.toy_gloss = 0.0f;
+    baseline.depth_pop = 0.0f;
+    baseline.highlight_guard = 0.0f;
+    baseline.performance = 1.0f;
+    baseline.text_legibility = 0.0f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &baseline).ok(),
+        "P5D neutral baseline edge renders");
+
+    std::uint32_t base_left = 0;
+    std::uint32_t base_right = 0;
+    std::uint32_t base_flat = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            31,
+            32,
+            base_left) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            base_right) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            8,
+            32,
+            base_flat),
+        "P5D baseline edge samples can be inspected");
+
+    const auto generation =
+        compositor.resource_generation();
+
+    auto enhanced = baseline;
+    enhanced.text_legibility = 0.80f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 64, 64},
+            {64, 64},
+            nullptr,
+            &enhanced).ok(),
+        "P5D enhanced neutral edge renders");
+
+    std::uint32_t enhanced_left = 0;
+    std::uint32_t enhanced_right = 0;
+    std::uint32_t enhanced_flat = 0;
+    test.expect(
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            31,
+            32,
+            enhanced_left) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            32,
+            32,
+            enhanced_right) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            8,
+            32,
+            enhanced_flat),
+        "P5D enhanced edge samples can be inspected");
+
+    const auto channel =
+        [](std::uint32_t bgra) {
+            return static_cast<int>(bgra & 0xFFu);
+        };
+
+    const int base_contrast =
+        channel(base_right) -
+        channel(base_left);
+    const int enhanced_contrast =
+        channel(enhanced_right) -
+        channel(enhanced_left);
+
+    test.expect(
+        enhanced_contrast > base_contrast,
+        "P5D reinforces neutral micro-edge luma contrast");
+
+    test.expect(
+        std::abs(
+            channel(enhanced_flat) -
+            channel(base_flat)) <= 1,
+        "P5D leaves flat neutral regions unchanged");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "P5D text-legibility changes allocate no compositor resources");
+
+    auto downscaled =
+        create_split_texture(
+            owner.device(),
+            128,
+            128,
+            dark_gray,
+            light_gray);
+    test.expect(
+        downscaled != nullptr,
+        "P5D minified edge fixture created");
+    if (!downscaled)
+        return;
+
+    baseline.text_legibility = 0.0f;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            downscaled.Get(),
+            {0, 0, 128, 128},
+            {64, 64},
+            nullptr,
+            &baseline).ok(),
+        "P5D minified baseline renders");
+
+    std::uint32_t min_base_left = 0;
+    std::uint32_t min_base_right = 0;
+    (void)read_texture_pixel(
+        owner.device(),
+        owner.immediate_context(),
+        compositor.output_texture(),
+        31,
+        32,
+        min_base_left);
+    (void)read_texture_pixel(
+        owner.device(),
+        owner.immediate_context(),
+        compositor.output_texture(),
+        32,
+        32,
+        min_base_right);
+
+    enhanced.text_legibility = 0.80f;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            downscaled.Get(),
+            {0, 0, 128, 128},
+            {64, 64},
+            nullptr,
+            &enhanced).ok(),
+        "P5D minified enhanced edge renders");
+
+    std::uint32_t min_enhanced_left = 0;
+    std::uint32_t min_enhanced_right = 0;
+    (void)read_texture_pixel(
+        owner.device(),
+        owner.immediate_context(),
+        compositor.output_texture(),
+        31,
+        32,
+        min_enhanced_left);
+    (void)read_texture_pixel(
+        owner.device(),
+        owner.immediate_context(),
+        compositor.output_texture(),
+        32,
+        32,
+        min_enhanced_right);
+
+    test.expect(
+        channel(min_enhanced_right) -
+            channel(min_enhanced_left) >
+        channel(min_base_right) -
+            channel(min_base_left),
+        "P5D scale-aware legibility survives 2x source minification");
+}
+
 void test_arvisual_async_scene_analyzer(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -1924,6 +2195,7 @@ int main()
     test_single_ring_click_compositor(test, device);
     test_arvisual_grade_compositor(test, device);
     test_arvisual_product_modes(test, device);
+    test_screen_text_legibility(test, device);
     test_arvisual_async_scene_analyzer(test, device);
     test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
