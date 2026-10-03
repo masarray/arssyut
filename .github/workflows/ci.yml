@@ -108,6 +108,19 @@ jobs:
 
           Stop-Process -Id $process.Id -Force
 
+      - name: Interaction stress smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--stress-long-names","--controller-preview" -PassThru
+          Start-Sleep -Seconds 4
+
+          if ($process.HasExited) {
+            throw "P6UI interaction stress scenario exited with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
       - name: Upload Avalonia preview
         uses: actions/upload-artifact@v4
         with:
