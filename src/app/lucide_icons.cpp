@@ -16,6 +16,11 @@ struct Transform {
     float oy = 0.0f;
 };
 
+struct FloatPoint {
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
 [[nodiscard]] Transform transform_for(
     RECT bounds) noexcept
 {
@@ -94,7 +99,7 @@ void line(
 void polyline(
     HDC dc,
     const Transform &t,
-    const POINTF *points,
+    const FloatPoint *points,
     int count)
 {
     if (!points || count <= 0)
@@ -189,7 +194,7 @@ void draw_gamepad(
     const Transform &t)
 {
     // Lucide gamepad-2 geometry, simplified to native GDI primitives.
-    const POINTF outline[] = {
+    const FloatPoint outline[] = {
         {6.7f, 5.0f},
         {4.4f, 5.0f},
         {3.0f, 6.5f},
@@ -239,7 +244,7 @@ void draw_volume(
     HDC dc,
     const Transform &t)
 {
-    const POINTF speaker[] = {
+    const FloatPoint speaker[] = {
         {2, 9},
         {6, 9},
         {11, 4.7f},
@@ -332,7 +337,7 @@ void draw_video(
         std::max(2, static_cast<int>(
             std::lround(4.0f * t.scale))));
 
-    const POINTF camera[] = {
+    const FloatPoint camera[] = {
         {16, 10.5f},
         {22, 7.5f},
         {22, 16.5f},
@@ -526,7 +531,7 @@ void draw_folder(
     HDC dc,
     const Transform &t)
 {
-    const POINTF folder[] = {
+    const FloatPoint folder[] = {
         {3, 5},
         {9, 5},
         {11, 8},
