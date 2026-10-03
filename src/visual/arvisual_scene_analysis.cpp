@@ -773,15 +773,15 @@ void apply_adaptive(
         std::clamp(
             1.0f -
                 adaptive.color_risk * 0.34f -
-                adaptive.hot_risk * 0.08f,
-            0.66f,
+                adaptive.hot_risk * 0.16f,
+            0.58f,
             1.0f);
     const float screen_chroma_limit =
         std::clamp(
             0.985f -
                 adaptive.color_risk * 0.060f -
-                adaptive.hot_risk * 0.015f,
-            0.91f,
+                adaptive.hot_risk * 0.025f,
+            0.90f,
             0.985f);
 
     grade.smart_exposure =
