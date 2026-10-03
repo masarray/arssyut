@@ -11,6 +11,18 @@
         <ResourceInclude Source="/Design/ArTokens.axaml" />
         <ResourceInclude Source="/Design/ArTypography.axaml" />
       </ResourceDictionary.MergedDictionaries>
+
+      <!-- Override Fluent's default blue state layer with Arssyut recording red. -->
+      <Color x:Key="SystemAccentColor">#FF5360</Color>
+      <Color x:Key="SystemAccentColorLight1">#FF6671</Color>
+      <Color x:Key="SystemAccentColorLight2">#FF7A84</Color>
+      <Color x:Key="SystemAccentColorLight3">#FF929A</Color>
+      <Color x:Key="SystemAccentColorDark1">#E84753</Color>
+      <Color x:Key="SystemAccentColorDark2">#CE3D48</Color>
+      <Color x:Key="SystemAccentColorDark3">#B4343E</Color>
+      <SolidColorBrush
+          x:Key="SystemControlHighlightAccentBrush"
+          Color="{StaticResource SystemAccentColor}" />
     </ResourceDictionary>
   </Application.Resources>
 
