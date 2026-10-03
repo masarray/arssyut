@@ -126,6 +126,38 @@ The asymmetry of upstream Smart Auto remains intentional: dangerous/highly
 saturated scenes can reduce the creative dose strongly, while muted scenes only
 receive a small positive lift.
 
+### P5C.2 screen-capture calibration layer
+
+Matched real recordings on 2026-10-03 exposed one topology where literal
+upstream adaptive mapping was not suitable for a desktop recorder: a
+browser/document can be overwhelmingly neutral and near-white by design.
+
+In the calibration triad, both Clean Screen and Vivid Presentation ended on a
+scene with roughly 98.5% neutral pixels and almost no saturation, yet the
+literal mapping produced `highlight=1`, `exposure=-0.025`, and a muted-scene
+`pop=1.025`. The following colorful scene then inherited that state through
+the 0.65 s EMA, producing visible brightness/chroma settling.
+
+P5C.2 therefore adds one Arssyut-specific classifier:
+
+- bright median luma;
+- overwhelming neutral-pixel fraction;
+- very low scene saturation.
+
+Only when all three gates agree is the scene treated as bright neutral UI.
+
+For that topology only:
+
+- negative exposure is strongly attenuated;
+- neutral luminance/near-clip pressure is strongly attenuated;
+- hot-vivid pressure remains fully authoritative;
+- muted-scene positive pop lift is suppressed;
+- clean-white support remains active.
+
+This does not change the sampled statistics, the 5 Hz async backend, the
+0.65-second EMA, or hot-vivid/dark-scene protection. Diagnostics expose the
+classifier confidence as `visual_adaptive_white_ui`.
+
 ## Failure behavior
 
 Scene analysis is optional infrastructure.
@@ -146,7 +178,8 @@ Recorder diagnostics expose:
 - `visual_analysis_submitted`;
 - `visual_analysis_completed`;
 - `visual_analysis_busy_skips`;
-- `visual_analysis_map_failures`.
+- `visual_analysis_map_failures`;
+- `visual_adaptive_white_ui` (P5C.2 neutral-white UI classifier evidence).
 
 For a healthy dynamic recording, completed analysis should advance while
 map-failure remains zero. Busy skips are safe backpressure, not a recorder
@@ -157,6 +190,8 @@ failure.
 Portable scene-model tests cover:
 
 - neutral-dominant scene classification and clean-white response;
+- bright neutral browser/document classification without false clipping
+  pressure;
 - hot-vivid highlight/color-risk reduction;
 - dark-scene shadow pressure;
 - time-based EMA behavior;
