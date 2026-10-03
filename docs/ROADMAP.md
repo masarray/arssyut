@@ -601,53 +601,97 @@ See docs/P5E_REAL_VISUAL_ACCEPTANCE.md for the locked evidence.
 
 ---
 
-## P6 — Compact product UI/UX
+## P6 — Recorder workspace UI/UX
 
-**Status: IMPLEMENTED ON FEATURE BRANCH / CI + REAL GUI ACCEPTANCE PENDING**
+**Status: P6R REDESIGN IN PROGRESS / REAL GUI ACCEPTANCE PENDING**
 
-The engine state machine already exists before this milestone.
+The first compact-form P6 pass was rejected in direct GUI review because it
+still treated Arssyut as an engineering form rather than a complete recorder
+workspace.
 
-P6 implementation direction:
-- default idle surface is a compact capture-first workspace, not a dashboard;
-- primary row exposes source, frame rate and one Record action;
-- presentation effects and Visual Style are progressively disclosed under
-  Settings while their current values remain summarized in the collapsed view;
-- unsupported System Audio/Mic placeholders are removed rather than presented
-  as fake controls;
-- active recording becomes a borderless top-center mini bar with authoritative
-  engine status, elapsed time and one Stop action;
-- Ready/Failed return to the same workspace with inline result/diagnostic state;
-- F9 routes through the same Record/Stop command as pointer activation;
-- P5D.7/P5E visual and encoder constants remain untouched.
+P6R is now grounded in established recorder patterns from Camtasia, Bandicam,
+ScreenPal, AnyRec and OBS. See `docs/P6R_RECORDER_UX_RESEARCH.md`.
 
-See `docs/P6_COMPACT_PRODUCT_UI.md`.
+### P6R.1 — recorder workspace + interaction reliability
 
-### Surfaces
+Implemented on the feature branch:
+- Capture Mode is first-class: Display / Window / Region / Game;
+- Display/Window use the existing real source catalog;
+- Region/Game are visible product intents but recording is blocked until their
+  dedicated backends land, so the UI never lies;
+- real Windows microphone endpoint enumeration;
+- real Media Foundation camera-device enumeration;
+- primary System Audio / Mic / Camera controls;
+- dedicated categorized Settings window:
+  General / Recording / Output / Sound / Camera / Mouse & Keystroke / Hotkeys;
+- separate topmost recording toolbar with Pause/Mic/Camera/Stop icon surfaces;
+- separate click-through capture-boundary overlay;
+- RecorderSnapshot publishes the same camera center/zoom used by the compositor
+  so the boundary shrinks/moves with Smart Zoom without becoming a second
+  camera authority;
+- main HWND is no longer restyled into a popup while recording;
+- UI completion path no longer joins the worker thread;
+- F9 is a global Record/Stop hotkey while the process is alive.
 
-- compact main recorder;
-- source picker;
-- region selector;
-- minimal recording control;
-- settings;
-- result/finalizing surface;
-- recovery prompt.
+### P6R.2 — custom Region backend
 
-### Design constraints
+Required before Region can record:
+- interactive region selection and drag handles;
+- canonical monitor-space -> source crop mapping;
+- output/aspect policy;
+- multi-monitor/DPI-safe persistence;
+- boundary is the editor for the actual crop, not decorative chrome.
 
-- no oversized typography;
-- no bulky card dashboard;
-- dense but readable spacing;
-- clear hierarchy;
-- one prominent Record/Stop action;
-- advanced settings progressively disclosed;
-- dark/light support where practical.
+### P6R.3 — audio backend
 
-### Gates
+Required before Sound controls can record:
+- WASAPI system-audio loopback;
+- microphone endpoint capture using the P6R-selected device;
+- independent enable/mute/gain;
+- canonical 48 kHz project clock;
+- A/V synchronization and drift diagnostics;
+- AAC mux integration.
 
-- all visible session status derives from authoritative engine state;
-- UI can close/reopen settings without mutating runtime truth;
-- recording overlay exclusion tested;
-- keyboard-only accessibility for essential actions.
+### P6R.4 — webcam backend
+
+Required before Camera can record:
+- Media Foundation webcam source using the P6R-selected device;
+- retained GPU texture/compositor path;
+- move/resize Picture-in-Picture;
+- optional shape/border configuration;
+- no CPU full-frame composition.
+
+### P6R.5 — pause/resume
+
+Required before Pause is enabled:
+- explicit Paused engine state;
+- media-time continuity with no wall-clock gap encoded;
+- recorder toolbar and hotkey support;
+- final MP4 duration/audio sync regression tests.
+
+### P6R.6 — game capture
+
+Required before Game can record:
+- ADR for dedicated Windows game capture strategy;
+- efficient DirectX/OpenGL game path where technically supportable;
+- safe Window/WGC fallback;
+- process/window identity and source-loss behavior.
+
+### P6 visual acceptance
+
+Before merging:
+- main recorder reads as a recorder, not a settings dashboard;
+- capture mode is obvious at first glance;
+- capture boundary is visible and matches Display/Window source;
+- Smart Zoom visibly contracts/moves the boundary with the actual camera;
+- toolbar remains responsive from Record through Stop/Finalizing;
+- no blank/frozen main-window transition;
+- Settings categories are coherent and compact;
+- real microphone/camera names populate when devices exist;
+- unsupported Region/Game/audio/camera/pause actions never silently claim
+  success;
+- P5D.7/P5E visual/encoder baseline remains unchanged.
+
 
 ---
 
