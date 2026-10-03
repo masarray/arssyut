@@ -54,6 +54,7 @@ enum class ArVisualProductMode : std::uint8_t {
         grade.depth_pop = 0.30f;
         grade.highlight_guard = 0.98f;
         grade.performance = 1.00f;
+        grade.text_legibility = 0.56f;
         return sanitize(grade);
 
     case ArVisualProductMode::VividPresentation:
@@ -77,6 +78,7 @@ enum class ArVisualProductMode : std::uint8_t {
         grade.depth_pop = 0.76f;
         grade.highlight_guard = 0.94f;
         grade.performance = 1.00f;
+        grade.text_legibility = 0.34f;
         return sanitize(grade);
 
     case ArVisualProductMode::PixelAccurate:
