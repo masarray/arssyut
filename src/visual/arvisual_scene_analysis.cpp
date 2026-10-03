@@ -296,6 +296,9 @@ void ArVisualSceneModel::update_adaptive() noexcept
             0.0f,
             1.0f);
 
+    adaptive_.white_ui =
+        bright_neutral_ui;
+
     const float upper_key =
         s.p90_luma * 0.72f +
         s.p98_luma * 0.28f;
