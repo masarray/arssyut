@@ -97,7 +97,10 @@ if(WIN32)
     )
 
     add_executable(arssyut WIN32
+        src/app/device_catalog.cpp
+        src/app/recorder_overlay.cpp
         src/app/recorder_session.cpp
+        src/app/recorder_settings_window.cpp
         src/app/source_catalog.cpp
         src/app/windows_main.cpp
     )
@@ -114,6 +117,8 @@ if(WIN32)
         psapi
         shell32
         uxtheme
+        propsys
+        uuid
     )
     if(MSVC)
         target_compile_options(arssyut PRIVATE
