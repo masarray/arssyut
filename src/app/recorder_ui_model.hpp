@@ -40,6 +40,11 @@ struct RecorderUiSettings {
     bool show_boundary = true;
     bool hide_main_while_recording = true;
 
+    // Region is stored in virtual-screen coordinates so the selector remains
+    // stable across per-monitor DPI and negative monitor origins.
+    RECT region_screen_rect{};
+    bool region_screen_rect_valid = false;
+
     arssyut::visual::ArVisualProductMode visual_mode =
         arssyut::visual::ArVisualProductMode::PixelAccurate;
 
@@ -48,6 +53,8 @@ struct RecorderUiSettings {
 
 constexpr UINT kUiSettingsChanged =
     WM_APP + 40;
+constexpr UINT kUiRegionChanged =
+    WM_APP + 41;
 
 } // namespace arssyut::app
 
