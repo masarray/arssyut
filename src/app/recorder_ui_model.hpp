@@ -4,6 +4,8 @@
 
 #include "visual/arvisual_modes.hpp"
 
+#include <Windows.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
