@@ -883,6 +883,19 @@ Rules:
 - every Avalonia release preview must pass Windows build + launch smoke and
   real DPI screenshot review before the next binding milestone.
 
+- device selection belongs to compact flyout/popover surfaces; do not restore
+  permanently wide device ComboBoxes to the recorder main window;
+- Saved/Open/Folder actions are contextual output-state actions and stay hidden
+  before an output exists;
+- the P6UI.2 floating controller is a presentation prototype only. It must not
+  become a second media clock, capture authority or pause implementation;
+- preview timer/state code stays under `Arssyut.UI.Preview` and is removed or
+  bypassed when the native bridge becomes authoritative;
+- long-name stress scenarios must use truncation/layout resilience rather than
+  widening the whole recorder UI;
+- keyboard focus must remain visible for keyboard users, while pointer hover
+  and focus feedback share the same restrained tokenized visual language.
+
 ## 19. Testing gates
 
 Changes must add the smallest meaningful test at the owning layer.
