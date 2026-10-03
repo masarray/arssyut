@@ -14,17 +14,29 @@ public sealed partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            var args =
+                desktop.Args ?? [];
+
             var stressLongNames =
                 Array.Exists(
-                    desktop.Args ?? [],
+                    args,
                     arg => string.Equals(
                         arg,
                         "--stress-long-names",
                         StringComparison.OrdinalIgnoreCase));
 
+            var controllerPreview =
+                Array.Exists(
+                    args,
+                    arg => string.Equals(
+                        arg,
+                        "--controller-preview",
+                        StringComparison.OrdinalIgnoreCase));
+
             desktop.MainWindow =
                 new MainWindow(
-                    stressLongNames);
+                    stressLongNames,
+                    controllerPreview);
         }
 
         base.OnFrameworkInitializationCompleted();
