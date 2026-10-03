@@ -492,6 +492,53 @@ sharpen filter:
 - changes to screen-native policy require matched white UI, dark UI, mixed UI
   and saturated-media real recordings.
 
+### P5E real-visual acceptance lock
+
+P5E was accepted from real 1080p60 recordings on 2026-10-03 after both
+Clean Screen and Vivid Presentation were reviewed against the P5D.7 color
+pipeline.
+
+The following values are the accepted production baseline and must not drift
+incidentally during P6 or later work:
+
+- P5D.7 SDR color contract remains full-range desktop RGB -> explicit BT.709
+  studio-range NV12/H.264 (16-235);
+- the default encoder remains H.264 High + bitrate-controlled unconstrained VBR
+  with the existing bitrate budget and QualityVsSpeed preference/fallbacks;
+- Pixel Accurate remains a true grade/analysis bypass;
+- Clean Screen keeps text_legibility=0.56, ui_structure=0.72,
+  screen_native=1.00 and neutral_surface_anchor=0.94;
+- Vivid Presentation keeps text_legibility=0.34, ui_structure=0.38,
+  screen_native=0.72 and neutral_surface_anchor=0.62;
+- neutral-surface anchoring remains after creative grading and before P5D.6
+  separator preservation;
+- screen Smart Auto remains a risk limiter: raw camera-style pressure may be
+  measured, but authored UI luminance must not be globally normalized;
+- hot-vivid/color-risk authority must remain active for saturated media;
+- no new render pass, shader authority, staging path, full-frame readback or
+  per-frame resource churn may be introduced to replace this behavior.
+
+The acceptance recordings demonstrated:
+- Clean Screen preserved white/near-white hierarchy, dark-panel hierarchy,
+  P5D text/borders and light<->dark stability while strongly suppressing raw
+  exposure/highlight/shadow pressure;
+- Vivid Presentation preserved neutral UI while color_risk/hot_risk remained
+  active on saturated content and no visible global exposure pumping appeared;
+- both modes completed scene analysis without busy/map failures or encoder
+  backpressure, with compositor GPU p95 around 4 ms on the validation machine.
+
+Future work must treat P5E as locked. Any deliberate change to the values,
+color contract, encoder policy, classifier thresholds, shader ordering or
+screen-policy semantics requires:
+1. a concrete reproduced regression or separately approved product requirement;
+2. deterministic portable/WARP regression coverage;
+3. matched real recordings covering white UI, dark UI, mixed UI and saturated
+   content;
+4. diagnostics proving no color-range, pumping, resource or realtime regression.
+
+Do not retune P5D.7/P5E opportunistically while implementing later UI/product
+milestones.
+
 ---
 
 ## 11. Input visualization and privacy contract

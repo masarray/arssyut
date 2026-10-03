@@ -540,6 +540,8 @@ See `docs/P5D7_COLOR_PIPELINE_AUTHORITY.md`.
 
 ### P5E — screen-native visual engine
 
+**Status: COMPLETE / REAL-VISUAL ACCEPTED / LOCKED — 2026-10-03**
+
 P5D.7 real validation confirmed the SDR range/colorimetry pipeline was fixed:
 gray surface hierarchy returned and P5D text/border preservation remained
 healthy. The remaining issue was policy: mixed light/dark UI could still drive
@@ -583,6 +585,19 @@ Requirements:
 - no highlight blowout;
 - no black frames;
 - no material recording smoothness regression.
+
+Real acceptance completed on 2026-10-03:
+- Clean Screen passed white/near-white hierarchy, dark hierarchy, P5D
+  text/border retention and light/dark transition stability;
+- Vivid Presentation passed saturated-content color-risk/hot-risk validation
+  while keeping neutral UI stable;
+- both recordings retained the authoritative P5D.7 BT.709 studio-range
+  pipeline and healthy realtime diagnostics;
+- P5E parameters and ordering are now an accepted baseline. Later milestones
+  must not retune them without a reproduced regression, regression tests and
+  another matched real-recording validation set.
+
+See docs/P5E_REAL_VISUAL_ACCEPTANCE.md for the locked evidence.
 
 ---
 

@@ -243,3 +243,34 @@ Acceptance priorities:
 - saturated media still receives risk limiting;
 - P5D text/border improvements remain intact;
 - no new halo, tint or resource/performance regression.
+
+## Accepted production baseline — 2026-10-03
+
+P5E completed real visual acceptance with separate Clean Screen and Vivid
+Presentation 1080p60 recordings after the P5D.7 color-pipeline correction.
+
+Locked product-mode preservation values:
+
+| Mode | text_legibility | ui_structure | screen_native | neutral_surface_anchor |
+|---|---:|---:|---:|---:|
+| Pixel Accurate | 0.00 | 0.00 | 0.00 | 0.00 |
+| Clean Screen | 0.56 | 0.72 | 1.00 | 0.94 |
+| Vivid Presentation | 0.34 | 0.38 | 0.72 | 0.62 |
+
+Accepted invariants:
+- Pixel Accurate stays the reference bypass;
+- Clean Screen preserves authored neutral luminance first;
+- Vivid Presentation keeps more creative latitude but remains screen-native;
+- raw camera-style exposure/highlight/shadow measurements remain observable
+  diagnostics rather than mandatory whole-screen normalization;
+- saturated-content color/hot risk stays authoritative;
+- neutral-surface anchor ordering remains after creative tone shaping and before
+  P5D.6 UI-structure preservation;
+- P5D.7 BT.709/range and P5D.6 bitrate-controlled VBR contracts are part of the
+  accepted visual baseline.
+
+The measured acceptance evidence is recorded in
+docs/P5E_REAL_VISUAL_ACCEPTANCE.md.
+
+Any future change to these values or semantics requires a reproduced reason,
+automated regression gates and another matched real-recording validation set.
