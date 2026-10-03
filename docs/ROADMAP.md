@@ -464,6 +464,27 @@ Implemented scope:
 
 See `docs/P5D_SCREEN_TEXT_FIDELITY.md`.
 
+### P5D.5 — bright-background text calibration
+
+The first complete P5D Pixel/Clean/Vivid triad was reviewed on 2026-10-03.
+
+Evidence:
+- High Profile + quality-VBR 86 were actually negotiated;
+- Pixel Accurate remained text-legibility bypass;
+- Clean/Vivid remained realtime healthy with zero encoder backpressure;
+- dark UI and light-on-dark text showed a clear natural readability gain;
+- black/gray text on white browser UI improved at native 1080p but lost much of
+  that perceived gain after player-fit downscaling.
+
+Correction:
+- do not raise global Clean/Vivid text-legibility values;
+- classify only negative-detail strokes inside bright neutral neighborhoods;
+- allow up to 1.32x directional gain for that topology;
+- widen only the negative local luma cap from -0.014 toward -0.018;
+- keep positive-detail / light-on-dark text on the original P5D response;
+- retain all neutral/chroma/skin/micro-edge gates and the no-resource-churn
+  contract.
+
 ### Gates
 
 Visual test scenes:
