@@ -47,7 +47,7 @@ struct RecorderConfig {
     std::filesystem::path output_path;
     arssyut::core::FrameSize output_size{1920, 1080};
     arssyut::core::FrameRate frame_rate{60, 1};
-    std::uint32_t bitrate_bps = 12'000'000;
+    std::uint32_t bitrate_bps = 18'000'000;
     arssyut::presentation::PresentationSettings presentation{};
     arssyut::visual::ArVisualProductMode visual_mode =
         arssyut::visual::ArVisualProductMode::PixelAccurate;
