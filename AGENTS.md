@@ -424,7 +424,7 @@ sharpen filter:
   inside bright neutral/low-chroma neighborhoods;
 - do not raise global text-legibility strength to compensate for white-browser
   text if the already-validated dark-UI path would also become stronger;
-- P5D.5 dark-on-bright gain is bounded to 1.32x and the negative local luma cap
+- P5D.5 dark-on-bright gain is bounded to 1.45x and the negative local luma cap
   is bounded to -0.018;
 - positive-detail/light-on-dark text must remain on the original P5D response;
 - changes to P5D.5 require a matched white-browser + dark-IDE real-recording
