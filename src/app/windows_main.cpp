@@ -28,15 +28,21 @@ using arssyut::windows::mf_writer_stage_name;
 constexpr wchar_t kWindowClass[] = L"ArssyutRecorderWindow";
 constexpr UINT_PTR kUiTimer = 1;
 
-constexpr COLORREF kBackground = RGB(17, 20, 24);
-constexpr COLORREF kHeader = RGB(24, 28, 34);
-constexpr COLORREF kCard = RGB(29, 34, 41);
-constexpr COLORREF kCardMuted = RGB(25, 29, 35);
-constexpr COLORREF kText = RGB(238, 241, 245);
-constexpr COLORREF kMuted = RGB(155, 163, 174);
-constexpr COLORREF kAccent = RGB(239, 61, 61);
-constexpr COLORREF kAccentDark = RGB(185, 42, 42);
-constexpr COLORREF kAqua = RGB(73, 215, 199);
+constexpr int kIdleWidth = 780;
+constexpr int kIdleCollapsedHeight = 330;
+constexpr int kIdleExpandedHeight = 430;
+
+constexpr COLORREF kBackground = RGB(14, 17, 20);
+constexpr COLORREF kHeader = RGB(18, 21, 25);
+constexpr COLORREF kCard = RGB(23, 27, 32);
+constexpr COLORREF kCardRaised = RGB(27, 31, 37);
+constexpr COLORREF kBorder = RGB(43, 49, 57);
+constexpr COLORREF kText = RGB(235, 238, 242);
+constexpr COLORREF kMuted = RGB(145, 153, 164);
+constexpr COLORREF kAccent = RGB(232, 67, 67);
+constexpr COLORREF kAccentDark = RGB(158, 47, 47);
+constexpr COLORREF kSuccess = RGB(73, 207, 163);
+constexpr COLORREF kAqua = RGB(76, 205, 193);
 
 enum ControlId : int {
     IdSource = 1001,
@@ -49,6 +55,7 @@ enum ControlId : int {
     IdClickVisual,
     IdShortcutKeys,
     IdVisualMode,
+    IdSettings,
 };
 
 struct AppWindow {
@@ -63,11 +70,15 @@ struct AppWindow {
 
     HWND quality_label = nullptr;
     HWND fps_combo = nullptr;
+    HWND summary_text = nullptr;
 
-    HWND audio_title = nullptr;
-    HWND audio_value = nullptr;
-    HWND mic_title = nullptr;
-    HWND mic_value = nullptr;
+    HWND settings_button = nullptr;
+    HWND presentation_label = nullptr;
+    HWND visual_label = nullptr;
+    HWND zoom_checkbox = nullptr;
+    HWND click_checkbox = nullptr;
+    HWND keys_checkbox = nullptr;
+    HWND visual_mode_combo = nullptr;
 
     HWND record_button = nullptr;
 
@@ -77,10 +88,6 @@ struct AppWindow {
     HWND output_text = nullptr;
     HWND open_button = nullptr;
     HWND diagnostics_button = nullptr;
-    HWND zoom_checkbox = nullptr;
-    HWND click_checkbox = nullptr;
-    HWND keys_checkbox = nullptr;
-    HWND visual_mode_combo = nullptr;
 
     HFONT title_font = nullptr;
     HFONT normal_font = nullptr;
@@ -100,8 +107,10 @@ struct AppWindow {
     RECT idle_window_rect{};
     bool idle_rect_valid = false;
     bool compact_mode = false;
+    bool settings_expanded = false;
     bool capture_excluded = false;
     bool completion_handled = false;
+    RecorderState visible_state = RecorderState::Idle;
 };
 
 [[nodiscard]] bool active_state(RecorderState state) noexcept
@@ -116,20 +125,20 @@ struct AppWindow {
 {
     switch (state) {
     case RecorderState::Preparing:
-        return L"Preparing capture + H.264 encoder";
+        return L"Preparing recording";
     case RecorderState::Recording:
         return L"Recording";
     case RecorderState::Stopping:
-        return L"Stopping capture";
+        return L"Stopping";
     case RecorderState::Finalizing:
-        return L"Finalizing MP4";
+        return L"Finalizing video";
     case RecorderState::Ready:
-        return L"Recording saved";
+        return L"Saved";
     case RecorderState::Failed:
         return L"Recording failed";
     case RecorderState::Idle:
     default:
-        return L"Ready to record";
+        return L"Ready";
     }
 }
 
@@ -292,6 +301,111 @@ void move(
         MoveWindow(control, x, y, width, height, TRUE);
 }
 
+
+void update_config_summary(AppWindow &app)
+{
+    const int fps_selection =
+        static_cast<int>(
+            SendMessageW(
+                app.fps_combo,
+                CB_GETCURSEL,
+                0,
+                0));
+    const wchar_t *fps =
+        fps_selection == 1 ? L"30 fps" : L"60 fps";
+
+    const int visual_selection =
+        static_cast<int>(
+            SendMessageW(
+                app.visual_mode_combo,
+                CB_GETCURSEL,
+                0,
+                0));
+
+    const wchar_t *visual = L"Pixel Accurate";
+    if (visual_selection == 1)
+        visual = L"Clean Screen";
+    else if (visual_selection == 2)
+        visual = L"Vivid Presentation";
+
+    const bool zoom =
+        SendMessageW(
+            app.zoom_checkbox,
+            BM_GETCHECK,
+            0,
+            0) == BST_CHECKED;
+    const bool clicks =
+        SendMessageW(
+            app.click_checkbox,
+            BM_GETCHECK,
+            0,
+            0) == BST_CHECKED;
+    const bool keys =
+        SendMessageW(
+            app.keys_checkbox,
+            BM_GETCHECK,
+            0,
+            0) == BST_CHECKED;
+
+    const wchar_t *presentation = L"Presentation off";
+    if (zoom && clicks && keys)
+        presentation = L"Zoom + clicks + keys";
+    else if (zoom && clicks)
+        presentation = L"Zoom + clicks";
+    else if (zoom && keys)
+        presentation = L"Zoom + keys";
+    else if (clicks && keys)
+        presentation = L"Clicks + keys";
+    else if (zoom)
+        presentation = L"Smart zoom";
+    else if (clicks)
+        presentation = L"Click visual";
+    else if (keys)
+        presentation = L"Shortcut keys";
+
+    wchar_t summary[256]{};
+    swprintf_s(
+        summary,
+        L"1920 × 1080 · %s · %s · %s",
+        fps,
+        visual,
+        presentation);
+
+    SetWindowTextW(
+        app.summary_text,
+        summary);
+}
+
+void resize_idle_window(AppWindow &app)
+{
+    if (!app.window || app.compact_mode)
+        return;
+
+    RECT rect{};
+    if (!GetWindowRect(app.window, &rect))
+        return;
+
+    const int height =
+        app.settings_expanded
+            ? kIdleExpandedHeight
+            : kIdleCollapsedHeight;
+
+    SetWindowPos(
+        app.window,
+        nullptr,
+        rect.left,
+        rect.top,
+        kIdleWidth,
+        height,
+        SWP_NOZORDER | SWP_NOACTIVATE);
+
+    if (GetWindowRect(
+            app.window,
+            &app.idle_window_rect)) {
+        app.idle_rect_valid = true;
+    }
+}
+
 void set_capture_exclusion(AppWindow &app, bool excluded)
 {
     if (!app.window || app.capture_excluded == excluded)
@@ -366,47 +480,63 @@ void layout_idle(AppWindow &app)
     show(app.refresh_button, true);
     show(app.quality_label, true);
     show(app.fps_combo, true);
-    show(app.audio_title, true);
-    show(app.audio_value, true);
-    show(app.mic_title, true);
-    show(app.mic_value, true);
+    show(app.summary_text, true);
+    show(app.settings_button, true);
+    show(app.record_button, true);
+
+    show(app.presentation_label, app.settings_expanded);
+    show(app.visual_label, app.settings_expanded);
+    show(app.zoom_checkbox, app.settings_expanded);
+    show(app.click_checkbox, app.settings_expanded);
+    show(app.keys_checkbox, app.settings_expanded);
+    show(app.visual_mode_combo, app.settings_expanded);
+
+    show(app.status_text, true);
+    show(app.timer_text, true);
+    show(app.metrics_text, true);
+    show(app.output_text, true);
     show(app.open_button, true);
     show(app.diagnostics_button, true);
-    show(app.output_text, true);
-    show(app.metrics_text, true);
-    show(app.zoom_checkbox, true);
-    show(app.click_checkbox, true);
-    show(app.keys_checkbox, true);
-    show(app.visual_mode_combo, true);
 
-    move(app.title_text, 22, 12, 260, 28);
-    move(app.subtitle_text, 22, 39, 420, 20);
+    move(app.title_text, 22, 11, 260, 26);
+    move(app.subtitle_text, 22, 36, 470, 18);
+    move(app.settings_button, 654, 16, 92, 28);
 
-    move(app.source_label, 34, 77, 120, 20);
-    move(app.source_combo, 32, 101, 238, 160);
-    move(app.refresh_button, 32, 137, 80, 24);
+    move(app.source_label, 32, 79, 180, 18);
+    move(app.source_combo, 32, 101, 380, 190);
+    move(app.refresh_button, 420, 101, 72, 28);
 
-    move(app.quality_label, 310, 77, 100, 20);
-    move(app.fps_combo, 307, 101, 126, 120);
+    move(app.quality_label, 510, 79, 100, 18);
+    move(app.fps_combo, 510, 101, 92, 120);
 
-    move(app.audio_title, 472, 77, 100, 20);
-    move(app.audio_value, 472, 105, 100, 42);
+    move(app.record_button, 616, 98, 124, 44);
+    move(app.summary_text, 32, 140, 560, 20);
 
-    move(app.mic_title, 596, 77, 80, 20);
-    move(app.mic_value, 596, 105, 80, 42);
+    const int status_y =
+        app.settings_expanded ? 294 : 188;
 
-    move(app.record_button, 695, 69, 96, 96);
+    if (app.settings_expanded) {
+        move(app.presentation_label, 32, 198, 180, 18);
+        move(app.zoom_checkbox, 32, 221, 110, 28);
+        move(app.click_checkbox, 148, 221, 78, 28);
+        move(app.keys_checkbox, 232, 221, 82, 28);
 
-    move(app.status_text, 32, 190, 198, 24);
-    move(app.zoom_checkbox, 236, 188, 108, 26);
-    move(app.click_checkbox, 348, 188, 84, 26);
-    move(app.keys_checkbox, 436, 188, 70, 26);
-    move(app.visual_mode_combo, 512, 185, 158, 120);
-    move(app.timer_text, 680, 190, 100, 24);
-    move(app.metrics_text, 32, 216, 515, 22);
-    move(app.output_text, 32, 239, 510, 20);
-    move(app.open_button, 560, 216, 106, 34);
-    move(app.diagnostics_button, 674, 216, 106, 34);
+        move(app.visual_label, 358, 198, 160, 18);
+        move(app.visual_mode_combo, 358, 220, 188, 120);
+    }
+
+    move(app.status_text, 32, status_y + 13, 310, 24);
+    move(app.timer_text, 426, status_y + 13, 94, 24);
+    move(app.metrics_text, 32, status_y + 42, 480, 20);
+    move(app.output_text, 32, status_y + 65, 480, 20);
+    move(app.open_button, 536, status_y + 17, 92, 30);
+    move(app.diagnostics_button, 636, status_y + 17, 96, 30);
+
+    SetWindowTextW(
+        app.settings_button,
+        app.settings_expanded
+            ? L"Done"
+            : L"Settings");
 
     if (app.idle_rect_valid) {
         const int width =
@@ -444,22 +574,26 @@ void layout_recording(AppWindow &app)
     show(app.refresh_button, false);
     show(app.quality_label, false);
     show(app.fps_combo, false);
-    show(app.audio_title, false);
-    show(app.audio_value, false);
-    show(app.mic_title, false);
-    show(app.mic_value, false);
-    show(app.open_button, false);
-    show(app.diagnostics_button, false);
-    show(app.output_text, false);
-    show(app.metrics_text, false);
+    show(app.summary_text, false);
+    show(app.settings_button, false);
+    show(app.presentation_label, false);
+    show(app.visual_label, false);
     show(app.zoom_checkbox, false);
     show(app.click_checkbox, false);
     show(app.keys_checkbox, false);
     show(app.visual_mode_combo, false);
+    show(app.open_button, false);
+    show(app.diagnostics_button, false);
+    show(app.output_text, false);
+    show(app.metrics_text, false);
 
-    move(app.status_text, 28, 27, 92, 28);
-    move(app.timer_text, 118, 23, 102, 34);
-    move(app.record_button, 236, 7, 74, 74);
+    show(app.status_text, true);
+    show(app.timer_text, true);
+    show(app.record_button, true);
+
+    move(app.status_text, 28, 21, 100, 26);
+    move(app.timer_text, 126, 18, 92, 30);
+    move(app.record_button, 232, 12, 50, 40);
 
     MONITORINFO info{};
     info.cbSize = sizeof(info);
@@ -473,10 +607,10 @@ void layout_recording(AppWindow &app)
     int y = 32;
 
     if (GetMonitorInfoW(monitor, &info)) {
-        const int width = 330;
+        const int width = 304;
         x = info.rcWork.left +
             ((info.rcWork.right - info.rcWork.left) - width) / 2;
-        y = info.rcWork.top + 36;
+        y = info.rcWork.top + 32;
     }
 
     SetWindowPos(
@@ -484,8 +618,8 @@ void layout_recording(AppWindow &app)
         HWND_TOPMOST,
         x,
         y,
-        330,
-        94,
+        304,
+        72,
         SWP_SHOWWINDOW);
 
     app.compact_mode = true;
@@ -499,6 +633,7 @@ void set_recording_controls(
     EnableWindow(app.source_combo, !recording);
     EnableWindow(app.refresh_button, !recording);
     EnableWindow(app.fps_combo, !recording);
+    EnableWindow(app.settings_button, !recording);
     EnableWindow(app.zoom_checkbox, !recording);
     EnableWindow(app.click_checkbox, !recording);
     EnableWindow(app.keys_checkbox, !recording);
@@ -619,9 +754,12 @@ void start_recording(AppWindow &app)
     app.session = std::move(session);
     app.completion_handled = false;
 
+    const std::wstring saving_label =
+        L"Saving · " +
+        app.last_output.filename().wstring();
     SetWindowTextW(
         app.output_text,
-        app.last_output.c_str());
+        saving_label.c_str());
 
     EnableWindow(app.open_button, FALSE);
     EnableWindow(app.diagnostics_button, FALSE);
@@ -658,13 +796,22 @@ void open_path(
 void update_ui(AppWindow &app)
 {
     if (!app.session) {
-        SetWindowTextW(app.status_text, L"Ready to record");
+        app.visible_state = RecorderState::Idle;
+        SetWindowTextW(app.status_text, L"Ready");
         SetWindowTextW(app.timer_text, L"");
+        SetWindowTextW(
+            app.metrics_text,
+            L"Native H.264 recorder · ready");
+        SetWindowTextW(
+            app.output_text,
+            L"Videos\\Arssyut · MP4 + diagnostics");
         return;
     }
 
     const RecorderSnapshot snapshot =
         app.session->snapshot();
+
+    app.visible_state = snapshot.state;
 
     SetWindowTextW(
         app.status_text,
@@ -682,19 +829,19 @@ void update_ui(AppWindow &app)
         wchar_t metrics[384]{};
         swprintf_s(
             metrics,
-            L"Frames %llu  ·  Encoded %llu  ·  Coalesced %llu  ·  Drop %llu  ·  Capture p95 %u us",
+            L"Capture %llu · Encoded %llu · Coalesced %llu · Drop %llu · GPU %.1f ms",
             snapshot.capture_received,
             snapshot.encoder_submitted,
             snapshot.capture_replaced,
             snapshot.capture_busy_drops +
                 snapshot.encoder_backpressure,
-            snapshot.capture_p95_us);
+            static_cast<double>(
+                snapshot.compositor_gpu_p95_us) /
+                1000.0);
         SetWindowTextW(app.metrics_text, metrics);
     }
 
-    if ((snapshot.state == RecorderState::Recording ||
-         snapshot.state == RecorderState::Stopping ||
-         snapshot.state == RecorderState::Finalizing) &&
+    if (active_state(snapshot.state) &&
         !app.compact_mode) {
         layout_recording(app);
     }
@@ -731,30 +878,43 @@ void update_ui(AppWindow &app)
             app.diagnostics_button,
             diagnostics_exists ? TRUE : FALSE);
 
-        if (snapshot.state == RecorderState::Failed) {
+        if (snapshot.state == RecorderState::Ready) {
+            const std::wstring label =
+                L"Saved · " +
+                app.last_output.filename().wstring();
+            SetWindowTextW(
+                app.output_text,
+                label.c_str());
+        } else {
             const std::wstring stage =
                 widen_ascii(
                     mf_writer_stage_name(
                         snapshot.encoder_failure_stage));
 
-            wchar_t error[512]{};
+            wchar_t error[384]{};
             swprintf_s(
                 error,
-                L"Recording failed.\n\nStatus: %u\nDetail: 0x%08X\nEncoder stage: %s\n\nDiagnostics:\n%s",
-                static_cast<unsigned>(snapshot.last_error.code),
+                L"Error %u · detail 0x%08X · encoder %s",
+                static_cast<unsigned>(
+                    snapshot.last_error.code),
                 snapshot.last_error.detail,
-                stage.c_str(),
-                app.last_diagnostics.c_str());
+                stage.c_str());
 
-            MessageBoxW(
-                app.window,
-                error,
-                L"Arssyut recording error",
-                MB_OK | MB_ICONERROR);
+            SetWindowTextW(
+                app.metrics_text,
+                error);
+
+            const std::wstring label =
+                L"Diagnostics · " +
+                app.last_diagnostics.filename().wstring();
+            SetWindowTextW(
+                app.output_text,
+                label.c_str());
         }
     }
 
     InvalidateRect(app.record_button, nullptr, FALSE);
+    InvalidateRect(app.window, nullptr, FALSE);
 }
 
 void draw_rounded_card(
@@ -793,26 +953,44 @@ void paint_background(AppWindow &app, HDC dc)
     DeleteObject(background);
 
     if (app.compact_mode) {
-        RECT card{10, 8, client.right - 10, client.bottom - 8};
+        RECT card{8, 7, client.right - 8, client.bottom - 7};
         draw_rounded_card(dc, card, kCard);
         return;
     }
 
-    RECT header{0, 0, client.right, 62};
+    RECT header{0, 0, client.right, 58};
     HBRUSH header_brush = CreateSolidBrush(kHeader);
     FillRect(dc, &header, header_brush);
     DeleteObject(header_brush);
 
-    draw_rounded_card(dc, RECT{20, 68, 286, 169}, kCard);
-    draw_rounded_card(dc, RECT{297, 68, 445, 169}, kCard);
-    draw_rounded_card(dc, RECT{455, 68, 572, 169}, kCardMuted);
-    draw_rounded_card(dc, RECT{582, 68, 681, 169}, kCardMuted);
-    draw_rounded_card(dc, RECT{20, 181, client.right - 20, 268}, kCard);
+    draw_rounded_card(
+        dc,
+        RECT{20, 68, client.right - 20, 174},
+        kCard);
+
+    if (app.settings_expanded) {
+        draw_rounded_card(
+            dc,
+            RECT{20, 186, client.right - 20, 282},
+            kCardRaised);
+    }
+
+    const int status_top =
+        app.settings_expanded ? 294 : 188;
+
+    draw_rounded_card(
+        dc,
+        RECT{
+            20,
+            status_top,
+            client.right - 20,
+            client.bottom - 12},
+        kCard);
 
     HPEN accent = CreatePen(PS_SOLID, 2, kAqua);
     HGDIOBJ old_pen = SelectObject(dc, accent);
-    MoveToEx(dc, 20, 61, nullptr);
-    LineTo(dc, 170, 61);
+    MoveToEx(dc, 20, 57, nullptr);
+    LineTo(dc, 120, 57);
     SelectObject(dc, old_pen);
     DeleteObject(accent);
 }
@@ -824,60 +1002,80 @@ void draw_record_button(
     HDC dc = item.hDC;
     RECT rect = item.rcItem;
 
-    HBRUSH clear = CreateSolidBrush(
-        app.compact_mode ? kCard : kBackground);
+    HBRUSH clear = CreateSolidBrush(kCard);
     FillRect(dc, &rect, clear);
     DeleteObject(clear);
 
-    const int width = rect.right - rect.left;
-    const int height = rect.bottom - rect.top;
-    const int diameter = std::min(width, height) - 8;
-    const int left = rect.left + (width - diameter) / 2;
-    const int top = rect.top + (height - diameter) / 2;
+    RECT button = rect;
+    InflateRect(&button, -2, -2);
 
-    HPEN outer_pen = CreatePen(PS_SOLID, 2, kAccentDark);
-    HBRUSH outer_brush = CreateSolidBrush(RGB(49, 31, 34));
+    const bool enabled =
+        IsWindowEnabled(item.hwndItem) != FALSE;
 
-    HGDIOBJ old_pen = SelectObject(dc, outer_pen);
-    HGDIOBJ old_brush = SelectObject(dc, outer_brush);
+    const COLORREF fill =
+        enabled ? kAccent : RGB(92, 61, 64);
+    const COLORREF border =
+        enabled ? kAccentDark : RGB(75, 62, 64);
 
-    Ellipse(
+    HBRUSH fill_brush = CreateSolidBrush(fill);
+    HPEN border_pen = CreatePen(PS_SOLID, 1, border);
+
+    HGDIOBJ old_brush =
+        SelectObject(dc, fill_brush);
+    HGDIOBJ old_pen =
+        SelectObject(dc, border_pen);
+
+    RoundRect(
         dc,
-        left,
-        top,
-        left + diameter,
-        top + diameter);
+        button.left,
+        button.top,
+        button.right,
+        button.bottom,
+        12,
+        12);
 
-    const int inset = 7;
-    HBRUSH red = CreateSolidBrush(kAccent);
-    SelectObject(dc, red);
-
-    Ellipse(
-        dc,
-        left + inset,
-        top + inset,
-        left + diameter - inset,
-        top + diameter - inset);
-
-    SelectObject(dc, app.record_font);
     SetBkMode(dc, TRANSPARENT);
     SetTextColor(dc, RGB(255, 255, 255));
 
-    const wchar_t *text =
-        app.compact_mode ? L"STOP" : L"REC";
+    if (app.compact_mode) {
+        const int size = 11;
+        const int cx =
+            (button.left + button.right) / 2;
+        const int cy =
+            (button.top + button.bottom) / 2;
 
-    DrawTextW(
-        dc,
-        text,
-        -1,
-        &rect,
-        DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        HBRUSH stop_brush =
+            CreateSolidBrush(RGB(255, 255, 255));
+        RECT stop_rect{
+            cx - size / 2,
+            cy - size / 2,
+            cx + size / 2 + 1,
+            cy + size / 2 + 1};
+        FillRect(dc, &stop_rect, stop_brush);
+        DeleteObject(stop_brush);
+    } else {
+        SelectObject(dc, app.record_font);
+        RECT text_rect = button;
+        DrawTextW(
+            dc,
+            L"Record",
+            -1,
+            &text_rect,
+            DT_CENTER |
+                DT_VCENTER |
+                DT_SINGLELINE);
+    }
 
-    SelectObject(dc, old_brush);
+    if ((item.itemState & ODS_FOCUS) != 0) {
+        RECT focus = button;
+        InflateRect(&focus, -4, -4);
+        DrawFocusRect(dc, &focus);
+    }
+
     SelectObject(dc, old_pen);
-    DeleteObject(red);
-    DeleteObject(outer_brush);
-    DeleteObject(outer_pen);
+    SelectObject(dc, old_brush);
+    DeleteObject(border_pen);
+    DeleteObject(fill_brush);
 }
 
 LRESULT CALLBACK window_proc(
@@ -927,7 +1125,7 @@ LRESULT CALLBACK window_proc(
 
         app->title_font =
             CreateFontW(
-                -22, 0, 0, 0, FW_SEMIBOLD,
+                -20, 0, 0, 0, FW_SEMIBOLD,
                 FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET,
                 OUT_DEFAULT_PRECIS,
@@ -938,7 +1136,7 @@ LRESULT CALLBACK window_proc(
 
         app->normal_font =
             CreateFontW(
-                -16, 0, 0, 0, FW_NORMAL,
+                -15, 0, 0, 0, FW_NORMAL,
                 FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET,
                 OUT_DEFAULT_PRECIS,
@@ -971,7 +1169,7 @@ LRESULT CALLBACK window_proc(
 
         app->record_font =
             CreateFontW(
-                -20, 0, 0, 0, FW_SEMIBOLD,
+                -14, 0, 0, 0, FW_SEMIBOLD,
                 FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET,
                 OUT_DEFAULT_PRECIS,
@@ -983,22 +1181,40 @@ LRESULT CALLBACK window_proc(
         app->title_text =
             create_label(
                 *app,
-                L"Arssyut Recorder",
-                22, 12, 260, 28,
+                L"Arssyut",
+                22, 11, 260, 26,
                 app->title_font);
 
         app->subtitle_text =
             create_label(
                 *app,
-                L"Screen recording · lightweight native pipeline",
-                22, 39, 420, 20,
+                L"Native presentation recorder",
+                22, 36, 470, 18,
                 app->tiny_font);
+
+        app->settings_button =
+            CreateWindowExW(
+                0,
+                L"BUTTON",
+                L"Settings",
+                WS_CHILD |
+                    WS_VISIBLE |
+                    WS_TABSTOP,
+                654, 16, 92, 28,
+                window,
+                reinterpret_cast<HMENU>(IdSettings),
+                GetModuleHandleW(nullptr),
+                nullptr);
+        set_font(
+            app->settings_button,
+            app->tiny_font);
+        apply_dark_theme(app->settings_button);
 
         app->source_label =
             create_label(
                 *app,
-                L"SCREEN",
-                34, 77, 120, 20,
+                L"CAPTURE SOURCE",
+                32, 79, 180, 18,
                 app->tiny_font);
 
         app->source_combo =
@@ -1011,12 +1227,14 @@ LRESULT CALLBACK window_proc(
                     WS_TABSTOP |
                     CBS_DROPDOWNLIST |
                     WS_VSCROLL,
-                32, 101, 238, 160,
+                32, 101, 380, 190,
                 window,
                 reinterpret_cast<HMENU>(IdSource),
                 GetModuleHandleW(nullptr),
                 nullptr);
-        set_font(app->source_combo, app->small_font);
+        set_font(
+            app->source_combo,
+            app->small_font);
         apply_dark_theme(app->source_combo);
 
         app->refresh_button =
@@ -1024,20 +1242,24 @@ LRESULT CALLBACK window_proc(
                 0,
                 L"BUTTON",
                 L"Refresh",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                32, 137, 80, 24,
+                WS_CHILD |
+                    WS_VISIBLE |
+                    WS_TABSTOP,
+                420, 101, 72, 28,
                 window,
                 reinterpret_cast<HMENU>(IdRefresh),
                 GetModuleHandleW(nullptr),
                 nullptr);
-        set_font(app->refresh_button, app->tiny_font);
+        set_font(
+            app->refresh_button,
+            app->tiny_font);
         apply_dark_theme(app->refresh_button);
 
         app->quality_label =
             create_label(
                 *app,
-                L"QUALITY",
-                310, 77, 100, 20,
+                L"FRAME RATE",
+                510, 79, 100, 18,
                 app->tiny_font);
 
         app->fps_combo =
@@ -1049,55 +1271,31 @@ LRESULT CALLBACK window_proc(
                     WS_VISIBLE |
                     WS_TABSTOP |
                     CBS_DROPDOWNLIST,
-                307, 101, 126, 120,
+                510, 101, 92, 120,
                 window,
                 reinterpret_cast<HMENU>(IdFps),
                 GetModuleHandleW(nullptr),
                 nullptr);
-        set_font(app->fps_combo, app->small_font);
+        set_font(
+            app->fps_combo,
+            app->small_font);
         apply_dark_theme(app->fps_combo);
 
         SendMessageW(
             app->fps_combo,
             CB_ADDSTRING,
             0,
-            reinterpret_cast<LPARAM>(L"1080p · 60"));
+            reinterpret_cast<LPARAM>(L"60 fps"));
         SendMessageW(
             app->fps_combo,
             CB_ADDSTRING,
             0,
-            reinterpret_cast<LPARAM>(L"1080p · 30"));
+            reinterpret_cast<LPARAM>(L"30 fps"));
         SendMessageW(
             app->fps_combo,
             CB_SETCURSEL,
             0,
             0);
-
-        app->audio_title =
-            create_label(
-                *app,
-                L"SYSTEM AUDIO",
-                472, 77, 100, 20,
-                app->tiny_font);
-        app->audio_value =
-            create_label(
-                *app,
-                L"Next\nphase",
-                472, 105, 100, 42,
-                app->small_font);
-
-        app->mic_title =
-            create_label(
-                *app,
-                L"MIC",
-                596, 77, 80, 20,
-                app->tiny_font);
-        app->mic_value =
-            create_label(
-                *app,
-                L"Next\nphase",
-                596, 105, 80, 42,
-                app->small_font);
 
         app->record_button =
             CreateWindowExW(
@@ -1108,83 +1306,44 @@ LRESULT CALLBACK window_proc(
                     WS_VISIBLE |
                     WS_TABSTOP |
                     BS_OWNERDRAW,
-                695, 69, 96, 96,
+                616, 98, 124, 44,
                 window,
                 reinterpret_cast<HMENU>(IdRecord),
                 GetModuleHandleW(nullptr),
                 nullptr);
 
-        app->status_text =
-            create_label(
-                *app,
-                L"Ready to record",
-                32, 190, 250, 24,
-                app->normal_font);
-
-        app->timer_text =
+        app->summary_text =
             create_label(
                 *app,
                 L"",
-                676, 190, 104, 24,
-                app->normal_font);
-
-        app->metrics_text =
-            create_label(
-                *app,
-                L"Diagnostics ready",
-                32, 216, 515, 22,
+                32, 140, 560, 20,
                 app->tiny_font);
 
-        app->output_text =
+        app->presentation_label =
             create_label(
                 *app,
-                L"Videos\\Arssyut\\…",
-                32, 239, 510, 20,
+                L"PRESENTATION",
+                32, 198, 180, 18,
                 app->tiny_font);
-
-        app->open_button =
-            CreateWindowExW(
-                0,
-                L"BUTTON",
-                L"Open video",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                560, 216, 106, 34,
-                window,
-                reinterpret_cast<HMENU>(IdOpen),
-                GetModuleHandleW(nullptr),
-                nullptr);
-        set_font(app->open_button, app->tiny_font);
-        apply_dark_theme(app->open_button);
-        EnableWindow(app->open_button, FALSE);
-
-        app->diagnostics_button =
-            CreateWindowExW(
-                0,
-                L"BUTTON",
-                L"Diagnostics",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                674, 216, 106, 34,
-                window,
-                reinterpret_cast<HMENU>(IdOpenDiagnostics),
-                GetModuleHandleW(nullptr),
-                nullptr);
-        set_font(app->diagnostics_button, app->tiny_font);
-        apply_dark_theme(app->diagnostics_button);
-        EnableWindow(app->diagnostics_button, FALSE);
 
         app->zoom_checkbox =
             CreateWindowExW(
                 0,
                 L"BUTTON",
                 L"Smart zoom",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                WS_CHILD |
+                    WS_VISIBLE |
+                    WS_TABSTOP |
                     BS_AUTOCHECKBOX,
-                270, 188, 112, 26,
+                32, 221, 110, 28,
                 window,
-                reinterpret_cast<HMENU>(IdSmartZoom),
+                reinterpret_cast<HMENU>(
+                    IdSmartZoom),
                 GetModuleHandleW(nullptr),
                 nullptr);
-        set_font(app->zoom_checkbox, app->tiny_font);
+        set_font(
+            app->zoom_checkbox,
+            app->tiny_font);
         apply_dark_theme(app->zoom_checkbox);
         SendMessageW(
             app->zoom_checkbox,
@@ -1197,14 +1356,19 @@ LRESULT CALLBACK window_proc(
                 0,
                 L"BUTTON",
                 L"Clicks",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                WS_CHILD |
+                    WS_VISIBLE |
+                    WS_TABSTOP |
                     BS_AUTOCHECKBOX,
-                386, 188, 94, 26,
+                148, 221, 78, 28,
                 window,
-                reinterpret_cast<HMENU>(IdClickVisual),
+                reinterpret_cast<HMENU>(
+                    IdClickVisual),
                 GetModuleHandleW(nullptr),
                 nullptr);
-        set_font(app->click_checkbox, app->tiny_font);
+        set_font(
+            app->click_checkbox,
+            app->tiny_font);
         apply_dark_theme(app->click_checkbox);
         SendMessageW(
             app->click_checkbox,
@@ -1217,20 +1381,32 @@ LRESULT CALLBACK window_proc(
                 0,
                 L"BUTTON",
                 L"Keys",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP |
+                WS_CHILD |
+                    WS_VISIBLE |
+                    WS_TABSTOP |
                     BS_AUTOCHECKBOX,
-                484, 188, 78, 26,
+                232, 221, 82, 28,
                 window,
-                reinterpret_cast<HMENU>(IdShortcutKeys),
+                reinterpret_cast<HMENU>(
+                    IdShortcutKeys),
                 GetModuleHandleW(nullptr),
                 nullptr);
-        set_font(app->keys_checkbox, app->tiny_font);
+        set_font(
+            app->keys_checkbox,
+            app->tiny_font);
         apply_dark_theme(app->keys_checkbox);
         SendMessageW(
             app->keys_checkbox,
             BM_SETCHECK,
             BST_CHECKED,
             0);
+
+        app->visual_label =
+            create_label(
+                *app,
+                L"VISUAL STYLE",
+                358, 198, 160, 18,
+                app->tiny_font);
 
         app->visual_mode_combo =
             CreateWindowExW(
@@ -1241,41 +1417,136 @@ LRESULT CALLBACK window_proc(
                     WS_VISIBLE |
                     WS_TABSTOP |
                     CBS_DROPDOWNLIST,
-                512, 185, 158, 120,
+                358, 220, 188, 120,
                 window,
-                reinterpret_cast<HMENU>(IdVisualMode),
+                reinterpret_cast<HMENU>(
+                    IdVisualMode),
                 GetModuleHandleW(nullptr),
                 nullptr);
-        set_font(app->visual_mode_combo, app->tiny_font);
-        apply_dark_theme(app->visual_mode_combo);
+        set_font(
+            app->visual_mode_combo,
+            app->small_font);
+        apply_dark_theme(
+            app->visual_mode_combo);
 
         SendMessageW(
             app->visual_mode_combo,
             CB_ADDSTRING,
             0,
-            reinterpret_cast<LPARAM>(L"Pixel Accurate"));
+            reinterpret_cast<LPARAM>(
+                L"Pixel Accurate"));
         SendMessageW(
             app->visual_mode_combo,
             CB_ADDSTRING,
             0,
-            reinterpret_cast<LPARAM>(L"Clean Screen"));
+            reinterpret_cast<LPARAM>(
+                L"Clean Screen"));
         SendMessageW(
             app->visual_mode_combo,
             CB_ADDSTRING,
             0,
-            reinterpret_cast<LPARAM>(L"Vivid Presentation"));
+            reinterpret_cast<LPARAM>(
+                L"Vivid Presentation"));
         SendMessageW(
             app->visual_mode_combo,
             CB_SETCURSEL,
             0,
             0);
 
-        refresh_sources(*app);
+        app->status_text =
+            create_label(
+                *app,
+                L"Ready",
+                32, 201, 310, 24,
+                app->normal_font);
 
-        GetWindowRect(app->window, &app->idle_window_rect);
+        app->timer_text =
+            create_label(
+                *app,
+                L"",
+                426, 201, 94, 24,
+                app->normal_font);
+
+        app->metrics_text =
+            create_label(
+                *app,
+                L"Native H.264 recorder · ready",
+                32, 230, 480, 20,
+                app->tiny_font);
+
+        app->output_text =
+            create_label(
+                *app,
+                L"Videos\\Arssyut · MP4 + diagnostics",
+                32, 253, 480, 20,
+                app->tiny_font);
+
+        app->open_button =
+            CreateWindowExW(
+                0,
+                L"BUTTON",
+                L"Open video",
+                WS_CHILD |
+                    WS_VISIBLE |
+                    WS_TABSTOP,
+                536, 205, 92, 30,
+                window,
+                reinterpret_cast<HMENU>(
+                    IdOpen),
+                GetModuleHandleW(nullptr),
+                nullptr);
+        set_font(
+            app->open_button,
+            app->tiny_font);
+        apply_dark_theme(app->open_button);
+        EnableWindow(
+            app->open_button,
+            FALSE);
+
+        app->diagnostics_button =
+            CreateWindowExW(
+                0,
+                L"BUTTON",
+                L"Diagnostics",
+                WS_CHILD |
+                    WS_VISIBLE |
+                    WS_TABSTOP,
+                636, 205, 96, 30,
+                window,
+                reinterpret_cast<HMENU>(
+                    IdOpenDiagnostics),
+                GetModuleHandleW(nullptr),
+                nullptr);
+        set_font(
+            app->diagnostics_button,
+            app->tiny_font);
+        apply_dark_theme(
+            app->diagnostics_button);
+        EnableWindow(
+            app->diagnostics_button,
+            FALSE);
+
+        refresh_sources(*app);
+        update_config_summary(*app);
+
+        app->settings_expanded = false;
+        show(app->presentation_label, false);
+        show(app->visual_label, false);
+        show(app->zoom_checkbox, false);
+        show(app->click_checkbox, false);
+        show(app->keys_checkbox, false);
+        show(app->visual_mode_combo, false);
+
+        GetWindowRect(
+            app->window,
+            &app->idle_window_rect);
         app->idle_rect_valid = true;
 
-        SetTimer(window, kUiTimer, 100, nullptr);
+        SetTimer(
+            window,
+            kUiTimer,
+            100,
+            nullptr);
         return 0;
     }
 
@@ -1283,6 +1554,21 @@ LRESULT CALLBACK window_proc(
         switch (LOWORD(wparam)) {
         case IdRefresh:
             refresh_sources(*app);
+            return 0;
+
+        case IdSettings:
+            app->settings_expanded =
+                !app->settings_expanded;
+            resize_idle_window(*app);
+            layout_idle(*app);
+            return 0;
+
+        case IdFps:
+        case IdVisualMode:
+        case IdSmartZoom:
+        case IdClickVisual:
+        case IdShortcutKeys:
+            update_config_summary(*app);
             return 0;
 
         case IdRecord:
@@ -1309,6 +1595,19 @@ LRESULT CALLBACK window_proc(
 
         default:
             break;
+        }
+        break;
+
+    case WM_KEYDOWN:
+        if (wparam == VK_F9) {
+            if (app->session &&
+                active_state(
+                    app->session->snapshot().state)) {
+                stop_recording(*app);
+            } else {
+                start_recording(*app);
+            }
+            return 0;
         }
         break;
 
@@ -1349,18 +1648,27 @@ LRESULT CALLBACK window_proc(
         if (control == app->subtitle_text ||
             control == app->source_label ||
             control == app->quality_label ||
-            control == app->audio_title ||
-            control == app->mic_title ||
+            control == app->summary_text ||
+            control == app->presentation_label ||
+            control == app->visual_label ||
             control == app->metrics_text ||
             control == app->output_text) {
             SetTextColor(dc, kMuted);
-        } else if (control == app->audio_value ||
-                   control == app->mic_value) {
-            SetTextColor(dc, RGB(116, 124, 135));
-        } else if ((control == app->timer_text ||
-                    control == app->status_text) &&
+        } else if (control == app->status_text) {
+            if (app->visible_state ==
+                RecorderState::Failed) {
+                SetTextColor(dc, kAccent);
+            } else if (app->visible_state ==
+                       RecorderState::Ready) {
+                SetTextColor(dc, kSuccess);
+            } else if (app->compact_mode) {
+                SetTextColor(dc, kAccent);
+            } else {
+                SetTextColor(dc, kText);
+            }
+        } else if (control == app->timer_text &&
                    app->compact_mode) {
-            SetTextColor(dc, kAccent);
+            SetTextColor(dc, kText);
         } else {
             SetTextColor(dc, kText);
         }
@@ -1472,8 +1780,8 @@ int WINAPI wWinMain(
             WS_MINIMIZEBOX,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        820,
-        310,
+        kIdleWidth,
+        kIdleCollapsedHeight,
         nullptr,
         nullptr,
         instance,
