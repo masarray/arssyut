@@ -119,7 +119,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="9">
                   <LucideIcon Kind="MousePointer2" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                  <TextBlock Text="Mouse & Keys" />
+                  <TextBlock Text="Mouse &amp; Keys" />
                 </StackPanel>
               </Button>
 
