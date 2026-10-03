@@ -1071,7 +1071,8 @@ void test_media_foundation_mp4(TestContext &test)
             Microsoft::WRL::ComPtr<IMFMediaType> native_type;
             const HRESULT native_hr =
                 reader->GetNativeMediaType(
-                    MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                    static_cast<DWORD>(
+                        MF_SOURCE_READER_FIRST_VIDEO_STREAM),
                     0,
                     native_type.GetAddressOf());
 
@@ -1144,7 +1145,8 @@ void test_media_foundation_mp4(TestContext &test)
             if (SUCCEEDED(decode_hr)) {
                 decode_hr =
                     reader->SetCurrentMediaType(
-                        MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                        static_cast<DWORD>(
+                            MF_SOURCE_READER_FIRST_VIDEO_STREAM),
                         nullptr,
                         decode_type.Get());
             }
@@ -1167,7 +1169,8 @@ void test_media_foundation_mp4(TestContext &test)
 
                     const HRESULT read_hr =
                         reader->ReadSample(
-                            MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+                            static_cast<DWORD>(
+                                MF_SOURCE_READER_FIRST_VIDEO_STREAM),
                             0,
                             &actual_stream,
                             &flags,
