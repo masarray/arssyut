@@ -99,6 +99,7 @@ if(WIN32)
     add_executable(arssyut WIN32
         src/app/device_catalog.cpp
         src/app/lucide_icons.cpp
+        src/app/region_geometry.cpp
         src/app/recorder_overlay.cpp
         src/app/recorder_session.cpp
         src/app/recorder_settings_window.cpp
@@ -286,6 +287,36 @@ if(ARSSYUT_BUILD_TESTS)
             )
         endif()
         add_test(NAME arssyut_windows_tests COMMAND arssyut_windows_tests)
+
+        add_executable(arssyut_region_geometry_tests
+            tests/windows/test_region_geometry.cpp
+            src/app/region_geometry.cpp
+        )
+        target_include_directories(
+            arssyut_region_geometry_tests
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/src
+        )
+        target_link_libraries(
+            arssyut_region_geometry_tests
+            PRIVATE
+                arssyut_core
+                user32
+        )
+        if(MSVC)
+            target_compile_options(
+                arssyut_region_geometry_tests
+                PRIVATE
+                    /W4
+                    /permissive-
+                    /utf-8
+                    /Zc:__cplusplus
+            )
+        endif()
+        add_test(
+            NAME arssyut_region_geometry_tests
+            COMMAND arssyut_region_geometry_tests
+        )
 
         add_executable(arssyut_windows_shortcut_tests
             tests/windows/test_shortcut_keymap.cpp
