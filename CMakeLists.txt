@@ -112,6 +112,7 @@ if(WIN32)
     target_link_libraries(arssyut PRIVATE
         arssyut_windows
         comctl32
+        mf
         dwmapi
         ole32
         psapi
