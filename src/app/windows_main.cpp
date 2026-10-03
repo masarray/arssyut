@@ -69,8 +69,6 @@ constexpr COLORREF kAccentDark =
     RGB(158, 47, 47);
 constexpr COLORREF kSuccess =
     RGB(73, 207, 163);
-constexpr COLORREF kAqua =
-    RGB(76, 205, 193);
 
 enum ControlId : int {
     IdModeDisplay = 1001,
@@ -1580,7 +1578,7 @@ void paint_background(
         CreatePen(
             PS_SOLID,
             2,
-            kAqua);
+            kAccent);
 
     HGDIOBJ old_pen =
         SelectObject(
