@@ -1826,10 +1826,14 @@ void test_screen_text_legibility(
      * white-on-dark IDE path. Use one-pixel neutral stripe fixtures to prove
      * that the additional gain is directional rather than global.
      */
+    // Model the anti-aliased edge pixel of a glyph rather than its opaque
+    // black/white core. P5D intentionally rejects very large edges through
+    // the anti-halo gate; the perceptual-thinning problem lives in these
+    // intermediate stroke pixels after rasterization/downscale.
     constexpr std::uint32_t bright_ui = 0xFFE8E8E8u;
-    constexpr std::uint32_t dark_text = 0xFF505050u;
+    constexpr std::uint32_t dark_text_edge = 0xFFB8B8B8u;
     constexpr std::uint32_t dark_ui = 0xFF303030u;
-    constexpr std::uint32_t light_text = 0xFFD0D0D0u;
+    constexpr std::uint32_t light_text_edge = 0xFF606060u;
 
     auto dark_on_bright =
         create_vertical_stripe_texture(
@@ -1837,14 +1841,14 @@ void test_screen_text_legibility(
             64,
             64,
             bright_ui,
-            dark_text);
+            dark_text_edge);
     auto light_on_dark =
         create_vertical_stripe_texture(
             owner.device(),
             64,
             64,
             dark_ui,
-            light_text);
+            light_text_edge);
 
     test.expect(
         dark_on_bright != nullptr &&
@@ -1874,6 +1878,12 @@ void test_screen_text_legibility(
             32,
             dark_base),
         "P5D.5 dark-on-bright baseline can be inspected");
+
+    // The first 64x64 stripe render legitimately rebuilds the retained input
+    // after the preceding 128x128 minification fixture. From this point on all
+    // P5D.5 comparisons use identical geometry, so generation must stay fixed.
+    const auto directional_generation =
+        compositor.resource_generation();
 
     test.expect(
         compositor.render(
@@ -1950,7 +1960,7 @@ void test_screen_text_legibility(
         "P5D.5 adds directional strength only to dark-on-bright text");
 
     test.expect(
-        compositor.resource_generation() == generation,
+        compositor.resource_generation() == directional_generation,
         "P5D.5 directional calibration allocates no compositor resources");
 }
 
