@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform;
+using Avalonia.Threading;
 
 namespace Arssyut.UI;
 
@@ -27,7 +28,12 @@ public sealed partial class CaptureBoundaryWindow : Window
             (_, e) =>
             {
                 if (e.Property == ClientSizeProperty)
+                {
                     PublishRegionChanged();
+
+                    if (IsVisible)
+                        ApplyNativeWindowRegion();
+                }
             };
 
         Opened +=
@@ -35,6 +41,7 @@ public sealed partial class CaptureBoundaryWindow : Window
             {
                 ApplyNativeOverlayFlags();
                 ApplyCaptureExclusion();
+                ApplyNativeWindowRegion();
             };
     }
 
@@ -55,6 +62,7 @@ public sealed partial class CaptureBoundaryWindow : Window
         _scale = scaling > 0.0 ? scaling : 1.0;
 
         CanResize = editable;
+        IsHitTestVisible = editable;
         RegionChrome.IsVisible = editable;
 
         Position =
@@ -79,6 +87,13 @@ public sealed partial class CaptureBoundaryWindow : Window
 
         ApplyNativeOverlayFlags();
         ApplyCaptureExclusion();
+        ApplyNativeWindowRegion();
+
+        // Avalonia may complete the native resize one dispatcher turn after Show().
+        // Re-apply the frame-only region using the final pixel client size.
+        Dispatcher.UIThread.Post(
+            ApplyNativeWindowRegion,
+            DispatcherPriority.Background);
 
         _applyingBounds = false;
     }
@@ -154,6 +169,99 @@ public sealed partial class CaptureBoundaryWindow : Window
         }
     }
 
+    private void ApplyNativeWindowRegion()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var handle =
+            TryGetPlatformHandle()?.Handle ??
+            IntPtr.Zero;
+
+        if (handle == IntPtr.Zero)
+            return;
+
+        if (_editable)
+        {
+            // Region editing needs the complete HWND so its move/resize surfaces
+            // remain interactive.
+            SetWindowRgn(
+                handle,
+                IntPtr.Zero,
+                true);
+            return;
+        }
+
+        // A transparent full-screen HWND still participates in native hit testing.
+        // Do not rely on WS_EX_TRANSPARENT for a monitor-sized overlay: physically
+        // remove the interior from the HWND region so Windows routes input directly
+        // to the captured desktop/application underneath.
+        var width =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    ClientSize.Width *
+                    _scale));
+        var height =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    ClientSize.Height *
+                    _scale));
+
+        const int framePixels = 6;
+
+        var outer =
+            CreateRectRgn(
+                0,
+                0,
+                width,
+                height);
+        var inner =
+            CreateRectRgn(
+                Math.Min(
+                    framePixels,
+                    width),
+                Math.Min(
+                    framePixels,
+                    height),
+                Math.Max(
+                    framePixels,
+                    width - framePixels),
+                Math.Max(
+                    framePixels,
+                    height - framePixels));
+
+        if (outer == IntPtr.Zero ||
+            inner == IntPtr.Zero)
+        {
+            if (outer != IntPtr.Zero)
+                DeleteObject(outer);
+            if (inner != IntPtr.Zero)
+                DeleteObject(inner);
+            return;
+        }
+
+        CombineRgn(
+            outer,
+            outer,
+            inner,
+            RGN_DIFF);
+
+        DeleteObject(
+            inner);
+
+        // On success Windows owns outer and will delete it later.
+        if (SetWindowRgn(
+                handle,
+                outer,
+                true) == 0)
+        {
+            DeleteObject(
+                outer);
+        }
+    }
+
     private void ApplyNativeOverlayFlags()
     {
         if (!OperatingSystem.IsWindows())
@@ -187,10 +295,35 @@ public sealed partial class CaptureBoundaryWindow : Window
     }
 
     private const int GWL_EXSTYLE = -20;
+    private const int RGN_DIFF = 4;
     private const long WS_EX_TRANSPARENT = 0x00000020L;
     private const long WS_EX_TOOLWINDOW = 0x00000080L;
     private const long WS_EX_NOACTIVATE = 0x08000000L;
     private const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateRectRgn(
+        int left,
+        int top,
+        int right,
+        int bottom);
+
+    [DllImport("gdi32.dll")]
+    private static extern int CombineRgn(
+        IntPtr destination,
+        IntPtr source1,
+        IntPtr source2,
+        int combineMode);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(
+        IntPtr objectHandle);
+
+    [DllImport("user32.dll")]
+    private static extern int SetWindowRgn(
+        IntPtr hwnd,
+        IntPtr region,
+        bool redraw);
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowDisplayAffinity(
