@@ -498,29 +498,24 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            var microphones =
-                _nativeBridge.RefreshDevices(
-                    NativeDeviceKind.Microphone);
-
-            var cameras =
-                _nativeBridge.RefreshDevices(
-                    NativeDeviceKind.Camera);
+            var devices =
+                _nativeBridge.RefreshDevices();
 
             ApplyNativeDeviceButtons(
                 _microphoneOptions,
-                microphones);
+                devices.Microphones);
 
             ApplyNativeDeviceButtons(
                 _cameraOptions,
-                cameras);
+                devices.Cameras);
 
-            if (microphones.Count > 0)
+            if (devices.Microphones.Count > 0)
                 _microphoneDevice =
-                    microphones[0].Name;
+                    devices.Microphones[0].Name;
 
-            if (cameras.Count > 0)
+            if (devices.Cameras.Count > 0)
                 _cameraDevice =
-                    cameras[0].Name;
+                    devices.Cameras[0].Name;
         }
         catch (Exception)
         {
