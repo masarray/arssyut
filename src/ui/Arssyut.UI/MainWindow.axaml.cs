@@ -674,6 +674,15 @@ public sealed partial class MainWindow : Window
         RefreshInputLabels();
     }
 
+    private void SystemAudioToggle_OnClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _systemAudioEnabled =
+            SystemAudioToggle.IsChecked == true;
+        UpdateReadyDetail();
+    }
+
     private void MicToggle_OnClick(
         object? sender,
         RoutedEventArgs e)
@@ -716,6 +725,8 @@ public sealed partial class MainWindow : Window
                 ? _cameraDevice
                 : $"Off · {_cameraDevice}";
 
+        SystemAudioToggle.IsChecked =
+            _systemAudioEnabled;
         MicToggle.IsChecked =
             _session.MicrophoneEnabled;
         CameraToggle.IsChecked =
@@ -729,7 +740,7 @@ public sealed partial class MainWindow : Window
 
         RecordButton.SetValue(
             AutomationProperties.HelpTextProperty,
-            $"Starts the interaction preview. Shortcut {_settings.RecordHotkey}.");
+            $"Starts recording through the native bridge. Shortcut {_settings.RecordHotkey}.");
 
         UpdateReadyDetail();
     }
