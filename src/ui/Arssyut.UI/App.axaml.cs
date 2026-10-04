@@ -82,6 +82,7 @@ public sealed partial class App : Application
                 settingsPreview
                     ? new SettingsWindow(
                         previewSettings,
+                        nativeBridge,
                         settingsStress)
                     : new MainWindow(
                         previewSettings,
