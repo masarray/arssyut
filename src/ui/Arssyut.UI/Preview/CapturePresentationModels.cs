@@ -16,4 +16,5 @@ public sealed record PreviewSourceItem(
     string Title,
     string Subtitle,
     PixelRect Bounds,
-    bool IsPrimary = false);
+    bool IsPrimary = false,
+    ulong NativeToken = 0);
