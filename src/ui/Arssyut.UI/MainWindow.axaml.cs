@@ -752,6 +752,96 @@ public sealed partial class MainWindow : Window
 
     private void StartPreviewRecording()
     {
+        if (_nativeBridge is not null)
+        {
+            StartNativeRecording();
+            return;
+        }
+
+        StartInteractionPreview();
+    }
+
+    private void StartNativeRecording()
+    {
+        if (_selectedSource is null ||
+            _selectedSource.NativeToken == 0)
+        {
+            ShowCommandFeedback(
+                "Choose a source",
+                "Refresh the native source list and choose a display or window.");
+            return;
+        }
+
+        var flags =
+            NativeStartFlags.SmartZoom |
+            NativeStartFlags.ClickVisual |
+            NativeStartFlags.ShortcutKeys;
+
+        if (_systemAudioEnabled)
+            flags |=
+                NativeStartFlags.SystemAudio;
+        if (_session.MicrophoneEnabled)
+            flags |=
+                NativeStartFlags.Microphone;
+        if (_session.CameraEnabled)
+            flags |=
+                NativeStartFlags.Camera;
+
+        NativeBridgeStatus status;
+
+        try
+        {
+            status =
+                _nativeBridge.StartRecording(
+                    new NativeStartRequest(
+                        _captureMode,
+                        _selectedSource.NativeToken,
+                        60,
+                        NativeVisualMode.PixelAccurate,
+                        flags,
+                        _microphoneDeviceToken,
+                        _cameraDeviceToken,
+                        _settings.OutputFolder));
+        }
+        catch (Exception)
+        {
+            ShowCommandFeedback(
+                "Native bridge error",
+                "Recorder command bridge became unavailable.");
+            return;
+        }
+
+        if (status !=
+            NativeBridgeStatus.Ok)
+        {
+            HandleNativeStartFailure(
+                status);
+            return;
+        }
+
+        _nativeResult = null;
+        _lastNativeSnapshot =
+            _nativeBridge.Snapshot();
+
+        ApplyNativeSessionState(
+            _lastNativeSnapshot);
+
+        _controller =
+            new RecordingControllerWindow(
+                _nativeBridge,
+                _settings,
+                _session.MicrophoneEnabled,
+                _session.CameraEnabled);
+
+        _controller.StopRequested +=
+            Controller_OnStopRequested;
+
+        _controller.Show();
+        Hide();
+    }
+
+    private void StartInteractionPreview()
+    {
         if (_session.Phase is
             PreviewRecordingPhase.Recording or
             PreviewRecordingPhase.Paused)
@@ -771,6 +861,78 @@ public sealed partial class MainWindow : Window
         Hide();
     }
 
+    private void HandleNativeStartFailure(
+        NativeBridgeStatus status)
+    {
+        switch (status)
+        {
+            case NativeBridgeStatus.Unsupported:
+                if (_captureMode ==
+                    PreviewCaptureMode.Region)
+                {
+                    ShowCommandFeedback(
+                        "Region binding pending",
+                        "The existing native Region editor/crop path is preserved and binds in P6UI.4C.");
+                }
+                else if (_captureMode ==
+                         PreviewCaptureMode.Game)
+                {
+                    ShowCommandFeedback(
+                        "Game backend pending",
+                        "Game remains visible product intent, but recording is blocked until its native backend exists.");
+                }
+                else
+                {
+                    ShowCommandFeedback(
+                        "Input backend pending",
+                        "Disable System audio, Microphone and Camera to record video now. Their real backends remain scheduled work.");
+                }
+                break;
+
+            case NativeBridgeStatus.StaleToken:
+                RefreshSources(
+                    keepCurrentSelection: false);
+                ShowCommandFeedback(
+                    "Source changed",
+                    "The native source generation changed. Choose the refreshed source and try again.");
+                break;
+
+            case NativeBridgeStatus.Busy:
+                ShowCommandFeedback(
+                    "Recorder busy",
+                    "The previous native session is still finalizing.");
+                break;
+
+            case NativeBridgeStatus.StartFailed:
+                ShowCommandFeedback(
+                    "Could not start",
+                    "The native RecorderSession rejected the recording configuration.");
+                break;
+
+            default:
+                ShowCommandFeedback(
+                    "Could not start",
+                    $"Native command status: {status}.");
+                break;
+        }
+    }
+
+    private void ShowCommandFeedback(
+        string title,
+        string detail)
+    {
+        StatusDot.Fill =
+            Brush.Parse("#F1B85B");
+        StatusText.Foreground =
+            Brush.Parse("#F1B85B");
+        StatusText.Text =
+            title;
+        StatusDetail.Text =
+            detail;
+        SavedActions.IsVisible =
+            false;
+    }
+
     private void Controller_OnStopRequested(
         object? sender,
         EventArgs e)
@@ -784,27 +946,114 @@ public sealed partial class MainWindow : Window
 
         Show();
         Activate();
-        ApplySessionState();
+
+        if (_nativeBridge is not null)
+        {
+            try
+            {
+                ApplyNativeSessionState(
+                    _nativeBridge.Snapshot());
+            }
+            catch (Exception)
+            {
+                ShowCommandFeedback(
+                    "Native bridge error",
+                    "Could not read the completed recorder state.");
+            }
+        }
+        else
+        {
+            ApplySessionState();
+        }
     }
 
     private void OpenSaved_OnClick(
         object? sender,
         RoutedEventArgs e)
     {
-        StatusDetail.Text =
-            "Native result-path binding arrives in P6UI.4B";
+        if (_nativeResult is null ||
+            string.IsNullOrWhiteSpace(
+                _nativeResult.OutputPath))
+        {
+            StatusDetail.Text =
+                "No native recording result is available.";
+            return;
+        }
+
+        try
+        {
+            Process.Start(
+                new ProcessStartInfo(
+                    _nativeResult.OutputPath)
+                {
+                    UseShellExecute = true
+                });
+        }
+        catch (Exception)
+        {
+            StatusDetail.Text =
+                "Windows could not open the saved recording.";
+        }
     }
 
     private void ShowFolder_OnClick(
         object? sender,
         RoutedEventArgs e)
     {
-        StatusDetail.Text =
-            "Native output-folder action arrives in P6UI.4B";
+        if (_nativeResult is null ||
+            string.IsNullOrWhiteSpace(
+                _nativeResult.OutputPath))
+        {
+            StatusDetail.Text =
+                "No native output path is available.";
+            return;
+        }
+
+        try
+        {
+            Process.Start(
+                new ProcessStartInfo
+                {
+                    FileName =
+                        "explorer.exe",
+                    Arguments =
+                        $"/select,\"{_nativeResult.OutputPath}\"",
+                    UseShellExecute =
+                        true
+                });
+        }
+        catch (Exception)
+        {
+            var folder =
+                Path.GetDirectoryName(
+                    _nativeResult.OutputPath);
+
+            StatusDetail.Text =
+                string.IsNullOrWhiteSpace(folder)
+                    ? "Windows could not open the output folder."
+                    : folder;
+        }
     }
 
     private void ApplySessionState()
     {
+        if (_nativeBridge is not null)
+        {
+            try
+            {
+                ApplyNativeSessionState(
+                    _nativeBridge.Snapshot());
+            }
+            catch (Exception)
+            {
+                ShowCommandFeedback(
+                    "Native bridge error",
+                    "Recorder state is temporarily unavailable.");
+            }
+
+            return;
+        }
+
         RefreshInputLabels();
 
         switch (_session.Phase)
@@ -856,33 +1105,171 @@ public sealed partial class MainWindow : Window
                 break;
 
             default:
+                ApplyNativeReadyState();
+                break;
+        }
+    }
+
+    private void ApplyNativeSessionState(
+        NativeRecorderSnapshot snapshot)
+    {
+        _lastNativeSnapshot =
+            snapshot;
+
+        RefreshInputLabels();
+
+        switch (snapshot.State)
+        {
+            case NativeRecorderState.Preparing:
+                StatusDot.Fill =
+                    Brush.Parse("#FF5360");
+                StatusText.Foreground =
+                    Brush.Parse("#FF6671");
+                StatusText.Text =
+                    "Preparing";
+                StatusDetail.Text =
+                    "Native RecorderSession is preparing the capture pipeline.";
+                SavedActions.IsVisible =
+                    false;
+                break;
+
+            case NativeRecorderState.Recording:
+                StatusDot.Fill =
+                    Brush.Parse("#FF5360");
+                StatusText.Foreground =
+                    Brush.Parse("#FF6671");
+                StatusText.Text =
+                    "Recording";
+                StatusDetail.Text =
+                    $"Native video · {FormatNativeElapsed(snapshot.ElapsedTicks)}";
+                SavedActions.IsVisible =
+                    false;
+                break;
+
+            case NativeRecorderState.Stopping:
+            case NativeRecorderState.Finalizing:
+                StatusDot.Fill =
+                    Brush.Parse("#F1B85B");
+                StatusText.Foreground =
+                    Brush.Parse("#F1B85B");
+                StatusText.Text =
+                    snapshot.State ==
+                            NativeRecorderState.Stopping
+                        ? "Stopping"
+                        : "Finalizing";
+                StatusDetail.Text =
+                    "Native recorder is finishing the MP4; the UI remains nonblocking.";
+                SavedActions.IsVisible =
+                    false;
+                break;
+
+            case NativeRecorderState.Ready:
+                try
+                {
+                    _nativeResult =
+                        _nativeBridge?.Result();
+                }
+                catch (Exception)
+                {
+                    _nativeResult = null;
+                }
+
                 StatusDot.Fill =
                     Brush.Parse("#49D49D");
                 StatusText.Foreground =
                     Brush.Parse("#49D49D");
                 StatusText.Text =
-                    "Ready";
+                    "Saved";
+                StatusDetail.Text =
+                    _nativeResult is not null &&
+                    !string.IsNullOrWhiteSpace(
+                        _nativeResult.OutputPath)
+                        ? $"{Path.GetFileName(_nativeResult.OutputPath)} · {FormatNativeElapsed(snapshot.ElapsedTicks)}"
+                        : $"Native recording saved · {FormatNativeElapsed(snapshot.ElapsedTicks)}";
                 SavedActions.IsVisible =
-                    false;
+                    _nativeResult is not null &&
+                    !string.IsNullOrWhiteSpace(
+                        _nativeResult.OutputPath);
                 RecordText.Text =
                     "Record";
                 RecordIcon.Kind =
                     LucideIconKind.Circle;
                 RecordButton.SetValue(
                     AutomationProperties.NameProperty,
-                    "Start recording");
-                UpdateReadyDetail();
+                    "Start another recording");
+                break;
+
+            case NativeRecorderState.Failed:
+                try
+                {
+                    _nativeResult =
+                        _nativeBridge?.Result();
+                }
+                catch (Exception)
+                {
+                    _nativeResult = null;
+                }
+
+                StatusDot.Fill =
+                    Brush.Parse("#FF5360");
+                StatusText.Foreground =
+                    Brush.Parse("#FF6671");
+                StatusText.Text =
+                    "Recording failed";
+                StatusDetail.Text =
+                    $"Native error {snapshot.ErrorCode} · detail 0x{snapshot.ErrorDetail:X8}";
+                SavedActions.IsVisible =
+                    false;
+                break;
+
+            default:
+                ApplyNativeReadyState();
                 break;
         }
     }
 
+    private void ApplyNativeReadyState()
+    {
+        StatusDot.Fill =
+            Brush.Parse("#49D49D");
+        StatusText.Foreground =
+            Brush.Parse("#49D49D");
+        StatusText.Text =
+            "Ready";
+        SavedActions.IsVisible =
+            false;
+        RecordText.Text =
+            "Record";
+        RecordIcon.Kind =
+            LucideIconKind.Circle;
+        RecordButton.SetValue(
+            AutomationProperties.NameProperty,
+            "Start recording");
+        UpdateReadyDetail();
+    }
+
     private void UpdateReadyDetail()
     {
-        if (_session.Phase is
-            PreviewRecordingPhase.Recording or
-            PreviewRecordingPhase.Paused or
-            PreviewRecordingPhase.Saved)
+        if (_nativeBridge is not null)
+        {
+            if (_lastNativeSnapshot?.State is
+                NativeRecorderState.Preparing or
+                NativeRecorderState.Recording or
+                NativeRecorderState.Stopping or
+                NativeRecorderState.Finalizing or
+                NativeRecorderState.Ready or
+                NativeRecorderState.Failed)
+            {
+                return;
+            }
+        }
+        else if (_session.Phase is
+                 PreviewRecordingPhase.Recording or
+                 PreviewRecordingPhase.Paused or
+                 PreviewRecordingPhase.Saved)
+        {
             return;
+        }
 
         var source =
             _captureMode switch
@@ -900,11 +1287,26 @@ public sealed partial class MainWindow : Window
         var bridge =
             _nativeBridge is null
                 ? "native bridge unavailable"
-                : "native source";
+                : "native command ready";
+
+        var inputState =
+            _systemAudioEnabled ||
+            _session.MicrophoneEnabled ||
+            _session.CameraEnabled
+                ? "input backend pending"
+                : "video ready";
 
         StatusDetail.Text =
-            $"{source} · {bridge} · 60 fps · Smart Zoom on · {_settings.RecordHotkey}";
+            $"{source} · {bridge} · {inputState} · 60 fps · Smart Zoom on · {_settings.RecordHotkey}";
     }
+
+    private static string FormatNativeElapsed(
+        long ticks) =>
+        FormatElapsed(
+            TimeSpan.FromTicks(
+                Math.Max(
+                    0,
+                    ticks)));
 
     private string BridgeUnavailableMessage() =>
         _bridgeAvailability switch
