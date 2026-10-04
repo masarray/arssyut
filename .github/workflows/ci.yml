@@ -78,23 +78,14 @@ jobs:
         shell: pwsh
         run: |
           $baseline = "b11451bd640a072d81dbd1024b4c641a76c9daac"
-          $changed = git diff --name-only "$baseline...HEAD"
 
-          $forbidden = @(
-            "src/app/",
-            "src/core/",
-            "src/platform/"
+          # checkout@v4 uses a shallow PR merge checkout. Fetch exactly the
+          # historical P6R baseline tree before comparing protected engine paths.
+          git fetch origin $baseline --depth=1
+
+          $violations = @(
+            git diff --name-only $baseline HEAD -- src/app src/core src/platform
           )
-
-          $violations = @()
-          foreach ($path in $changed) {
-            foreach ($prefix in $forbidden) {
-              if ($path.StartsWith($prefix)) {
-                $violations += $path
-                break
-              }
-            }
-          }
 
           if ($violations.Count -gt 0) {
             Write-Host "P6UI changed locked native implementation after ${baseline}:"
