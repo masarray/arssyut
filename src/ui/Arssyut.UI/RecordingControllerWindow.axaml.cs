@@ -17,7 +17,7 @@ public sealed partial class RecordingControllerWindow : Window
     private readonly PreviewRecorderSession? _previewSession;
     private readonly NativeBridgeClient? _nativeBridge;
     private readonly SettingsPreviewState _settings;
-    private readonly DispatcherTimer _timer;
+    private DispatcherTimer _timer = null!;
 
     private readonly bool _nativeMicrophoneIntent;
     private readonly bool _nativeCameraIntent;
