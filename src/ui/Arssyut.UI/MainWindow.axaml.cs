@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using Avalonia;
 using Avalonia.Automation;
@@ -37,6 +39,9 @@ public sealed partial class MainWindow : Window
         "Camera";
     private ulong _microphoneDeviceToken;
     private ulong _cameraDeviceToken;
+    private bool _systemAudioEnabled;
+    private NativeRecorderSnapshot? _lastNativeSnapshot;
+    private NativeRecorderResult? _nativeResult;
 
     public MainWindow(
         SettingsPreviewState settings,
@@ -81,8 +86,11 @@ public sealed partial class MainWindow : Window
             CameraOptionLong
         ];
 
-        _session.Changed +=
-            (_, _) => ApplySessionState();
+        if (_nativeBridge is null)
+        {
+            _session.Changed +=
+                (_, _) => ApplySessionState();
+        }
 
         _settings.Changed +=
             Settings_OnChanged;
@@ -138,12 +146,24 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        if (e.Key == Key.Escape &&
-            _session.Phase ==
-                PreviewRecordingPhase.Saved)
+        if (e.Key == Key.Escape)
         {
-            _session.Reset();
-            e.Handled = true;
+            if (_nativeBridge is null &&
+                _session.Phase ==
+                    PreviewRecordingPhase.Saved)
+            {
+                _session.Reset();
+                e.Handled = true;
+            }
+            else if (_nativeBridge is not null &&
+                     _lastNativeSnapshot?.State ==
+                         NativeRecorderState.Ready)
+            {
+                _lastNativeSnapshot = null;
+                _nativeResult = null;
+                ApplyNativeReadyState();
+                e.Handled = true;
+            }
         }
     }
 
