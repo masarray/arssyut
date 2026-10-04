@@ -121,10 +121,11 @@ public static class SourcePreviewCatalog
                 if ((exStyle & WS_EX_TOOLWINDOW) != 0)
                     return true;
 
+                var cloaked = 0;
                 if (DwmGetWindowAttribute(
                         window,
                         DWMWA_CLOAKED,
-                        out var cloaked,
+                        out cloaked,
                         Marshal.SizeOf<int>()) == 0 &&
                     cloaked != 0)
                     return true;
