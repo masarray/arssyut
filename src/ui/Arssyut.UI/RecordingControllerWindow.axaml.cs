@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 using Lucide.Avalonia;
 
@@ -13,10 +14,16 @@ namespace Arssyut.UI;
 
 public sealed partial class RecordingControllerWindow : Window
 {
-    private readonly PreviewRecorderSession _session;
+    private readonly PreviewRecorderSession? _previewSession;
+    private readonly NativeBridgeClient? _nativeBridge;
     private readonly SettingsPreviewState _settings;
     private readonly DispatcherTimer _timer;
+
+    private readonly bool _nativeMicrophoneIntent;
+    private readonly bool _nativeCameraIntent;
+
     private bool _closingFromStop;
+    private bool _nativeStopRequested;
 
     public event EventHandler? StopRequested;
 
@@ -24,9 +31,30 @@ public sealed partial class RecordingControllerWindow : Window
         PreviewRecorderSession session,
         SettingsPreviewState settings)
     {
-        _session = session;
+        _previewSession = session;
         _settings = settings;
 
+        InitializeController();
+    }
+
+    public RecordingControllerWindow(
+        NativeBridgeClient nativeBridge,
+        SettingsPreviewState settings,
+        bool microphoneIntent,
+        bool cameraIntent)
+    {
+        _nativeBridge = nativeBridge;
+        _settings = settings;
+        _nativeMicrophoneIntent =
+            microphoneIntent;
+        _nativeCameraIntent =
+            cameraIntent;
+
+        InitializeController();
+    }
+
+    private void InitializeController()
+    {
         InitializeComponent();
 
         TransparencyLevelHint =
@@ -38,61 +66,134 @@ public sealed partial class RecordingControllerWindow : Window
 
         _timer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMilliseconds(250)
+            Interval =
+                TimeSpan.FromMilliseconds(
+                    200)
         };
-        _timer.Tick += (_, _) => RefreshState();
+        _timer.Tick +=
+            (_, _) => RefreshState();
 
         ToolTip.SetTip(
             StopButton,
             $"Stop recording ({_settings.RecordHotkey})");
-        ToolTip.SetTip(
-            PauseButton,
-            $"Pause / Resume ({_settings.PauseHotkey})");
 
-        Opened += (_, _) =>
+        if (_nativeBridge is null)
         {
-            PlaceNearTopCenter();
-            _timer.Start();
-            RefreshState();
-        };
-
-        Closed += (_, _) =>
+            ToolTip.SetTip(
+                PauseButton,
+                $"Pause / Resume ({_settings.PauseHotkey})");
+        }
+        else
         {
-            _timer.Stop();
+            PauseButton.IsEnabled =
+                false;
+            MicButton.IsEnabled =
+                false;
+            CameraButton.IsEnabled =
+                false;
 
-            if (!_closingFromStop &&
-                _session.Phase is PreviewRecordingPhase.Recording or PreviewRecordingPhase.Paused)
+            ToolTip.SetTip(
+                PauseButton,
+                "Native pause/resume binds after the explicit paused-state milestone.");
+            ToolTip.SetTip(
+                MicButton,
+                "Microphone capture backend is not wired yet.");
+            ToolTip.SetTip(
+                CameraButton,
+                "Camera compositor backend is not wired yet.");
+        }
+
+        Opened +=
+            (_, _) =>
             {
-                _session.Stop();
-                StopRequested?.Invoke(this, EventArgs.Empty);
-            }
-        };
+                PlaceNearTopCenter();
+                _timer.Start();
+                RefreshState();
+            };
+
+        Closing +=
+            Controller_OnClosing;
+
+        Closed +=
+            (_, _) =>
+            {
+                _timer.Stop();
+
+                if (_nativeBridge is null &&
+                    !_closingFromStop &&
+                    _previewSession?.Phase is
+                        PreviewRecordingPhase.Recording or
+                        PreviewRecordingPhase.Paused)
+                {
+                    _previewSession.Stop();
+                    StopRequested?.Invoke(
+                        this,
+                        EventArgs.Empty);
+                }
+            };
+    }
+
+    private void Controller_OnClosing(
+        object? sender,
+        WindowClosingEventArgs e)
+    {
+        if (_nativeBridge is null ||
+            _closingFromStop)
+            return;
+
+        NativeRecorderSnapshot snapshot;
+
+        try
+        {
+            snapshot =
+                _nativeBridge.Snapshot();
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (IsNativeActive(
+                snapshot.State))
+        {
+            e.Cancel = true;
+            RequestStop();
+        }
     }
 
     private void PlaceNearTopCenter()
     {
-        var screen = Screens.Primary;
+        var screen =
+            Screens.Primary;
         if (screen is null)
             return;
 
-        var scale = screen.Scaling;
+        var scale =
+            screen.Scaling;
         var widthPixels =
-            (int)Math.Round(Width * scale);
+            (int)Math.Round(
+                Width * scale);
 
-        Position = new PixelPoint(
-            screen.WorkingArea.X +
-                Math.Max(
-                    0,
-                    (screen.WorkingArea.Width - widthPixels) / 2),
-            screen.WorkingArea.Y +
-                (int)Math.Round(18 * scale));
+        Position =
+            new PixelPoint(
+                screen.WorkingArea.X +
+                    Math.Max(
+                        0,
+                        (screen.WorkingArea.Width -
+                         widthPixels) /
+                        2),
+                screen.WorkingArea.Y +
+                    (int)Math.Round(
+                        18 * scale));
     }
 
     private void Surface_OnPointerPressed(
         object? sender,
         PointerPressedEventArgs e)
     {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        if (e.GetCurrentPoint(this).
+                Properties.
+                IsLeftButtonPressed)
             BeginMoveDrag(e);
     }
 
@@ -106,12 +207,16 @@ public sealed partial class RecordingControllerWindow : Window
         {
             RequestStop();
             e.Handled = true;
+            return;
         }
-        else if (HotkeyPreview.Matches(
-                     e,
-                     _settings.PauseHotkey))
+
+        if (_nativeBridge is null &&
+            HotkeyPreview.Matches(
+                e,
+                _settings.PauseHotkey))
         {
-            _session.TogglePause();
+            _previewSession?.
+                TogglePause();
             RefreshState();
             e.Handled = true;
         }
@@ -121,8 +226,13 @@ public sealed partial class RecordingControllerWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
-        _session.MicrophoneEnabled =
-            !_session.MicrophoneEnabled;
+        if (_nativeBridge is not null ||
+            _previewSession is null)
+            return;
+
+        _previewSession.MicrophoneEnabled =
+            !_previewSession.
+                MicrophoneEnabled;
         RefreshState();
     }
 
@@ -130,8 +240,13 @@ public sealed partial class RecordingControllerWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
-        _session.CameraEnabled =
-            !_session.CameraEnabled;
+        if (_nativeBridge is not null ||
+            _previewSession is null)
+            return;
+
+        _previewSession.CameraEnabled =
+            !_previewSession.
+                CameraEnabled;
         RefreshState();
     }
 
@@ -139,7 +254,11 @@ public sealed partial class RecordingControllerWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
-        _session.TogglePause();
+        if (_nativeBridge is not null)
+            return;
+
+        _previewSession?.
+            TogglePause();
         RefreshState();
     }
 
@@ -150,18 +269,175 @@ public sealed partial class RecordingControllerWindow : Window
 
     private void RequestStop()
     {
-        _session.Stop();
+        if (_nativeBridge is not null)
+        {
+            if (_nativeStopRequested)
+                return;
+
+            NativeBridgeStatus status;
+
+            try
+            {
+                status =
+                    _nativeBridge.
+                        StopRecording();
+            }
+            catch (Exception)
+            {
+                PhaseText.Text =
+                    "ERROR";
+                PhaseText.Foreground =
+                    Brush.Parse(
+                        "#FF6671");
+                return;
+            }
+
+            if (status is
+                NativeBridgeStatus.Ok or
+                NativeBridgeStatus.InvalidState)
+            {
+                _nativeStopRequested =
+                    true;
+                StopButton.IsEnabled =
+                    false;
+                RefreshState();
+            }
+
+            return;
+        }
+
+        if (_previewSession is null)
+            return;
+
+        _previewSession.Stop();
         RefreshState();
 
         _closingFromStop = true;
-        StopRequested?.Invoke(this, EventArgs.Empty);
+        StopRequested?.Invoke(
+            this,
+            EventArgs.Empty);
         Close();
     }
 
     private void RefreshState()
     {
+        if (_nativeBridge is not null)
+        {
+            RefreshNativeState();
+            return;
+        }
+
+        RefreshPreviewState();
+    }
+
+    private void RefreshNativeState()
+    {
+        NativeRecorderSnapshot snapshot;
+
+        try
+        {
+            snapshot =
+                _nativeBridge!.Snapshot();
+        }
+        catch (Exception)
+        {
+            PhaseText.Text =
+                "ERROR";
+            PhaseText.Foreground =
+                Brush.Parse(
+                    "#FF6671");
+            return;
+        }
+
+        PhaseText.Text =
+            snapshot.State switch
+            {
+                NativeRecorderState.Preparing =>
+                    "PREP",
+                NativeRecorderState.Recording =>
+                    "REC",
+                NativeRecorderState.Stopping =>
+                    "STOP",
+                NativeRecorderState.Finalizing =>
+                    "SAVE",
+                NativeRecorderState.Ready =>
+                    "SAVED",
+                NativeRecorderState.Failed =>
+                    "ERROR",
+                _ =>
+                    "READY"
+            };
+
+        PhaseText.Foreground =
+            Brush.Parse(
+                snapshot.State switch
+                {
+                    NativeRecorderState.Failed =>
+                        "#FF6671",
+                    NativeRecorderState.Stopping or
+                    NativeRecorderState.Finalizing =>
+                        "#F1B85B",
+                    NativeRecorderState.Ready =>
+                        "#49D49D",
+                    _ =>
+                        "#FF5360"
+                });
+
+        PauseIcon.Kind =
+            LucideIconKind.Pause;
+
+        PauseButton.SetValue(
+            AutomationProperties.
+                NameProperty,
+            "Pause unavailable in current native milestone");
+
+        TimerText.Text =
+            FormatElapsed(
+                TimeSpan.FromTicks(
+                    Math.Max(
+                        0,
+                        snapshot.ElapsedTicks)));
+
+        MicButton.Opacity =
+            _nativeMicrophoneIntent
+                ? 0.70
+                : 0.42;
+        CameraButton.Opacity =
+            _nativeCameraIntent
+                ? 0.70
+                : 0.42;
+
+        if (snapshot.WorkerFinished &&
+            snapshot.State is
+                NativeRecorderState.Ready or
+                NativeRecorderState.Failed)
+        {
+            CompleteNativeController();
+        }
+    }
+
+    private void CompleteNativeController()
+    {
+        if (_closingFromStop)
+            return;
+
+        _closingFromStop = true;
+        _timer.Stop();
+
+        StopRequested?.Invoke(
+            this,
+            EventArgs.Empty);
+
+        Close();
+    }
+
+    private void RefreshPreviewState()
+    {
+        if (_previewSession is null)
+            return;
+
         var paused =
-            _session.Phase ==
+            _previewSession.Phase ==
                 PreviewRecordingPhase.Paused;
 
         PhaseText.Text =
@@ -173,7 +449,7 @@ public sealed partial class RecordingControllerWindow : Window
             Brush.Parse(
                 paused
                     ? "#F1B85B"
-                    : "#FF4D57");
+                    : "#FF5360");
 
         PauseIcon.Kind =
             paused
@@ -188,25 +464,35 @@ public sealed partial class RecordingControllerWindow : Window
 
         TimerText.Text =
             FormatElapsed(
-                _session.Elapsed);
+                _previewSession.Elapsed);
 
         MicButton.Opacity =
-            _session.MicrophoneEnabled
+            _previewSession.MicrophoneEnabled
                 ? 1.0
                 : 0.48;
 
         CameraButton.Opacity =
-            _session.CameraEnabled
+            _previewSession.CameraEnabled
                 ? 1.0
                 : 0.48;
     }
+
+    private static bool IsNativeActive(
+        NativeRecorderState state) =>
+        state is
+            NativeRecorderState.Preparing or
+            NativeRecorderState.Recording or
+            NativeRecorderState.Stopping or
+            NativeRecorderState.Finalizing;
 
     private static string FormatElapsed(
         TimeSpan elapsed)
     {
         if (elapsed.TotalHours >= 1)
-            return elapsed.ToString(@"hh\:mm\:ss");
+            return elapsed.ToString(
+                @"hh\:mm\:ss");
 
-        return elapsed.ToString(@"mm\:ss");
+        return elapsed.ToString(
+            @"mm\:ss");
     }
 }
