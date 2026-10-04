@@ -850,6 +850,22 @@ The recording overlay must be low-overhead, capture-safe, and excluded from capt
 
 ---
 
+### Current project handoff
+
+Before any substantial Arssyut continuation work, read
+`docs/CURRENT_HANDOFF.md` first.
+
+That file is the canonical current-state pointer for:
+- active branch/PR and milestone;
+- latest known-good checkpoint;
+- real-acceptance work still pending;
+- the exact next engineering milestone;
+- temporary scaffolding that must not become a new authority.
+
+If repository state has advanced beyond the handoff, update the handoff before
+continuing implementation. Do not derive project state from an older chat
+thread when repository evidence is newer.
+
 ### History-derived subsystem baseline
 
 Before changing an existing recorder subsystem, consult
