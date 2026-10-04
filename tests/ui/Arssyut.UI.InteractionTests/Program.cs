@@ -1,3 +1,4 @@
+using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 
 static void Expect(
@@ -116,6 +117,17 @@ Expect(
 
 
 Expect(
+    HotkeyPreview.TryToNativeRegistration(
+        "Ctrl+Shift+F9",
+        out var nativeModifiers,
+        out var nativeVirtualKey) &&
+    nativeModifiers ==
+        (NativeHotkeyModifiers.Control |
+         NativeHotkeyModifiers.Shift) &&
+    nativeVirtualKey == 0x78,
+    "multi-key chord maps deterministically to Windows modifiers + VK_F9");
+
+Expect(
     settings.TrySetHotkey(
         "Record",
         "Ctrl+Shift+R",
@@ -156,6 +168,8 @@ Expect(
     settings.PauseHotkey == "F10" &&
     settings.MicrophoneHotkey ==
         "Ctrl+F9" &&
+    settings.CameraHotkey ==
+        "Ctrl+F10" &&
     settings.CameraPlacement ==
         CameraPlacement.BottomRight &&
     settings.OutputFolder ==

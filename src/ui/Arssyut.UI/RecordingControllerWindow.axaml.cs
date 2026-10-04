@@ -212,7 +212,11 @@ public sealed partial class RecordingControllerWindow : Window
         object? sender,
         KeyEventArgs e)
     {
-        if (HotkeyPreview.Matches(
+        // Product-native recording is controlled by the bridge-owned global
+        // hotkey. Keep focused KeyDown only for explicit interaction preview,
+        // otherwise one F9 could request Stop twice.
+        if (_nativeBridge is null &&
+            HotkeyPreview.Matches(
                 e,
                 _settings.RecordHotkey))
         {

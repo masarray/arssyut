@@ -10,6 +10,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 using Lucide.Avalonia;
@@ -18,7 +19,6 @@ namespace Arssyut.UI;
 
 public sealed partial class MainWindow : Window
 {
-    private readonly Button[] _modeButtons;
     private readonly Button[] _microphoneOptions;
     private readonly Button[] _cameraOptions;
     private readonly PreviewRecorderSession _session = new();
@@ -27,6 +27,7 @@ public sealed partial class MainWindow : Window
     private readonly NativeBridgeAvailability _bridgeAvailability;
     private readonly bool _stressLongNames;
     private readonly bool _allowInteractionPreview;
+    private readonly DispatcherTimer _hotkeyTimer;
 
     private readonly List<PreviewSourceItem> _sources = [];
     private RecordingControllerWindow? _controller;
@@ -43,6 +44,10 @@ public sealed partial class MainWindow : Window
     private bool _systemAudioEnabled;
     private NativeRecorderSnapshot? _lastNativeSnapshot;
     private NativeRecorderResult? _nativeResult;
+    private bool _mainUiReady;
+    private bool _recordHotkeyRegistered;
+    private bool _settingsOpen;
+    private string _registeredRecordHotkey = string.Empty;
 
     public MainWindow(
         SettingsPreviewState settings,
@@ -68,14 +73,6 @@ public sealed partial class MainWindow : Window
             WindowTransparencyLevel.None
         ];
 
-        _modeButtons =
-        [
-            ModeDisplay,
-            ModeWindow,
-            ModeRegion,
-            ModeGame
-        ];
-
         _microphoneOptions =
         [
             MicOptionCable,
@@ -89,6 +86,14 @@ public sealed partial class MainWindow : Window
             CameraOptionObs,
             CameraOptionLong
         ];
+
+        _hotkeyTimer =
+            new DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(75)
+            };
+        _hotkeyTimer.Tick += GlobalHotkeyTimer_OnTick;
+        _mainUiReady = true;
 
         if (_nativeBridge is null &&
             _allowInteractionPreview)
@@ -114,6 +119,8 @@ public sealed partial class MainWindow : Window
                 ApplyProductCapabilitySurface();
                 RefreshSettingsSurface();
                 ApplySessionState();
+                SyncGlobalRecordHotkey();
+                _hotkeyTimer.Start();
 
                 if (autoStartRecording &&
                     _allowInteractionPreview)
@@ -127,6 +134,8 @@ public sealed partial class MainWindow : Window
             {
                 _settings.Changed -=
                     Settings_OnChanged;
+                _hotkeyTimer.Stop();
+                SuspendGlobalRecordHotkey();
 
                 if (_nativeBridge is not null)
                 {
@@ -159,7 +168,9 @@ public sealed partial class MainWindow : Window
         object? sender,
         KeyEventArgs e)
     {
-        if (HotkeyPreview.Matches(
+        if ((_allowInteractionPreview ||
+             !_recordHotkeyRegistered) &&
+            HotkeyPreview.Matches(
                 e,
                 _settings.RecordHotkey))
         {
@@ -191,23 +202,37 @@ public sealed partial class MainWindow : Window
 
     private void Settings_OnChanged(
         object? sender,
-        EventArgs e) =>
+        EventArgs e)
+    {
         RefreshSettingsSurface();
+        SyncGlobalRecordHotkey();
+    }
 
-    private void Settings_OnClick(
+    private async void Settings_OnClick(
         object? sender,
         RoutedEventArgs e)
     {
-        var settings =
-            new SettingsWindow(
-                _settings,
-                _nativeBridge)
-            {
-                WindowStartupLocation =
-                    WindowStartupLocation.CenterOwner
-            };
+        _settingsOpen = true;
+        SuspendGlobalRecordHotkey();
 
-        settings.ShowDialog(this);
+        try
+        {
+            var settings =
+                new SettingsWindow(
+                    _settings,
+                    _nativeBridge)
+                {
+                    WindowStartupLocation =
+                        WindowStartupLocation.CenterOwner
+                };
+
+            await settings.ShowDialog(this);
+        }
+        finally
+        {
+            _settingsOpen = false;
+            SyncGlobalRecordHotkey();
+        }
     }
 
     private void Minimize_OnClick(
@@ -220,29 +245,21 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e) =>
         Close();
 
-    private void CaptureMode_OnClick(
+    private void CaptureMode_OnSelectionChanged(
         object? sender,
-        RoutedEventArgs e)
+        SelectionChangedEventArgs e)
     {
-        if (sender is not Button selected)
+        if (!_mainUiReady ||
+            sender is not ComboBox combo)
             return;
 
-        foreach (var button in _modeButtons)
-            button.Classes.Remove("selected");
-
-        selected.Classes.Add("selected");
-
         _captureMode =
-            selected.Tag?.ToString() switch
+            combo.SelectedIndex switch
             {
-                "Window" =>
-                    PreviewCaptureMode.Window,
-                "Region" =>
-                    PreviewCaptureMode.Region,
-                "Game" =>
-                    PreviewCaptureMode.Game,
-                _ =>
-                    PreviewCaptureMode.Display
+                1 => PreviewCaptureMode.Window,
+                2 => PreviewCaptureMode.Region,
+                3 => PreviewCaptureMode.Game,
+                _ => PreviewCaptureMode.Display
             };
 
         RefreshSources(
@@ -844,6 +861,129 @@ public sealed partial class MainWindow : Window
         UpdateReadyDetail();
     }
 
+    private void GlobalHotkeyTimer_OnTick(
+        object? sender,
+        EventArgs e)
+    {
+        if (_nativeBridge is null ||
+            !_recordHotkeyRegistered ||
+            _settingsOpen)
+            return;
+
+        try
+        {
+            var events =
+                _nativeBridge.TakeHotkeyEvents();
+
+            if ((events & NativeHotkeyEvents.ToggleRecord) != 0)
+                HandleGlobalRecordHotkey();
+        }
+        catch (Exception)
+        {
+            _recordHotkeyRegistered = false;
+            _registeredRecordHotkey = string.Empty;
+        }
+    }
+
+    private void HandleGlobalRecordHotkey()
+    {
+        if (_nativeBridge is null)
+            return;
+
+        NativeRecorderSnapshot snapshot;
+        try
+        {
+            snapshot = _nativeBridge.Snapshot();
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        if (snapshot.State is
+            NativeRecorderState.Preparing or
+            NativeRecorderState.Recording)
+        {
+            _nativeBridge.StopRecording();
+            return;
+        }
+
+        if (snapshot.State is
+            NativeRecorderState.Stopping or
+            NativeRecorderState.Finalizing)
+            return;
+
+        StartNativeRecording();
+    }
+
+    private void SyncGlobalRecordHotkey()
+    {
+        if (!_mainUiReady ||
+            _nativeBridge is null ||
+            _allowInteractionPreview ||
+            _settingsOpen)
+            return;
+
+        if (_recordHotkeyRegistered &&
+            string.Equals(
+                _registeredRecordHotkey,
+                _settings.RecordHotkey,
+                StringComparison.OrdinalIgnoreCase))
+            return;
+
+        SuspendGlobalRecordHotkey();
+
+        if (!HotkeyPreview.TryToNativeRegistration(
+                _settings.RecordHotkey,
+                out var modifiers,
+                out var virtualKey))
+        {
+            UpdateReadyDetail();
+            return;
+        }
+
+        try
+        {
+            var status =
+                _nativeBridge.RegisterHotkey(
+                    NativeHotkeyAction.ToggleRecord,
+                    modifiers,
+                    virtualKey);
+
+            _recordHotkeyRegistered =
+                status == NativeBridgeStatus.Ok;
+
+            if (_recordHotkeyRegistered)
+                _registeredRecordHotkey =
+                    _settings.RecordHotkey;
+        }
+        catch (Exception)
+        {
+            _recordHotkeyRegistered = false;
+        }
+
+        UpdateReadyDetail();
+    }
+
+    private void SuspendGlobalRecordHotkey()
+    {
+        if (_nativeBridge is not null &&
+            _recordHotkeyRegistered)
+        {
+            try
+            {
+                _nativeBridge.UnregisterHotkey(
+                    NativeHotkeyAction.ToggleRecord);
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        _recordHotkeyRegistered = false;
+        _registeredRecordHotkey = string.Empty;
+    }
+
     private void Record_OnClick(
         object? sender,
         RoutedEventArgs e) =>
@@ -1236,7 +1376,7 @@ public sealed partial class MainWindow : Window
                 SavedActions.IsVisible =
                     true;
                 RecordText.Text =
-                    "Record";
+                    "Start";
                 RecordIcon.Kind =
                     LucideIconKind.Circle;
                 RecordButton.SetValue(
@@ -1331,7 +1471,7 @@ public sealed partial class MainWindow : Window
                     !string.IsNullOrWhiteSpace(
                         _nativeResult.OutputPath);
                 RecordText.Text =
-                    "Record";
+                    "Start";
                 RecordIcon.Kind =
                     LucideIconKind.Circle;
                 RecordButton.SetValue(
@@ -1379,7 +1519,7 @@ public sealed partial class MainWindow : Window
         SavedActions.IsVisible =
             false;
         RecordText.Text =
-            "Record";
+            "Start";
         RecordIcon.Kind =
             LucideIconKind.Circle;
         RecordButton.SetValue(
@@ -1402,7 +1542,7 @@ public sealed partial class MainWindow : Window
         SavedActions.IsVisible =
             false;
         RecordText.Text =
-            "Record";
+            "Start";
         RecordIcon.Kind =
             LucideIconKind.Circle;
         RecordButton.IsEnabled =
@@ -1427,12 +1567,6 @@ public sealed partial class MainWindow : Window
     {
         if (_allowInteractionPreview)
             return;
-
-        ModeGame.IsEnabled =
-            false;
-        ModeGame.SetValue(
-            ToolTip.TipProperty,
-            "Game capture backend is not connected in this build.");
 
         _systemAudioEnabled =
             false;
@@ -1546,8 +1680,16 @@ public sealed partial class MainWindow : Window
                 ? "preview inputs"
                 : "video ready";
 
+        var hotkey =
+            _nativeBridge is not null &&
+            !_allowInteractionPreview
+                ? _recordHotkeyRegistered
+                    ? $"global {_settings.RecordHotkey}"
+                    : $"{_settings.RecordHotkey} unavailable"
+                : _settings.RecordHotkey;
+
         StatusDetail.Text =
-            $"{source} · {bridge} · {inputState} · {_settings.FrameRate} fps · {VisualStyleLabel()} · Zoom {(_settings.SmartZoom ? "on" : "off")} · {_settings.RecordHotkey}";
+            $"{source} · {bridge} · {inputState} · {_settings.FrameRate} fps · {VisualStyleLabel()} · Zoom {(_settings.SmartZoom ? "on" : "off")} · {hotkey}";
     }
 
     private static string FormatNativeElapsed(

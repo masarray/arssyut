@@ -13,6 +13,8 @@
 #include <ShlObj.h>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <iterator>
@@ -64,6 +66,15 @@ struct NativeBridgeContext final {
     RECT region_screen_rect{};
     bool region_screen_rect_valid = false;
     HMONITOR region_monitor = nullptr;
+
+    struct HotkeyBinding {
+        std::uint32_t modifiers = 0;
+        std::uint32_t virtual_key = 0;
+        bool registered = false;
+    };
+
+    std::array<HotkeyBinding, 4> hotkeys{};
+    std::atomic<std::uint32_t> pending_hotkey_events{0};
 };
 
 [[nodiscard]] NativeBridgeContext *
@@ -422,6 +433,47 @@ void fill_snapshot(
 constexpr wchar_t kBridgeOverlayOwnerClass[] =
     L"ArssyutBridgeOverlayOwner";
 constexpr UINT_PTR kBridgeOverlayTimer = 1;
+constexpr int kBridgeHotkeyIdBase = 0x5A40;
+constexpr std::uint32_t kBridgeHotkeyActionCount = 4;
+
+[[nodiscard]] bool valid_hotkey_action(std::uint32_t action) noexcept
+{
+    return action < kBridgeHotkeyActionCount;
+}
+
+[[nodiscard]] UINT windows_hotkey_modifiers(
+    std::uint32_t modifiers) noexcept
+{
+    UINT native = MOD_NOREPEAT;
+    if ((modifiers & ARSSYUT_BRIDGE_HOTKEY_CTRL) != 0) native |= MOD_CONTROL;
+    if ((modifiers & ARSSYUT_BRIDGE_HOTKEY_SHIFT) != 0) native |= MOD_SHIFT;
+    if ((modifiers & ARSSYUT_BRIDGE_HOTKEY_ALT) != 0) native |= MOD_ALT;
+    if ((modifiers & ARSSYUT_BRIDGE_HOTKEY_WIN) != 0) native |= MOD_WIN;
+    return native;
+}
+
+void unregister_all_hotkeys(NativeBridgeContext &context) noexcept
+{
+    if (!context.overlay_owner)
+        return;
+
+    for (std::uint32_t action = 0;
+         action < kBridgeHotkeyActionCount;
+         ++action) {
+        auto &binding = context.hotkeys[action];
+        if (!binding.registered)
+            continue;
+
+        UnregisterHotKey(
+            context.overlay_owner,
+            kBridgeHotkeyIdBase + static_cast<int>(action));
+        binding = NativeBridgeContext::HotkeyBinding{};
+    }
+
+    context.pending_hotkey_events.store(
+        0,
+        std::memory_order_relaxed);
+}
 
 void sync_overlay_locked(
     NativeBridgeContext &context) noexcept;
@@ -460,6 +512,21 @@ LRESULT CALLBACK bridge_overlay_owner_proc(
             message,
             wparam,
             lparam);
+    }
+
+    if (message == WM_HOTKEY) {
+        const int action =
+            static_cast<int>(wparam) -
+            kBridgeHotkeyIdBase;
+
+        if (action >= 0 &&
+            action < static_cast<int>(
+                kBridgeHotkeyActionCount)) {
+            context->pending_hotkey_events.fetch_or(
+                1U << static_cast<std::uint32_t>(action),
+                std::memory_order_relaxed);
+            return 0;
+        }
     }
 
     if (message ==
@@ -566,6 +633,8 @@ void shutdown_overlay_context(
     KillTimer(
         context.overlay_owner,
         kBridgeOverlayTimer);
+
+    unregister_all_hotkeys(context);
 
     if (context.overlay) {
         context.overlay->
@@ -1137,6 +1206,117 @@ arssyut_bridge_overlay_snapshot(
                 : 0;
     }
 
+    return ARSSYUT_BRIDGE_OK;
+}
+
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_hotkey_register(
+    ArssyutBridgeHandle handle,
+    std::uint32_t action,
+    std::uint32_t modifiers,
+    std::uint32_t virtual_key) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context ||
+        !valid_hotkey_action(action) ||
+        virtual_key == 0 ||
+        virtual_key > 0xFFU)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    constexpr std::uint32_t valid_modifiers =
+        ARSSYUT_BRIDGE_HOTKEY_CTRL |
+        ARSSYUT_BRIDGE_HOTKEY_SHIFT |
+        ARSSYUT_BRIDGE_HOTKEY_ALT |
+        ARSSYUT_BRIDGE_HOTKEY_WIN;
+
+    if ((modifiers & ~valid_modifiers) != 0)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    if (!context->overlay_owner ||
+        context->overlay_thread_id != GetCurrentThreadId())
+        return ARSSYUT_BRIDGE_INVALID_STATE;
+
+    auto &binding = context->hotkeys[action];
+    if (binding.registered &&
+        binding.modifiers == modifiers &&
+        binding.virtual_key == virtual_key)
+        return ARSSYUT_BRIDGE_OK;
+
+    const auto previous = binding;
+    if (binding.registered) {
+        UnregisterHotKey(
+            context->overlay_owner,
+            kBridgeHotkeyIdBase + static_cast<int>(action));
+        binding = NativeBridgeContext::HotkeyBinding{};
+    }
+
+    if (!RegisterHotKey(
+            context->overlay_owner,
+            kBridgeHotkeyIdBase + static_cast<int>(action),
+            windows_hotkey_modifiers(modifiers),
+            virtual_key)) {
+        const DWORD error = GetLastError();
+
+        if (previous.registered &&
+            RegisterHotKey(
+                context->overlay_owner,
+                kBridgeHotkeyIdBase + static_cast<int>(action),
+                windows_hotkey_modifiers(previous.modifiers),
+                previous.virtual_key)) {
+            binding = previous;
+        }
+
+        return error == ERROR_HOTKEY_ALREADY_REGISTERED
+            ? ARSSYUT_BRIDGE_BUSY
+            : ARSSYUT_BRIDGE_INTERNAL_ERROR;
+    }
+
+    binding.modifiers = modifiers;
+    binding.virtual_key = virtual_key;
+    binding.registered = true;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_hotkey_unregister(
+    ArssyutBridgeHandle handle,
+    std::uint32_t action) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !valid_hotkey_action(action))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    if (!context->overlay_owner ||
+        context->overlay_thread_id != GetCurrentThreadId())
+        return ARSSYUT_BRIDGE_INVALID_STATE;
+
+    auto &binding = context->hotkeys[action];
+    if (binding.registered) {
+        UnregisterHotKey(
+            context->overlay_owner,
+            kBridgeHotkeyIdBase + static_cast<int>(action));
+        binding = NativeBridgeContext::HotkeyBinding{};
+    }
+
+    context->pending_hotkey_events.fetch_and(
+        ~(1U << action),
+        std::memory_order_relaxed);
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_hotkey_take_events(
+    ArssyutBridgeHandle handle,
+    std::uint32_t *events) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !events)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    *events = context->pending_hotkey_events.exchange(
+        0,
+        std::memory_order_acq_rel);
     return ARSSYUT_BRIDGE_OK;
 }
 

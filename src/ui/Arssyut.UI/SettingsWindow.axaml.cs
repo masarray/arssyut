@@ -96,7 +96,8 @@ public sealed partial class SettingsWindow : Window
         [
             RecordHotkeyButton,
             PauseHotkeyButton,
-            MicrophoneHotkeyButton
+            MicrophoneHotkeyButton,
+            CameraHotkeyButton
         ];
 
         _audioPreviewTimer =
@@ -168,7 +169,45 @@ public sealed partial class SettingsWindow : Window
             }
 
             var gesture =
-                FormatGesture(e);
+                HotkeyPreview.FormatGesture(e);
+
+            if (_capturingHotkeyAction == "Record" &&
+                _nativeBridge is not null)
+            {
+                if (!HotkeyPreview.TryToNativeRegistration(
+                        gesture,
+                        out var modifiers,
+                        out var virtualKey))
+                {
+                    HotkeyFeedbackText.Text =
+                        "That key cannot be registered as a Windows global shortcut.";
+                    HotkeyFeedbackText.Foreground =
+                        Brush.Parse("#F1B85B");
+                    e.Handled = true;
+                    return;
+                }
+
+                var registration =
+                    _nativeBridge.RegisterHotkey(
+                        NativeHotkeyAction.ToggleRecord,
+                        modifiers,
+                        virtualKey);
+
+                if (registration != NativeBridgeStatus.Ok)
+                {
+                    HotkeyFeedbackText.Text =
+                        registration == NativeBridgeStatus.Busy
+                            ? $"{gesture} is already reserved by Windows or another application."
+                            : "Windows could not register that shortcut.";
+                    HotkeyFeedbackText.Foreground =
+                        Brush.Parse("#F1B85B");
+                    e.Handled = true;
+                    return;
+                }
+
+                _nativeBridge.UnregisterHotkey(
+                    NativeHotkeyAction.ToggleRecord);
+            }
 
             if (_preview.TrySetHotkey(
                     _capturingHotkeyAction,
@@ -177,7 +216,7 @@ public sealed partial class SettingsWindow : Window
             {
                 EndHotkeyCapture();
                 HotkeyFeedbackText.Text =
-                    $"{gesture} assigned in the UI preview.";
+                    $"{gesture} assigned.";
                 HotkeyFeedbackText.Foreground =
                     Brush.Parse("#49D49D");
                 MarkPreviewChanged(
@@ -615,6 +654,8 @@ public sealed partial class SettingsWindow : Window
             _preview.PauseHotkey;
         MicrophoneHotkeyText.Text =
             _preview.MicrophoneHotkey;
+        CameraHotkeyText.Text =
+            _preview.CameraHotkey;
     }
 
     private TextBlock GetHotkeyText(
@@ -625,6 +666,8 @@ public sealed partial class SettingsWindow : Window
                 PauseHotkeyText,
             "Microphone" =>
                 MicrophoneHotkeyText,
+            "Camera" =>
+                CameraHotkeyText,
             _ =>
                 RecordHotkeyText
         };

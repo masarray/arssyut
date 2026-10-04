@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows-release:
     name: Native Windows x64 Release
@@ -83,8 +87,13 @@ jobs:
           # historical P6R baseline tree before comparing protected engine paths.
           git fetch origin $baseline --depth=1
 
+          $allowedNativeCorrections = @(
+            "src/app/recorder_overlay.cpp"
+          )
+
           $violations = @(
-            git diff --name-only $baseline HEAD -- src/app src/core src/platform
+            git diff --name-only $baseline HEAD -- src/app src/core src/platform |
+              Where-Object { $allowedNativeCorrections -notcontains $_ }
           )
 
           if ($violations.Count -gt 0) {

@@ -969,6 +969,34 @@ Mandatory rules:
 - product-reality/visual corrections must not alter the accepted implementation
   under `src/app`, `src/core` or `src/platform`.
 
+### P6UI.4C-B Region raster correction contract
+
+- the reproduced Region resize-tail defect belongs only to the existing native
+  `RecorderOverlay` layered-window repaint path;
+- fixing it may change `src/app/recorder_overlay.cpp` only as a narrow
+  baseline-preserving exception. Do not change Region geometry, crop mapping,
+  RecorderSession, WGC, compositor, encoder or media timing to hide a repaint
+  artifact;
+- editable Region resize must not preserve old layered-window client bits;
+  resize invalidation must clear/repaint the complete color-key client area;
+- Display/Window and Region interior hit-testing must remain click-through.
+
+### P6UI.5 global transport / context-workspace contract
+
+- global recorder hotkeys are owned by the existing bridge hidden HWND using
+  Windows `RegisterHotKey` + `MOD_NOREPEAT`; focused Avalonia KeyDown is not
+  the product authority;
+- one Start/Stop chord is context-aware: idle/ready starts, preparing/recording
+  stops, stopping/finalizing ignores repeats;
+- multi-key chords support Ctrl/Shift/Alt/Win modifiers and conflicts are
+  surfaced instead of silently falling back;
+- Pause/Resume, microphone mute/unmute and webcam show/hide may be visible as
+  reserved shortcut grammar but remain capability-gated until native actions
+  exist;
+- main recorder composition is Capture | Audio | Webcam | Record. Capture mode
+  is one dropdown plus the existing native source picker; media blocks must not
+  become fake backends.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a

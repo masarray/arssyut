@@ -219,7 +219,7 @@
     <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Height" Value="34" />
-    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="Padding" Value="10,0" />
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="Background" Value="Transparent" />
@@ -463,6 +463,43 @@
     <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{DynamicResource ArRadius.LG}" />
+  </Style>
+
+  <Style Selector="Border.context-card">
+    <Setter Property="Padding" Value="12" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface1}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="10" />
+  </Style>
+
+  <Style Selector="TextBlock.context-title">
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextDim}" />
+  </Style>
+
+  <Style Selector="Button.record-circle">
+    <Setter Property="Width" Value="66" />
+    <Setter Property="Height" Value="66" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="CornerRadius" Value="33" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="BorderBrush" Value="#72FFFFFF" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <Style Selector="Button.record-circle:pointerover">
+    <Setter Property="Background" Value="#FFFF6671" />
+  </Style>
+
+  <Style Selector="Button.record-circle:pressed">
+    <Setter Property="Background" Value="#FFE94855" />
+  </Style>
+
+  <Style Selector="Button.record-circle:disabled">
+    <Setter Property="Opacity" Value="0.42" />
   </Style>
 
   <!-- Settings product controls -->

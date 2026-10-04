@@ -228,6 +228,16 @@ int main()
             boundary) != FALSE,
         "Display capture boundary must be visible");
 
+    const auto boundary_class_style =
+        GetClassLongPtrW(
+            boundary,
+            GCL_STYLE);
+
+    require(
+        (boundary_class_style & CS_HREDRAW) != 0 &&
+        (boundary_class_style & CS_VREDRAW) != 0,
+        "Region boundary class must fully redraw on interactive resize");
+
     const LONG_PTR display_style =
         GetWindowLongPtrW(
             boundary,
@@ -430,6 +440,54 @@ int main()
             bridge) ==
             ARSSYUT_BRIDGE_OK,
         "overlay hide failed");
+
+    constexpr std::uint32_t hotkey_modifiers =
+        ARSSYUT_BRIDGE_HOTKEY_CTRL |
+        ARSSYUT_BRIDGE_HOTKEY_SHIFT;
+
+    require(
+        arssyut_bridge_hotkey_register(
+            bridge,
+            ARSSYUT_BRIDGE_HOTKEY_TOGGLE_RECORD,
+            hotkey_modifiers,
+            VK_F24) == ARSSYUT_BRIDGE_OK,
+        "global Record hotkey registration failed");
+
+    auto second_bridge = arssyut_bridge_create();
+    require(second_bridge != nullptr,
+        "second bridge for hotkey conflict test failed");
+
+    require(
+        arssyut_bridge_hotkey_register(
+            second_bridge,
+            ARSSYUT_BRIDGE_HOTKEY_TOGGLE_RECORD,
+            hotkey_modifiers,
+            VK_F24) == ARSSYUT_BRIDGE_BUSY,
+        "duplicate Windows global hotkey must report Busy");
+
+    require(
+        arssyut_bridge_hotkey_unregister(
+            bridge,
+            ARSSYUT_BRIDGE_HOTKEY_TOGGLE_RECORD) == ARSSYUT_BRIDGE_OK,
+        "global Record hotkey unregister failed");
+
+    require(
+        arssyut_bridge_hotkey_register(
+            second_bridge,
+            ARSSYUT_BRIDGE_HOTKEY_TOGGLE_RECORD,
+            hotkey_modifiers,
+            VK_F24) == ARSSYUT_BRIDGE_OK,
+        "released global hotkey must be reusable");
+
+    std::uint32_t pending_hotkeys = 0;
+    require(
+        arssyut_bridge_hotkey_take_events(
+            second_bridge,
+            &pending_hotkeys) == ARSSYUT_BRIDGE_OK &&
+        pending_hotkeys == 0,
+        "fresh hotkey event queue must be empty");
+
+    arssyut_bridge_destroy(second_bridge);
 
     require(
         arssyut_bridge_refresh_devices(

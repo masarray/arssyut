@@ -3,7 +3,7 @@
 **Updated:** 2026-10-04  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.4C-A product reality + visual lock implemented / CI + real GUI acceptance pending**  
+**Current engineering milestone:** **P6UI.4C-B + P6UI.5A/5B implementation batched / CI + real GUI acceptance pending**  
 **Canonical baseline entering this correction:**  
 `91959c43f9d62972d98bfeaea6ec7eea035cba3d` (P6UI.4C native overlay / Region bridge)
 
@@ -256,6 +256,26 @@ is changed by this correction.
 See `docs/P6UI4C_PRODUCT_REALITY_VISUAL_LOCK.md`.
 
 ---
+
+### P6UI.4C-B / P6UI.5A / P6UI.5B batched implementation
+
+- Region tail noise is corrected only in native layered-window repaint:
+  `SWP_NOCOPYBITS` during editable resize plus full client redraw on size.
+- Bridge ABI v4 adds Windows global hotkey registration on the existing hidden
+  bridge HWND. F9 is one context-aware Start/Stop action and does not depend on
+  Avalonia focus.
+- Settings validates multi-key Ctrl/Shift/Alt/Win chords against Windows;
+  duplicate/reserved registrations surface as conflicts.
+- Pause/Resume, Mute/Unmute microphone and Show/Hide webcam shortcut grammar is
+  visible but capability-gated until those native backends exist.
+- Main recorder is recomposed as Capture | Audio | Webcam | Record with capture
+  mode dropdown, native source picker, honest pending media state and circular
+  primary Record action.
+- Workflow concurrency cancels superseded PR runs. Implementation is assembled
+  into one Git tree before one branch update, avoiding intermediate CI queues.
+
+Only `src/app/recorder_overlay.cpp` crosses the protected native baseline, as
+the narrow reproduced Region repaint correction.
 
 ## 7. Current / exact next engineering milestone
 

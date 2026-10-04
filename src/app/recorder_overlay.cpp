@@ -147,6 +147,9 @@ bool RecorderOverlay::create(
     WNDCLASSEXW boundary_class{};
     boundary_class.cbSize =
         sizeof(boundary_class);
+    boundary_class.style =
+        CS_HREDRAW |
+        CS_VREDRAW;
     boundary_class.lpfnWndProc =
         boundary_proc;
     boundary_class.hInstance =
@@ -1093,6 +1096,36 @@ LRESULT CALLBACK RecorderOverlay::boundary_proc(
             lparam);
 
     switch (message) {
+    case WM_WINDOWPOSCHANGING: {
+        if (self->boundary_editable_) {
+            auto *position =
+                reinterpret_cast<WINDOWPOS *>(
+                    lparam);
+
+            if (position &&
+                (position->flags &
+                 SWP_NOSIZE) == 0) {
+                position->flags |=
+                    SWP_NOCOPYBITS;
+            }
+        }
+        break;
+    }
+
+    case WM_SIZE:
+        if (self->boundary_editable_) {
+            RedrawWindow(
+                window,
+                nullptr,
+                nullptr,
+                RDW_INVALIDATE |
+                    RDW_ERASE |
+                    RDW_UPDATENOW |
+                    RDW_FRAME);
+            return 0;
+        }
+        break;
+
     case WM_NCHITTEST: {
         if (!self->boundary_editable_)
             return HTTRANSPARENT;

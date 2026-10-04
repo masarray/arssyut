@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 3;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 4;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -46,6 +46,27 @@ enum ArssyutBridgeCaptureMode : std::uint32_t {
     ARSSYUT_BRIDGE_CAPTURE_WINDOW = 1,
     ARSSYUT_BRIDGE_CAPTURE_REGION = 2,
     ARSSYUT_BRIDGE_CAPTURE_GAME = 3,
+};
+
+enum ArssyutBridgeHotkeyModifiers : std::uint32_t {
+    ARSSYUT_BRIDGE_HOTKEY_CTRL = 1U << 0U,
+    ARSSYUT_BRIDGE_HOTKEY_SHIFT = 1U << 1U,
+    ARSSYUT_BRIDGE_HOTKEY_ALT = 1U << 2U,
+    ARSSYUT_BRIDGE_HOTKEY_WIN = 1U << 3U,
+};
+
+enum ArssyutBridgeHotkeyAction : std::uint32_t {
+    ARSSYUT_BRIDGE_HOTKEY_TOGGLE_RECORD = 0,
+    ARSSYUT_BRIDGE_HOTKEY_TOGGLE_PAUSE = 1,
+    ARSSYUT_BRIDGE_HOTKEY_TOGGLE_MICROPHONE = 2,
+    ARSSYUT_BRIDGE_HOTKEY_TOGGLE_CAMERA = 3,
+};
+
+enum ArssyutBridgeHotkeyEvents : std::uint32_t {
+    ARSSYUT_BRIDGE_HOTKEY_EVENT_RECORD = 1U << 0U,
+    ARSSYUT_BRIDGE_HOTKEY_EVENT_PAUSE = 1U << 1U,
+    ARSSYUT_BRIDGE_HOTKEY_EVENT_MICROPHONE = 1U << 2U,
+    ARSSYUT_BRIDGE_HOTKEY_EVENT_CAMERA = 1U << 3U,
 };
 
 enum ArssyutBridgeVisualMode : std::uint32_t {
@@ -197,6 +218,26 @@ std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_overlay_snapshot(
     ArssyutBridgeHandle handle,
     ArssyutBridgeOverlaySnapshotV1 *snapshot) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_hotkey_register(
+    ArssyutBridgeHandle handle,
+    std::uint32_t action,
+    std::uint32_t modifiers,
+    std::uint32_t virtual_key) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_hotkey_unregister(
+    ArssyutBridgeHandle handle,
+    std::uint32_t action) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_hotkey_take_events(
+    ArssyutBridgeHandle handle,
+    std::uint32_t *events) noexcept;
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL

@@ -48,6 +48,34 @@ public enum NativeRecorderState : uint
     Failed = 6
 }
 
+public enum NativeHotkeyAction : uint
+{
+    ToggleRecord = 0,
+    TogglePause = 1,
+    ToggleMicrophone = 2,
+    ToggleCamera = 3
+}
+
+[Flags]
+public enum NativeHotkeyModifiers : uint
+{
+    None = 0,
+    Control = 1U << 0,
+    Shift = 1U << 1,
+    Alt = 1U << 2,
+    Win = 1U << 3
+}
+
+[Flags]
+public enum NativeHotkeyEvents : uint
+{
+    None = 0,
+    ToggleRecord = 1U << 0,
+    TogglePause = 1U << 1,
+    ToggleMicrophone = 1U << 2,
+    ToggleCamera = 1U << 3
+}
+
 public enum NativeVisualMode : uint
 {
     PixelAccurate = 0,
@@ -110,7 +138,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 3;
+    private const uint ExpectedAbi = 4;
 
     private static readonly object NativeLoadGate =
         new();
@@ -519,6 +547,44 @@ public sealed class NativeBridgeClient : IDisposable
                 _handle));
     }
 
+    public NativeBridgeStatus RegisterHotkey(
+        NativeHotkeyAction action,
+        NativeHotkeyModifiers modifiers,
+        uint virtualKey)
+    {
+        ThrowIfDisposed();
+
+        return (NativeBridgeStatus)
+            NativeMethods.HotkeyRegister(
+                _handle,
+                (uint)action,
+                (uint)modifiers,
+                virtualKey);
+    }
+
+    public NativeBridgeStatus UnregisterHotkey(
+        NativeHotkeyAction action)
+    {
+        ThrowIfDisposed();
+
+        return (NativeBridgeStatus)
+            NativeMethods.HotkeyUnregister(
+                _handle,
+                (uint)action);
+    }
+
+    public NativeHotkeyEvents TakeHotkeyEvents()
+    {
+        ThrowIfDisposed();
+
+        EnsureOk(
+            NativeMethods.HotkeyTakeEvents(
+                _handle,
+                out var events));
+
+        return (NativeHotkeyEvents)events;
+    }
+
     public NativeDeviceSnapshot RefreshDevices()
     {
         ThrowIfDisposed();
@@ -892,6 +958,32 @@ public sealed class NativeBridgeClient : IDisposable
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int OverlayHide(
             IntPtr handle);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_hotkey_register",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int HotkeyRegister(
+            IntPtr handle,
+            uint action,
+            uint modifiers,
+            uint virtualKey);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_hotkey_unregister",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int HotkeyUnregister(
+            IntPtr handle,
+            uint action);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_hotkey_take_events",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int HotkeyTakeEvents(
+            IntPtr handle,
+            out uint events);
 
         [DllImport(
             LibraryName,

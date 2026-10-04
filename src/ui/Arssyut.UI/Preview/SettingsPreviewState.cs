@@ -48,6 +48,9 @@ public sealed class SettingsPreviewState
     public string MicrophoneHotkey { get; private set; } =
         "Ctrl+F9";
 
+    public string CameraHotkey { get; private set; } =
+        "Ctrl+F10";
+
     public CameraPlacement CameraPlacement { get; private set; } =
         CameraPlacement.BottomRight;
 
@@ -142,6 +145,7 @@ public sealed class SettingsPreviewState
                 "Record" => RecordHotkey,
                 "Pause" => PauseHotkey,
                 "Microphone" => MicrophoneHotkey,
+                "Camera" => CameraHotkey,
                 _ => string.Empty
             };
 
@@ -170,6 +174,9 @@ public sealed class SettingsPreviewState
                 break;
             case "Microphone":
                 MicrophoneHotkey = normalized;
+                break;
+            case "Camera":
+                CameraHotkey = normalized;
                 break;
             default:
                 error =
@@ -208,6 +215,8 @@ public sealed class SettingsPreviewState
             "F10";
         MicrophoneHotkey =
             "Ctrl+F9";
+        CameraHotkey =
+            "Ctrl+F10";
         CameraPlacement =
             CameraPlacement.BottomRight;
         MicrophoneDevice =
@@ -239,6 +248,13 @@ public sealed class SettingsPreviewState
             string.Equals(
                 gesture,
                 MicrophoneHotkey,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (action != "Camera" &&
+            string.Equals(
+                gesture,
+                CameraHotkey,
                 StringComparison.OrdinalIgnoreCase))
             return true;
 

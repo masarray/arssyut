@@ -969,6 +969,26 @@ Product-reality / visual lock:
   with `--bridge-required`;
 - P5/P6R engine implementation remains untouched.
 
+**P6UI.4C-B status: IMPLEMENTED / CI + REAL REGION RESIZE ACCEPTANCE PENDING**
+
+- layered Region client bitmap is not preserved during editable resize;
+- complete transparent-key repaint follows every new client size;
+- Region geometry/crop/capture authority is unchanged.
+
+**P6UI.5A status: IMPLEMENTED / CI + REAL GLOBAL-HOTKEY ACCEPTANCE PENDING**
+
+- bridge ABI v4 owns `RegisterHotKey` on the existing hidden HWND;
+- F9 Start/Stop works outside Avalonia focus with `MOD_NOREPEAT`;
+- Ctrl/Shift/Alt/Win multi-key grammar and conflict feedback;
+- Pause/Mic/Webcam shortcut rows remain backend-gated.
+
+**P6UI.5B status: IMPLEMENTED / CI + REAL VISUAL ACCEPTANCE PENDING**
+
+- main workspace is Capture | Audio | Webcam | Record;
+- Capture uses one mode dropdown plus existing native source picker;
+- circular Record is the primary action with centered hotkey badge;
+- pending media remains truthful status, not fake controls.
+
 #### P6UI.5 — real floating controller + transport
 
 - keep authoritative recorder state projected from native snapshots;

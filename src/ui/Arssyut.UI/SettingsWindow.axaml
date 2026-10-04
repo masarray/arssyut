@@ -461,34 +461,67 @@
                   <Border Classes="setting-row">
                     <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
-                        <TextBlock Text="Record / Stop" FontWeight="Medium" />
-                        <TextBlock Text="Current shell shortcut. Global registration will replace focused-window handling in the transport milestone." Classes="micro" />
+                        <TextBlock Text="Start / Stop recording" FontWeight="Medium" />
+                        <TextBlock Text="Global Windows shortcut. One chord starts while idle and stops while recording." Classes="micro" />
                       </StackPanel>
-                      <Button
-                          x:Name="RecordHotkeyButton"
-                          Grid.Column="1"
-                          Classes="hotkey"
-                          Tag="Record"
-                          Click="Hotkey_OnClick"
-                          AutomationProperties.Name="Edit Record and Stop shortcut">
+                      <Button x:Name="RecordHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="Record"
+                              Click="Hotkey_OnClick">
                         <TextBlock x:Name="RecordHotkeyText" Text="F9" FontFeatures="+tnum" />
                       </Button>
                     </Grid>
                   </Border>
-
-                  <Border Classes="capability-lock" Margin="0,12,0,0">
-                    <TextBlock Text="Pause/Resume and microphone hotkeys stay hidden until those native commands exist. Product mode does not expose shortcuts that cannot perform their advertised action." Classes="micro" TextWrapping="Wrap" />
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Pause / Resume" FontWeight="Medium" />
+                        <TextBlock Text="Reserved for the native paused-state milestone." Classes="micro" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3">
+                        <Button x:Name="PauseHotkeyButton" Classes="hotkey" Tag="Pause" IsEnabled="False">
+                          <TextBlock x:Name="PauseHotkeyText" Text="F10" FontFeatures="+tnum" />
+                        </Button>
+                        <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
+                      </StackPanel>
+                    </Grid>
                   </Border>
-
-                  <Grid IsVisible="False">
-                    <Button x:Name="PauseHotkeyButton" Tag="Pause" Click="Hotkey_OnClick">
-                      <TextBlock x:Name="PauseHotkeyText" Text="F10" />
-                    </Button>
-                    <Button x:Name="MicrophoneHotkeyButton" Tag="Microphone" Click="Hotkey_OnClick">
-                      <TextBlock x:Name="MicrophoneHotkeyText" Text="Ctrl+F9" />
-                    </Button>
-                    <TextBlock x:Name="HotkeyFeedbackText" />
-                  </Grid>
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Mute / Unmute microphone" FontWeight="Medium" />
+                        <TextBlock Text="Reserved until the native microphone backend is bound." Classes="micro" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3">
+                        <Button x:Name="MicrophoneHotkeyButton" Classes="hotkey" Tag="Microphone" IsEnabled="False">
+                          <TextBlock x:Name="MicrophoneHotkeyText" Text="Ctrl+F9" FontFeatures="+tnum" />
+                        </Button>
+                        <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Show / Hide webcam" FontWeight="Medium" />
+                        <TextBlock Text="Reserved for picture-in-picture when the camera backend is available." Classes="micro" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3">
+                        <Button x:Name="CameraHotkeyButton" Classes="hotkey" Tag="Camera" IsEnabled="False">
+                          <TextBlock x:Name="CameraHotkeyText" Text="Ctrl+F10" FontFeatures="+tnum" />
+                        </Button>
+                        <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                  <Border Margin="0,12,0,0" Classes="capability-lock">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                      <LucideIcon Kind="Keyboard" Size="15" StrokeWidth="1.8"
+                                  Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                      <TextBlock x:Name="HotkeyFeedbackText" Grid.Column="1"
+                                 Text="Click the active shortcut, then press one chord. Ctrl/Shift/Alt/Win combinations are supported."
+                                 Classes="micro" TextWrapping="Wrap" />
+                    </Grid>
+                  </Border>
                 </StackPanel>
 
                 <!-- Advanced -->
