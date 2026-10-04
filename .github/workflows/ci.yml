@@ -74,6 +74,36 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Guard locked native baseline during P6UI
+        shell: pwsh
+        run: |
+          $baseline = "b11451bd640a072d81dbd1024b4c641a76c9daac"
+          $changed = git diff --name-only "$baseline...HEAD"
+
+          $forbidden = @(
+            "src/app/",
+            "src/core/",
+            "src/platform/"
+          )
+
+          $violations = @()
+          foreach ($path in $changed) {
+            foreach ($prefix in $forbidden) {
+              if ($path.StartsWith($prefix)) {
+                $violations += $path
+                break
+              }
+            }
+          }
+
+          if ($violations.Count -gt 0) {
+            Write-Host "P6UI changed locked native implementation after $baseline:"
+            $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
+            throw "P6UI.1-P6UI.3 must not modify the frozen native engine. Use the P6UI.4 bridge milestone for explicit native changes."
+          }
+
+          Write-Host "Native baseline guard passed."
+
       - name: Restore
         run: dotnet restore src/ui/Arssyut.UI/Arssyut.UI.csproj
 
