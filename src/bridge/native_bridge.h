@@ -28,6 +28,7 @@ enum ArssyutBridgeStatus : std::int32_t {
     ARSSYUT_BRIDGE_UNSUPPORTED = 5,
     ARSSYUT_BRIDGE_STALE_TOKEN = 6,
     ARSSYUT_BRIDGE_START_FAILED = 7,
+    ARSSYUT_BRIDGE_INVALID_STATE = 8,
 };
 
 enum ArssyutBridgeSourceKind : std::uint32_t {
