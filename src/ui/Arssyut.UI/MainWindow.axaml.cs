@@ -156,7 +156,8 @@ public sealed partial class MainWindow : Window
     {
         var settings =
             new SettingsWindow(
-                _settings)
+                _settings,
+                _nativeBridge)
             {
                 WindowStartupLocation =
                     WindowStartupLocation.CenterOwner
