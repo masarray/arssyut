@@ -838,6 +838,25 @@ Acceptance still required:
 - confirm Audio meter motion is subtle enough for Settings and not visually
   distracting.
 
+### History baseline audit — mandatory forward-progress gate
+
+The repository history has been audited and recorded in
+`docs/ENGINE_BASELINE_LEDGER.md`.
+
+From this point forward:
+- P5E and earlier accepted engine authorities remain locked;
+- P6R native overlay / Smart Zoom / Region geometry are reused rather than
+  recreated in Avalonia;
+- Region is treated as an existing native implementation requiring focused
+  real-acceptance correction, not a greenfield feature;
+- the Avalonia source/boundary preview is temporary scaffolding and must not
+  grow new engine responsibilities;
+- CI compares P6UI changes against the frozen P6R commit
+  `b11451bd640a072d81dbd1024b4c641a76c9daac` and rejects native drift during
+  presentation-only milestones.
+
+The next engine-facing work is therefore bridge-first, not rewrite-first.
+
 #### P6UI.4 — native bridge
 
 Only after P6UI.1-3 visual acceptance:
