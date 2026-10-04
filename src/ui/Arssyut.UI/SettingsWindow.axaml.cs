@@ -284,6 +284,80 @@ public sealed partial class SettingsWindow : Window
             };
     }
 
+    private void FrameRate_OnSelectionChanged(
+        object? sender,
+        SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo)
+            return;
+
+        _preview.SetFrameRate(
+            combo.SelectedIndex == 0
+                ? 30U
+                : 60U);
+
+        MarkPreviewChanged(
+            "Frame rate updated");
+    }
+
+    private void VisualStyle_OnSelectionChanged(
+        object? sender,
+        SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo)
+            return;
+
+        _preview.SetVisualStyle(
+            combo.SelectedIndex switch
+            {
+                1 =>
+                    RecordingVisualStyle.CleanScreen,
+                2 =>
+                    RecordingVisualStyle.VividPresentation,
+                _ =>
+                    RecordingVisualStyle.PixelAccurate
+            });
+
+        MarkPreviewChanged(
+            "Visual style updated");
+    }
+
+    private void SmartZoom_OnClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _preview.SetSmartZoom(
+            SmartZoomToggle.IsChecked ==
+                true);
+
+        MarkPreviewChanged(
+            "Smart Zoom updated");
+    }
+
+    private void ClickHighlight_OnClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _preview.SetClickHighlight(
+            ClickHighlightToggle.IsChecked ==
+                true);
+
+        MarkPreviewChanged(
+            "Click highlight updated");
+    }
+
+    private void ShortcutKeys_OnClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        _preview.SetShortcutKeys(
+            ShortcutKeysToggle.IsChecked ==
+                true);
+
+        MarkPreviewChanged(
+            "Shortcut visualization updated");
+    }
+
     private async void OutputFolder_OnClick(
         object? sender,
         RoutedEventArgs e)
@@ -606,6 +680,26 @@ public sealed partial class SettingsWindow : Window
     {
         OutputFolderText.Text =
             _preview.OutputFolder;
+
+        FrameRateCombo.SelectedIndex =
+            _preview.FrameRate == 30
+                ? 0
+                : 1;
+
+        VisualStyleCombo.SelectedIndex =
+            _preview.VisualStyle switch
+            {
+                RecordingVisualStyle.CleanScreen => 1,
+                RecordingVisualStyle.VividPresentation => 2,
+                _ => 0
+            };
+
+        SmartZoomToggle.IsChecked =
+            _preview.SmartZoom;
+        ClickHighlightToggle.IsChecked =
+            _preview.ClickHighlight;
+        ShortcutKeysToggle.IsChecked =
+            _preview.ShortcutKeys;
 
         RefreshHotkeyLabels();
         UpdateCameraPlacementVisual();
