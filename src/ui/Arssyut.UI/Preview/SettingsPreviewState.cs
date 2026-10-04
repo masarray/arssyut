@@ -10,12 +10,34 @@ public enum CameraPlacement
     BottomRight
 }
 
+public enum RecordingVisualStyle
+{
+    PixelAccurate,
+    CleanScreen,
+    VividPresentation
+}
+
 public sealed class SettingsPreviewState
 {
     public event EventHandler? Changed;
 
     public string OutputFolder { get; private set; } =
         @"Videos\Arssyut";
+
+    public uint FrameRate { get; private set; } =
+        60;
+
+    public RecordingVisualStyle VisualStyle { get; private set; } =
+        RecordingVisualStyle.PixelAccurate;
+
+    public bool SmartZoom { get; private set; } =
+        true;
+
+    public bool ClickHighlight { get; private set; } =
+        true;
+
+    public bool ShortcutKeys { get; private set; } =
+        true;
 
     public string RecordHotkey { get; private set; } =
         "F9";
@@ -34,6 +56,57 @@ public sealed class SettingsPreviewState
 
     public string CameraDevice { get; set; } =
         "USB2.0 HD UVC Webcam";
+
+    public void SetFrameRate(
+        uint frameRate)
+    {
+        if (frameRate is not (30 or 60) ||
+            FrameRate == frameRate)
+            return;
+
+        FrameRate = frameRate;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetVisualStyle(
+        RecordingVisualStyle style)
+    {
+        if (VisualStyle == style)
+            return;
+
+        VisualStyle = style;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetSmartZoom(
+        bool enabled)
+    {
+        if (SmartZoom == enabled)
+            return;
+
+        SmartZoom = enabled;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetClickHighlight(
+        bool enabled)
+    {
+        if (ClickHighlight == enabled)
+            return;
+
+        ClickHighlight = enabled;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetShortcutKeys(
+        bool enabled)
+    {
+        if (ShortcutKeys == enabled)
+            return;
+
+        ShortcutKeys = enabled;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     public void SetOutputFolder(
         string path)
@@ -119,6 +192,16 @@ public sealed class SettingsPreviewState
     {
         OutputFolder =
             @"Videos\Arssyut";
+        FrameRate =
+            60;
+        VisualStyle =
+            RecordingVisualStyle.PixelAccurate;
+        SmartZoom =
+            true;
+        ClickHighlight =
+            true;
+        ShortcutKeys =
+            true;
         RecordHotkey =
             "F9";
         PauseHotkey =
