@@ -25,6 +25,10 @@ public sealed record NativeDeviceItem(
     NativeDeviceKind Kind,
     string Name);
 
+public sealed record NativeDeviceSnapshot(
+    IReadOnlyList<NativeDeviceItem> Microphones,
+    IReadOnlyList<NativeDeviceItem> Cameras);
+
 public sealed record NativeRecorderSnapshot(
     uint State,
     long ElapsedTicks,
@@ -227,8 +231,7 @@ public sealed class NativeBridgeClient : IDisposable
         return result;
     }
 
-    public IReadOnlyList<NativeDeviceItem> RefreshDevices(
-        NativeDeviceKind kind)
+    public NativeDeviceSnapshot RefreshDevices()
     {
         ThrowIfDisposed();
 
@@ -236,6 +239,16 @@ public sealed class NativeBridgeClient : IDisposable
             NativeMethods.RefreshDevices(
                 _handle));
 
+        return new NativeDeviceSnapshot(
+            ReadDevices(
+                NativeDeviceKind.Microphone),
+            ReadDevices(
+                NativeDeviceKind.Camera));
+    }
+
+    private IReadOnlyList<NativeDeviceItem> ReadDevices(
+        NativeDeviceKind kind)
+    {
         EnsureOk(
             NativeMethods.DeviceCount(
                 _handle,
