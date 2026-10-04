@@ -249,7 +249,8 @@
                         <TextBlock Text="Frame rate" FontWeight="Medium" />
                         <TextBlock Text="Output cadence used by the native recorder." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="1"
+                      <ComboBox x:Name="FrameRateCombo" Grid.Column="1" Classes="ar-select" SelectedIndex="1"
+                                SelectionChanged="FrameRate_OnSelectionChanged"
                                 AutomationProperties.Name="Frame rate">
                         <ComboBoxItem Content="30 fps" />
                         <ComboBoxItem Content="60 fps" />
@@ -263,7 +264,8 @@
                         <TextBlock Text="Visual style" FontWeight="Medium" />
                         <TextBlock Text="Presentation processing without changing capture geometry." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0"
+                      <ComboBox x:Name="VisualStyleCombo" Grid.Column="1" Classes="ar-select" SelectedIndex="0"
+                                SelectionChanged="VisualStyle_OnSelectionChanged"
                                 AutomationProperties.Name="Visual style">
                         <ComboBoxItem Content="Pixel Accurate" />
                         <ComboBoxItem Content="Clean Screen" />
@@ -278,7 +280,8 @@
                         <TextBlock Text="Smart Zoom" FontWeight="Medium" />
                         <TextBlock Text="Let ArZoom follow pointer intent with a stable viewport." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                      <ToggleSwitch x:Name="SmartZoomToggle" Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                                    Click="SmartZoom_OnClick"
                                     AutomationProperties.Name="Smart Zoom" />
                     </Grid>
                   </Border>
@@ -605,7 +608,8 @@
                         <TextBlock Text="Click highlight" FontWeight="Medium" />
                         <TextBlock Text="Render the compact analytic click ring." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                      <ToggleSwitch x:Name="ClickHighlightToggle" Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                                    Click="ClickHighlight_OnClick"
                                     AutomationProperties.Name="Click highlight" />
                     </Grid>
                   </Border>
@@ -616,7 +620,8 @@
                         <TextBlock Text="Shortcut keys" FontWeight="Medium" />
                         <TextBlock Text="Show canonical keycaps for selected shortcut chords." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                      <ToggleSwitch x:Name="ShortcutKeysToggle" Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                                    Click="ShortcutKeys_OnClick"
                                     AutomationProperties.Name="Shortcut key visualization" />
                     </Grid>
                   </Border>
