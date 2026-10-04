@@ -763,6 +763,15 @@ public sealed partial class MainWindow : Window
 
     private void StartNativeRecording()
     {
+        var bridge =
+            _nativeBridge;
+
+        if (bridge is null)
+        {
+            StartInteractionPreview();
+            return;
+        }
+
         if (_selectedSource is null ||
             _selectedSource.NativeToken == 0)
         {
@@ -800,7 +809,7 @@ public sealed partial class MainWindow : Window
         try
         {
             status =
-                _nativeBridge.StartRecording(
+                bridge.StartRecording(
                     new NativeStartRequest(
                         _captureMode,
                         _selectedSource.NativeToken,
@@ -837,14 +846,14 @@ public sealed partial class MainWindow : Window
 
         _nativeResult = null;
         _lastNativeSnapshot =
-            _nativeBridge.Snapshot();
+            bridge.Snapshot();
 
         ApplyNativeSessionState(
             _lastNativeSnapshot);
 
         _controller =
             new RecordingControllerWindow(
-                _nativeBridge,
+                bridge,
                 _settings,
                 _session.MicrophoneEnabled,
                 _session.CameraEnabled);
