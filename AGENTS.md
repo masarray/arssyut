@@ -850,6 +850,29 @@ The recording overlay must be low-overhead, capture-safe, and excluded from capt
 
 ---
 
+### History-derived subsystem baseline
+
+Before changing an existing recorder subsystem, consult
+`docs/ENGINE_BASELINE_LEDGER.md` and the commits it references.
+
+Mandatory rules:
+- do not reimplement an accepted native subsystem merely because the Avalonia
+  shell cannot call it yet; add or plan a bridge instead;
+- `milestone/p6r-native-functional` at
+  `b11451bd640a072d81dbd1024b4c641a76c9daac` is the P6R native functional
+  reference for source geometry, capture boundary, Smart Zoom boundary
+  synchronization and Region crop ownership;
+- P6UI.1-P6UI.3 presentation work must not modify native implementation under
+  `src/app`, `src/core` or `src/platform`;
+- `SourcePreviewCatalog.cs` and `CaptureBoundaryWindow.*` are temporary UI
+  acceptance scaffolding only. Do not grow them into source/crop/camera
+  authorities. P6UI.4 replaces their authority with the native bridge;
+- Region work must fix the existing native Region editor/geometry/crop path in
+  place. Never create a second Region capture pipeline;
+- if a proposed UI change requires a second source catalog, camera solver,
+  capture boundary, media clock, compositor or recorder session, stop and
+  redesign around the existing authority.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a
