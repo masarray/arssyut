@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "build/windows-x64/Release/arssyut.exe"
-          $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
+          $process = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 2
 
           if ($process.HasExited) {
@@ -139,7 +139,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
-          $process = Start-Process -FilePath $exe -PassThru
+          $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
           Start-Sleep -Seconds 3
 
           if ($process.HasExited) {
