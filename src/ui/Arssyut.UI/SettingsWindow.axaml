@@ -774,7 +774,7 @@
                 Margin="0,10,0,0"
                 ColumnDefinitions="*,Auto">
               <TextBlock
-                  Text="Preview changes are not persisted to the native recorder yet."
+                  Text="Recorder choices apply to the next native recording; audio/camera compositor backends remain pending."
                   Classes="micro"
                   VerticalAlignment="Center" />
               <TextBlock
