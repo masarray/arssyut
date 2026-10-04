@@ -8,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 using Lucide.Avalonia;
 
@@ -20,27 +21,31 @@ public sealed partial class MainWindow : Window
     private readonly Button[] _cameraOptions;
     private readonly PreviewRecorderSession _session = new();
     private readonly SettingsPreviewState _settings;
+    private readonly NativeBridgeClient? _nativeBridge;
+    private readonly NativeBridgeAvailability _bridgeAvailability;
     private readonly bool _stressLongNames;
 
     private readonly List<PreviewSourceItem> _sources = [];
     private RecordingControllerWindow? _controller;
-    private CaptureBoundaryWindow? _boundary;
     private PreviewSourceItem? _selectedSource;
     private PreviewCaptureMode _captureMode =
         PreviewCaptureMode.Display;
-    private PixelRect? _regionRect;
 
     private string _microphoneDevice =
-        "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
+        "Microphone";
     private string _cameraDevice =
-        "USB2.0 HD UVC Webcam";
+        "Camera";
 
     public MainWindow(
         SettingsPreviewState settings,
+        NativeBridgeClient? nativeBridge,
+        NativeBridgeAvailability bridgeAvailability,
         bool stressLongNames = false,
         bool autoStartRecording = false)
     {
         _settings = settings;
+        _nativeBridge = nativeBridge;
+        _bridgeAvailability = bridgeAvailability;
         _stressLongNames = stressLongNames;
 
         InitializeComponent();
@@ -83,9 +88,9 @@ public sealed partial class MainWindow : Window
         Opened +=
             (_, _) =>
             {
-                EnsureBoundary();
                 RefreshSources(
                     keepCurrentSelection: false);
+                RefreshNativeDevices();
 
                 if (_stressLongNames)
                     ApplyLongNameStressPreview();
@@ -103,14 +108,6 @@ public sealed partial class MainWindow : Window
             {
                 _settings.Changed -=
                     Settings_OnChanged;
-
-                if (_boundary is not null)
-                {
-                    _boundary.RegionChanged -=
-                        Boundary_OnRegionChanged;
-                    _boundary.Close();
-                    _boundary = null;
-                }
             };
     }
 
@@ -216,21 +213,32 @@ public sealed partial class MainWindow : Window
     private void RefreshSources(
         bool keepCurrentSelection)
     {
-        var ownWindow =
-            TryGetPlatformHandle()?.Handle ??
-            IntPtr.Zero;
-
         var previousId =
             keepCurrentSelection
                 ? _selectedSource?.Id
                 : null;
 
         _sources.Clear();
-        _sources.AddRange(
-            SourcePreviewCatalog.Enumerate(
-                _captureMode,
-                Screens,
-                ownWindow));
+
+        if (_nativeBridge is not null)
+        {
+            try
+            {
+                var ownWindow =
+                    TryGetPlatformHandle()?.Handle ??
+                    IntPtr.Zero;
+
+                _sources.AddRange(
+                    _nativeBridge.RefreshSources(
+                        _captureMode,
+                        ownWindow));
+            }
+            catch (Exception)
+            {
+                // The presentation remains usable if the bridge fails. Do not
+                // silently fall back to a second source-enumeration authority.
+            }
+        }
 
         _selectedSource =
             previousId is null
@@ -265,7 +273,7 @@ public sealed partial class MainWindow : Window
                 PreviewCaptureMode.Region =>
                     "Region display",
                 PreviewCaptureMode.Game =>
-                    "Running applications",
+                    "Applications",
                 _ =>
                     "Sources"
             };
@@ -274,13 +282,13 @@ public sealed partial class MainWindow : Window
             _captureMode switch
             {
                 PreviewCaptureMode.Display =>
-                    "Choose which monitor to capture",
+                    "Native monitor sources",
                 PreviewCaptureMode.Window =>
-                    "Choose a visible top-level window",
+                    "Native visible-window sources",
                 PreviewCaptureMode.Region =>
-                    "Choose the display where the region begins",
+                    "Choose the native base display",
                 PreviewCaptureMode.Game =>
-                    "Choose an application candidate for the future game backend",
+                    "Application candidates; native game capture is not enabled yet",
                 _ =>
                     "Choose the capture target"
             };
@@ -293,15 +301,21 @@ public sealed partial class MainWindow : Window
 
         if (_sources.Count == 0)
         {
+            var message =
+                _nativeBridge is null
+                    ? BridgeUnavailableMessage()
+                    : "No native sources are available for this mode.";
+
             SourceListPanel.Children.Add(
                 new TextBlock
                 {
-                    Text =
-                        "No sources are available for this mode.",
+                    Text = message,
                     Classes =
                     {
                         "micro"
                     },
+                    TextWrapping =
+                        TextWrapping.Wrap,
                     Margin =
                         new Thickness(
                             9,
@@ -433,14 +447,6 @@ public sealed partial class MainWindow : Window
         _selectedSource =
             item;
 
-        if (_captureMode ==
-            PreviewCaptureMode.Region)
-        {
-            _regionRect =
-                CreateDefaultRegion(
-                    item.Bounds);
-        }
-
         RebuildSourceFlyout();
         ApplySelectedSource();
         SourcePickerButton.Flyout?.Hide();
@@ -451,12 +457,12 @@ public sealed partial class MainWindow : Window
         if (_selectedSource is null)
         {
             SourceTitle.Text =
-                "No source";
+                "Native source unavailable";
             SourceSubtitle.Text =
-                "Refresh or choose another capture mode";
+                BridgeUnavailableMessage();
             SourceIcon.Kind =
                 LucideIconKind.Monitor;
-            _boundary?.HideBoundary();
+            UpdateReadyDetail();
             return;
         }
 
@@ -473,147 +479,119 @@ public sealed partial class MainWindow : Window
                     LucideIconKind.Monitor
             };
 
-        if (_captureMode ==
-            PreviewCaptureMode.Region)
-        {
-            _regionRect ??=
-                CreateDefaultRegion(
-                    _selectedSource.Bounds);
-
-            var region =
-                _regionRect.Value;
-
-            SourceTitle.Text =
-                $"Custom region · {region.Width} × {region.Height}";
-            SourceSubtitle.Text =
-                $"{_selectedSource.Title} · drag border or handles to adjust";
-        }
-        else
-        {
-            SourceTitle.Text =
-                _selectedSource.Title;
-            SourceSubtitle.Text =
-                _selectedSource.Subtitle;
-        }
-
-        UpdateBoundary();
-        UpdateReadyDetail();
-    }
-
-    private void EnsureBoundary()
-    {
-        if (_boundary is not null)
-            return;
-
-        _boundary =
-            new CaptureBoundaryWindow();
-
-        _boundary.RegionChanged +=
-            Boundary_OnRegionChanged;
-    }
-
-    private void UpdateBoundary()
-    {
-        if (_boundary is null ||
-            _selectedSource is null)
-            return;
-
-        var rect =
-            _captureMode ==
-                PreviewCaptureMode.Region
-                ? _regionRect ??
-                    CreateDefaultRegion(
-                        _selectedSource.Bounds)
-                : _selectedSource.Bounds;
-
-        var center =
-            new PixelPoint(
-                rect.X +
-                    rect.Width / 2,
-                rect.Y +
-                    rect.Height / 2);
-
-        var scaling =
-            Screens.ScreenFromPoint(
-                center)?.Scaling ??
-            Screens.Primary?.Scaling ??
-            1.0;
-
-        _boundary.ShowForRect(
-            rect,
-            scaling,
-            _captureMode ==
-                PreviewCaptureMode.Region);
-    }
-
-    private void Boundary_OnRegionChanged(
-        object? sender,
-        EventArgs e)
-    {
-        if (_captureMode !=
-                PreviewCaptureMode.Region ||
-            _boundary is null)
-            return;
-
-        _regionRect =
-            _boundary.CurrentPixelRect;
-
         SourceTitle.Text =
-            $"Custom region · {_regionRect.Value.Width} × {_regionRect.Value.Height}";
+            _selectedSource.Title;
+
+        SourceSubtitle.Text =
+            _captureMode ==
+                    PreviewCaptureMode.Region
+                ? $"{_selectedSource.Subtitle} · native area editor binding follows"
+                : _selectedSource.Subtitle;
+
         UpdateReadyDetail();
     }
 
-    private static PixelRect CreateDefaultRegion(
-        PixelRect display)
+    private void RefreshNativeDevices()
     {
-        var maxWidth =
-            Math.Max(
-                320,
-                (int)Math.Round(
-                    display.Width * 0.74));
+        if (_nativeBridge is null)
+            return;
 
-        var width =
-            Math.Min(
-                display.Width - 40,
-                maxWidth);
-
-        width =
-            Math.Max(
-                320,
-                width);
-
-        var height =
-            (int)Math.Round(
-                width * 9.0 / 16.0);
-
-        var maxHeight =
-            Math.Max(
-                180,
-                display.Height - 40);
-
-        if (height > maxHeight)
+        try
         {
-            height =
-                maxHeight;
-            width =
-                Math.Max(
-                    320,
-                    (int)Math.Round(
-                        height * 16.0 / 9.0));
+            var microphones =
+                _nativeBridge.RefreshDevices(
+                    NativeDeviceKind.Microphone);
+
+            var cameras =
+                _nativeBridge.RefreshDevices(
+                    NativeDeviceKind.Camera);
+
+            ApplyNativeDeviceButtons(
+                _microphoneOptions,
+                microphones);
+
+            ApplyNativeDeviceButtons(
+                _cameraOptions,
+                cameras);
+
+            if (microphones.Count > 0)
+                _microphoneDevice =
+                    microphones[0].Name;
+
+            if (cameras.Count > 0)
+                _cameraDevice =
+                    cameras[0].Name;
         }
+        catch (Exception)
+        {
+            // Device snapshots are read-only in P6UI.4A. Keep the UI alive if
+            // device enumeration is temporarily unavailable.
+        }
+    }
 
-        var x =
-            display.X +
-            (display.Width - width) / 2;
-        var y =
-            display.Y +
-            (display.Height - height) / 2;
+    private static void ApplyNativeDeviceButtons(
+        Button[] buttons,
+        IReadOnlyList<NativeDeviceItem> devices)
+    {
+        for (var index = 0;
+             index < buttons.Length;
+             ++index)
+        {
+            var button =
+                buttons[index];
 
-        return new PixelRect(
-            x,
-            y,
-            width,
-            height);
+            button.Classes.Remove(
+                "selected");
+
+            if (index >= devices.Count)
+            {
+                button.IsVisible =
+                    false;
+                continue;
+            }
+
+            var device =
+                devices[index];
+
+            button.IsVisible =
+                true;
+            button.Tag =
+                device.Name;
+
+            var stack =
+                new StackPanel
+                {
+                    Spacing = 2
+                };
+
+            stack.Children.Add(
+                new TextBlock
+                {
+                    Text =
+                        device.Name,
+                    TextTrimming =
+                        TextTrimming.CharacterEllipsis
+                });
+
+            var subtitle =
+                new TextBlock
+                {
+                    Text =
+                        "Native device snapshot"
+                };
+            subtitle.Classes.Add(
+                "micro");
+
+            stack.Children.Add(
+                subtitle);
+
+            button.Content =
+                stack;
+
+            if (index == 0)
+                button.Classes.Add(
+                    "selected");
+        }
     }
 
     private void MicrophoneDevice_OnClick(
@@ -767,7 +745,7 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e)
     {
         StatusDetail.Text =
-            "Preview action · native output path binds in P6UI.4";
+            "Native result-path binding arrives in P6UI.4B";
     }
 
     private void ShowFolder_OnClick(
@@ -775,7 +753,7 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e)
     {
         StatusDetail.Text =
-            "Preview action · folder binding arrives with native bridge";
+            "Native output-folder action arrives in P6UI.4B";
     }
 
     private void ApplySessionState()
@@ -792,7 +770,7 @@ public sealed partial class MainWindow : Window
                 StatusText.Text =
                     "Recording";
                 StatusDetail.Text =
-                    "Floating controller active";
+                    "Floating controller interaction preview";
                 SavedActions.IsVisible =
                     false;
                 break;
@@ -805,7 +783,7 @@ public sealed partial class MainWindow : Window
                 StatusText.Text =
                     "Paused";
                 StatusDetail.Text =
-                    "Recording preview paused";
+                    "Recording interaction preview paused";
                 SavedActions.IsVisible =
                     false;
                 break;
@@ -865,18 +843,34 @@ public sealed partial class MainWindow : Window
                 PreviewCaptureMode.Window =>
                     "Window",
                 PreviewCaptureMode.Region =>
-                    _regionRect is { } rect
-                        ? $"Region {rect.Width}×{rect.Height}"
-                        : "Region",
+                    "Region",
                 PreviewCaptureMode.Game =>
                     "Game",
                 _ =>
                     "Display"
             };
 
+        var bridge =
+            _nativeBridge is null
+                ? "native bridge unavailable"
+                : "native source";
+
         StatusDetail.Text =
-            $"{source} · 60 fps · Smart Zoom on · {_settings.RecordHotkey}";
+            $"{source} · {bridge} · 60 fps · Smart Zoom on · {_settings.RecordHotkey}";
     }
+
+    private string BridgeUnavailableMessage() =>
+        _bridgeAvailability switch
+        {
+            NativeBridgeAvailability.MissingLibrary =>
+                "Native bridge DLL is missing from this build.",
+            NativeBridgeAvailability.IncompatibleAbi =>
+                "Native bridge ABI does not match this UI build.",
+            NativeBridgeAvailability.InitializationFailed =>
+                "Native bridge could not initialize.",
+            _ =>
+                "Native bridge source snapshot is unavailable."
+        };
 
     public void ApplyLongNameStressPreview()
     {
@@ -884,20 +878,13 @@ public sealed partial class MainWindow : Window
 
         _microphoneDevice =
             "Professional USB Condenser Microphone — Conference Room Interface Channel 1/2";
-        SelectDeviceOption(
-            _microphoneOptions,
-            MicOptionLong);
-
         _cameraDevice =
             "4K Conference Camera — Ultra Wide Room Camera with AI Auto Framing";
-        SelectDeviceOption(
-            _cameraOptions,
-            CameraOptionLong);
 
         SourceTitle.Text =
             "Display 1 — Samsung Odyssey Neo G9 Super Ultra Wide";
         SourceSubtitle.Text =
-            "7680 × 2160 · HDR · 240 Hz · extremely long display descriptor";
+            "7680 × 2160 · native source · extremely long display descriptor";
 
         RefreshInputLabels();
     }
