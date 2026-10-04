@@ -502,10 +502,12 @@ arssyut_bridge_source_at(
         context->sources[index];
 
     RECT rect{};
-    arssyut::app::
-        recorder_target_screen_rect(
-            native,
-            rect);
+    if (!arssyut::app::
+            recorder_target_screen_rect(
+                native,
+                rect)) {
+        return ARSSYUT_BRIDGE_INTERNAL_ERROR;
+    }
 
     source->kind =
         native.kind ==
