@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   windows-release:
-    name: Windows x64 Release
+    name: Native Windows x64 Release
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -50,11 +50,125 @@ jobs:
           New-Item -ItemType Directory -Force -Path $package | Out-Null
           Copy-Item "build/windows-x64/Release/arssyut.exe" $package
           Copy-Item "tools/app_package/README.txt" $package
+          Copy-Item "third_party/lucide/LICENSE" (Join-Path $package "LUCIDE_LICENSE.txt")
 
-      - name: Upload Arssyut GUI recorder
+      - name: Upload native recorder
         uses: actions/upload-artifact@v4
         with:
           name: arssyut-recorder-windows-x64
           path: dist/arssyut/*
+          if-no-files-found: error
+          retention-days: 90
+
+  p6ui-windows:
+    name: P6UI Avalonia Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Guard locked native baseline during P6UI
+        shell: pwsh
+        run: |
+          $baseline = "b11451bd640a072d81dbd1024b4c641a76c9daac"
+
+          # checkout@v4 uses a shallow PR merge checkout. Fetch exactly the
+          # historical P6R baseline tree before comparing protected engine paths.
+          git fetch origin $baseline --depth=1
+
+          $violations = @(
+            git diff --name-only $baseline HEAD -- src/app src/core src/platform
+          )
+
+          if ($violations.Count -gt 0) {
+            Write-Host "P6UI changed locked native implementation after ${baseline}:"
+            $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
+            throw "Existing native engine implementation is frozen. P6UI.4 may add bridge code under src/bridge but must not rewrite accepted src/app, src/core or src/platform authorities."
+          }
+
+          Write-Host "Native baseline guard passed."
+
+      - name: Build P6UI native bridge
+        shell: pwsh
+        run: |
+          cmake --preset windows-x64
+          cmake --build --preset windows-release --target arssyut_native_bridge --parallel
+
+      - name: Restore
+        run: dotnet restore src/ui/Arssyut.UI/Arssyut.UI.csproj
+
+      - name: Build
+        run: dotnet build src/ui/Arssyut.UI/Arssyut.UI.csproj -c Release --no-restore
+
+      - name: Interaction-state regression
+        run: dotnet run --project tests/ui/Arssyut.UI.InteractionTests/Arssyut.UI.InteractionTests.csproj -c Release
+
+      - name: Publish Windows x64 preview
+        shell: pwsh
+        run: |
+          dotnet publish src/ui/Arssyut.UI/Arssyut.UI.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o dist/arssyut-p6ui
+
+          Copy-Item "docs/P6UI_THIRD_PARTY_NOTICES.md" (Join-Path "dist/arssyut-p6ui" "THIRD_PARTY_NOTICES.md")
+          Copy-Item "build/windows-x64/Release/arssyut_native_bridge.dll" (Join-Path "dist/arssyut-p6ui" "arssyut_native_bridge.dll")
+
+      - name: Launch smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
+          Start-Sleep -Seconds 3
+
+          if ($process.HasExited) {
+            throw "Arssyut.UI.exe exited during launch smoke with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
+      - name: Interaction stress smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--stress-long-names","--controller-preview" -PassThru
+          Start-Sleep -Seconds 4
+
+          if ($process.HasExited) {
+            throw "P6UI interaction stress scenario exited with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
+      - name: Settings acceptance smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--settings-preview","--settings-stress" -PassThru
+          Start-Sleep -Seconds 4
+
+          if ($process.HasExited) {
+            throw "P6UI Settings acceptance scenario exited with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
+      - name: Upload Avalonia preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-p6ui-avalonia-windows-x64
+          path: dist/arssyut-p6ui/*
           if-no-files-found: error
           retention-days: 90

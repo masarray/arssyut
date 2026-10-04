@@ -601,36 +601,321 @@ See docs/P5E_REAL_VISUAL_ACCEPTANCE.md for the locked evidence.
 
 ---
 
-## P6 — Compact product UI/UX
+## P6 — Recorder workspace UI/UX
 
-The engine state machine already exists before this milestone.
+**Status: P6R REDESIGN IN PROGRESS / REAL GUI ACCEPTANCE PENDING**
 
-### Surfaces
+The first compact-form P6 pass was rejected in direct GUI review because it
+still treated Arssyut as an engineering form rather than a complete recorder
+workspace.
 
-- compact main recorder;
-- source picker;
-- region selector;
-- minimal recording control;
-- settings;
-- result/finalizing surface;
-- recovery prompt.
+P6R is now grounded in established recorder patterns from Camtasia, Bandicam,
+ScreenPal, AnyRec and OBS. See `docs/P6R_RECORDER_UX_RESEARCH.md`.
 
-### Design constraints
+### P6R.1 — recorder workspace + interaction reliability
 
-- no oversized typography;
-- no bulky card dashboard;
-- dense but readable spacing;
-- clear hierarchy;
-- one prominent Record/Stop action;
-- advanced settings progressively disclosed;
-- dark/light support where practical.
+Implemented on the feature branch:
+- Capture Mode is first-class: Display / Window / Region / Game;
+- Display/Window use the existing real source catalog;
+- Region/Game are visible product intents but recording is blocked until their
+  dedicated backends land, so the UI never lies;
+- real Windows microphone endpoint enumeration;
+- real Media Foundation camera-device enumeration;
+- primary System Audio / Mic / Camera controls;
+- dedicated categorized Settings window:
+  General / Recording / Output / Sound / Camera / Mouse & Keystroke / Hotkeys;
+- separate topmost recording toolbar with Pause/Mic/Camera/Stop icon surfaces;
+- separate click-through capture-boundary overlay;
+- RecorderSnapshot publishes the same camera center/zoom used by the compositor
+  so the boundary shrinks/moves with Smart Zoom without becoming a second
+  camera authority;
+- main HWND is no longer restyled into a popup while recording;
+- UI completion path no longer joins the worker thread;
+- F9 is a global Record/Stop hotkey while the process is alive.
 
-### Gates
+### P6R.2 — custom Region backend
 
-- all visible session status derives from authoritative engine state;
-- UI can close/reopen settings without mutating runtime truth;
-- recording overlay exclusion tested;
-- keyboard-only accessibility for essential actions.
+**Status: IMPLEMENTED ON FEATURE BRANCH / CI + REAL GUI ACCEPTANCE PENDING**
+
+Implemented:
+- Region boundary is now an editor, not decorative chrome;
+- top pill provides native move behavior;
+- visible edges/corners provide native resize behavior with a 320 × 180 minimum;
+- idle Region placement is event-driven so the 33 ms UI timer cannot fight the
+  native move/resize loop;
+- Region is stored in virtual-screen coordinates, preserving negative monitor
+  origins and per-monitor-DPI-safe desktop geometry;
+- selected Region maps once into the existing monitor WGC source as a canonical
+  `CropRect`; there is no second capture path;
+- output dimensions follow the selected crop and are trimmed to even NV12/H.264
+  dimensions only when needed;
+- Smart Zoom/click/keystroke normalization uses the same Region screen rectangle
+  that feeds the compositor crop;
+- when recording, the visible boundary still contracts/moves from the
+  authoritative PresentationFrameState camera values.
+
+Acceptance still required:
+- resize/move from all handles on a real multi-monitor desktop;
+- negative-origin monitor test;
+- output frame dimensions and pixel content match the selected Region;
+- Smart Zoom viewport remains inside the selected Region;
+- repeated Region -> Display -> Region switching preserves coherent state.
+
+### P6R.3 — audio backend
+
+Required before Sound controls can record:
+- WASAPI system-audio loopback;
+- microphone endpoint capture using the P6R-selected device;
+- independent enable/mute/gain;
+- canonical 48 kHz project clock;
+- A/V synchronization and drift diagnostics;
+- AAC mux integration.
+
+### P6R.4 — webcam backend
+
+Required before Camera can record:
+- Media Foundation webcam source using the P6R-selected device;
+- retained GPU texture/compositor path;
+- move/resize Picture-in-Picture;
+- optional shape/border configuration;
+- no CPU full-frame composition.
+
+### P6R.5 — pause/resume
+
+Required before Pause is enabled:
+- explicit Paused engine state;
+- media-time continuity with no wall-clock gap encoded;
+- recorder toolbar and hotkey support;
+- final MP4 duration/audio sync regression tests.
+
+### P6R.6 — game capture
+
+Required before Game can record:
+- ADR for dedicated Windows game capture strategy;
+- efficient DirectX/OpenGL game path where technically supportable;
+- safe Window/WGC fallback;
+- process/window identity and source-loss behavior.
+
+### P6 visual acceptance
+
+Before merging:
+- main recorder reads as a recorder, not a settings dashboard;
+- capture mode is obvious at first glance;
+- capture boundary is visible and matches Display/Window source;
+- Smart Zoom visibly contracts/moves the boundary with the actual camera;
+- toolbar remains responsive from Record through Stop/Finalizing;
+- no blank/frozen main-window transition;
+- Settings categories are coherent and compact;
+- real microphone/camera names populate when devices exist;
+- unsupported Region/Game/audio/camera/pause actions never silently claim
+  success;
+- P5D.7/P5E visual/encoder baseline remains unchanged.
+
+
+
+### P6UI — final Avalonia product shell
+
+**Status: P6UI.0 + P6UI.1 IMPLEMENTED ON FEATURE BRANCH / VISUAL ACCEPTANCE PENDING**
+
+Direct visual acceptance established that the P6R Win32/GDI shell is a
+functional prototype, not the final product UI.
+
+The P6R native baseline is frozen at branch:
+`milestone/p6r-native-functional`.
+
+The final presentation shell lives under:
+`src/ui/Arssyut.UI`.
+
+#### P6UI.0 — baseline split
+
+Implemented:
+- freeze P6R native functional baseline before UI migration;
+- preserve existing C++ capture/Region/ArZoom/ArVisual/encoder authority;
+- prohibit visual feature growth in the legacy Win32 shell;
+- keep the legacy shell buildable until native binding acceptance is complete.
+
+#### P6UI.1 — Avalonia design-system shell
+
+Implemented:
+- .NET 10 / Avalonia 12.1.3 preview project;
+- embedded Inter via `Avalonia.Fonts.Inter`;
+- real `Lucide.Avalonia` icon renderer;
+- semantic color/spacing/radius/control-height/typography tokens;
+- compact custom recorder chrome;
+- Mica -> Acrylic -> opaque fallback preference;
+- modern main recorder information architecture;
+- modern categorized Settings shell;
+- UI-only capture-mode / Record / Stop / Pause simulator;
+- Windows CI build, self-contained publish and launch smoke;
+- third-party notice packaging.
+
+Visual acceptance required before native binding:
+- real screenshots at 100/125/150/200% DPI;
+- no native white/gray control leakage;
+- Inter remains crisp at compact sizes;
+- Lucide icons preserve correct rounded strokes and optical alignment;
+- primary Record hierarchy is obvious without oversized controls;
+- Settings remains compact and readable;
+- translucent shell remains readable when Mica/Acrylic is unavailable.
+
+#### P6UI.2 — interaction prototype completion
+
+**Status: IMPLEMENTED ON FEATURE BRANCH / REAL VISUAL ACCEPTANCE PENDING**
+
+Implemented:
+- microphone and camera selectors are compact device modules with flyout
+  pickers instead of permanent wide selectors;
+- device flyouts include realistic alternate devices plus deliberately long
+  labels to exercise truncation and layout resilience;
+- input enable state is part of the shared UI-preview session rather than a
+  second transport state;
+- the idle footer shows one primary Record action only;
+- after Stop, the footer becomes contextual Saved state with Open and Folder
+  result actions instead of permanently occupying recorder space;
+- recording launches a separate topmost floating controller prototype with
+  elapsed time, Mic, Camera, Pause/Resume and Stop;
+- the main recorder hides while the floating controller is active and returns
+  to the Saved state when the preview session stops;
+- F9 is the local preview Record/Stop shortcut and F10 is Pause/Resume while
+  the floating controller is focused;
+- Settings closes with Escape and primary recorder controls carry explicit
+  automation names/help text;
+- hover/pressed/focus-visible states now use one restrained transition grammar
+  and recording-red focus indication;
+- a deterministic PreviewRecorderSession state machine gates
+  Ready -> Recording -> Paused -> Recording -> Saved -> Ready behavior;
+- CI runs both a normal launch smoke and an interaction stress smoke using
+  `--stress-long-names --controller-preview`;
+- the stress scenario constrains the main window to its minimum width while
+  loading long display/microphone/camera names.
+
+Acceptance still required:
+- real screenshot review at 100%, 125%, 150% and 200% Windows scaling;
+- confirm Inter/Lucide remain crisp at high DPI;
+- confirm device flyouts never clip off-screen on common desktop layouts;
+- confirm floating controller placement and density feel correct on real
+  multi-monitor Windows;
+- confirm keyboard focus order and focus-visible rings remain calm rather than
+  visually noisy.
+
+#### P6UI.3 — Settings acceptance
+
+**Status: IMPLEMENTED ON FEATURE BRANCH / REAL VISUAL ACCEPTANCE PENDING**
+
+Implemented:
+- every Settings category now uses the same compact setting-row grammar:
+  label + short description + one right-aligned control or preview surface;
+- Output uses the Avalonia storage-provider folder picker and updates only
+  SettingsPreviewState; it does not write native recorder configuration;
+- output filename policy, container summary and post-recording behavior are
+  presented without exposing unsupported native mutations;
+- Audio presents system playback and microphone device selectors plus
+  deterministic animated level meters so spacing, labels and meter density can
+  be accepted before live WASAPI binding;
+- Camera presents realistic device options and an interactive 4-corner
+  picture-in-picture placement preview using one canonical CameraPlacement
+  preview state;
+- Hotkeys has interactive capture for Record/Stop, Pause/Resume and microphone
+  toggle, Escape-to-cancel and duplicate-shortcut conflict feedback;
+- Advanced explicitly exposes native-engine ownership and a preview-only Reset;
+- SettingsPreviewState owns preview folder/hotkey/camera/device values so
+  code-behind remains a UI simulator rather than native configuration truth;
+- Settings can be launched standalone with `--settings-preview`, while
+  `--settings-stress` loads long folder/device labels for layout testing;
+- deterministic interaction tests cover folder selection state, hotkey
+  conflicts, camera placement and Reset;
+- Windows CI launches the standalone Settings stress scenario in addition to
+  the main recorder and floating-controller smokes.
+
+Acceptance still required:
+- real screenshots of all categories at 100%, 125%, 150% and 200% scaling;
+- confirm long device/folder names truncate cleanly rather than expanding rows;
+- confirm folder picker placement/focus feels native but preserves Arssyut
+  visual continuity on return;
+- confirm camera preview remains useful without making Settings card-heavy;
+- confirm hotkey capture and focus-visible feedback are understandable by
+  keyboard-only users;
+- confirm Audio meter motion is subtle enough for Settings and not visually
+  distracting.
+
+### History baseline audit — mandatory forward-progress gate
+
+The repository history has been audited and recorded in
+`docs/ENGINE_BASELINE_LEDGER.md`.
+
+From this point forward:
+- P5E and earlier accepted engine authorities remain locked;
+- P6R native overlay / Smart Zoom / Region geometry are reused rather than
+  recreated in Avalonia;
+- Region is treated as an existing native implementation requiring focused
+  real-acceptance correction, not a greenfield feature;
+- the Avalonia source/boundary preview is temporary scaffolding and must not
+  grow new engine responsibilities;
+- CI compares P6UI changes against the frozen P6R commit
+  `b11451bd640a072d81dbd1024b4c641a76c9daac` and rejects native drift during
+  presentation-only milestones.
+
+The next engine-facing work is therefore bridge-first, not rewrite-first.
+
+#### P6UI.4 — native bridge
+
+**P6UI.4A status: IMPLEMENTED / CI + REAL GUI ACCEPTANCE PENDING**
+
+P6UI.4A read-only bridge:
+- versioned `arssyut_native_bridge.dll` C ABI;
+- one opaque bridge context for the Avalonia application lifetime;
+- native source snapshot from the existing P6R source catalog;
+- native microphone/camera snapshots from the existing device catalog;
+- read-only `RecorderSession::snapshot()` projection;
+- generation-scoped opaque source/device tokens; C# never reconstructs native
+  HWND/HMONITOR/device identifiers;
+- duplicate Avalonia Win32 source enumeration removed;
+- duplicate Avalonia capture-boundary window removed from the runtime;
+- packaged Avalonia launch smoke requires a compatible bridge DLL;
+- native bridge ABI has its own Windows regression executable.
+
+P6UI.4B command bridge next:
+- resolve selected source token inside the native bridge context;
+- canonicalize current UI settings into native RecorderConfig;
+- route Record/Stop through the one native RecorderSession;
+- expose real result and diagnostics paths;
+- remove PreviewRecorderSession authority from the normal product path.
+
+P6UI.4C overlay bridge after command authority:
+- reuse existing native RecorderOverlay;
+- selected target -> native capture boundary;
+- PresentationFrameState -> Smart Zoom viewport boundary;
+- existing native Region editor -> canonical Region rect;
+- no Avalonia crop/boundary implementation.
+
+See `docs/adr/ADR-008-native-ui-bridge.md`.
+
+#### P6UI.5 — floating controller + capture exclusion
+
+- bind authoritative recorder state;
+- capture-excluded floating surface;
+- no capture-cadence repaint work;
+- verify no flicker during real recording.
+
+#### P6UI.6 — Region integration
+
+- bind existing native Region editor/crop state;
+- preserve one Region authority;
+- keep Smart Zoom viewport/boundary synchronization;
+- no C# crop implementation.
+
+#### P6UI.7 — legacy shell retirement
+
+Retire the legacy presentation shell only after:
+- real Display/Window/Region recording passes through Avalonia;
+- result/failure states pass;
+- Settings/native bridge passes;
+- fallback/recovery behavior is preserved.
+
+See:
+- `docs/P6UI_AVALONIA_DESIGN_SYSTEM.md`
+- `docs/adr/ADR-002-ui-shell-technology.md`
+
 
 ---
 

@@ -618,6 +618,57 @@ experiment. The authoritative rules are now:
   stability, keycap proportions and click energy.
 
 
+### P6R recorder workspace contract
+
+The recorder UI is a projection of authoritative engine/configuration state,
+not a second recorder implementation.
+
+Rules:
+- Capture Mode is a first-class product concept. Display, Window, Region and
+  Game must remain distinguishable user intents even when their capture
+  backends differ;
+- never silently record a different source/backend than the mode selected by
+  the user;
+- the capture boundary is a real product surface. Display/Window boundary
+  geometry comes from the selected target; Smart Zoom viewport geometry comes
+  from the same PresentationFrameState camera values consumed by the
+  compositor;
+- the boundary/toolbar must not become a second camera, capture or timeline
+  authority;
+- do not restyle/morph the main HWND into the recording toolbar. Active controls
+  are separate overlay windows so window-style changes cannot stall or corrupt
+  the main UI;
+- the UI message pump must never block on RecorderSession::wait() during normal
+  Record/Stop/finalize transitions. Joining is allowed only after a published
+  worker-finished state or during explicit application shutdown;
+- recording toolbar actions route to canonical session/input authorities;
+- Pause remains disabled until an explicit Paused engine state and timestamp
+  continuity contract exist;
+- microphone/camera selectors must enumerate real OS devices; until their
+  capture backends are connected, the product must block or clearly reject the
+  unsupported recording request rather than pretend the stream was recorded;
+- Settings is a separate categorized configuration window. Opening or closing
+  it does not mutate recorder session truth;
+- Region is no longer decorative UX: its editable virtual-screen rectangle is
+  mapped once into a canonical source CropRect before session start. The
+  compositor receives that crop directly, while presentation input normalizes
+  against the same region. Never create a second Region capture/compositor path;
+- Region editing is event-driven. The idle UI timer must not continuously
+  overwrite an in-progress native move/resize loop. Boundary changes publish
+  back to the UI model only after the native interaction completes;
+- Game may remain represented as an explicit future backend, but Record must
+  reject it until the dedicated backend milestone is complete;
+- recording overlays must avoid capture-cadence repaint work. Cache unchanged
+  toolbar state, use buffered painting for the toolbar surface, and invalidate
+  only on actual state/timer/icon changes;
+- interactive controls use one compact visual system. Do not mix default gray
+  Win32 pushbuttons into the product recorder shell; vector icon geometry and
+  button chrome must remain centered, DPI-scaled and tactile;
+- UI work must not alter the locked P5D.7/P5E visual/color/encoder baseline;
+- P6R cannot merge until Windows CI passes and real GUI testing confirms the
+  previous Record/Stop freeze is gone, capture boundary/toolbar behavior is
+  correct, and device/settings UX is understandable.
+
 ---
 
 ## 12. Audio contract
@@ -798,6 +849,89 @@ Do not:
 The recording overlay must be low-overhead, capture-safe, and excluded from capture when required by the selected backend.
 
 ---
+
+### History-derived subsystem baseline
+
+Before changing an existing recorder subsystem, consult
+`docs/ENGINE_BASELINE_LEDGER.md` and the commits it references.
+
+Mandatory rules:
+- do not reimplement an accepted native subsystem merely because the Avalonia
+  shell cannot call it yet; add or plan a bridge instead;
+- `milestone/p6r-native-functional` at
+  `b11451bd640a072d81dbd1024b4c641a76c9daac` is the P6R native functional
+  reference for source geometry, capture boundary, Smart Zoom boundary
+  synchronization and Region crop ownership;
+- P6UI.1-P6UI.3 presentation work must not modify native implementation under
+  `src/app`, `src/core` or `src/platform`;
+- `SourcePreviewCatalog.cs` and `CaptureBoundaryWindow.*` are temporary UI
+  acceptance scaffolding only. Do not grow them into source/crop/camera
+  authorities. P6UI.4 replaces their authority with the native bridge;
+- Region work must fix the existing native Region editor/geometry/crop path in
+  place. Never create a second Region capture pipeline;
+- if a proposed UI change requires a second source catalog, camera solver,
+  capture boundary, media clock, compositor or recorder session, stop and
+  redesign around the existing authority.
+
+### P6UI Avalonia presentation contract
+
+The final desktop presentation shell is Avalonia. The Win32/GDI shell is a
+frozen functional prototype and fallback during migration.
+
+Rules:
+- do not add new visual/product features to `windows_main.cpp` or the legacy
+  Win32 Settings window; only baseline-preserving bug fixes are allowed;
+- C++ remains authoritative for capture, Region, timing, ArZoom, ArVisual,
+  encoder/mux, diagnostics and recovery;
+- no recorder/capture/media logic may move into Avalonia code-behind or
+  view-models;
+- UI-to-native integration must use one narrow, versioned ownership boundary;
+- use semantic resources from `Design/ArColors.axaml`,
+  `ArTokens.axaml`, and `ArTypography.axaml`; screen-local magic colors,
+  arbitrary radius scales and one-off button metrics are prohibited;
+- Inter is provided through `Avalonia.Fonts.Inter`; do not add loose font
+  files to the repository;
+- product icons use `Lucide.Avalonia` directly; do not redraw or approximate
+  Lucide geometry;
+- default product palette is graphite + white + recording red; green is
+  reserved for success/ready semantics;
+- Mica/Acrylic are progressive enhancements and must have an opaque readable
+  fallback;
+- main recorder UI remains capture-first. Deep configuration belongs in
+  Settings;
+- Pause/Resume and result actions are contextual; do not expose disabled
+  mystery controls merely to fill space;
+- P6UI.1-3 may use deterministic UI simulation before native binding so visual
+  architecture can be accepted without distorting the recorder engine;
+- every Avalonia release preview must pass Windows build + launch smoke and
+  real DPI screenshot review before the next binding milestone.
+
+- device selection belongs to compact flyout/popover surfaces; do not restore
+  permanently wide device ComboBoxes to the recorder main window;
+- Saved/Open/Folder actions are contextual output-state actions and stay hidden
+  before an output exists;
+- the P6UI.2 floating controller is a presentation prototype only. It must not
+  become a second media clock, capture authority or pause implementation;
+- preview timer/state code stays under `Arssyut.UI.Preview` and is removed or
+  bypassed when the native bridge becomes authoritative;
+- long-name stress scenarios must use truncation/layout resilience rather than
+  widening the whole recorder UI;
+- keyboard focus must remain visible for keyboard users, while pointer hover
+  and focus feedback share the same restrained tokenized visual language.
+
+- Settings uses one row grammar across all categories; avoid page-specific
+  mini design systems, giant cards or native-white control fallbacks;
+- P6UI.3 SettingsPreviewState is explicitly non-authoritative. Folder choices,
+  hotkeys, camera placement, devices and level meters remain preview-only until
+  the P6UI.4 bridge maps them to versioned native configuration contracts;
+- hotkey preview capture must reject duplicate assignments and never register
+  global OS hotkeys during visual acceptance;
+- audio meters in Settings are deterministic presentation fixtures, not live
+  device capture and not a second audio engine;
+- camera placement preview owns only visual alignment state and must never
+  calculate compositor geometry that belongs to the native camera pipeline;
+- folder picker interaction may select a path for preview, but must not create,
+  delete or write files during P6UI.3 acceptance.
 
 ## 19. Testing gates
 

@@ -1,0 +1,58 @@
+<ResourceDictionary
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Arssyut is intentionally a narrow product palette:
+       graphite hierarchy + white text + recording red. -->
+  <Color x:Key="ArColor.Canvas">#0B0E12</Color>
+  <Color x:Key="ArColor.Surface1">#10141A</Color>
+  <Color x:Key="ArColor.Surface2">#161B23</Color>
+  <Color x:Key="ArColor.Surface3">#1C222C</Color>
+  <Color x:Key="ArColor.SurfaceHover">#202731</Color>
+  <Color x:Key="ArColor.SurfacePressed">#29313D</Color>
+  <Color x:Key="ArColor.Selection">#1AFF5864</Color>
+  <Color x:Key="ArColor.SelectionHover">#26FF5864</Color>
+  <Color x:Key="ArColor.SelectionPressed">#33FF5864</Color>
+
+  <Color x:Key="ArColor.Text">#F5F7FA</Color>
+  <Color x:Key="ArColor.TextSecondary">#A7B0BC</Color>
+  <Color x:Key="ArColor.TextDim">#707A87</Color>
+
+  <Color x:Key="ArColor.Stroke">#22FFFFFF</Color>
+  <Color x:Key="ArColor.StrokeStrong">#3AFFFFFF</Color>
+
+  <Color x:Key="ArColor.Record">#FF5360</Color>
+  <Color x:Key="ArColor.RecordHover">#FF6671</Color>
+  <Color x:Key="ArColor.RecordPressed">#E84753</Color>
+  <Color x:Key="ArColor.RecordSoft">#1AFF5864</Color>
+
+  <Color x:Key="ArColor.Success">#49D49D</Color>
+  <Color x:Key="ArColor.SuccessSoft">#2049D49D</Color>
+  <Color x:Key="ArColor.Warning">#F1B85B</Color>
+
+  <SolidColorBrush x:Key="ArBrush.Canvas" Color="{StaticResource ArColor.Canvas}" />
+  <SolidColorBrush x:Key="ArBrush.Surface1" Color="{StaticResource ArColor.Surface1}" />
+  <SolidColorBrush x:Key="ArBrush.Surface2" Color="{StaticResource ArColor.Surface2}" />
+  <SolidColorBrush x:Key="ArBrush.Surface3" Color="{StaticResource ArColor.Surface3}" />
+  <SolidColorBrush x:Key="ArBrush.SurfaceHover" Color="{StaticResource ArColor.SurfaceHover}" />
+  <SolidColorBrush x:Key="ArBrush.SurfacePressed" Color="{StaticResource ArColor.SurfacePressed}" />
+  <SolidColorBrush x:Key="ArBrush.Selection" Color="{StaticResource ArColor.Selection}" />
+  <SolidColorBrush x:Key="ArBrush.SelectionHover" Color="{StaticResource ArColor.SelectionHover}" />
+  <SolidColorBrush x:Key="ArBrush.SelectionPressed" Color="{StaticResource ArColor.SelectionPressed}" />
+
+  <SolidColorBrush x:Key="ArBrush.Text" Color="{StaticResource ArColor.Text}" />
+  <SolidColorBrush x:Key="ArBrush.TextSecondary" Color="{StaticResource ArColor.TextSecondary}" />
+  <SolidColorBrush x:Key="ArBrush.TextDim" Color="{StaticResource ArColor.TextDim}" />
+
+  <SolidColorBrush x:Key="ArBrush.Stroke" Color="{StaticResource ArColor.Stroke}" />
+  <SolidColorBrush x:Key="ArBrush.StrokeStrong" Color="{StaticResource ArColor.StrokeStrong}" />
+
+  <SolidColorBrush x:Key="ArBrush.Record" Color="{StaticResource ArColor.Record}" />
+  <SolidColorBrush x:Key="ArBrush.RecordHover" Color="{StaticResource ArColor.RecordHover}" />
+  <SolidColorBrush x:Key="ArBrush.RecordPressed" Color="{StaticResource ArColor.RecordPressed}" />
+  <SolidColorBrush x:Key="ArBrush.RecordSoft" Color="{StaticResource ArColor.RecordSoft}" />
+
+  <SolidColorBrush x:Key="ArBrush.Success" Color="{StaticResource ArColor.Success}" />
+  <SolidColorBrush x:Key="ArBrush.SuccessSoft" Color="{StaticResource ArColor.SuccessSoft}" />
+  <SolidColorBrush x:Key="ArBrush.Warning" Color="{StaticResource ArColor.Warning}" />
+</ResourceDictionary>

@@ -1,0 +1,32 @@
+<ResourceDictionary
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+  <!-- Flowery-inspired token architecture, intentionally tuned compact. -->
+  <sys:Double x:Key="ArSpace.1">4</sys:Double>
+  <sys:Double x:Key="ArSpace.2">8</sys:Double>
+  <sys:Double x:Key="ArSpace.3">12</sys:Double>
+  <sys:Double x:Key="ArSpace.4">16</sys:Double>
+  <sys:Double x:Key="ArSpace.5">20</sys:Double>
+  <sys:Double x:Key="ArSpace.6">24</sys:Double>
+
+  <sys:Double x:Key="ArControl.XS">28</sys:Double>
+  <sys:Double x:Key="ArControl.SM">32</sys:Double>
+  <sys:Double x:Key="ArControl.MD">36</sys:Double>
+  <sys:Double x:Key="ArControl.Record">40</sys:Double>
+
+  <CornerRadius x:Key="ArRadius.SM">6</CornerRadius>
+  <CornerRadius x:Key="ArRadius.MD">8</CornerRadius>
+  <CornerRadius x:Key="ArRadius.LG">10</CornerRadius>
+  <CornerRadius x:Key="ArRadius.XL">12</CornerRadius>
+
+  <Thickness x:Key="ArStroke.Thin">1</Thickness>
+  <Thickness x:Key="ArPadding.Button">12,0</Thickness>
+  <Thickness x:Key="ArPadding.Compact">10,7</Thickness>
+  <Thickness x:Key="ArPadding.Card">14</Thickness>
+
+  <sys:Double x:Key="ArIcon.SM">16</sys:Double>
+  <sys:Double x:Key="ArIcon.MD">18</sys:Double>
+  <sys:Double x:Key="ArIcon.LG">20</sys:Double>
+</ResourceDictionary>

@@ -1,0 +1,130 @@
+<Window
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="Arssyut.UI.RecordingControllerWindow"
+    Title="Arssyut Recording Controller"
+    Width="392"
+    Height="64"
+    CanResize="False"
+    ShowInTaskbar="False"
+    Topmost="True"
+    WindowDecorations="None"
+    Background="Transparent"
+    FontFamily="{DynamicResource ArFont.Inter}"
+    TextOptions.TextRenderingMode="Antialias"
+    KeyDown="Window_OnKeyDown">
+
+  <Border
+      Margin="2"
+      Padding="10,8"
+      Background="#E8161B23"
+      BorderBrush="{DynamicResource ArBrush.StrokeStrong}"
+      BorderThickness="1"
+      CornerRadius="13"
+      ClipToBounds="True"
+      PointerPressed="Surface_OnPointerPressed">
+
+    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto,Auto" ColumnSpacing="8">
+
+      <Ellipse
+          Grid.Column="0"
+          Width="8"
+          Height="8"
+          Fill="{DynamicResource ArBrush.Record}"
+          VerticalAlignment="Center" />
+
+      <StackPanel
+          Grid.Column="1"
+          VerticalAlignment="Center"
+          Spacing="0">
+        <TextBlock
+            x:Name="PhaseText"
+            Text="REC"
+            FontSize="10"
+            FontWeight="SemiBold"
+            Foreground="{DynamicResource ArBrush.Record}" />
+        <TextBlock
+            x:Name="TimerText"
+            Text="00:00"
+            FontSize="12"
+            FontWeight="Medium"
+            FontFeatures="+tnum"
+            AutomationProperties.Name="Recording elapsed time" />
+      </StackPanel>
+
+      <Border
+          Grid.Column="2"
+          Height="1"
+          Margin="3,0"
+          Background="{DynamicResource ArBrush.Stroke}"
+          VerticalAlignment="Center" />
+
+      <Button
+          x:Name="MicButton"
+          Grid.Column="3"
+          Classes="ar icon"
+          Click="Mic_OnClick"
+          AutomationProperties.Name="Toggle microphone"
+          ToolTip.Tip="Microphone">
+        <LucideIcon
+            x:Name="MicIcon"
+            Kind="Mic"
+            Size="16"
+            StrokeWidth="1.8"
+            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+      </Button>
+
+      <Button
+          x:Name="CameraButton"
+          Grid.Column="4"
+          Classes="ar icon"
+          Click="Camera_OnClick"
+          AutomationProperties.Name="Toggle camera"
+          ToolTip.Tip="Camera">
+        <LucideIcon
+            x:Name="CameraIcon"
+            Kind="Video"
+            Size="16"
+            StrokeWidth="1.8"
+            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+      </Button>
+
+      <Button
+          x:Name="PauseButton"
+          Grid.Column="5"
+          Classes="ar icon"
+          Click="Pause_OnClick"
+          AutomationProperties.Name="Pause recording"
+          ToolTip.Tip="Pause / Resume (F10)">
+        <LucideIcon
+            x:Name="PauseIcon"
+            Kind="Pause"
+            Size="16"
+            StrokeWidth="1.9"
+            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+      </Button>
+
+      <Button
+          x:Name="StopButton"
+          Grid.Column="6"
+          Width="36"
+          Height="36"
+          Padding="0"
+          CornerRadius="10"
+          Background="{DynamicResource ArBrush.Record}"
+          BorderBrush="{DynamicResource ArBrush.Record}"
+          BorderThickness="1"
+          Foreground="White"
+          Click="Stop_OnClick"
+          AutomationProperties.Name="Stop recording"
+          ToolTip.Tip="Stop recording (F9)">
+        <LucideIcon
+            Kind="Square"
+            Size="14"
+            StrokeWidth="2.2"
+            Foreground="White" />
+      </Button>
+
+    </Grid>
+  </Border>
+</Window>

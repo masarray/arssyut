@@ -300,6 +300,19 @@ Status RecorderSession::start(
     visual_analysis_map_failures_.store(
         0,
         std::memory_order_release);
+    presentation_camera_center_x_.store(
+        0.5f,
+        std::memory_order_release);
+    presentation_camera_center_y_.store(
+        0.5f,
+        std::memory_order_release);
+    presentation_camera_zoom_.store(
+        1.0f,
+        std::memory_order_release);
+    worker_finished_.store(
+        false,
+        std::memory_order_release);
+
     state_.store(
         RecorderState::Preparing,
         std::memory_order_release);
@@ -310,6 +323,9 @@ Status RecorderSession::start(
                 worker_main();
             });
     } catch (...) {
+        worker_finished_.store(
+            true,
+            std::memory_order_release);
         state_.store(
             RecorderState::Failed,
             std::memory_order_release);
@@ -421,6 +437,19 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
         compositor_gpu_p95_us_.load(
             std::memory_order_relaxed);
 
+    result.presentation_camera_center_x =
+        presentation_camera_center_x_.load(
+            std::memory_order_relaxed);
+    result.presentation_camera_center_y =
+        presentation_camera_center_y_.load(
+            std::memory_order_relaxed);
+    result.presentation_camera_zoom =
+        presentation_camera_zoom_.load(
+            std::memory_order_relaxed);
+    result.worker_finished =
+        worker_finished_.load(
+            std::memory_order_acquire);
+
     result.memory_private_bytes =
         memory_private_bytes_.load(
             std::memory_order_relaxed);
@@ -453,6 +482,16 @@ void RecorderSession::fail(Status status) noexcept
 
 void RecorderSession::worker_main() noexcept
 {
+    struct WorkerFinishGuard {
+        std::atomic<bool> &flag;
+        ~WorkerFinishGuard() noexcept
+        {
+            flag.store(
+                true,
+                std::memory_order_release);
+        }
+    } finish_guard{worker_finished_};
+
     std::error_code file_ec;
     std::filesystem::create_directories(
         config_.output_path.parent_path(),
@@ -773,10 +812,24 @@ void RecorderSession::worker_main() noexcept
     TimePoint next_target_rect_refresh = start;
 
     RECT presentation_target_rect{};
-    bool presentation_target_valid =
-        target_screen_rect(
-            config_.target,
-            presentation_target_rect);
+    bool presentation_target_valid = false;
+
+    if (config_.
+            presentation_screen_rect_valid) {
+        presentation_target_rect =
+            config_.
+                presentation_screen_rect;
+        presentation_target_valid =
+            presentation_target_rect.right >
+                presentation_target_rect.left &&
+            presentation_target_rect.bottom >
+                presentation_target_rect.top;
+    } else {
+        presentation_target_valid =
+            target_screen_rect(
+                config_.target,
+                presentation_target_rect);
+    }
 
     PresentationFrameState presentation_state{};
 
@@ -789,10 +842,13 @@ void RecorderSession::worker_main() noexcept
 
         if (presentation_enabled &&
             !(now < next_target_rect_refresh)) {
-            presentation_target_valid =
-                target_screen_rect(
-                    config_.target,
-                    presentation_target_rect);
+            if (!config_.
+                    presentation_screen_rect_valid) {
+                presentation_target_valid =
+                    target_screen_rect(
+                        config_.target,
+                        presentation_target_rect);
+            }
 
             next_target_rect_refresh = {
                 now.ticks_100ns +
@@ -867,6 +923,16 @@ void RecorderSession::worker_main() noexcept
                     now,
                     pointer.last_activity);
 
+            presentation_camera_center_x_.store(
+                presentation_state.camera_center_x,
+                std::memory_order_relaxed);
+            presentation_camera_center_y_.store(
+                presentation_state.camera_center_y,
+                std::memory_order_relaxed);
+            presentation_camera_zoom_.store(
+                presentation_state.camera_zoom,
+                std::memory_order_relaxed);
+
             previous_presentation = now;
             next_presentation = {
                 now.ticks_100ns + frame_duration
@@ -877,7 +943,7 @@ void RecorderSession::worker_main() noexcept
             pipeline->process_due(
                 device->immediate_context(),
                 now,
-                {},
+                config_.crop,
                 config_.output_size,
                 presentation_enabled
                     ? &presentation_state
@@ -1194,6 +1260,19 @@ void RecorderSession::write_diagnostics(
             << "  \"output_bytes\": " << output_bytes << ",\n"
             << "  \"width\": " << config_.output_size.width << ",\n"
             << "  \"height\": " << config_.output_size.height << ",\n"
+            << "  \"source_crop_active\": "
+            << (config_.crop.valid()
+                    ? "true"
+                    : "false")
+            << ",\n"
+            << "  \"source_crop_left\": "
+            << config_.crop.left << ",\n"
+            << "  \"source_crop_top\": "
+            << config_.crop.top << ",\n"
+            << "  \"source_crop_right\": "
+            << config_.crop.right << ",\n"
+            << "  \"source_crop_bottom\": "
+            << config_.crop.bottom << ",\n"
             << "  \"fps_num\": " << config_.frame_rate.numerator << ",\n"
             << "  \"fps_den\": " << config_.frame_rate.denominator << ",\n"
             << "  \"bitrate_bps\": " << config_.bitrate_bps << ",\n"
