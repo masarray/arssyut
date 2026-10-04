@@ -20,6 +20,49 @@ public enum NativeDeviceKind : uint
     Camera = 1
 }
 
+public enum NativeBridgeStatus
+{
+    Ok = 0,
+    InvalidArgument = 1,
+    OutOfRange = 2,
+    InternalError = 3,
+    Busy = 4,
+    Unsupported = 5,
+    StaleToken = 6,
+    StartFailed = 7,
+    InvalidState = 8
+}
+
+public enum NativeRecorderState : uint
+{
+    Idle = 0,
+    Preparing = 1,
+    Recording = 2,
+    Stopping = 3,
+    Finalizing = 4,
+    Ready = 5,
+    Failed = 6
+}
+
+public enum NativeVisualMode : uint
+{
+    PixelAccurate = 0,
+    CleanScreen = 1,
+    VividPresentation = 2
+}
+
+[Flags]
+public enum NativeStartFlags : uint
+{
+    None = 0,
+    SystemAudio = 1U << 0,
+    Microphone = 1U << 1,
+    Camera = 1U << 2,
+    SmartZoom = 1U << 3,
+    ClickVisual = 1U << 4,
+    ShortcutKeys = 1U << 5
+}
+
 public sealed record NativeDeviceItem(
     ulong Token,
     NativeDeviceKind Kind,
@@ -30,7 +73,7 @@ public sealed record NativeDeviceSnapshot(
     IReadOnlyList<NativeDeviceItem> Cameras);
 
 public sealed record NativeRecorderSnapshot(
-    uint State,
+    NativeRecorderState State,
     long ElapsedTicks,
     bool WorkerFinished,
     float CameraCenterX,
@@ -39,13 +82,29 @@ public sealed record NativeRecorderSnapshot(
     ulong CaptureReceived,
     ulong VideoRendered,
     ulong EncoderSubmitted,
-    ulong EncoderBackpressure);
+    ulong EncoderBackpressure,
+    uint ErrorCode,
+    uint ErrorDetail);
+
+public sealed record NativeRecorderResult(
+    string OutputPath,
+    string DiagnosticsPath);
+
+public sealed record NativeStartRequest(
+    PreviewCaptureMode CaptureMode,
+    ulong SourceToken,
+    uint FrameRate,
+    NativeVisualMode VisualMode,
+    NativeStartFlags Flags,
+    ulong MicrophoneDeviceToken,
+    ulong CameraDeviceToken,
+    string OutputFolder);
 
 public sealed class NativeBridgeClient : IDisposable
 {
     private const string LibraryName =
         "arssyut_native_bridge";
-    private const uint ExpectedAbi = 1;
+    private const uint ExpectedAbi = 2;
 
     private IntPtr _handle;
 
@@ -310,7 +369,7 @@ public sealed class NativeBridgeClient : IDisposable
                 ref snapshot));
 
         return new NativeRecorderSnapshot(
-            snapshot.State,
+            (NativeRecorderState)snapshot.State,
             snapshot.ElapsedTicks,
             snapshot.WorkerFinished != 0,
             snapshot.CameraCenterX,
@@ -319,7 +378,86 @@ public sealed class NativeBridgeClient : IDisposable
             snapshot.CaptureReceived,
             snapshot.VideoRendered,
             snapshot.EncoderSubmitted,
-            snapshot.EncoderBackpressure);
+            snapshot.EncoderBackpressure,
+            snapshot.ErrorCode,
+            snapshot.ErrorDetail);
+    }
+
+    public NativeBridgeStatus StartRecording(
+        NativeStartRequest request)
+    {
+        ThrowIfDisposed();
+
+        var native =
+            new NativeStartRequestV1
+            {
+                StructSize =
+                    checked((uint)
+                        Marshal.SizeOf<
+                            NativeStartRequestV1>()),
+                CaptureMode =
+                    request.CaptureMode switch
+                    {
+                        PreviewCaptureMode.Window => 1,
+                        PreviewCaptureMode.Region => 2,
+                        PreviewCaptureMode.Game => 3,
+                        _ => 0
+                    },
+                SourceToken =
+                    request.SourceToken,
+                FrameRate =
+                    request.FrameRate,
+                VisualMode =
+                    (uint)request.VisualMode,
+                Flags =
+                    (uint)request.Flags,
+                Reserved0 = 0,
+                MicrophoneDeviceToken =
+                    request.MicrophoneDeviceToken,
+                CameraDeviceToken =
+                    request.CameraDeviceToken,
+                OutputFolder =
+                    request.OutputFolder ?? string.Empty
+            };
+
+        return (NativeBridgeStatus)
+            NativeMethods.RecorderStart(
+                _handle,
+                ref native);
+    }
+
+    public NativeBridgeStatus StopRecording()
+    {
+        ThrowIfDisposed();
+
+        return (NativeBridgeStatus)
+            NativeMethods.RecorderStop(
+                _handle);
+    }
+
+    public NativeRecorderResult Result()
+    {
+        ThrowIfDisposed();
+
+        var result =
+            new NativeRecorderResultV1
+            {
+                StructSize =
+                    checked((uint)
+                        Marshal.SizeOf<
+                            NativeRecorderResultV1>())
+            };
+
+        EnsureOk(
+            NativeMethods.RecorderResult(
+                _handle,
+                ref result));
+
+        return new NativeRecorderResult(
+            result.OutputPath?.Trim() ??
+                string.Empty,
+            result.DiagnosticsPath?.Trim() ??
+                string.Empty);
     }
 
     public void Dispose()
@@ -420,6 +558,48 @@ public sealed class NativeBridgeClient : IDisposable
         public ulong VideoRendered;
         public ulong EncoderSubmitted;
         public ulong EncoderBackpressure;
+        public uint ErrorCode;
+        public uint ErrorDetail;
+    }
+
+    [StructLayout(
+        LayoutKind.Sequential,
+        CharSet = CharSet.Unicode)]
+    private struct NativeStartRequestV1
+    {
+        public uint StructSize;
+        public uint CaptureMode;
+        public ulong SourceToken;
+        public uint FrameRate;
+        public uint VisualMode;
+        public uint Flags;
+        public uint Reserved0;
+        public ulong MicrophoneDeviceToken;
+        public ulong CameraDeviceToken;
+
+        [MarshalAs(
+            UnmanagedType.ByValTStr,
+            SizeConst = 512)]
+        public string OutputFolder;
+    }
+
+    [StructLayout(
+        LayoutKind.Sequential,
+        CharSet = CharSet.Unicode)]
+    private struct NativeRecorderResultV1
+    {
+        public uint StructSize;
+        public uint Reserved0;
+
+        [MarshalAs(
+            UnmanagedType.ByValTStr,
+            SizeConst = 512)]
+        public string OutputPath;
+
+        [MarshalAs(
+            UnmanagedType.ByValTStr,
+            SizeConst = 512)]
+        public string DiagnosticsPath;
     }
 
     private static class NativeMethods
@@ -498,10 +678,35 @@ public sealed class NativeBridgeClient : IDisposable
 
         [DllImport(
             LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_start",
+            CallingConvention = CallingConvention.Cdecl,
+            CharSet = CharSet.Unicode)]
+        public static extern int RecorderStart(
+            IntPtr handle,
+            ref NativeStartRequestV1 request);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_stop",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderStop(
+            IntPtr handle);
+
+        [DllImport(
+            LibraryName,
             EntryPoint = "arssyut_bridge_recorder_snapshot",
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int RecorderSnapshot(
             IntPtr handle,
             ref NativeRecorderSnapshotV1 snapshot);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_result",
+            CallingConvention = CallingConvention.Cdecl,
+            CharSet = CharSet.Unicode)]
+        public static extern int RecorderResult(
+            IntPtr handle,
+            ref NativeRecorderResultV1 result);
     }
 }
