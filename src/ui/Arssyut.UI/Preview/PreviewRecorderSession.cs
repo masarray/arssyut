@@ -18,7 +18,7 @@ public sealed class PreviewRecorderSession
     public PreviewRecordingPhase Phase { get; private set; } =
         PreviewRecordingPhase.Ready;
 
-    public bool MicrophoneEnabled { get; set; } = true;
+    public bool MicrophoneEnabled { get; set; }
 
     public bool CameraEnabled { get; set; }
 
