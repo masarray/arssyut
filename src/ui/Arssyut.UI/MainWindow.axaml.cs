@@ -35,6 +35,8 @@ public sealed partial class MainWindow : Window
         "Microphone";
     private string _cameraDevice =
         "Camera";
+    private ulong _microphoneDeviceToken;
+    private ulong _cameraDeviceToken;
 
     public MainWindow(
         SettingsPreviewState settings,
@@ -511,12 +513,20 @@ public sealed partial class MainWindow : Window
                 devices.Cameras);
 
             if (devices.Microphones.Count > 0)
+            {
                 _microphoneDevice =
                     devices.Microphones[0].Name;
+                _microphoneDeviceToken =
+                    devices.Microphones[0].Token;
+            }
 
             if (devices.Cameras.Count > 0)
+            {
                 _cameraDevice =
                     devices.Cameras[0].Name;
+                _cameraDeviceToken =
+                    devices.Cameras[0].Token;
+            }
         }
         catch (Exception)
         {
@@ -552,7 +562,7 @@ public sealed partial class MainWindow : Window
             button.IsVisible =
                 true;
             button.Tag =
-                device.Name;
+                device;
 
             var stack =
                 new StackPanel
@@ -597,13 +607,18 @@ public sealed partial class MainWindow : Window
         if (sender is not Button selected)
             return;
 
+        var device =
+            selected.Tag as NativeDeviceItem;
         var name =
+            device?.Name ??
             selected.Tag?.ToString();
 
         if (string.IsNullOrWhiteSpace(name))
             return;
 
         _microphoneDevice = name;
+        _microphoneDeviceToken =
+            device?.Token ?? 0;
         SelectDeviceOption(
             _microphoneOptions,
             selected);
@@ -619,13 +634,18 @@ public sealed partial class MainWindow : Window
         if (sender is not Button selected)
             return;
 
+        var device =
+            selected.Tag as NativeDeviceItem;
         var name =
+            device?.Name ??
             selected.Tag?.ToString();
 
         if (string.IsNullOrWhiteSpace(name))
             return;
 
         _cameraDevice = name;
+        _cameraDeviceToken =
+            device?.Token ?? 0;
         SelectDeviceOption(
             _cameraOptions,
             selected);
