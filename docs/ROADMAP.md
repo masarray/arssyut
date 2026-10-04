@@ -874,12 +874,45 @@ P6UI.4A read-only bridge:
 - packaged Avalonia launch smoke requires a compatible bridge DLL;
 - native bridge ABI has its own Windows regression executable.
 
-P6UI.4B command bridge next:
-- resolve selected source token inside the native bridge context;
-- canonicalize current UI settings into native RecorderConfig;
-- route Record/Stop through the one native RecorderSession;
-- expose real result and diagnostics paths;
-- remove PreviewRecorderSession authority from the normal product path.
+**P6UI.4B status: IMPLEMENTED / CI + REAL RECORDING ACCEPTANCE PENDING**
+
+P6UI.4B command bridge:
+- bridge ABI v2 resolves the selected generation-scoped source token only
+  inside the native context;
+- normal Avalonia Product Record for Display/Window now starts the existing
+  native `RecorderSession`; `PreviewRecorderSession` remains only for
+  explicit UI stress/design scenarios;
+- Stop publishes the native stop request and the floating controller remains
+  responsive through Stopping/Finalizing until the native worker publishes its
+  terminal state;
+- frame rate, Pixel Accurate/Clean Screen/Vivid Presentation, Smart Zoom,
+  click highlight, shortcut visualization and output-folder choice map into
+  the native start configuration;
+- successful native recordings expose real output/diagnostics paths and the
+  main UI Open/Folder actions operate on the real result;
+- stale source generations, busy sessions and start failures surface explicit
+  UI states;
+- Region is intentionally rejected until P6UI.4C binds the already-existing
+  native Region editor/crop path;
+- Game remains explicitly unsupported until its backend exists;
+- system audio, microphone and camera are explicitly rejected while their real
+  backends are not connected, so the UI never claims those streams were
+  recorded;
+- native bridge tests cover stale-token rejection, unsupported media input and
+  idle Stop semantics;
+- the locked native engine tree remains unchanged; all new command adaptation
+  lives in `src/bridge`.
+
+Real acceptance required:
+- record Display 1 and Display 2 on a real multi-monitor machine;
+- record a Window source;
+- verify Record -> Stop -> Finalizing -> Saved never freezes the Avalonia UI;
+- verify Open and Folder use the produced MP4 path;
+- repeat native start/stop several times;
+- validate 30/60 fps and all three visual modes;
+- confirm Smart Zoom/click/shortcut settings reach the native recorder;
+- confirm enabling an unbound audio/mic/camera input blocks recording with a
+  clear status rather than silently omitting it.
 
 P6UI.4C overlay bridge after command authority:
 - reuse existing native RecorderOverlay;
