@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "build/windows-x64/Release/arssyut.exe"
-          $process = Start-Process -FilePath $exe -PassThru
+          $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
           Start-Sleep -Seconds 2
 
           if ($process.HasExited) {
@@ -99,10 +99,16 @@ jobs:
           if ($violations.Count -gt 0) {
             Write-Host "P6UI changed locked native implementation after $baseline:"
             $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
-            throw "P6UI.1-P6UI.3 must not modify the frozen native engine. Use the P6UI.4 bridge milestone for explicit native changes."
+            throw "Existing native engine implementation is frozen. P6UI.4 may add bridge code under src/bridge but must not rewrite accepted src/app, src/core or src/platform authorities."
           }
 
           Write-Host "Native baseline guard passed."
+
+      - name: Build P6UI native bridge
+        shell: pwsh
+        run: |
+          cmake --preset windows-x64
+          cmake --build --preset windows-release --target arssyut_native_bridge --parallel
 
       - name: Restore
         run: dotnet restore src/ui/Arssyut.UI/Arssyut.UI.csproj
@@ -127,6 +133,7 @@ jobs:
             -o dist/arssyut-p6ui
 
           Copy-Item "docs/P6UI_THIRD_PARTY_NOTICES.md" (Join-Path "dist/arssyut-p6ui" "THIRD_PARTY_NOTICES.md")
+          Copy-Item "build/windows-x64/Release/arssyut_native_bridge.dll" (Join-Path "dist/arssyut-p6ui" "arssyut_native_bridge.dll")
 
       - name: Launch smoke
         shell: pwsh
