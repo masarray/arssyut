@@ -96,6 +96,46 @@ if(WIN32)
             windowsapp
     )
 
+    add_library(arssyut_native_bridge SHARED
+        src/bridge/native_bridge.cpp
+        src/app/device_catalog.cpp
+        src/app/recorder_session.cpp
+        src/app/source_catalog.cpp
+    )
+    target_include_directories(arssyut_native_bridge
+        PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+    target_compile_definitions(arssyut_native_bridge
+        PRIVATE
+            ARSSYUT_BRIDGE_BUILD
+            UNICODE
+            _UNICODE
+        PUBLIC
+            WIN32_LEAN_AND_MEAN
+            NOMINMAX
+            _WIN32_WINNT=0x0A00
+            WINVER=0x0A00
+    )
+    target_link_libraries(arssyut_native_bridge
+        PRIVATE
+            arssyut_windows
+            mf
+            dwmapi
+            ole32
+            psapi
+            propsys
+            uuid
+    )
+    if(MSVC)
+        target_compile_options(arssyut_native_bridge PRIVATE
+            /W4
+            /permissive-
+            /utf-8
+            /Zc:__cplusplus
+        )
+    endif()
+
     add_executable(arssyut WIN32
         src/app/device_catalog.cpp
         src/app/lucide_icons.cpp
@@ -324,6 +364,27 @@ if(ARSSYUT_BUILD_TESTS)
         add_test(
             NAME arssyut_region_geometry_tests
             COMMAND arssyut_region_geometry_tests
+        )
+
+        add_executable(arssyut_native_bridge_tests
+            tests/windows/test_native_bridge.cpp
+        )
+        target_link_libraries(
+            arssyut_native_bridge_tests
+            PRIVATE
+                arssyut_native_bridge
+        )
+        if(MSVC)
+            target_compile_options(arssyut_native_bridge_tests PRIVATE
+                /W4
+                /permissive-
+                /utf-8
+                /Zc:__cplusplus
+            )
+        endif()
+        add_test(
+            NAME arssyut_native_bridge_tests
+            COMMAND arssyut_native_bridge_tests
         )
 
         add_executable(arssyut_windows_shortcut_tests
