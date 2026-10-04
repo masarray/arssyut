@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 
 namespace Arssyut.UI;
@@ -28,6 +29,8 @@ public sealed partial class SettingsWindow : Window
     ];
 
     private readonly SettingsPreviewState _preview;
+    private readonly NativeBridgeClient? _nativeBridge;
+    private readonly bool _stressLayout;
     private readonly Button[] _navButtons;
     private readonly Control[] _pages;
     private readonly Button[] _cameraAnchorButtons;
@@ -39,9 +42,12 @@ public sealed partial class SettingsWindow : Window
 
     public SettingsWindow(
         SettingsPreviewState preview,
+        NativeBridgeClient? nativeBridge = null,
         bool stressLayout = false)
     {
         _preview = preview;
+        _nativeBridge = nativeBridge;
+        _stressLayout = stressLayout;
         InitializeComponent();
 
         TransparencyLevelHint =
@@ -104,6 +110,9 @@ public sealed partial class SettingsWindow : Window
         Opened +=
             (_, _) =>
             {
+                if (!_stressLayout)
+                    RefreshNativeDevices();
+
                 _audioPreviewTimer.Start();
                 RefreshPreviewState();
             };
@@ -325,29 +334,80 @@ public sealed partial class SettingsWindow : Window
         object? sender,
         SelectionChangedEventArgs e)
     {
-        if (sender is not ComboBox combo ||
-            combo.SelectedItem is not
-                ComboBoxItem item)
+        if (sender is not ComboBox combo)
             return;
 
-        _preview.MicrophoneDevice =
-            item.Content?.ToString() ??
-            _preview.MicrophoneDevice;
+        var value =
+            SelectedItemText(
+                combo.SelectedItem);
+
+        if (!string.IsNullOrWhiteSpace(value))
+            _preview.MicrophoneDevice = value;
     }
 
     private void CameraDevice_OnSelectionChanged(
         object? sender,
         SelectionChangedEventArgs e)
     {
-        if (sender is not ComboBox combo ||
-            combo.SelectedItem is not
-                ComboBoxItem item)
+        if (sender is not ComboBox combo)
             return;
 
-        _preview.CameraDevice =
-            item.Content?.ToString() ??
-            _preview.CameraDevice;
+        var value =
+            SelectedItemText(
+                combo.SelectedItem);
+
+        if (!string.IsNullOrWhiteSpace(value))
+            _preview.CameraDevice = value;
     }
+
+    private void RefreshNativeDevices()
+    {
+        if (_nativeBridge is null)
+            return;
+
+        try
+        {
+            var devices =
+                _nativeBridge.RefreshDevices();
+
+            if (devices.Microphones.Count > 0)
+            {
+                MicrophoneDeviceCombo.ItemsSource =
+                    devices.Microphones
+                        .Select(item => item.Name)
+                        .ToArray();
+                MicrophoneDeviceCombo.SelectedIndex =
+                    0;
+            }
+
+            if (devices.Cameras.Count > 0)
+            {
+                CameraDeviceCombo.ItemsSource =
+                    devices.Cameras
+                        .Select(item => item.Name)
+                        .ToArray();
+                CameraDeviceCombo.SelectedIndex =
+                    0;
+            }
+        }
+        catch (Exception)
+        {
+            // Keep accepted preview fixtures visible if native enumeration is
+            // unavailable. The UI never creates a second native device catalog.
+        }
+    }
+
+    private static string? SelectedItemText(
+        object? selected) =>
+        selected switch
+        {
+            ComboBoxItem item =>
+                item.Content?.ToString(),
+            null =>
+                null,
+            _ =>
+                selected.ToString()
+        };
 
     private void CameraPlacement_OnClick(
         object? sender,
