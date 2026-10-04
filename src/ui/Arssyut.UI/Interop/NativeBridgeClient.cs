@@ -104,7 +104,7 @@ public sealed class NativeBridgeClient : IDisposable
 {
     private const string LibraryName =
         "arssyut_native_bridge";
-    private const uint ExpectedAbi = 2;
+    private const uint ExpectedAbi = 3;
 
     private IntPtr _handle;
 
@@ -289,6 +289,37 @@ public sealed class NativeBridgeClient : IDisposable
         }
 
         return result;
+    }
+
+    public NativeBridgeStatus SetOverlayTarget(
+        PreviewCaptureMode mode,
+        ulong sourceToken)
+    {
+        ThrowIfDisposed();
+
+        var captureMode =
+            mode switch
+            {
+                PreviewCaptureMode.Window => 1U,
+                PreviewCaptureMode.Region => 2U,
+                PreviewCaptureMode.Game => 3U,
+                _ => 0U
+            };
+
+        return (NativeBridgeStatus)
+            NativeMethods.OverlaySetTarget(
+                _handle,
+                captureMode,
+                sourceToken);
+    }
+
+    public void HideOverlay()
+    {
+        ThrowIfDisposed();
+
+        EnsureOk(
+            NativeMethods.OverlayHide(
+                _handle));
     }
 
     public NativeDeviceSnapshot RefreshDevices()
@@ -648,6 +679,22 @@ public sealed class NativeBridgeClient : IDisposable
             IntPtr handle,
             uint index,
             ref NativeSourceV1 source);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_overlay_set_target",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int OverlaySetTarget(
+            IntPtr handle,
+            uint captureMode,
+            ulong sourceToken);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_overlay_hide",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int OverlayHide(
+            IntPtr handle);
 
         [DllImport(
             LibraryName,

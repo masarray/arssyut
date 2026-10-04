@@ -118,6 +118,19 @@ public sealed partial class MainWindow : Window
             {
                 _settings.Changed -=
                     Settings_OnChanged;
+
+                if (_nativeBridge is not null)
+                {
+                    try
+                    {
+                        _nativeBridge.
+                            HideOverlay();
+                    }
+                    catch (Exception)
+                    {
+                        // Application teardown still owns bridge disposal.
+                    }
+                }
             };
     }
 
@@ -479,6 +492,19 @@ public sealed partial class MainWindow : Window
     {
         if (_selectedSource is null)
         {
+            if (_nativeBridge is not null)
+            {
+                try
+                {
+                    _nativeBridge.
+                        HideOverlay();
+                }
+                catch (Exception)
+                {
+                    // Source-empty presentation remains usable if overlay teardown fails.
+                }
+            }
+
             SourceTitle.Text =
                 "Native source unavailable";
             SourceSubtitle.Text =
@@ -508,8 +534,39 @@ public sealed partial class MainWindow : Window
         SourceSubtitle.Text =
             _captureMode ==
                     PreviewCaptureMode.Region
-                ? $"{_selectedSource.Subtitle} · native area editor binding follows"
+                ? $"{_selectedSource.Subtitle} · native area editor active"
                 : _selectedSource.Subtitle;
+
+        if (_nativeBridge is not null)
+        {
+            try
+            {
+                var overlayStatus =
+                    _nativeBridge.
+                        SetOverlayTarget(
+                            _captureMode,
+                            _selectedSource.
+                                NativeToken);
+
+                if (overlayStatus ==
+                    NativeBridgeStatus.Unsupported)
+                {
+                    _nativeBridge.
+                        HideOverlay();
+                }
+                else if (overlayStatus !=
+                         NativeBridgeStatus.Ok)
+                {
+                    SourceSubtitle.Text =
+                        $"{_selectedSource.Subtitle} · overlay status {overlayStatus}";
+                }
+            }
+            catch (Exception)
+            {
+                SourceSubtitle.Text =
+                    $"{_selectedSource.Subtitle} · native overlay unavailable";
+            }
+        }
 
         UpdateReadyDetail();
     }
@@ -893,14 +950,7 @@ public sealed partial class MainWindow : Window
         {
             case NativeBridgeStatus.Unsupported:
                 if (_captureMode ==
-                    PreviewCaptureMode.Region)
-                {
-                    ShowCommandFeedback(
-                        "Region binding pending",
-                        "The existing native Region editor/crop path is preserved and binds in P6UI.4C.");
-                }
-                else if (_captureMode ==
-                         PreviewCaptureMode.Game)
+                    PreviewCaptureMode.Game)
                 {
                     ShowCommandFeedback(
                         "Game backend pending",

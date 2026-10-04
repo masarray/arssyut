@@ -929,6 +929,23 @@ Mandatory rules:
 - real Display 1/2 and Window MP4 recording remains a human acceptance gate;
   CI green does not substitute for real multi-monitor recording evidence.
 
+### P6UI.4C native overlay / Region bridge contract
+
+- reuse the existing P6R `RecorderOverlay` and `region_geometry` implementation;
+  do not create an Avalonia boundary window or C# Region rectangle math;
+- Display/Window boundaries are click-through. Their native HWND must preserve
+  `WS_EX_TRANSPARENT` and return `HTTRANSPARENT` from hit testing;
+- idle Region may accept input only on its existing resize edges/corners and
+  move pill; the Region interior remains click-through;
+- Region move/resize publishes back to the bridge-owned canonical virtual-screen
+  rectangle and maps once through `map_region_to_crop()`;
+- the recording boundary follows `RecorderSnapshot` camera center/zoom through
+  the existing `camera_viewport_rect()`; there is no second camera authority;
+- the hidden bridge HWND is a message owner only. It must not become a recorder
+  UI, capture pipeline, timing authority or polling-based Region model;
+- Region recording must use the same monitor WGC source plus canonical crop as
+  P6R. Never add a second Region capture backend.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a

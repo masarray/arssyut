@@ -930,12 +930,24 @@ Real acceptance required:
 - confirm the floating Avalonia controller itself never appears in Display or
   overlapping Region output.
 
-P6UI.4C overlay bridge after command authority:
-- reuse existing native RecorderOverlay;
-- selected target -> native capture boundary;
-- PresentationFrameState -> Smart Zoom viewport boundary;
-- existing native Region editor -> canonical Region rect;
-- no Avalonia crop/boundary implementation.
+**P6UI.4C status: IMPLEMENTED / CI + REAL GUI ACCEPTANCE PENDING**
+
+P6UI.4C native overlay / Region bridge:
+- reuses the existing P6R `RecorderOverlay`, `region_geometry` and
+  `RecorderSession`;
+- bridge ABI v3 owns only a hidden message HWND for native Region edit/timer
+  delivery; no Avalonia capture-boundary window exists;
+- selected Display/Window source -> native click-through capture boundary;
+- idle Region -> existing native move/resize editor with click-through interior;
+- Region edit -> canonical virtual-screen rectangle ->
+  `map_region_to_crop()` -> existing monitor WGC crop;
+- RecorderSnapshot camera center/zoom ->
+  `camera_viewport_rect()` -> Smart Zoom boundary;
+- Region -> Display -> Region preserves the native Region rectangle on the same
+  monitor;
+- bridge regression sends real `WM_NCHITTEST` to `ArssyutCaptureBoundary`
+  and locks Display click-through plus Region edge/interior semantics;
+- no C# crop/geometry/camera implementation.
 
 See `docs/adr/ADR-008-native-ui-bridge.md`.
 

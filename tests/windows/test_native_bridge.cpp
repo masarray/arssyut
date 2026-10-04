@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <cwchar>
 #include <iostream>
 
 namespace {
@@ -23,6 +24,92 @@ void require(
 {
     if (!condition)
         fail(message);
+}
+
+
+struct WindowSearch {
+    DWORD process_id = 0;
+    const wchar_t *class_name = nullptr;
+    HWND window = nullptr;
+};
+
+BOOL CALLBACK find_window_proc(
+    HWND window,
+    LPARAM parameter)
+{
+    auto *search =
+        reinterpret_cast<
+            WindowSearch *>(parameter);
+
+    DWORD process_id = 0;
+    GetWindowThreadProcessId(
+        window,
+        &process_id);
+
+    if (process_id !=
+        search->process_id) {
+        return TRUE;
+    }
+
+    wchar_t class_name[128]{};
+    GetClassNameW(
+        window,
+        class_name,
+        128);
+
+    if (std::wcscmp(
+            class_name,
+            search->class_name) == 0) {
+        search->window =
+            window;
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+[[nodiscard]] HWND find_process_window(
+    const wchar_t *class_name)
+{
+    WindowSearch search;
+    search.process_id =
+        GetCurrentProcessId();
+    search.class_name =
+        class_name;
+
+    EnumWindows(
+        find_window_proc,
+        reinterpret_cast<LPARAM>(
+            &search));
+
+    return search.window;
+}
+
+[[nodiscard]] LPARAM screen_point(
+    int x,
+    int y) noexcept
+{
+    return MAKELPARAM(
+        static_cast<WORD>(
+            static_cast<SHORT>(x)),
+        static_cast<WORD>(
+            static_cast<SHORT>(y)));
+}
+
+void drain_messages()
+{
+    MSG message{};
+    while (PeekMessageW(
+               &message,
+               nullptr,
+               0,
+               0,
+               PM_REMOVE)) {
+        TranslateMessage(
+            &message);
+        DispatchMessageW(
+            &message);
+    }
 }
 
 } // namespace
@@ -87,6 +174,262 @@ int main()
             source.label[0] != L'\0',
             "source label must not be empty");
     }
+
+
+    ArssyutBridgeSourceV1 monitor_source{};
+    bool have_monitor_source = false;
+
+    for (std::uint32_t index = 0;
+         index < source_count;
+         ++index) {
+        ArssyutBridgeSourceV1 candidate{};
+        candidate.struct_size =
+            sizeof(candidate);
+
+        require(
+            arssyut_bridge_source_at(
+                bridge,
+                index,
+                &candidate) ==
+                ARSSYUT_BRIDGE_OK,
+            "source read for overlay test failed");
+
+        if (candidate.kind ==
+            ARSSYUT_BRIDGE_SOURCE_MONITOR) {
+            monitor_source =
+                candidate;
+            have_monitor_source =
+                true;
+            break;
+        }
+    }
+
+    require(
+        have_monitor_source,
+        "native bridge must expose a monitor for overlay regression");
+
+    require(
+        arssyut_bridge_overlay_set_target(
+            bridge,
+            ARSSYUT_BRIDGE_CAPTURE_DISPLAY,
+            monitor_source.token) ==
+            ARSSYUT_BRIDGE_OK,
+        "Display overlay target failed");
+
+    HWND boundary =
+        find_process_window(
+            L"ArssyutCaptureBoundary");
+
+    require(
+        boundary != nullptr,
+        "native capture boundary window not found");
+    require(
+        IsWindowVisible(
+            boundary) != FALSE,
+        "Display capture boundary must be visible");
+
+    const LONG_PTR display_style =
+        GetWindowLongPtrW(
+            boundary,
+            GWL_EXSTYLE);
+
+    require(
+        (display_style &
+         WS_EX_TRANSPARENT) != 0,
+        "Display boundary must carry WS_EX_TRANSPARENT");
+
+    RECT display_rect{};
+    require(
+        GetWindowRect(
+            boundary,
+            &display_rect) != FALSE,
+        "Display boundary rect unavailable");
+
+    const auto display_hit =
+        SendMessageW(
+            boundary,
+            WM_NCHITTEST,
+            0,
+            screen_point(
+                display_rect.left +
+                    (display_rect.right -
+                     display_rect.left) /
+                        2,
+                display_rect.top +
+                    (display_rect.bottom -
+                     display_rect.top) /
+                        2));
+
+    require(
+        display_hit ==
+            HTTRANSPARENT,
+        "Display viewport border must be click-through");
+
+    require(
+        arssyut_bridge_overlay_set_target(
+            bridge,
+            ARSSYUT_BRIDGE_CAPTURE_REGION,
+            monitor_source.token) ==
+            ARSSYUT_BRIDGE_OK,
+        "Region overlay target failed");
+
+    ArssyutBridgeOverlaySnapshotV1 region_before{};
+    region_before.struct_size =
+        sizeof(region_before);
+
+    require(
+        arssyut_bridge_overlay_snapshot(
+            bridge,
+            &region_before) ==
+            ARSSYUT_BRIDGE_OK,
+        "Region overlay snapshot failed");
+    require(
+        region_before.visible != 0 &&
+            region_before.editable != 0 &&
+            region_before.region_valid != 0,
+        "Region overlay must be visible, editable and valid while idle");
+
+    const LONG_PTR region_style =
+        GetWindowLongPtrW(
+            boundary,
+            GWL_EXSTYLE);
+
+    require(
+        (region_style &
+         WS_EX_TRANSPARENT) == 0,
+        "editable Region must enable native edge/pill input");
+
+    RECT region_rect{};
+    require(
+        GetWindowRect(
+            boundary,
+            &region_rect) != FALSE,
+        "Region boundary rect unavailable");
+
+    const int region_mid_y =
+        region_rect.top +
+        (region_rect.bottom -
+         region_rect.top) /
+            2;
+
+    const auto region_center_hit =
+        SendMessageW(
+            boundary,
+            WM_NCHITTEST,
+            0,
+            screen_point(
+                region_rect.left +
+                    (region_rect.right -
+                     region_rect.left) /
+                        2,
+                region_mid_y));
+
+    require(
+        region_center_hit ==
+            HTTRANSPARENT,
+        "Region interior must remain click-through");
+
+    const auto region_edge_hit =
+        SendMessageW(
+            boundary,
+            WM_NCHITTEST,
+            0,
+            screen_point(
+                region_rect.left + 2,
+                region_mid_y));
+
+    require(
+        region_edge_hit ==
+            HTLEFT,
+        "Region left edge must remain a resize handle");
+
+    const int region_width =
+        region_rect.right -
+        region_rect.left;
+    const int region_height =
+        region_rect.bottom -
+        region_rect.top;
+
+    require(
+        SetWindowPos(
+            boundary,
+            nullptr,
+            region_rect.left + 20,
+            region_rect.top + 20,
+            region_width,
+            region_height,
+            SWP_NOZORDER |
+                SWP_NOACTIVATE) != FALSE,
+        "Region synthetic move failed");
+
+    SendMessageW(
+        boundary,
+        WM_EXITSIZEMOVE,
+        0,
+        0);
+    drain_messages();
+
+    ArssyutBridgeOverlaySnapshotV1 region_after{};
+    region_after.struct_size =
+        sizeof(region_after);
+
+    require(
+        arssyut_bridge_overlay_snapshot(
+            bridge,
+            &region_after) ==
+            ARSSYUT_BRIDGE_OK,
+        "Region post-edit snapshot failed");
+
+    require(
+        region_after.region_rect.left !=
+                region_before.region_rect.left ||
+            region_after.region_rect.top !=
+                region_before.region_rect.top,
+        "Region move must publish the canonical native rectangle");
+
+    require(
+        arssyut_bridge_overlay_set_target(
+            bridge,
+            ARSSYUT_BRIDGE_CAPTURE_DISPLAY,
+            monitor_source.token) ==
+            ARSSYUT_BRIDGE_OK,
+        "Region to Display switch failed");
+
+    require(
+        arssyut_bridge_overlay_set_target(
+            bridge,
+            ARSSYUT_BRIDGE_CAPTURE_REGION,
+            monitor_source.token) ==
+            ARSSYUT_BRIDGE_OK,
+        "Display to Region switch failed");
+
+    ArssyutBridgeOverlaySnapshotV1 region_restored{};
+    region_restored.struct_size =
+        sizeof(region_restored);
+
+    require(
+        arssyut_bridge_overlay_snapshot(
+            bridge,
+            &region_restored) ==
+            ARSSYUT_BRIDGE_OK,
+        "restored Region snapshot failed");
+
+    require(
+        region_restored.region_rect.left ==
+                region_after.region_rect.left &&
+            region_restored.region_rect.top ==
+                region_after.region_rect.top &&
+            region_restored.region_rect.right ==
+                region_after.region_rect.right &&
+            region_restored.region_rect.bottom ==
+                region_after.region_rect.bottom,
+        "Region -> Display -> Region must preserve canonical geometry");
+
+    require(
+        arssyut_bridge_overlay_hide(
+            bridge) ==
+            ARSSYUT_BRIDGE_OK,
+        "overlay hide failed");
 
     require(
         arssyut_bridge_refresh_devices(
@@ -250,7 +593,7 @@ int main()
     destroy();
 
     std::cout
-        << "P6UI.4A/4B native bridge ABI and command checks passed.\n";
+        << "P6UI.4A/4B/4C native bridge, overlay and Region checks passed.\n";
 
     return 0;
 }

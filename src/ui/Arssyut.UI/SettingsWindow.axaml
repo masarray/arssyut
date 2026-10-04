@@ -218,9 +218,9 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Show recording boundary" FontWeight="Medium" />
-                        <TextBlock Text="Returns with the existing native RecorderOverlay in P6UI.4C." Classes="micro" />
+                        <TextBlock Text="Native RecorderOverlay follows the selected source and Smart Zoom viewport." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" IsEnabled="False" OnContent="" OffContent=""
+                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" IsEnabled="False" OnContent="" OffContent=""
                                     AutomationProperties.Name="Show recording boundary" />
                     </Grid>
                   </Border>

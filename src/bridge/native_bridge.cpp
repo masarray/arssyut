@@ -3,7 +3,10 @@
 #ifdef _WIN32
 
 #include "app/device_catalog.hpp"
+#include "app/recorder_overlay.hpp"
 #include "app/recorder_session.hpp"
+#include "app/recorder_ui_model.hpp"
+#include "app/region_geometry.hpp"
 #include "app/source_catalog.hpp"
 
 #include <Windows.h>
@@ -24,10 +27,13 @@ namespace {
 
 using arssyut::app::DeviceChoice;
 using arssyut::app::RecorderConfig;
+using arssyut::app::RecorderOverlay;
+using arssyut::app::RecorderOverlayCommands;
 using arssyut::app::RecorderSession;
 using arssyut::app::RecorderSnapshot;
 using arssyut::app::RecorderState;
 using arssyut::app::RecorderTarget;
+using arssyut::app::RegionCropMapping;
 
 struct NativeBridgeContext final {
     std::mutex mutex;
@@ -42,6 +48,22 @@ struct NativeBridgeContext final {
     std::unique_ptr<RecorderSession> recorder;
     std::filesystem::path last_output;
     std::filesystem::path last_diagnostics;
+
+    // P6UI.4C reuses the accepted P6R overlay and Region geometry. The hidden
+    // owner exists only for native Region edit/timer messages; Avalonia never
+    // becomes a capture-geometry authority.
+    HINSTANCE overlay_instance = nullptr;
+    HWND overlay_owner = nullptr;
+    DWORD overlay_thread_id = 0;
+    std::unique_ptr<RecorderOverlay> overlay;
+    std::uint32_t overlay_capture_mode =
+        ARSSYUT_BRIDGE_CAPTURE_DISPLAY;
+    std::uint64_t overlay_source_token = 0;
+    bool overlay_visible = false;
+
+    RECT region_screen_rect{};
+    bool region_screen_rect_valid = false;
+    HMONITOR region_monitor = nullptr;
 };
 
 [[nodiscard]] NativeBridgeContext *
@@ -247,6 +269,7 @@ resolve_source(
 
     switch (capture_mode) {
     case ARSSYUT_BRIDGE_CAPTURE_DISPLAY:
+    case ARSSYUT_BRIDGE_CAPTURE_REGION:
         return monitor;
     case ARSSYUT_BRIDGE_CAPTURE_WINDOW:
         return !monitor;
@@ -396,6 +419,411 @@ void fill_snapshot(
         native.last_error.detail;
 }
 
+constexpr wchar_t kBridgeOverlayOwnerClass[] =
+    L"ArssyutBridgeOverlayOwner";
+constexpr UINT_PTR kBridgeOverlayTimer = 1;
+
+void sync_overlay_locked(
+    NativeBridgeContext &context) noexcept;
+void commit_region_edit_locked(
+    NativeBridgeContext &context) noexcept;
+
+LRESULT CALLBACK bridge_overlay_owner_proc(
+    HWND window,
+    UINT message,
+    WPARAM wparam,
+    LPARAM lparam)
+{
+    auto *context =
+        reinterpret_cast<NativeBridgeContext *>(
+            GetWindowLongPtrW(
+                window,
+                GWLP_USERDATA));
+
+    if (message == WM_NCCREATE) {
+        const auto *create =
+            reinterpret_cast<
+                const CREATESTRUCTW *>(lparam);
+        context =
+            static_cast<NativeBridgeContext *>(
+                create->lpCreateParams);
+        SetWindowLongPtrW(
+            window,
+            GWLP_USERDATA,
+            reinterpret_cast<LONG_PTR>(
+                context));
+    }
+
+    if (!context) {
+        return DefWindowProcW(
+            window,
+            message,
+            wparam,
+            lparam);
+    }
+
+    if (message ==
+        arssyut::app::kUiRegionChanged) {
+        std::scoped_lock lock(
+            context->mutex);
+        commit_region_edit_locked(
+            *context);
+        return 0;
+    }
+
+    if (message == WM_TIMER &&
+        wparam == kBridgeOverlayTimer) {
+        std::scoped_lock lock(
+            context->mutex);
+        sync_overlay_locked(
+            *context);
+        return 0;
+    }
+
+    return DefWindowProcW(
+        window,
+        message,
+        wparam,
+        lparam);
+}
+
+[[nodiscard]] bool initialize_overlay_context(
+    NativeBridgeContext &context)
+{
+    context.overlay_instance =
+        GetModuleHandleW(
+            nullptr);
+
+    if (!context.overlay_instance)
+        return false;
+
+    WNDCLASSEXW window_class{};
+    window_class.cbSize =
+        sizeof(window_class);
+    window_class.lpfnWndProc =
+        bridge_overlay_owner_proc;
+    window_class.hInstance =
+        context.overlay_instance;
+    window_class.lpszClassName =
+        kBridgeOverlayOwnerClass;
+
+    if (!RegisterClassExW(
+            &window_class) &&
+        GetLastError() !=
+            ERROR_CLASS_ALREADY_EXISTS) {
+        return false;
+    }
+
+    context.overlay_owner =
+        CreateWindowExW(
+            0,
+            kBridgeOverlayOwnerClass,
+            L"",
+            0,
+            0,
+            0,
+            0,
+            0,
+            HWND_MESSAGE,
+            nullptr,
+            context.overlay_instance,
+            &context);
+
+    if (!context.overlay_owner)
+        return false;
+
+    context.overlay_thread_id =
+        GetCurrentThreadId();
+
+    auto overlay =
+        std::make_unique<
+            RecorderOverlay>();
+
+    if (!overlay->create(
+            context.overlay_instance,
+            context.overlay_owner,
+            RecorderOverlayCommands{})) {
+        DestroyWindow(
+            context.overlay_owner);
+        context.overlay_owner =
+            nullptr;
+        context.overlay_thread_id =
+            0;
+        return false;
+    }
+
+    context.overlay =
+        std::move(overlay);
+    return true;
+}
+
+void shutdown_overlay_context(
+    NativeBridgeContext &context) noexcept
+{
+    if (!context.overlay_owner)
+        return;
+
+    KillTimer(
+        context.overlay_owner,
+        kBridgeOverlayTimer);
+
+    if (context.overlay) {
+        context.overlay->
+            hide_toolbar();
+        context.overlay->
+            hide_boundary();
+        context.overlay.reset();
+    }
+
+    SetWindowLongPtrW(
+        context.overlay_owner,
+        GWLP_USERDATA,
+        0);
+
+    DestroyWindow(
+        context.overlay_owner);
+
+    context.overlay_owner =
+        nullptr;
+    context.overlay_thread_id =
+        0;
+}
+
+[[nodiscard]] bool ensure_region_mapping_locked(
+    NativeBridgeContext &context,
+    const RecorderTarget &target,
+    RegionCropMapping &mapping) noexcept
+{
+    if (target.kind !=
+        arssyut::windows::
+            CaptureTargetKind::Monitor) {
+        return false;
+    }
+
+    RECT bounds{};
+    if (!arssyut::app::
+            recorder_target_screen_rect(
+                target,
+                bounds)) {
+        return false;
+    }
+
+    RECT candidate{};
+
+    if (context.
+            region_screen_rect_valid &&
+        context.region_monitor ==
+            target.monitor) {
+        candidate =
+            context.region_screen_rect;
+    } else {
+        candidate =
+            arssyut::app::
+                default_region_rect(
+                    bounds);
+    }
+
+    candidate =
+        arssyut::app::
+            clamp_region_rect(
+                candidate,
+                bounds);
+
+    if (!arssyut::app::
+            map_region_to_crop(
+                bounds,
+                candidate,
+                mapping)) {
+        return false;
+    }
+
+    context.region_screen_rect =
+        mapping.screen_rect;
+    context.region_screen_rect_valid =
+        true;
+    context.region_monitor =
+        target.monitor;
+
+    return true;
+}
+
+void sync_overlay_locked(
+    NativeBridgeContext &context) noexcept
+{
+    if (!context.overlay ||
+        !context.overlay_owner ||
+        !context.overlay_visible ||
+        context.overlay_source_token == 0) {
+        if (context.overlay)
+            context.overlay->
+                hide_boundary();
+        if (context.overlay_owner) {
+            KillTimer(
+                context.overlay_owner,
+                kBridgeOverlayTimer);
+        }
+        return;
+    }
+
+    const auto *target =
+        resolve_source(
+            context,
+            context.overlay_source_token);
+
+    if (!target ||
+        !source_matches_mode(
+            *target,
+            context.overlay_capture_mode)) {
+        context.overlay->
+            hide_boundary();
+        context.overlay_visible =
+            false;
+        context.overlay_source_token =
+            0;
+        KillTimer(
+            context.overlay_owner,
+            kBridgeOverlayTimer);
+        return;
+    }
+
+    RECT base_rect{};
+
+    if (context.overlay_capture_mode ==
+        ARSSYUT_BRIDGE_CAPTURE_REGION) {
+        RegionCropMapping mapping;
+        if (!ensure_region_mapping_locked(
+                context,
+                *target,
+                mapping)) {
+            context.overlay->
+                hide_boundary();
+            return;
+        }
+        base_rect =
+            mapping.screen_rect;
+    } else if (!arssyut::app::
+                   recorder_target_screen_rect(
+                       *target,
+                       base_rect)) {
+        context.overlay->
+            hide_boundary();
+        return;
+    }
+
+    RecorderSnapshot recorder_snapshot{};
+    bool recording = false;
+
+    if (context.recorder) {
+        recorder_snapshot =
+            context.recorder->
+                snapshot();
+        recording =
+            active_state(
+                recorder_snapshot.state);
+    }
+
+    RECT visible_rect =
+        base_rect;
+
+    if (recording) {
+        visible_rect =
+            arssyut::app::
+                camera_viewport_rect(
+                    base_rect,
+                    recorder_snapshot.
+                        presentation_camera_center_x,
+                    recorder_snapshot.
+                        presentation_camera_center_y,
+                    recorder_snapshot.
+                        presentation_camera_zoom);
+    }
+
+    const bool editable =
+        context.overlay_capture_mode ==
+            ARSSYUT_BRIDGE_CAPTURE_REGION &&
+        !recording;
+
+    context.overlay->
+        show_boundary(
+            visible_rect,
+            recording,
+            editable);
+
+    if (recording) {
+        SetTimer(
+            context.overlay_owner,
+            kBridgeOverlayTimer,
+            33,
+            nullptr);
+    } else {
+        KillTimer(
+            context.overlay_owner,
+            kBridgeOverlayTimer);
+    }
+}
+
+void commit_region_edit_locked(
+    NativeBridgeContext &context) noexcept
+{
+    if (!context.overlay ||
+        !context.overlay_visible ||
+        context.overlay_capture_mode !=
+            ARSSYUT_BRIDGE_CAPTURE_REGION ||
+        !context.overlay->
+            boundary_editable()) {
+        return;
+    }
+
+    const auto *target =
+        resolve_source(
+            context,
+            context.overlay_source_token);
+
+    if (!target ||
+        target->kind !=
+            arssyut::windows::
+                CaptureTargetKind::Monitor) {
+        return;
+    }
+
+    RECT bounds{};
+    if (!arssyut::app::
+            recorder_target_screen_rect(
+                *target,
+                bounds)) {
+        return;
+    }
+
+    const RECT candidate =
+        arssyut::app::
+            clamp_region_rect(
+                context.overlay->
+                    boundary_rect(),
+                bounds);
+
+    RegionCropMapping mapping;
+    if (!arssyut::app::
+            map_region_to_crop(
+                bounds,
+                candidate,
+                mapping)) {
+        return;
+    }
+
+    context.region_screen_rect =
+        mapping.screen_rect;
+    context.region_screen_rect_valid =
+        true;
+    context.region_monitor =
+        target->monitor;
+
+    context.overlay->
+        show_boundary(
+            mapping.screen_rect,
+            false,
+            true);
+}
+
 } // namespace
 
 extern "C" {
@@ -410,7 +838,16 @@ ArssyutBridgeHandle ARSSYUT_BRIDGE_CALL
 arssyut_bridge_create() noexcept
 {
     try {
-        return new NativeBridgeContext();
+        auto context =
+            std::make_unique<
+                NativeBridgeContext>();
+
+        if (!initialize_overlay_context(
+                *context)) {
+            return nullptr;
+        }
+
+        return context.release();
     } catch (...) {
         return nullptr;
     }
@@ -420,7 +857,24 @@ void ARSSYUT_BRIDGE_CALL
 arssyut_bridge_destroy(
     ArssyutBridgeHandle handle) noexcept
 {
-    delete as_context(handle);
+    auto *context =
+        as_context(handle);
+
+    if (!context)
+        return;
+
+    if (context->overlay_thread_id != 0 &&
+        context->overlay_thread_id !=
+            GetCurrentThreadId()) {
+        // HWND ownership is UI-thread-affine. Normal Avalonia shutdown disposes
+        // on the owner thread; an off-thread GC fallback intentionally leaks
+        // until process teardown instead of risking a dangling native WndProc.
+        return;
+    }
+
+    shutdown_overlay_context(
+        *context);
+    delete context;
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
@@ -442,6 +896,20 @@ arssyut_bridge_refresh_sources(
 
         std::scoped_lock lock(
             context->mutex);
+
+        if (context->overlay) {
+            context->overlay->
+                hide_boundary();
+        }
+        if (context->overlay_owner) {
+            KillTimer(
+                context->overlay_owner,
+                kBridgeOverlayTimer);
+        }
+        context->overlay_visible =
+            false;
+        context->overlay_source_token =
+            0;
 
         context->sources =
             std::move(sources);
@@ -527,6 +995,147 @@ arssyut_bridge_source_at(
     copy_label(
         source->label,
         native.label);
+
+    return ARSSYUT_BRIDGE_OK;
+}
+
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_overlay_set_target(
+    ArssyutBridgeHandle handle,
+    std::uint32_t capture_mode,
+    std::uint64_t source_token) noexcept
+{
+    auto *context =
+        as_context(handle);
+    if (!context || source_token == 0)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    if (capture_mode ==
+        ARSSYUT_BRIDGE_CAPTURE_GAME) {
+        return ARSSYUT_BRIDGE_UNSUPPORTED;
+    }
+
+    std::scoped_lock lock(
+        context->mutex);
+
+    const auto *target =
+        resolve_source(
+            *context,
+            source_token);
+
+    if (!target)
+        return ARSSYUT_BRIDGE_STALE_TOKEN;
+
+    if (!source_matches_mode(
+            *target,
+            capture_mode)) {
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
+    context->overlay_capture_mode =
+        capture_mode;
+    context->overlay_source_token =
+        source_token;
+    context->overlay_visible =
+        true;
+
+    sync_overlay_locked(
+        *context);
+
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_overlay_hide(
+    ArssyutBridgeHandle handle) noexcept
+{
+    auto *context =
+        as_context(handle);
+    if (!context)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    std::scoped_lock lock(
+        context->mutex);
+
+    context->overlay_visible =
+        false;
+    context->overlay_source_token =
+        0;
+
+    if (context->overlay) {
+        context->overlay->
+            hide_boundary();
+    }
+
+    if (context->overlay_owner) {
+        KillTimer(
+            context->overlay_owner,
+            kBridgeOverlayTimer);
+    }
+
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_overlay_snapshot(
+    ArssyutBridgeHandle handle,
+    ArssyutBridgeOverlaySnapshotV1 *snapshot) noexcept
+{
+    auto *context =
+        as_context(handle);
+
+    if (!context || !snapshot)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    if (snapshot->struct_size <
+        sizeof(
+            ArssyutBridgeOverlaySnapshotV1)) {
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
+    std::scoped_lock lock(
+        context->mutex);
+
+    *snapshot =
+        ArssyutBridgeOverlaySnapshotV1{};
+    snapshot->struct_size =
+        sizeof(
+            ArssyutBridgeOverlaySnapshotV1);
+    snapshot->capture_mode =
+        context->overlay_capture_mode;
+    snapshot->source_token =
+        context->overlay_source_token;
+    snapshot->visible =
+        context->overlay_visible
+            ? 1
+            : 0;
+    snapshot->region_valid =
+        context->
+            region_screen_rect_valid
+            ? 1
+            : 0;
+
+    if (context->
+            region_screen_rect_valid) {
+        snapshot->region_rect =
+            to_bridge_rect(
+                context->
+                    region_screen_rect);
+    }
+
+    if (context->overlay &&
+        context->overlay_visible) {
+        snapshot->boundary_rect =
+            to_bridge_rect(
+                context->overlay->
+                    boundary_rect());
+        snapshot->editable =
+            context->overlay->
+                boundary_editable()
+                ? 1
+                : 0;
+    }
 
     return ARSSYUT_BRIDGE_OK;
 }
@@ -669,11 +1278,7 @@ arssyut_bridge_recorder_start(
     }
 
     if (request->capture_mode ==
-            ARSSYUT_BRIDGE_CAPTURE_REGION ||
-        request->capture_mode ==
-            ARSSYUT_BRIDGE_CAPTURE_GAME) {
-        // Region is deliberately bound in P6UI.4C so its existing native editor
-        // remains the one rectangle/crop authority. Game has no backend yet.
+        ARSSYUT_BRIDGE_CAPTURE_GAME) {
         return ARSSYUT_BRIDGE_UNSUPPORTED;
     }
 
@@ -692,6 +1297,8 @@ arssyut_bridge_recorder_start(
     try {
         std::unique_ptr<RecorderSession> previous;
         RecorderTarget target;
+        RegionCropMapping region_mapping{};
+        bool have_region_mapping = false;
 
         {
             std::scoped_lock lock(
@@ -713,6 +1320,26 @@ arssyut_bridge_recorder_start(
 
             target =
                 *resolved;
+
+            if (request->capture_mode ==
+                ARSSYUT_BRIDGE_CAPTURE_REGION) {
+                if (!ensure_region_mapping_locked(
+                        *context,
+                        *resolved,
+                        region_mapping)) {
+                    return
+                        ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+                }
+                have_region_mapping =
+                    true;
+            }
+
+            context->overlay_capture_mode =
+                request->capture_mode;
+            context->overlay_source_token =
+                request->source_token;
+            context->overlay_visible =
+                true;
 
             if (context->recorder) {
                 const auto snapshot =
@@ -745,6 +1372,19 @@ arssyut_bridge_recorder_start(
                 *request);
         config.output_size =
             {1920, 1080};
+
+        if (have_region_mapping) {
+            config.crop =
+                region_mapping.crop;
+            config.output_size =
+                region_mapping.output_size;
+            config.presentation_screen_rect =
+                region_mapping.screen_rect;
+            config.
+                presentation_screen_rect_valid =
+                    true;
+        }
+
         config.frame_rate =
             {request->frame_rate, 1};
         config.bitrate_bps =
@@ -792,6 +1432,9 @@ arssyut_bridge_recorder_start(
                 diagnostics;
             context->recorder =
                 std::move(recorder);
+
+            sync_overlay_locked(
+                *context);
         }
 
         return ARSSYUT_BRIDGE_OK;
@@ -826,6 +1469,9 @@ arssyut_bridge_recorder_stop(
 
     context->recorder->
         request_stop();
+
+    sync_overlay_locked(
+        *context);
 
     return ARSSYUT_BRIDGE_OK;
 }

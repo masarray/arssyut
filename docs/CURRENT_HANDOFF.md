@@ -3,7 +3,7 @@
 **Updated:** 2026-10-04  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.4B-A acceptance lock implemented / real-recording acceptance pending**  
+**Current engineering milestone:** **P6UI.4C native overlay / Region bridge implemented / CI + real GUI acceptance pending**  
 **Known-good head before this handoff document:**  
 `c38deafebf9f48a07482de4ab8af91d0f4d3337b`
 
@@ -223,32 +223,29 @@ A CI-green build does not replace this real-recording acceptance.
 
 ---
 
-## 7. Exact next engineering milestone
+## 7. Current / exact next engineering milestone
 
 ### P6UI.4C — native overlay / Region bridge
 
-**Do this next after the P6UI.4B-A real-recording acceptance gate is satisfied
-or after any reproduced acceptance bug has been corrected without engine
-regression.**
+The objective remains: do not invent a new overlay.
 
-The objective is not to invent a new overlay.
-
-Reuse the P6R native implementation.
-
-Required progression:
+P6UI.4C now implements the P6R reuse path:
 
 ```text
 Avalonia selected source
         |
         v
-existing bridge context
+bridge ABI v3
         |
         v
-native RecorderOverlay
+hidden native message owner
         |
-        +--> Display / Window capture boundary
+        v
+existing P6R RecorderOverlay
         |
-        +--> PresentationFrameState
+        +--> Display / Window click-through boundary
+        |
+        +--> RecorderSnapshot camera state
         |        |
         |        v
         |    Smart Zoom viewport boundary
@@ -256,11 +253,22 @@ native RecorderOverlay
         +--> existing native Region editor
                  |
                  v
-          canonical Region rect
+          canonical native Region rect
                  |
                  v
-          existing RecorderConfig crop
+          existing map_region_to_crop()
+                 |
+                 v
+          RecorderConfig.crop
 ```
+
+Automated regression now exercises the actual `ArssyutCaptureBoundary` HWND
+with `WM_NCHITTEST`, including the previous red-border input-blocking failure
+class.
+
+The next work inside P6UI.4C is **CI completion + real Windows acceptance +
+narrow correction of any reproduced Region correctness defect**. Do not replace
+the existing overlay/Region implementation.
 
 Constraints:
 - no Avalonia capture-boundary window;
@@ -280,14 +288,17 @@ was already substantially correct.
 
 The genuine remaining Region gap is real custom sizing/moving acceptance.
 
-Therefore P6UI.4C must focus on:
-- show existing native Region boundary from Avalonia;
-- move Region;
-- resize Region;
+P6UI.4C implementation now covers the bridge path. Real acceptance must focus
+on:
+- verify Display/Window border never blocks click, drag, hover or scroll;
+- move Region from the native pill;
+- resize Region from every edge/corner;
 - selected rectangle equals encoded crop;
-- region works on monitors with negative virtual-screen origins;
+- Region works on monitors with negative virtual-screen origins;
 - Smart Zoom boundary contracts/moves **inside the selected Region**;
-- no desktop input blocking outside Region editor interaction.
+- Region interior remains click-through;
+- Clean Screen / Vivid Presentation scene analysis is verified against the same
+  canonical Region crop.
 
 Do not restart Region from scratch.
 

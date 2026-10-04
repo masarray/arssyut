@@ -99,7 +99,10 @@ if(WIN32)
     add_library(arssyut_native_bridge SHARED
         src/bridge/native_bridge.cpp
         src/app/device_catalog.cpp
+        src/app/lucide_icons.cpp
+        src/app/recorder_overlay.cpp
         src/app/recorder_session.cpp
+        src/app/region_geometry.cpp
         src/app/source_catalog.cpp
     )
     target_include_directories(arssyut_native_bridge
@@ -125,6 +128,7 @@ if(WIN32)
             ole32
             psapi
             shell32
+            uxtheme
             propsys
             uuid
     )

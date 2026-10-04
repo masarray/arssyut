@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 2;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 3;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -134,6 +134,18 @@ struct ArssyutBridgeRecorderResultV1 {
     wchar_t diagnostics_path[ARSSYUT_BRIDGE_PATH_CAPACITY];
 };
 
+struct ArssyutBridgeOverlaySnapshotV1 {
+    std::uint32_t struct_size;
+    std::uint32_t capture_mode;
+    std::uint64_t source_token;
+    ArssyutBridgeRectV1 boundary_rect;
+    ArssyutBridgeRectV1 region_rect;
+    std::uint8_t visible;
+    std::uint8_t editable;
+    std::uint8_t region_valid;
+    std::uint8_t reserved0;
+};
+
 using ArssyutBridgeHandle = void *;
 
 ARSSYUT_BRIDGE_API
@@ -167,6 +179,24 @@ arssyut_bridge_source_at(
     ArssyutBridgeHandle handle,
     std::uint32_t index,
     ArssyutBridgeSourceV1 *source) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_overlay_set_target(
+    ArssyutBridgeHandle handle,
+    std::uint32_t capture_mode,
+    std::uint64_t source_token) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_overlay_hide(
+    ArssyutBridgeHandle handle) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_overlay_snapshot(
+    ArssyutBridgeHandle handle,
+    ArssyutBridgeOverlaySnapshotV1 *snapshot) noexcept;
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
