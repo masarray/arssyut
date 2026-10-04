@@ -153,6 +153,88 @@ int main()
         snapshot.camera_zoom >= 1.0f,
         "default camera zoom must be valid");
 
+    // P6UI.4B command semantics: stale tokens and unsupported inputs must
+    // fail before the recorder starts, rather than silently selecting another
+    // source or pretending an unavailable media stream was recorded.
+    ArssyutBridgeStartRequestV1 invalid_start{};
+    invalid_start.struct_size =
+        sizeof(invalid_start);
+    invalid_start.capture_mode =
+        ARSSYUT_BRIDGE_CAPTURE_DISPLAY;
+    invalid_start.source_token =
+        0;
+    invalid_start.frame_rate =
+        60;
+    invalid_start.visual_mode =
+        ARSSYUT_BRIDGE_VISUAL_PIXEL_ACCURATE;
+    invalid_start.flags =
+        ARSSYUT_BRIDGE_START_SMART_ZOOM |
+        ARSSYUT_BRIDGE_START_CLICK_VISUAL |
+        ARSSYUT_BRIDGE_START_SHORTCUT_KEYS;
+
+    require(
+        arssyut_bridge_recorder_start(
+            bridge,
+            &invalid_start) ==
+            ARSSYUT_BRIDGE_STALE_TOKEN,
+        "zero source token must be rejected as stale");
+
+    if (source_count > 0) {
+        ArssyutBridgeSourceV1 source{};
+        source.struct_size =
+            sizeof(source);
+
+        require(
+            arssyut_bridge_source_at(
+                bridge,
+                0,
+                &source) ==
+                ARSSYUT_BRIDGE_OK,
+            "source read for command test failed");
+
+        ArssyutBridgeStartRequestV1 unsupported{};
+        unsupported.struct_size =
+            sizeof(unsupported);
+        unsupported.capture_mode =
+            source.kind ==
+                    ARSSYUT_BRIDGE_SOURCE_MONITOR
+                ? ARSSYUT_BRIDGE_CAPTURE_DISPLAY
+                : ARSSYUT_BRIDGE_CAPTURE_WINDOW;
+        unsupported.source_token =
+            source.token;
+        unsupported.frame_rate =
+            60;
+        unsupported.visual_mode =
+            ARSSYUT_BRIDGE_VISUAL_PIXEL_ACCURATE;
+        unsupported.flags =
+            ARSSYUT_BRIDGE_START_MICROPHONE |
+            ARSSYUT_BRIDGE_START_SMART_ZOOM;
+
+        require(
+            arssyut_bridge_recorder_start(
+                bridge,
+                &unsupported) ==
+                ARSSYUT_BRIDGE_UNSUPPORTED,
+            "unbound microphone backend must fail explicitly");
+    }
+
+    require(
+        arssyut_bridge_recorder_stop(
+            bridge) ==
+            ARSSYUT_BRIDGE_INVALID_STATE,
+        "Stop while idle must report invalid state");
+
+    ArssyutBridgeRecorderResultV1 result{};
+    result.struct_size =
+        sizeof(result);
+
+    require(
+        arssyut_bridge_recorder_result(
+            bridge,
+            &result) ==
+            ARSSYUT_BRIDGE_OK,
+        "recorder result snapshot failed");
+
     ArssyutBridgeSourceV1 invalid_source{};
     invalid_source.struct_size =
         sizeof(invalid_source);
@@ -168,7 +250,7 @@ int main()
     destroy();
 
     std::cout
-        << "P6UI.4A native bridge ABI checks passed.\n";
+        << "P6UI.4A/4B native bridge ABI and command checks passed.\n";
 
     return 0;
 }
