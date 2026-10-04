@@ -951,6 +951,24 @@ P6UI.4C native overlay / Region bridge:
 
 See `docs/adr/ADR-008-native-ui-bridge.md`.
 
+**P6UI.4C-A status: IMPLEMENTED / CI + REAL GUI ACCEPTANCE PENDING**
+
+Product-reality / visual lock:
+- normal product mode never silently substitutes the UI simulator for a missing
+  native bridge;
+- Record is disabled when the native engine/source authority is unavailable;
+- staged audio/microphone/camera/Game/Pause and fixed policy values are not presented
+  as fake active controls;
+- Settings right-side controls use one aligned column and descriptive copy wraps
+  before that column;
+- preview-only badges, fake meters and demonstration device choices are removed
+  from normal product presentation;
+- Windows artifact is one product executable with the bridge embedded as a
+  managed resource and loaded from a content-addressed local cache;
+- CI rejects an external loose bridge DLL and launches the packaged executable
+  with `--bridge-required`;
+- P5/P6R engine implementation remains untouched.
+
 #### P6UI.5 — real floating controller + transport
 
 - keep authoritative recorder state projected from native snapshots;

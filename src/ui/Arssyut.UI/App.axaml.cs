@@ -54,6 +54,21 @@ public sealed partial class App : Application
             var previewSettings =
                 new SettingsPreviewState();
 
+            var explicitUiPreview =
+                Array.Exists(
+                    args,
+                    arg => string.Equals(
+                        arg,
+                        "--ui-preview",
+                        StringComparison.OrdinalIgnoreCase));
+
+            var allowInteractionPreview =
+                explicitUiPreview ||
+                controllerPreview ||
+                stressLongNames ||
+                settingsPreview ||
+                settingsStress;
+
             var bridgeRequired =
                 Array.Exists(
                     args,
@@ -89,7 +104,8 @@ public sealed partial class App : Application
                         nativeBridge,
                         bridgeAvailability,
                         stressLongNames,
-                        controllerPreview);
+                        controllerPreview,
+                        allowInteractionPreview);
         }
 
         base.OnFrameworkInitializationCompleted();

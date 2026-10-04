@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Avalonia;
 using Arssyut.UI.Preview;
 
@@ -10,6 +13,7 @@ public enum NativeBridgeAvailability
 {
     Available,
     MissingLibrary,
+    LibraryLoadFailed,
     IncompatibleAbi,
     InitializationFailed
 }
@@ -104,14 +108,194 @@ public sealed class NativeBridgeClient : IDisposable
 {
     private const string LibraryName =
         "arssyut_native_bridge";
+    private const string EmbeddedBridgeResource =
+        "Arssyut.Native.arssyut_native_bridge.dll";
     private const uint ExpectedAbi = 3;
 
+    private static readonly object NativeLoadGate =
+        new();
+    private static IntPtr _bundledLibraryHandle;
+    private static string? _bundledLoadError;
+
     private IntPtr _handle;
+
+    static NativeBridgeClient()
+    {
+        NativeLibrary.SetDllImportResolver(
+            typeof(NativeBridgeClient).Assembly,
+            ResolveNativeLibrary);
+    }
 
     private NativeBridgeClient(
         IntPtr handle)
     {
         _handle = handle;
+    }
+
+
+    private static IntPtr ResolveNativeLibrary(
+        string libraryName,
+        Assembly assembly,
+        DllImportSearchPath? searchPath)
+    {
+        if (!OperatingSystem.IsWindows() ||
+            !string.Equals(
+                libraryName,
+                LibraryName,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return IntPtr.Zero;
+        }
+
+        lock (NativeLoadGate)
+        {
+            if (_bundledLibraryHandle !=
+                IntPtr.Zero)
+            {
+                return _bundledLibraryHandle;
+            }
+
+            try
+            {
+                using var resource =
+                    assembly.GetManifestResourceStream(
+                        EmbeddedBridgeResource);
+
+                if (resource is null)
+                {
+                    // Developer builds may still carry the bridge beside the
+                    // executable. Returning zero preserves normal P/Invoke
+                    // resolution for that case.
+                    return IntPtr.Zero;
+                }
+
+                using var buffer =
+                    new MemoryStream();
+
+                resource.CopyTo(
+                    buffer);
+
+                var bytes =
+                    buffer.ToArray();
+
+                var digest =
+                    SHA256.HashData(
+                        bytes);
+                var digestText =
+                    Convert.ToHexString(
+                        digest);
+
+                var root =
+                    Path.Combine(
+                        Environment.GetFolderPath(
+                            Environment.SpecialFolder.
+                                LocalApplicationData),
+                        "Arssyut",
+                        "Native",
+                        digestText[..16]);
+
+                Directory.CreateDirectory(
+                    root);
+
+                var path =
+                    Path.Combine(
+                        root,
+                        "arssyut_native_bridge.dll");
+
+                if (!File.Exists(path) ||
+                    !FileMatchesHash(
+                        path,
+                        digest))
+                {
+                    var temporary =
+                        path +
+                        "." +
+                        Environment.ProcessId +
+                        ".tmp";
+
+                    File.WriteAllBytes(
+                        temporary,
+                        bytes);
+
+                    try
+                    {
+                        File.Move(
+                            temporary,
+                            path,
+                            overwrite: true);
+                    }
+                    finally
+                    {
+                        if (File.Exists(
+                                temporary))
+                        {
+                            File.Delete(
+                                temporary);
+                        }
+                    }
+                }
+
+                _bundledLibraryHandle =
+                    NativeLibrary.Load(
+                        path);
+
+                _bundledLoadError =
+                    null;
+
+                return
+                    _bundledLibraryHandle;
+            }
+            catch (Exception error)
+            {
+                _bundledLoadError =
+                    error.GetType().Name +
+                    ": " +
+                    error.Message;
+
+                return IntPtr.Zero;
+            }
+        }
+    }
+
+    private static bool FileMatchesHash(
+        string path,
+        byte[] expected)
+    {
+        try
+        {
+            using var file =
+                File.OpenRead(
+                    path);
+
+            var actual =
+                SHA256.HashData(
+                    file);
+
+            return CryptographicOperations.
+                FixedTimeEquals(
+                    actual,
+                    expected);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool HasEmbeddedBridge()
+    {
+        try
+        {
+            return typeof(NativeBridgeClient).
+                Assembly.
+                GetManifestResourceInfo(
+                    EmbeddedBridgeResource) is
+                    not null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static NativeBridgeAvailability TryCreate(
@@ -150,7 +334,20 @@ public sealed class NativeBridgeClient : IDisposable
         }
         catch (DllNotFoundException)
         {
-            return NativeBridgeAvailability.MissingLibrary;
+            var deployedBridge =
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "arssyut_native_bridge.dll");
+
+            return File.Exists(
+                       deployedBridge) ||
+                   HasEmbeddedBridge() ||
+                   !string.IsNullOrWhiteSpace(
+                       _bundledLoadError)
+                ? NativeBridgeAvailability.
+                    LibraryLoadFailed
+                : NativeBridgeAvailability.
+                    MissingLibrary;
         }
         catch (EntryPointNotFoundException)
         {

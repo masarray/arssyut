@@ -45,17 +45,6 @@
               Text="Settings"
               FontSize="12.5"
               FontWeight="SemiBold" />
-          <Border
-              Margin="4,0,0,0"
-              Padding="7,3"
-              CornerRadius="99"
-              Background="{DynamicResource ArBrush.RecordSoft}">
-            <TextBlock
-                Text="UI PREVIEW"
-                FontSize="9"
-                FontWeight="SemiBold"
-                Foreground="{DynamicResource ArBrush.Record}" />
-          </Border>
         </StackPanel>
 
         <Button
@@ -155,8 +144,8 @@
             </StackPanel>
 
             <StackPanel Grid.Row="2" Margin="10,10,6,4" Spacing="2">
-              <TextBlock Text="P6UI.3 preview" Classes="micro" />
-              <TextBlock Text="Native settings are unchanged" FontSize="9.5" Foreground="{DynamicResource ArBrush.TextDim}" />
+              <TextBlock Text="Native product shell" Classes="micro" />
+              <TextBlock Text="Unavailable features stay locked" FontSize="9.5" Foreground="{DynamicResource ArBrush.TextDim}" />
             </StackPanel>
           </Grid>
         </Border>
@@ -198,8 +187,9 @@
                         <TextBlock Text="Show countdown" FontWeight="Medium" />
                         <TextBlock Text="Not active in the current native transport; recording starts immediately." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" IsEnabled="False" OnContent="" OffContent=""
-                                    AutomationProperties.Name="Show countdown" />
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Off" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
 
@@ -209,8 +199,9 @@
                         <TextBlock Text="Hide main window while recording" FontWeight="Medium" />
                         <TextBlock Text="Currently locked on while native recording is active." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" IsEnabled="False" OnContent="" OffContent=""
-                                    AutomationProperties.Name="Hide main window while recording" />
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="On" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
 
@@ -220,23 +211,21 @@
                         <TextBlock Text="Show recording boundary" FontWeight="Medium" />
                         <TextBlock Text="Native RecorderOverlay follows the selected source and Smart Zoom viewport." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" IsEnabled="False" OnContent="" OffContent=""
-                                    AutomationProperties.Name="Show recording boundary" />
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="On" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
 
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,190">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="After recording" FontWeight="Medium" />
                         <TextBlock Text="Saved result actions are fixed during native recording acceptance." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0" IsEnabled="False"
-                                AutomationProperties.Name="After recording action">
-                        <ComboBoxItem Content="Show result actions" />
-                        <ComboBoxItem Content="Open folder" />
-                        <ComboBoxItem Content="Stay ready" />
-                      </ComboBox>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Result actions" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
                 </StackPanel>
@@ -244,7 +233,7 @@
                 <!-- Recording -->
                 <StackPanel x:Name="PageRecording">
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,190">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Frame rate" FontWeight="Medium" />
                         <TextBlock Text="Output cadence used by the native recorder." Classes="micro" />
@@ -259,7 +248,7 @@
                   </Border>
 
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,190">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Visual style" FontWeight="Medium" />
                         <TextBlock Text="Presentation processing without changing capture geometry." Classes="micro" />
@@ -287,31 +276,26 @@
                   </Border>
 
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,190">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Recording controller" FontWeight="Medium" />
                         <TextBlock Text="Floating bar is the locked transport surface for this milestone." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0" IsEnabled="False"
-                                AutomationProperties.Name="Recording controller">
-                        <ComboBoxItem Content="Floating bar" />
-                        <ComboBoxItem Content="Hidden" />
-                      </ComboBox>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Floating bar" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
 
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,190">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Quality target" FontWeight="Medium" />
                         <TextBlock Text="Native encoder policy is locked by the accepted engine baseline." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="1" IsEnabled="False"
-                                AutomationProperties.Name="Quality target">
-                        <ComboBoxItem Content="Compact" />
-                        <ComboBoxItem Content="Balanced" />
-                        <ComboBoxItem Content="High detail" />
-                      </ComboBox>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Engine default" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
                 </StackPanel>
@@ -343,17 +327,14 @@
                   </Border>
 
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,190">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="File naming" FontWeight="Medium" />
                         <TextBlock Text="Native bridge currently uses timestamped names with the visual-mode suffix." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0" IsEnabled="False"
-                                AutomationProperties.Name="File naming policy">
-                        <ComboBoxItem Content="Date + time" />
-                        <ComboBoxItem Content="Application + time" />
-                        <ComboBoxItem Content="Sequential number" />
-                      </ComboBox>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Date + time" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
 
@@ -375,229 +356,65 @@
                         <TextBlock Text="Open folder after recording" FontWeight="Medium" />
                         <TextBlock Text="Use the Saved Open / Folder actions; automatic reveal is not active yet." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" IsEnabled="False" OnContent="" OffContent=""
-                                    AutomationProperties.Name="Open folder after recording" />
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Manual" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
                 </StackPanel>
 
                 <!-- Audio -->
-                <StackPanel x:Name="PageAudio" IsVisible="False" IsEnabled="False">
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,228" ColumnSpacing="14">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="System audio" FontWeight="Medium" />
-                        <TextBlock Text="Desktop playback source and visual level preview." Classes="micro" />
-                      </StackPanel>
-
-                      <StackPanel Grid.Column="1" Spacing="7">
-                        <ComboBox
-                            x:Name="SystemAudioDeviceCombo"
-                            Classes="ar-select"
-                            SelectedIndex="0"
-                            AutomationProperties.Name="System audio device">
-                          <ComboBoxItem Content="Default playback device" />
-                          <ComboBoxItem Content="Speakers (Realtek(R) Audio)" />
-                          <ComboBoxItem Content="Hi-Fi Cable Input (VB-Audio)" />
-                        </ComboBox>
-
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                          <ProgressBar
-                              x:Name="SystemMeter"
-                              Classes="audio-meter"
-                              Minimum="0"
-                              Maximum="100"
-                              Value="58"
-                              VerticalAlignment="Center" />
-                          <TextBlock
-                              x:Name="SystemDbText"
-                              Grid.Column="1"
-                              Text="-21 dB"
-                              Classes="micro"
-                              FontFeatures="+tnum"
-                              VerticalAlignment="Center" />
-                        </Grid>
+                <StackPanel x:Name="PageAudio" IsVisible="False">
+                  <Border Classes="capability-lock">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                      <Border Width="34" Height="34" CornerRadius="9"
+                              Background="{DynamicResource ArBrush.Surface3}">
+                        <LucideIcon Kind="Volume2" Size="17" StrokeWidth="1.8"
+                                    Foreground="{DynamicResource ArBrush.TextSecondary}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                      <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Text="Native audio recording is not connected yet" FontWeight="SemiBold" />
+                        <TextBlock Text="Arssyut will not show simulated meters or selectable fake devices in product mode. System audio and microphone stay unavailable until the real WASAPI/AAC path is bound." Classes="micro" TextWrapping="Wrap" />
                       </StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,228" ColumnSpacing="14">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="Microphone" FontWeight="Medium" />
-                        <TextBlock Text="Narration source and visual input-level preview." Classes="micro" />
-                      </StackPanel>
-
-                      <StackPanel Grid.Column="1" Spacing="7">
-                        <ComboBox
-                            x:Name="MicrophoneDeviceCombo"
-                            Classes="ar-select"
-                            SelectedIndex="0"
-                            SelectionChanged="MicrophoneDevice_OnSelectionChanged"
-                            AutomationProperties.Name="Microphone device">
-                          <ComboBoxItem Content="Hi-Fi Cable Output (VB-Audio)" />
-                          <ComboBoxItem Content="Microphone Array (Realtek(R) Audio)" />
-                          <ComboBoxItem Content="Professional USB Condenser Microphone — Conference Room Interface Channel 1/2" />
-                        </ComboBox>
-
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                          <ProgressBar
-                              x:Name="MicMeter"
-                              Classes="audio-meter"
-                              Minimum="0"
-                              Maximum="100"
-                              Value="42"
-                              VerticalAlignment="Center" />
-                          <TextBlock
-                              x:Name="MicDbText"
-                              Grid.Column="1"
-                              Text="-27 dB"
-                              Classes="micro"
-                              FontFeatures="+tnum"
-                              VerticalAlignment="Center" />
-                        </Grid>
-                      </StackPanel>
-                    </Grid>
-                  </Border>
-
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="Include narration" FontWeight="Medium" />
-                        <TextBlock Text="Native audio backend is not connected yet; recording rejects narration explicitly." Classes="micro" />
-                      </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" IsEnabled="False" OnContent="" OffContent=""
-                                    AutomationProperties.Name="Include microphone narration" />
-                    </Grid>
-                  </Border>
-
-                  <TextBlock
-                      Margin="0,10,0,0"
-                      Text="Meters are deterministic UI previews; they are not reading live devices yet."
-                      Classes="micro" />
+                  <Grid IsVisible="False">
+                    <ComboBox x:Name="SystemAudioDeviceCombo" />
+                    <ProgressBar x:Name="SystemMeter" />
+                    <TextBlock x:Name="SystemDbText" />
+                    <ComboBox x:Name="MicrophoneDeviceCombo" SelectionChanged="MicrophoneDevice_OnSelectionChanged" />
+                    <ProgressBar x:Name="MicMeter" />
+                    <TextBlock x:Name="MicDbText" />
+                  </Grid>
                 </StackPanel>
 
                 <!-- Camera -->
-                <StackPanel x:Name="PageCamera" IsVisible="False" IsEnabled="False">
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,228">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="Camera device" FontWeight="Medium" />
-                        <TextBlock Text="Picture-in-picture source used by the future native bridge." Classes="micro" />
-                      </StackPanel>
-                      <ComboBox
-                          x:Name="CameraDeviceCombo"
-                          Grid.Column="1"
-                          Classes="ar-select"
-                          SelectedIndex="0"
-                          SelectionChanged="CameraDevice_OnSelectionChanged"
-                          AutomationProperties.Name="Camera device">
-                        <ComboBoxItem Content="USB2.0 HD UVC Webcam" />
-                        <ComboBoxItem Content="OBS Virtual Camera" />
-                        <ComboBoxItem Content="4K Conference Camera — Ultra Wide Room Camera with AI Auto Framing" />
-                      </ComboBox>
-                    </Grid>
-                  </Border>
-
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="Picture-in-picture placement" FontWeight="Medium" />
-                        <TextBlock Text="Choose the default camera anchor inside the captured frame." Classes="micro" />
-
-                        <StackPanel
-                            Margin="0,11,0,0"
-                            Orientation="Horizontal"
-                            Spacing="6">
-                          <Button x:Name="AnchorTopLeft" Classes="camera-anchor" Tag="TopLeft" Click="CameraPlacement_OnClick"
-                                  AutomationProperties.Name="Place camera top left">
-                            <LucideIcon Kind="CircleDot" Size="13" StrokeWidth="1.8"
-                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                          </Button>
-                          <Button x:Name="AnchorTopRight" Classes="camera-anchor" Tag="TopRight" Click="CameraPlacement_OnClick"
-                                  AutomationProperties.Name="Place camera top right">
-                            <LucideIcon Kind="CircleDot" Size="13" StrokeWidth="1.8"
-                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                          </Button>
-                          <Button x:Name="AnchorBottomLeft" Classes="camera-anchor" Tag="BottomLeft" Click="CameraPlacement_OnClick"
-                                  AutomationProperties.Name="Place camera bottom left">
-                            <LucideIcon Kind="CircleDot" Size="13" StrokeWidth="1.8"
-                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                          </Button>
-                          <Button x:Name="AnchorBottomRight" Classes="camera-anchor selected" Tag="BottomRight" Click="CameraPlacement_OnClick"
-                                  AutomationProperties.Name="Place camera bottom right">
-                            <LucideIcon Kind="CircleDot" Size="13" StrokeWidth="1.8"
-                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                          </Button>
-                        </StackPanel>
-                      </StackPanel>
-
-                      <Border
-                          Grid.Column="1"
-                          Classes="camera-preview">
-                        <Grid Margin="8">
-                          <Border
-                              Background="#181E27"
-                              CornerRadius="6">
-                            <Grid>
-                              <Border
-                                  Height="1"
-                                  Margin="12,0"
-                                  Background="#23FFFFFF"
-                                  VerticalAlignment="Center" />
-                              <Border
-                                  Width="1"
-                                  Margin="0,10"
-                                  Background="#23FFFFFF"
-                                  HorizontalAlignment="Center" />
-                              <LucideIcon
-                                  Kind="Monitor"
-                                  Size="28"
-                                  StrokeWidth="1.2"
-                                  Foreground="#4AFFFFFF"
-                                  HorizontalAlignment="Center"
-                                  VerticalAlignment="Center" />
-                            </Grid>
-                          </Border>
-
-                          <Border
-                              x:Name="CameraPreviewBadge"
-                              Width="54"
-                              Height="34"
-                              Margin="7"
-                              CornerRadius="7"
-                              Background="{DynamicResource ArBrush.RecordSoft}"
-                              BorderBrush="{DynamicResource ArBrush.Record}"
-                              BorderThickness="1"
-                              HorizontalAlignment="Right"
-                              VerticalAlignment="Bottom">
-                            <LucideIcon
-                                Kind="Camera"
-                                Size="15"
-                                StrokeWidth="1.8"
-                                Foreground="{DynamicResource ArBrush.Record}"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center" />
-                          </Border>
-                        </Grid>
+                <StackPanel x:Name="PageCamera" IsVisible="False">
+                  <Border Classes="capability-lock">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                      <Border Width="34" Height="34" CornerRadius="9"
+                              Background="{DynamicResource ArBrush.Surface3}">
+                        <LucideIcon Kind="Camera" Size="17" StrokeWidth="1.8"
+                                    Foreground="{DynamicResource ArBrush.TextSecondary}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                       </Border>
+                      <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Text="Camera compositor backend is not connected yet" FontWeight="SemiBold" />
+                        <TextBlock Text="Device selection, placement and size controls return only when the real Media Foundation camera path can change the encoded recording." Classes="micro" TextWrapping="Wrap" />
+                      </StackPanel>
                     </Grid>
                   </Border>
 
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,190">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="Camera size" FontWeight="Medium" />
-                        <TextBlock Text="Default visual size of the picture-in-picture tile." Classes="micro" />
-                      </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="1"
-                                AutomationProperties.Name="Camera picture in picture size">
-                        <ComboBoxItem Content="Small" />
-                        <ComboBoxItem Content="Medium" />
-                        <ComboBoxItem Content="Large" />
-                      </ComboBox>
-                    </Grid>
-                  </Border>
+                  <Grid IsVisible="False">
+                    <ComboBox x:Name="CameraDeviceCombo" SelectionChanged="CameraDevice_OnSelectionChanged" />
+                    <Button x:Name="AnchorTopLeft" Tag="TopLeft" Click="CameraPlacement_OnClick" />
+                    <Button x:Name="AnchorTopRight" Tag="TopRight" Click="CameraPlacement_OnClick" />
+                    <Button x:Name="AnchorBottomLeft" Tag="BottomLeft" Click="CameraPlacement_OnClick" />
+                    <Button x:Name="AnchorBottomRight" Tag="BottomRight" Click="CameraPlacement_OnClick" />
+                    <Border x:Name="CameraPreviewBadge" />
+                  </Grid>
                 </StackPanel>
 
                 <!-- Mouse and keystroke -->
@@ -627,16 +444,14 @@
                   </Border>
 
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,190">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Pointer visibility" FontWeight="Medium" />
                         <TextBlock Text="Native Windows cursor is locked as the authoritative captured cursor." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0" IsEnabled="False"
-                                AutomationProperties.Name="Pointer visibility">
-                        <ComboBoxItem Content="Native cursor" />
-                        <ComboBoxItem Content="Hide cursor" />
-                      </ComboBox>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Native cursor" FontSize="11" />
+                      </Border>
                     </Grid>
                   </Border>
                 </StackPanel>
@@ -644,10 +459,10 @@
                 <!-- Hotkeys -->
                 <StackPanel x:Name="PageHotkeys" IsVisible="False">
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,Auto">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Record / Stop" FontWeight="Medium" />
-                        <TextBlock Text="Focused-shell shortcut preview; global registration lands with the transport milestone." Classes="micro" />
+                        <TextBlock Text="Current shell shortcut. Global registration will replace focused-window handling in the transport milestone." Classes="micro" />
                       </StackPanel>
                       <Button
                           x:Name="RecordHotkeyButton"
@@ -661,107 +476,44 @@
                     </Grid>
                   </Border>
 
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="Pause / Resume" FontWeight="Medium" />
-                        <TextBlock Text="Transport shortcut for the future native paused state." Classes="micro" />
-                      </StackPanel>
-                      <Button
-                          x:Name="PauseHotkeyButton"
-                          Grid.Column="1"
-                          Classes="hotkey"
-                          Tag="Pause"
-                          Click="Hotkey_OnClick"
-                          AutomationProperties.Name="Edit Pause and Resume shortcut">
-                        <TextBlock x:Name="PauseHotkeyText" Text="F10" FontFeatures="+tnum" />
-                      </Button>
-                    </Grid>
+                  <Border Classes="capability-lock" Margin="0,12,0,0">
+                    <TextBlock Text="Pause/Resume and microphone hotkeys stay hidden until those native commands exist. Product mode does not expose shortcuts that cannot perform their advertised action." Classes="micro" TextWrapping="Wrap" />
                   </Border>
 
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="Toggle microphone" FontWeight="Medium" />
-                        <TextBlock Text="Quickly mute or restore narration while recording." Classes="micro" />
-                      </StackPanel>
-                      <Button
-                          x:Name="MicrophoneHotkeyButton"
-                          Grid.Column="1"
-                          Classes="hotkey"
-                          Tag="Microphone"
-                          Click="Hotkey_OnClick"
-                          AutomationProperties.Name="Edit microphone shortcut">
-                        <TextBlock x:Name="MicrophoneHotkeyText" Text="Ctrl+F9" FontFeatures="+tnum" />
-                      </Button>
-                    </Grid>
-                  </Border>
-
-                  <Border
-                      Margin="0,10,0,0"
-                      Padding="10,8"
-                      CornerRadius="8"
-                      Background="{DynamicResource ArBrush.Surface2}">
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                      <LucideIcon
-                          Kind="Keyboard"
-                          Size="14"
-                          StrokeWidth="1.7"
-                          Foreground="{DynamicResource ArBrush.TextSecondary}"
-                          VerticalAlignment="Center" />
-                      <TextBlock
-                          x:Name="HotkeyFeedbackText"
-                          Grid.Column="1"
-                          Text="Click a shortcut, then press the new key combination. Esc cancels capture."
-                          Classes="micro"
-                          VerticalAlignment="Center"
-                          TextWrapping="Wrap" />
-                    </Grid>
-                  </Border>
+                  <Grid IsVisible="False">
+                    <Button x:Name="PauseHotkeyButton" Tag="Pause" Click="Hotkey_OnClick">
+                      <TextBlock x:Name="PauseHotkeyText" Text="F10" />
+                    </Button>
+                    <Button x:Name="MicrophoneHotkeyButton" Tag="Microphone" Click="Hotkey_OnClick">
+                      <TextBlock x:Name="MicrophoneHotkeyText" Text="Ctrl+F9" />
+                    </Button>
+                    <TextBlock x:Name="HotkeyFeedbackText" />
+                  </Grid>
                 </StackPanel>
 
                 <!-- Advanced -->
                 <StackPanel x:Name="PageAdvanced" IsVisible="False">
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,Auto">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
                       <StackPanel Spacing="3">
-                        <TextBlock Text="Diagnostics sidecar" FontWeight="Medium" />
-                        <TextBlock Text="Native recorder diagnostics are always emitted during acceptance hardening." Classes="micro" />
-                      </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" IsEnabled="False" OnContent="" OffContent=""
-                                    AutomationProperties.Name="Diagnostics sidecar" />
-                    </Grid>
-                  </Border>
-
-                  <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <StackPanel Spacing="3">
-                        <TextBlock Text="Hardware path" FontWeight="Medium" />
-                        <TextBlock Text="Capture and encoder authority remains in the native C++ core." Classes="micro" />
+                        <TextBlock Text="Diagnostics" FontWeight="Medium" />
+                        <TextBlock Text="Native recorder diagnostics remain enabled while product acceptance is being hardened." Classes="micro" />
                       </StackPanel>
                       <Border Grid.Column="1" Classes="value-pill">
-                        <TextBlock Text="Native · locked" FontSize="11" Foreground="{DynamicResource ArBrush.Success}" />
+                        <TextBlock Text="Always on" FontSize="11" />
                       </Border>
                     </Grid>
                   </Border>
 
                   <Border Classes="setting-row">
-                    <Grid ColumnDefinitions="*,Auto">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
                       <StackPanel Spacing="3">
-                        <TextBlock Text="Reset UI preview" FontWeight="Medium" />
-                        <TextBlock Text="Restore preview-only Settings values; native settings are untouched." Classes="micro" />
+                        <TextBlock Text="Engine authority" FontWeight="Medium" />
+                        <TextBlock Text="Capture, Region, compositor, timing and encoder remain in the native C++ engine." Classes="micro" />
                       </StackPanel>
-                      <Button
-                          Grid.Column="1"
-                          Classes="ar"
-                          Click="ResetPreview_OnClick"
-                          AutomationProperties.Name="Reset Settings preview">
-                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                          <LucideIcon Kind="RotateCcw" Size="14" StrokeWidth="1.8"
-                                      Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                          <TextBlock Text="Reset preview" />
-                        </StackPanel>
-                      </Button>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Native" FontSize="11" Foreground="{DynamicResource ArBrush.Success}" />
+                      </Border>
                     </Grid>
                   </Border>
                 </StackPanel>
@@ -774,13 +526,14 @@
                 Margin="0,10,0,0"
                 ColumnDefinitions="*,Auto">
               <TextBlock
-                  Text="Recorder choices apply to the next native recording; audio/camera compositor backends remain pending."
+                  Text="Changes apply to the next recording. Unavailable capabilities remain visibly locked."
                   Classes="micro"
                   VerticalAlignment="Center" />
               <TextBlock
                   x:Name="PreviewStatusText"
                   Grid.Column="1"
-                  Text="Visual acceptance"
+                  IsVisible="False"
+                  Text=""
                   FontSize="9.5"
                   Foreground="{DynamicResource ArBrush.TextDim}"
                   VerticalAlignment="Center" />

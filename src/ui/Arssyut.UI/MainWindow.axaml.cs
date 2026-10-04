@@ -26,6 +26,7 @@ public sealed partial class MainWindow : Window
     private readonly NativeBridgeClient? _nativeBridge;
     private readonly NativeBridgeAvailability _bridgeAvailability;
     private readonly bool _stressLongNames;
+    private readonly bool _allowInteractionPreview;
 
     private readonly List<PreviewSourceItem> _sources = [];
     private RecordingControllerWindow? _controller;
@@ -48,12 +49,15 @@ public sealed partial class MainWindow : Window
         NativeBridgeClient? nativeBridge,
         NativeBridgeAvailability bridgeAvailability,
         bool stressLongNames = false,
-        bool autoStartRecording = false)
+        bool autoStartRecording = false,
+        bool allowInteractionPreview = false)
     {
         _settings = settings;
         _nativeBridge = nativeBridge;
         _bridgeAvailability = bridgeAvailability;
         _stressLongNames = stressLongNames;
+        _allowInteractionPreview =
+            allowInteractionPreview;
 
         InitializeComponent();
 
@@ -86,7 +90,8 @@ public sealed partial class MainWindow : Window
             CameraOptionLong
         ];
 
-        if (_nativeBridge is null)
+        if (_nativeBridge is null &&
+            _allowInteractionPreview)
         {
             _session.Changed +=
                 (_, _) => ApplySessionState();
@@ -106,11 +111,15 @@ public sealed partial class MainWindow : Window
                     ApplyLongNameStressPreview();
 
                 RefreshInputLabels();
+                ApplyProductCapabilitySurface();
                 RefreshSettingsSurface();
                 ApplySessionState();
 
-                if (autoStartRecording)
+                if (autoStartRecording &&
+                    _allowInteractionPreview)
+                {
                     StartInteractionPreview();
+                }
             };
 
         Closed +=
@@ -511,6 +520,7 @@ public sealed partial class MainWindow : Window
                 BridgeUnavailableMessage();
             SourceIcon.Kind =
                 LucideIconKind.Monitor;
+            UpdateRecordAvailability();
             UpdateReadyDetail();
             return;
         }
@@ -568,6 +578,7 @@ public sealed partial class MainWindow : Window
             }
         }
 
+        UpdateRecordAvailability();
         UpdateReadyDetail();
     }
 
@@ -772,6 +783,37 @@ public sealed partial class MainWindow : Window
 
     private void RefreshInputLabels()
     {
+        if (!_allowInteractionPreview)
+        {
+            SystemAudioToggle.IsChecked =
+                false;
+            SystemAudioToggle.IsEnabled =
+                false;
+
+            MicToggle.IsChecked =
+                false;
+            MicToggle.IsEnabled =
+                false;
+            MicDeviceButton.IsEnabled =
+                false;
+            MicDeviceText.Text =
+                _nativeBridge is null
+                    ? "Engine unavailable"
+                    : "Backend pending";
+
+            CameraToggle.IsChecked =
+                false;
+            CameraToggle.IsEnabled =
+                false;
+            CameraDeviceButton.IsEnabled =
+                false;
+            CameraDeviceText.Text =
+                _nativeBridge is null
+                    ? "Engine unavailable"
+                    : "Backend pending";
+            return;
+        }
+
         MicDeviceText.Text =
             _session.MicrophoneEnabled
                 ? _microphoneDevice
@@ -815,7 +857,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        StartInteractionPreview();
+        if (_allowInteractionPreview)
+        {
+            StartInteractionPreview();
+            return;
+        }
+
+        ShowCommandFeedback(
+            "Native engine unavailable",
+            BridgeUnavailableMessage());
     }
 
     private void StartNativeRecording()
@@ -825,7 +875,16 @@ public sealed partial class MainWindow : Window
 
         if (bridge is null)
         {
-            StartInteractionPreview();
+            if (_allowInteractionPreview)
+            {
+                StartInteractionPreview();
+            }
+            else
+            {
+                ShowCommandFeedback(
+                    "Native engine unavailable",
+                    BridgeUnavailableMessage());
+            }
             return;
         }
 
@@ -1129,6 +1188,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (!_allowInteractionPreview)
+        {
+            ApplyEngineUnavailableState();
+            return;
+        }
+
         RefreshInputLabels();
 
         switch (_session.Phase)
@@ -1320,7 +1385,108 @@ public sealed partial class MainWindow : Window
         RecordButton.SetValue(
             AutomationProperties.NameProperty,
             "Start recording");
+        UpdateRecordAvailability();
         UpdateReadyDetail();
+    }
+
+    private void ApplyEngineUnavailableState()
+    {
+        StatusDot.Fill =
+            Brush.Parse("#F1B85B");
+        StatusText.Foreground =
+            Brush.Parse("#F1B85B");
+        StatusText.Text =
+            "Engine unavailable";
+        StatusDetail.Text =
+            BridgeUnavailableMessage();
+        SavedActions.IsVisible =
+            false;
+        RecordText.Text =
+            "Record";
+        RecordIcon.Kind =
+            LucideIconKind.Circle;
+        RecordButton.IsEnabled =
+            false;
+        RecordButton.SetValue(
+            AutomationProperties.NameProperty,
+            "Recording unavailable");
+    }
+
+    private void UpdateRecordAvailability()
+    {
+        RecordButton.IsEnabled =
+            _allowInteractionPreview ||
+            (_nativeBridge is not null &&
+             _captureMode !=
+                 PreviewCaptureMode.Game &&
+             _selectedSource is not null &&
+             _selectedSource.NativeToken != 0);
+    }
+
+    private void ApplyProductCapabilitySurface()
+    {
+        if (_allowInteractionPreview)
+            return;
+
+        ModeGame.IsEnabled =
+            false;
+        ModeGame.SetValue(
+            ToolTip.TipProperty,
+            "Game capture backend is not connected in this build.");
+
+        _systemAudioEnabled =
+            false;
+        _session.MicrophoneEnabled =
+            false;
+        _session.CameraEnabled =
+            false;
+
+        SystemAudioToggle.IsChecked =
+            false;
+        SystemAudioToggle.IsEnabled =
+            false;
+
+        MicDeviceButton.IsEnabled =
+            false;
+        MicDeviceChevron.IsVisible =
+            false;
+        MicToggle.IsChecked =
+            false;
+        MicToggle.IsEnabled =
+            false;
+        MicDeviceText.Text =
+            _nativeBridge is null
+                ? "Engine unavailable"
+                : "Backend pending";
+
+        CameraDeviceButton.IsEnabled =
+            false;
+        CameraDeviceChevron.IsVisible =
+            false;
+        CameraToggle.IsChecked =
+            false;
+        CameraToggle.IsEnabled =
+            false;
+        CameraDeviceText.Text =
+            _nativeBridge is null
+                ? "Engine unavailable"
+                : "Backend pending";
+
+        foreach (var option in
+                 _microphoneOptions)
+        {
+            option.IsVisible =
+                false;
+        }
+
+        foreach (var option in
+                 _cameraOptions)
+        {
+            option.IsVisible =
+                false;
+        }
+
+        UpdateRecordAvailability();
     }
 
     private void UpdateReadyDetail()
@@ -1359,16 +1525,25 @@ public sealed partial class MainWindow : Window
                     "Display"
             };
 
+        if (_nativeBridge is null &&
+            !_allowInteractionPreview)
+        {
+            StatusDetail.Text =
+                BridgeUnavailableMessage();
+            return;
+        }
+
         var bridge =
             _nativeBridge is null
-                ? "native bridge unavailable"
-                : "native command ready";
+                ? "UI preview only"
+                : "native engine ready";
 
         var inputState =
-            _systemAudioEnabled ||
-            _session.MicrophoneEnabled ||
-            _session.CameraEnabled
-                ? "input backend pending"
+            _allowInteractionPreview &&
+            (_systemAudioEnabled ||
+             _session.MicrophoneEnabled ||
+             _session.CameraEnabled)
+                ? "preview inputs"
                 : "video ready";
 
         StatusDetail.Text =
@@ -1398,13 +1573,15 @@ public sealed partial class MainWindow : Window
         _bridgeAvailability switch
         {
             NativeBridgeAvailability.MissingLibrary =>
-                "Native bridge DLL is missing from this build.",
+                "Native engine package is incomplete. Use the complete Arssyut build instead of running a detached EXE.",
+            NativeBridgeAvailability.LibraryLoadFailed =>
+                "The native engine file was found, but Windows could not load it. Reinstall the complete build.",
             NativeBridgeAvailability.IncompatibleAbi =>
-                "Native bridge ABI does not match this UI build.",
+                "Native engine and UI versions do not match. Reinstall the complete build.",
             NativeBridgeAvailability.InitializationFailed =>
-                "Native bridge could not initialize.",
+                "Native engine could not initialize on this system.",
             _ =>
-                "Native bridge source snapshot is unavailable."
+                "Native engine source snapshot is unavailable."
         };
 
     public void ApplyLongNameStressPreview()

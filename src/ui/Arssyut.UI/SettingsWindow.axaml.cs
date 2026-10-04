@@ -116,7 +116,6 @@ public sealed partial class SettingsWindow : Window
                 if (!_stressLayout)
                     RefreshNativeDevices();
 
-                _audioPreviewTimer.Start();
                 RefreshPreviewState();
             };
 
@@ -128,14 +127,6 @@ public sealed partial class SettingsWindow : Window
         {
             _preview.SetOutputFolder(
                 @"C:\Users\Presentation\Videos\Arssyut\Customer Demonstration Session\Extremely Long Output Folder Name For Layout Stress");
-
-            MicrophoneDeviceCombo.SelectedIndex = 2;
-            CameraDeviceCombo.SelectedIndex = 2;
-
-            _preview.MicrophoneDevice =
-                "Professional USB Condenser Microphone — Conference Room Interface Channel 1/2";
-            _preview.CameraDevice =
-                "4K Conference Camera — Ultra Wide Room Camera with AI Auto Framing";
 
             SelectPage("Output");
         }
@@ -273,13 +264,13 @@ public sealed partial class SettingsWindow : Window
                 "Output" =>
                     "Destination, naming, and successful-result behavior.",
                 "Audio" =>
-                    "Playback and narration devices with level preview.",
+                    "Native audio capability status.",
                 "Camera" =>
-                    "Picture-in-picture source, size, and placement.",
+                    "Native camera compositor capability status.",
                 "Mouse" =>
                     "Pointer, click, and keyboard visualization.",
                 "Hotkeys" =>
-                    "Recorder transport shortcuts with conflict feedback.",
+                    "Available recorder transport shortcuts.",
                 "Advanced" =>
                     "Diagnostics and native-engine ownership status.",
                 _ =>

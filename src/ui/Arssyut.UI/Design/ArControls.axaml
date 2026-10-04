@@ -393,6 +393,8 @@
   <!-- Inputs -->
   <Style Selector="ComboBox.ar-select">
     <Setter Property="Height" Value="{DynamicResource ArControl.SM}" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="MinHeight" Value="{DynamicResource ArControl.SM}" />
     <Setter Property="Padding" Value="10,0" />
     <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
@@ -413,6 +415,8 @@
   </Style>
 
   <Style Selector="ToggleSwitch.ar-toggle">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
     <Setter Property="FontSize" Value="{DynamicResource ArType.Control}" />
     <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
@@ -449,9 +453,22 @@
     <Setter Property="BorderThickness" Value="0,0,0,1" />
   </Style>
 
+  <Style Selector="Border.setting-row TextBlock.micro">
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
 
-  <!-- P6UI.3 Settings acceptance -->
+  <Style Selector="Border.capability-lock">
+    <Setter Property="Padding" Value="14" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ArRadius.LG}" />
+  </Style>
+
+  <!-- Settings product controls -->
   <Style Selector="Border.value-pill">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Padding" Value="9,5" />
     <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
     <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
@@ -460,7 +477,9 @@
   </Style>
 
   <Style Selector="Button.hotkey">
-    <Setter Property="MinWidth" Value="118" />
+    <Setter Property="Width" Value="190" />
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
     <Setter Property="Height" Value="32" />
     <Setter Property="Padding" Value="10,0" />
     <Setter Property="CornerRadius" Value="8" />

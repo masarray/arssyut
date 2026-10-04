@@ -20,4 +20,11 @@
     <PackageReference Include="Lucide.Avalonia" Version="0.2.23" />
   </ItemGroup>
 
+  <ItemGroup Condition="Exists('Native\arssyut_native_bridge.dll')">
+    <None Remove="Native\arssyut_native_bridge.dll" />
+    <EmbeddedResource
+        Include="Native\arssyut_native_bridge.dll"
+        LogicalName="Arssyut.Native.arssyut_native_bridge.dll" />
+  </ItemGroup>
+
 </Project>

@@ -328,20 +328,25 @@
                     Text="System audio"
                     FontWeight="SemiBold" />
                 <TextBlock
-                    Text="Desktop playback"
+                    Text="Backend pending"
                     Classes="micro" />
               </StackPanel>
-              <ToggleSwitch
-                  x:Name="SystemAudioToggle"
-                  Grid.Column="2"
-                  Classes="ar-toggle"
-                  IsChecked="False"
-                  OnContent=""
-                  OffContent=""
-                  Click="SystemAudioToggle_OnClick"
-                  AutomationProperties.Name="System audio"
-                  ToolTip.Tip="System audio backend is scheduled for P6R.3"
-                  VerticalAlignment="Center" />
+              <Grid Grid.Column="2">
+                <Border Classes="value-pill">
+                  <TextBlock Text="Pending" FontSize="10.5" />
+                </Border>
+                <ToggleSwitch
+                    x:Name="SystemAudioToggle"
+                    IsVisible="False"
+                    Classes="ar-toggle"
+                    IsChecked="False"
+                    OnContent=""
+                    OffContent=""
+                    Click="SystemAudioToggle_OnClick"
+                    AutomationProperties.Name="System audio"
+                    ToolTip.Tip="System audio recording backend is not connected in this build."
+                    VerticalAlignment="Center" />
+              </Grid>
             </Grid>
           </Border>
 
@@ -350,7 +355,7 @@
               Grid.Column="1"
               Classes="device-picker"
               AutomationProperties.Name="Choose microphone device"
-              AutomationProperties.HelpText="Opens the microphone device list.">
+              AutomationProperties.HelpText="Microphone recording backend is not connected in this build.">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
               <Border Width="32" Height="32" CornerRadius="8"
                       Background="{DynamicResource ArBrush.Surface3}">
@@ -360,11 +365,11 @@
               </Border>
               <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                 <TextBlock Text="Microphone" FontWeight="SemiBold" />
-                <TextBlock x:Name="MicDeviceText" Text="Hi-Fi Cable Output"
+                <TextBlock x:Name="MicDeviceText" Text="Backend pending"
                            Classes="micro" MaxWidth="145"
                            TextTrimming="CharacterEllipsis" />
               </StackPanel>
-              <LucideIcon Grid.Column="2" Kind="ChevronDown" Size="14" StrokeWidth="1.8"
+              <LucideIcon x:Name="MicDeviceChevron" Grid.Column="2" Kind="ChevronDown" Size="14" StrokeWidth="1.8"
                           Foreground="{DynamicResource ArBrush.TextDim}"
                           VerticalAlignment="Center" />
             </Grid>
@@ -427,7 +432,7 @@
               Grid.Column="2"
               Classes="device-picker"
               AutomationProperties.Name="Choose camera device"
-              AutomationProperties.HelpText="Opens the camera device list.">
+              AutomationProperties.HelpText="Camera recording backend is not connected in this build.">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
               <Border Width="32" Height="32" CornerRadius="8"
                       Background="{DynamicResource ArBrush.Surface3}">
@@ -437,11 +442,11 @@
               </Border>
               <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
                 <TextBlock Text="Camera" FontWeight="SemiBold" />
-                <TextBlock x:Name="CameraDeviceText" Text="Off · USB2.0 HD UVC"
+                <TextBlock x:Name="CameraDeviceText" Text="Backend pending"
                            Classes="micro" MaxWidth="145"
                            TextTrimming="CharacterEllipsis" />
               </StackPanel>
-              <LucideIcon Grid.Column="2" Kind="ChevronDown" Size="14" StrokeWidth="1.8"
+              <LucideIcon x:Name="CameraDeviceChevron" Grid.Column="2" Kind="ChevronDown" Size="14" StrokeWidth="1.8"
                           Foreground="{DynamicResource ArBrush.TextDim}"
                           VerticalAlignment="Center" />
             </Grid>

@@ -946,6 +946,29 @@ Mandatory rules:
 - Region recording must use the same monitor WGC source plus canonical crop as
   P6R. Never add a second Region capture backend.
 
+### P6UI.4C-A product-reality / visual-lock contract
+
+- the normal product shell must never fall back to `PreviewRecorderSession`
+  when the native bridge is unavailable. Simulation is allowed only behind
+  explicit preview/stress command-line flags used for deterministic UI tests;
+- a product control may look interactive only when its advertised action changes
+  real application/native state. Unbound audio, microphone, camera, Game, Pause,
+  encoder-policy, naming-policy, countdown and similar staged capabilities must
+  render as unavailable/status surfaces rather than fake live controls;
+- real device names and live meters must come from a real backend. Do not ship
+  hard-coded demonstration devices or deterministic fake meters in normal
+  product mode;
+- the Windows product artifact must be self-contained enough that moving the
+  executable does not detach the Avalonia shell from the native engine. CI must
+  launch the packaged executable with `--bridge-required`;
+- Settings rows use one aligned right-side control column. Enabled ComboBoxes
+  stretch to that column, fixed values use non-interactive value pills, and
+  descriptive text must wrap before entering the control column;
+- internal milestone labels such as `UI PREVIEW`, `P6UI.x preview`, or
+  `Visual acceptance` must not appear in normal product presentation;
+- product-reality/visual corrections must not alter the accepted implementation
+  under `src/app`, `src/core` or `src/platform`.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a

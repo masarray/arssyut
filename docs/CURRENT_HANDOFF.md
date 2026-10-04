@@ -3,9 +3,9 @@
 **Updated:** 2026-10-04  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.4C native overlay / Region bridge implemented / CI + real GUI acceptance pending**  
-**Known-good head before this handoff document:**  
-`c38deafebf9f48a07482de4ab8af91d0f4d3337b`
+**Current engineering milestone:** **P6UI.4C-A product reality + visual lock implemented / CI + real GUI acceptance pending**  
+**Canonical baseline entering this correction:**  
+`91959c43f9d62972d98bfeaea6ec7eea035cba3d` (P6UI.4C native overlay / Region bridge)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -220,6 +220,40 @@ Automated acceptance-hardening details and the manual evidence matrix live in
 `docs/P6UI4B_ACCEPTANCE_LOCK.md`.
 
 A CI-green build does not replace this real-recording acceptance.
+
+### P6UI.4C-A — product reality + visual lock
+
+The user's real Windows screenshots exposed a presentation/package defect, not
+an engine rollback:
+
+- the Avalonia shell reported the bridge unavailable and silently kept a
+  simulator-capable product surface alive;
+- Record and multiple Settings controls looked usable even when their advertised
+  backend did not exist;
+- Audio/Camera pages showed deterministic preview meters and hard-coded devices;
+- internal preview/milestone labels leaked into product presentation;
+- right-side Settings controls did not share one clean alignment column and
+  long description text could collide with controls.
+
+The correction is intentionally presentation/package-only:
+
+- normal product mode no longer falls back to `PreviewRecorderSession`;
+- if the native engine cannot load, Record is unavailable and the UI says so
+  explicitly;
+- audio/microphone/camera and other unbound choices are status/capability
+  surfaces, not fake controls;
+- Settings ComboBoxes and right-side controls share a 190 px aligned column
+  with wrapping descriptive text;
+- internal preview labels are removed from normal presentation;
+- the native bridge is embedded in the single executable and extracted/loaded
+  deterministically from a versioned SHA-256 cache;
+- CI verifies that no external bridge DLL is required and then launches the
+  exact packaged executable with `--bridge-required`.
+
+No accepted implementation under `src/app`, `src/core` or `src/platform`
+is changed by this correction.
+
+See `docs/P6UI4C_PRODUCT_REALITY_VISUAL_LOCK.md`.
 
 ---
 

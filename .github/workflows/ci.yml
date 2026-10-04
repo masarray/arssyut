@@ -101,6 +101,14 @@ jobs:
           cmake --preset windows-x64
           cmake --build --preset windows-release --target arssyut_native_bridge --parallel
 
+      - name: Stage native bridge for single-file UI
+        shell: pwsh
+        run: |
+          $native = Join-Path $PWD "src/ui/Arssyut.UI/Native"
+          New-Item -ItemType Directory -Force -Path $native | Out-Null
+          Copy-Item "build/windows-x64/Release/arssyut_native_bridge.dll" `
+            (Join-Path $native "arssyut_native_bridge.dll") -Force
+
       - name: Restore
         run: dotnet restore src/ui/Arssyut.UI/Arssyut.UI.csproj
 
@@ -123,8 +131,34 @@ jobs:
             -p:DebugSymbols=false `
             -o dist/arssyut-p6ui
 
+          Get-ChildItem "dist/arssyut-p6ui" -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force
           Copy-Item "docs/P6UI_THIRD_PARTY_NOTICES.md" (Join-Path "dist/arssyut-p6ui" "THIRD_PARTY_NOTICES.md")
-          Copy-Item "build/windows-x64/Release/arssyut_native_bridge.dll" (Join-Path "dist/arssyut-p6ui" "arssyut_native_bridge.dll")
+
+      - name: Verify single-file native-engine package
+        shell: pwsh
+        run: |
+          $package = Join-Path $PWD "dist/arssyut-p6ui"
+          $exe = Join-Path $package "Arssyut.UI.exe"
+          $externalBridge = Join-Path $package "arssyut_native_bridge.dll"
+
+          if (-not (Test-Path $exe)) {
+            throw "Single-file UI executable is missing."
+          }
+
+          if (Test-Path $externalBridge) {
+            throw "Native bridge escaped the single-file bundle; product artifact can still be detached from its engine."
+          }
+
+          $unexpected = @(
+            Get-ChildItem $package -File |
+              Where-Object { $_.Extension -eq ".pdb" }
+          )
+
+          if ($unexpected.Count -gt 0) {
+            throw "Debug symbols leaked into the product preview artifact."
+          }
+
+          Write-Host "Single-file native-engine package verified."
 
       - name: Launch smoke
         shell: pwsh
