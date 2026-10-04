@@ -225,7 +225,8 @@ public sealed class NativeBridgeClient : IDisposable
                         height),
                     label.Contains(
                         "Primary",
-                        StringComparison.OrdinalIgnoreCase)));
+                        StringComparison.OrdinalIgnoreCase),
+                    source.Token));
         }
 
         return result;
