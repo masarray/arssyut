@@ -903,6 +903,20 @@ P6UI.4B command bridge:
 - the locked native engine tree remains unchanged; all new command adaptation
   lives in `src/bridge`.
 
+**P6UI.4B-A status: IMPLEMENTED / CI-HARDENED / REAL WINDOWS ACCEPTANCE PENDING**
+
+Acceptance lock:
+- the Avalonia floating recording controller applies
+  `WDA_EXCLUDEFROMCAPTURE`, with `WDA_MONITOR` only as a compatibility
+  fallback;
+- CI launches the real controller HWND and verifies its display affinity;
+- Settings options without a bound product authority are visibly locked or
+  explicitly identified as staged instead of behaving like silent no-ops;
+- no P5/P6R capture, compositor, camera, encoder, Region or media-clock
+  implementation is changed;
+- real multi-monitor recording remains a manual gate documented in
+  `docs/P6UI4B_ACCEPTANCE_LOCK.md`.
+
 Real acceptance required:
 - record Display 1 and Display 2 on a real multi-monitor machine;
 - record a Window source;
@@ -912,7 +926,9 @@ Real acceptance required:
 - validate 30/60 fps and all three visual modes;
 - confirm Smart Zoom/click/shortcut settings reach the native recorder;
 - confirm enabling an unbound audio/mic/camera input blocks recording with a
-  clear status rather than silently omitting it.
+  clear status rather than silently omitting it;
+- confirm the floating Avalonia controller itself never appears in Display or
+  overlapping Region output.
 
 P6UI.4C overlay bridge after command authority:
 - reuse existing native RecorderOverlay;
@@ -923,24 +939,46 @@ P6UI.4C overlay bridge after command authority:
 
 See `docs/adr/ADR-008-native-ui-bridge.md`.
 
-#### P6UI.5 — floating controller + capture exclusion
+#### P6UI.5 — real floating controller + transport
 
-- bind authoritative recorder state;
-- capture-excluded floating surface;
+- keep authoritative recorder state projected from native snapshots;
+- preserve the P6UI.4B-A capture-excluded controller guarantee;
+- add the real global Record/Stop transport registration without creating a
+  second recorder state machine;
 - no capture-cadence repaint work;
 - verify no flicker during real recording.
 
-#### P6UI.6 — Region integration
+#### P6UI.6 — Region acceptance lock
 
-- bind existing native Region editor/crop state;
+- bind existing native Region editor/crop state through P6UI.4C;
 - preserve one Region authority;
 - keep Smart Zoom viewport/boundary synchronization;
+- validate move/resize, negative-origin monitors and encoded crop parity;
 - no C# crop implementation.
 
-#### P6UI.7 — legacy shell retirement
+#### P6UI.7 — feature completion
+
+Complete still-missing product backends before any legacy retirement:
+- **P6UI.7A:** WASAPI system audio + microphone + AAC mux + A/V drift evidence;
+- **P6UI.7B:** Media Foundation webcam + retained GPU PiP compositor path;
+- **P6UI.7C:** explicit native Pause/Resume state with media-time continuity;
+- **P6UI.7D:** dedicated Game backend, or an explicit product deferral if it is
+  not release-critical.
+
+#### P6UI.8 — premium product polish lock
+
+- DPI/accessibility/keyboard/focus/motion acceptance;
+- semantic resource cleanup and removal of staged/no-op presentation;
+- empty/error/saved/recovery states;
+- architecture cleanup only after authority parity is already proven.
+
+#### P6UI.9 — legacy shell retirement
 
 Retire the legacy presentation shell only after:
 - real Display/Window/Region recording passes through Avalonia;
+- audio/microphone/camera release scope is satisfied;
+- Pause/Resume and Game are implemented or explicitly deferred by product
+  decision;
 - result/failure states pass;
 - Settings/native bridge passes;
 - fallback/recovery behavior is preserved.

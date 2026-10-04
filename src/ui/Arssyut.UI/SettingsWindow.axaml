@@ -196,9 +196,9 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Show countdown" FontWeight="Medium" />
-                        <TextBlock Text="Give a short visual countdown before capture begins." Classes="micro" />
+                        <TextBlock Text="Not active in the current native transport; recording starts immediately." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" IsEnabled="False" OnContent="" OffContent=""
                                     AutomationProperties.Name="Show countdown" />
                     </Grid>
                   </Border>
@@ -207,9 +207,9 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Hide main window while recording" FontWeight="Medium" />
-                        <TextBlock Text="Keep only the compact floating controller visible." Classes="micro" />
+                        <TextBlock Text="Currently locked on while native recording is active." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" IsEnabled="False" OnContent="" OffContent=""
                                     AutomationProperties.Name="Hide main window while recording" />
                     </Grid>
                   </Border>
@@ -218,9 +218,9 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Show recording boundary" FontWeight="Medium" />
-                        <TextBlock Text="Show the actual capture viewport outside the encoded frame." Classes="micro" />
+                        <TextBlock Text="Returns with the existing native RecorderOverlay in P6UI.4C." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" IsEnabled="False" OnContent="" OffContent=""
                                     AutomationProperties.Name="Show recording boundary" />
                     </Grid>
                   </Border>
@@ -229,9 +229,9 @@
                     <Grid ColumnDefinitions="*,190">
                       <StackPanel Spacing="3">
                         <TextBlock Text="After recording" FontWeight="Medium" />
-                        <TextBlock Text="Choose what Arssyut presents after a successful stop." Classes="micro" />
+                        <TextBlock Text="Saved result actions are fixed during native recording acceptance." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0"
+                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0" IsEnabled="False"
                                 AutomationProperties.Name="After recording action">
                         <ComboBoxItem Content="Show result actions" />
                         <ComboBoxItem Content="Open folder" />
@@ -290,9 +290,9 @@
                     <Grid ColumnDefinitions="*,190">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Recording controller" FontWeight="Medium" />
-                        <TextBlock Text="Choose the transport surface shown while recording." Classes="micro" />
+                        <TextBlock Text="Floating bar is the locked transport surface for this milestone." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0"
+                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0" IsEnabled="False"
                                 AutomationProperties.Name="Recording controller">
                         <ComboBoxItem Content="Floating bar" />
                         <ComboBoxItem Content="Hidden" />
@@ -304,9 +304,9 @@
                     <Grid ColumnDefinitions="*,190">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Quality target" FontWeight="Medium" />
-                        <TextBlock Text="Preview-only policy label; native encoder remains authoritative." Classes="micro" />
+                        <TextBlock Text="Native encoder policy is locked by the accepted engine baseline." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="1"
+                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="1" IsEnabled="False"
                                 AutomationProperties.Name="Quality target">
                         <ComboBoxItem Content="Compact" />
                         <ComboBoxItem Content="Balanced" />
@@ -346,9 +346,9 @@
                     <Grid ColumnDefinitions="*,190">
                       <StackPanel Spacing="3">
                         <TextBlock Text="File naming" FontWeight="Medium" />
-                        <TextBlock Text="Compact timestamped names that remain sortable." Classes="micro" />
+                        <TextBlock Text="Native bridge currently uses timestamped names with the visual-mode suffix." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0"
+                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0" IsEnabled="False"
                                 AutomationProperties.Name="File naming policy">
                         <ComboBoxItem Content="Date + time" />
                         <ComboBoxItem Content="Application + time" />
@@ -373,16 +373,16 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Open folder after recording" FontWeight="Medium" />
-                        <TextBlock Text="Reveal the output location after a successful finalization." Classes="micro" />
+                        <TextBlock Text="Use the Saved Open / Folder actions; automatic reveal is not active yet." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" OnContent="" OffContent=""
+                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" IsEnabled="False" OnContent="" OffContent=""
                                     AutomationProperties.Name="Open folder after recording" />
                     </Grid>
                   </Border>
                 </StackPanel>
 
                 <!-- Audio -->
-                <StackPanel x:Name="PageAudio" IsVisible="False">
+                <StackPanel x:Name="PageAudio" IsVisible="False" IsEnabled="False">
                   <Border Classes="setting-row">
                     <Grid ColumnDefinitions="*,228" ColumnSpacing="14">
                       <StackPanel Spacing="3">
@@ -464,9 +464,9 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Include narration" FontWeight="Medium" />
-                        <TextBlock Text="Enable the selected microphone for the future native audio bridge." Classes="micro" />
+                        <TextBlock Text="Native audio backend is not connected yet; recording rejects narration explicitly." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="False" IsEnabled="False" OnContent="" OffContent=""
                                     AutomationProperties.Name="Include microphone narration" />
                     </Grid>
                   </Border>
@@ -478,7 +478,7 @@
                 </StackPanel>
 
                 <!-- Camera -->
-                <StackPanel x:Name="PageCamera" IsVisible="False">
+                <StackPanel x:Name="PageCamera" IsVisible="False" IsEnabled="False">
                   <Border Classes="setting-row">
                     <Grid ColumnDefinitions="*,228">
                       <StackPanel Spacing="3">
@@ -630,9 +630,9 @@
                     <Grid ColumnDefinitions="*,190">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Pointer visibility" FontWeight="Medium" />
-                        <TextBlock Text="Native Windows cursor remains the authoritative captured cursor." Classes="micro" />
+                        <TextBlock Text="Native Windows cursor is locked as the authoritative captured cursor." Classes="micro" />
                       </StackPanel>
-                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0"
+                      <ComboBox Grid.Column="1" Classes="ar-select" SelectedIndex="0" IsEnabled="False"
                                 AutomationProperties.Name="Pointer visibility">
                         <ComboBoxItem Content="Native cursor" />
                         <ComboBoxItem Content="Hide cursor" />
@@ -647,7 +647,7 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Record / Stop" FontWeight="Medium" />
-                        <TextBlock Text="Global recorder transport shortcut." Classes="micro" />
+                        <TextBlock Text="Focused-shell shortcut preview; global registration lands with the transport milestone." Classes="micro" />
                       </StackPanel>
                       <Button
                           x:Name="RecordHotkeyButton"
@@ -726,9 +726,9 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Diagnostics sidecar" FontWeight="Medium" />
-                        <TextBlock Text="Keep bounded session diagnostics beside the recording." Classes="micro" />
+                        <TextBlock Text="Native recorder diagnostics are always emitted during acceptance hardening." Classes="micro" />
                       </StackPanel>
-                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                      <ToggleSwitch Grid.Column="1" Classes="ar-toggle" IsChecked="True" IsEnabled="False" OnContent="" OffContent=""
                                     AutomationProperties.Name="Diagnostics sidecar" />
                     </Grid>
                   </Border>

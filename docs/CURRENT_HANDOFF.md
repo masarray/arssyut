@@ -3,7 +3,7 @@
 **Updated:** 2026-10-04  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.4B implemented / CI green / real-recording acceptance pending**  
+**Current engineering milestone:** **P6UI.4B-A acceptance lock implemented / real-recording acceptance pending**  
 **Known-good head before this handoff document:**  
 `c38deafebf9f48a07482de4ab8af91d0f4d3337b`
 
@@ -53,13 +53,10 @@ Completed:
 - stale source, busy session and start failures are explicit;
 - unsupported media inputs are rejected instead of silently omitted.
 
-Current PR head CI is green:
-- **CI run #267**
-- native Windows build/tests: green;
-- bridge tests: green;
-- legacy native GUI smoke: green;
-- Avalonia build/publish: green;
-- bridge-required Avalonia launch smoke: green.
+The P6UI.4B checkpoint is CI-green through **CI run #269**. P6UI.4B-A adds
+capture-exclusion and Settings-truthfulness guards on top of that checkpoint.
+The latest PR-head CI, not this historical run number, is authoritative for the
+new acceptance-lock commit.
 
 ---
 
@@ -214,6 +211,13 @@ Before declaring P6UI.4B accepted, test on a real Windows machine:
 10. Confirm Smart Zoom/click/shortcut configuration reaches native recording.
 11. Turn on an unbound audio/mic/camera stream and confirm Record is blocked
     with an explicit unsupported status.
+12. During Display recording, verify the floating Avalonia controller is never
+    present in the encoded MP4. The controller HWND must report
+    `WDA_EXCLUDEFROMCAPTURE` (or `WDA_MONITOR` only on compatibility
+    fallback).
+
+Automated acceptance-hardening details and the manual evidence matrix live in
+`docs/P6UI4B_ACCEPTANCE_LOCK.md`.
 
 A CI-green build does not replace this real-recording acceptance.
 
@@ -223,7 +227,9 @@ A CI-green build does not replace this real-recording acceptance.
 
 ### P6UI.4C — native overlay / Region bridge
 
-**Do this next after addressing any P6UI.4B real-acceptance bug.**
+**Do this next after the P6UI.4B-A real-recording acceptance gate is satisfied
+or after any reproduced acceptance bug has been corrected without engine
+regression.**
 
 The objective is not to invent a new overlay.
 

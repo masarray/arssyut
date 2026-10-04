@@ -107,6 +107,17 @@ public sealed partial class RecordingControllerWindow : Window
             (_, _) =>
             {
                 PlaceNearTopCenter();
+
+                // A visible recorder surface must never become part of a
+                // Display/Region recording. Apply affinity only to this UI
+                // HWND; capture remains entirely native.
+                if (!WindowsCaptureExclusion.TryApply(this))
+                {
+                    ToolTip.SetTip(
+                        this,
+                        "Windows could not mark the floating controller as capture-excluded.");
+                }
+
                 _timer.Start();
                 RefreshState();
             };

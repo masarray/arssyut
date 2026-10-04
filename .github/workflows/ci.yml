@@ -152,6 +152,100 @@ jobs:
 
           Stop-Process -Id $process.Id -Force
 
+      - name: Controller capture-exclusion smoke
+        shell: pwsh
+        run: |
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          using System.Text;
+
+          public static class ArssyutCaptureAffinityProbe
+          {
+              private static uint targetProcessId;
+              private static string targetTitle = "";
+              private static IntPtr foundWindow = IntPtr.Zero;
+
+              private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+              [DllImport("user32.dll")]
+              private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+              [DllImport("user32.dll", SetLastError = true)]
+              private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+              private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+
+              [DllImport("user32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              private static extern bool GetWindowDisplayAffinity(IntPtr hWnd, out uint affinity);
+
+              private static bool Visit(IntPtr hWnd, IntPtr lParam)
+              {
+                  uint processId;
+                  GetWindowThreadProcessId(hWnd, out processId);
+                  if (processId != targetProcessId)
+                      return true;
+
+                  var title = new StringBuilder(256);
+                  GetWindowText(hWnd, title, title.Capacity);
+                  if (String.Equals(title.ToString(), targetTitle, StringComparison.Ordinal))
+                  {
+                      foundWindow = hWnd;
+                      return false;
+                  }
+
+                  return true;
+              }
+
+              public static uint Read(uint processId, string title)
+              {
+                  targetProcessId = processId;
+                  targetTitle = title;
+                  foundWindow = IntPtr.Zero;
+                  EnumWindows(Visit, IntPtr.Zero);
+
+                  if (foundWindow == IntPtr.Zero)
+                      throw new InvalidOperationException("Recording controller HWND was not found.");
+
+                  uint affinity;
+                  if (!GetWindowDisplayAffinity(foundWindow, out affinity))
+                      throw new InvalidOperationException("GetWindowDisplayAffinity failed.");
+
+                  return affinity;
+              }
+          }
+          "@
+
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--controller-preview" -PassThru
+
+          try {
+            Start-Sleep -Seconds 3
+
+            if ($process.HasExited) {
+              throw "Controller affinity smoke exited early with code $($process.ExitCode)"
+            }
+
+            $affinity = [ArssyutCaptureAffinityProbe]::Read(
+              [uint32]$process.Id,
+              "Arssyut Recording Controller")
+
+            # 0x11 = WDA_EXCLUDEFROMCAPTURE. 0x1 = compatibility WDA_MONITOR fallback.
+            if ($affinity -ne 0x11 -and $affinity -ne 0x1) {
+              throw ("Recording controller is not capture-protected; affinity=0x{0:X}" -f $affinity)
+            }
+
+            Write-Host ("Recording controller capture affinity verified: 0x{0:X}" -f $affinity)
+          }
+          finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
+
+
       - name: Settings acceptance smoke
         shell: pwsh
         run: |

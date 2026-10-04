@@ -913,6 +913,22 @@ Mandatory rules:
   `src/core` or `src/platform`; only explicit later baseline-preserving
   engine fixes with reproduced evidence may cross that boundary.
 
+### P6UI.4B-A acceptance-lock contract
+
+- every visible recorder/controller top-level HWND during Display/Region capture
+  must be capture-protected with `WDA_EXCLUDEFROMCAPTURE`, with
+  `WDA_MONITOR` permitted only as an older-Windows compatibility fallback;
+- CI must verify the floating controller's real HWND display affinity. A visual
+  smoke alone is not sufficient evidence;
+- a Settings control that has no current product authority must not look live:
+  disable it or label it explicitly as staged/preview-only until its backend is
+  bound;
+- do not implement countdown, audio, camera, Region, pause, Game, naming, or
+  encoder policy merely to make a Settings control functional during this
+  acceptance-lock milestone;
+- real Display 1/2 and Window MP4 recording remains a human acceptance gate;
+  CI green does not substitute for real multi-monitor recording evidence.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a
