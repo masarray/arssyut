@@ -285,13 +285,14 @@
   </Style>
 
   <Style Selector="Border.hotkey-chip">
-    <Setter Property="MinWidth" Value="30" />
-    <Setter Property="Height" Value="22" />
-    <Setter Property="Padding" Value="7,0" />
-    <Setter Property="CornerRadius" Value="6" />
-    <Setter Property="Background" Value="#2B0B0E12" />
-    <Setter Property="BorderBrush" Value="#55FFFFFF" />
-    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="MinWidth" Value="40" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface3}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.StrokeStrong}" />
+    <Setter Property="BorderThickness" Value="1,1,1,2" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
   </Style>
 
   <!-- Device selectors and flyouts -->
@@ -514,15 +515,16 @@
   </Style>
 
   <Style Selector="Button.hotkey">
-    <Setter Property="Width" Value="190" />
+    <Setter Property="Width" Value="132" />
     <Setter Property="HorizontalAlignment" Value="Right" />
-    <Setter Property="HorizontalContentAlignment" Value="Left" />
-    <Setter Property="Height" Value="32" />
-    <Setter Property="Padding" Value="10,0" />
-    <Setter Property="CornerRadius" Value="8" />
-    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
-    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface3}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.StrokeStrong}" />
+    <Setter Property="BorderThickness" Value="1,1,1,2" />
     <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
     <Setter Property="FontFamily" Value="{DynamicResource ArFont.Inter}" />
     <Setter Property="FontSize" Value="11" />
@@ -550,6 +552,77 @@
   <Style Selector="Button.hotkey:focus-visible">
     <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Record}" />
     <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <Style Selector="Button.hotkey:disabled">
+    <Setter Property="Opacity" Value="0.68" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface3}" />
+  </Style>
+
+  <Style Selector="ToggleButton.capture-mode">
+    <Setter Property="Height" Value="36" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.TextSecondary}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.10" />
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.10" />
+        <BrushTransition Property="Foreground" Duration="0:0:0.10" />
+      </Transitions>
+    </Setter>
+  </Style>
+
+  <Style Selector="ToggleButton.capture-mode:pointerover">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.SurfaceHover}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.StrokeStrong}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="ToggleButton.capture-mode:checked">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.RecordSoft}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Record}" />
+    <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />
+  </Style>
+
+  <Style Selector="ToggleButton.capture-mode:pressed">
+    <Setter Property="Background" Value="{DynamicResource ArBrush.SurfacePressed}" />
+  </Style>
+
+  <Style Selector="ToggleButton.capture-mode:disabled">
+    <Setter Property="Opacity" Value="0.46" />
+    <Setter Property="Cursor" Value="Arrow" />
+  </Style>
+
+  <Style Selector="ComboBox.context-device">
+    <Setter Property="Height" Value="30" />
+    <Setter Property="MinHeight" Value="30" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="Background" Value="{DynamicResource ArBrush.Surface2}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource ArBrush.Stroke}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="FontSize" Value="10" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+  </Style>
+
+  <Style Selector="ComboBox.context-device:disabled">
+    <Setter Property="Opacity" Value="0.74" />
+  </Style>
+
+  <Style Selector="ToggleSwitch.context-toggle">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="ToggleSwitch.context-toggle:disabled">
+    <Setter Property="Opacity" Value="0.72" />
   </Style>
 
   <Style Selector="Button.camera-anchor">

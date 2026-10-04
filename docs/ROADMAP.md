@@ -989,6 +989,27 @@ Product-reality / visual lock:
 - circular Record is the primary action with centered hotkey badge;
 - pending media remains truthful status, not fake controls.
 
+**P6UI.5C status: IMPLEMENTED / CI + REAL VISUAL ACCEPTANCE PENDING**
+
+Visual polish / tactile-control lock:
+- four-way tactile Lucide capture-mode selector with one active state;
+- unified keycap grammar for main F9 and Settings shortcut fields;
+- centered shortcut text and compact tactile keycap proportions;
+- Audio/Microphone/Webcam final-form control structure with disabled truthful
+  toggles until native media backends exist;
+- read-only detected microphone/camera device projection from the native bridge;
+- truthful Default playback device surface until an output-device catalog exists;
+- no engine/capture/media authority changes.
+
+**Next milestone: P6UI.5D — Visual Acceptance + DPI/Interaction Lock**
+- real 100% / 125% / 150% DPI screenshot review;
+- hover/pressed/focus/disabled-state acceptance for capture toggles, keycaps,
+  device selectors and Record control;
+- keyboard navigation and tab-order acceptance;
+- long device-name/truncation acceptance;
+- only token/spacing/focus corrections are allowed here, not feature/backend
+  expansion.
+
 #### P6UI.5 — real floating controller + transport
 
 - keep authoritative recorder state projected from native snapshots;

@@ -3,7 +3,7 @@
 **Updated:** 2026-10-04  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.4C-B + P6UI.5A/5B implementation batched / CI + real GUI acceptance pending**  
+**Current engineering milestone:** **P6UI.5C visual polish + tactile-control lock implemented / CI + real GUI acceptance pending**  
 **Canonical baseline entering this correction:**  
 `91959c43f9d62972d98bfeaea6ec7eea035cba3d` (P6UI.4C native overlay / Region bridge)
 
@@ -276,6 +276,35 @@ See `docs/P6UI4C_PRODUCT_REALITY_VISUAL_LOCK.md`.
 
 Only `src/app/recorder_overlay.cpp` crosses the protected native baseline, as
 the narrow reproduced Region repaint correction.
+
+### P6UI.5C — visual polish / tactile-control lock
+
+Real screenshot review after P6UI.5B exposed presentation gaps rather than
+engine defects:
+
+- the main F9 badge did not read as a physical keycap;
+- Capture mode still looked like a generic ComboBox rather than the primary
+  mode selector;
+- Audio/Microphone/Webcam context blocks were visually passive;
+- detected media device context was not visible in the main workspace;
+- Settings hotkey values still read as left-aligned form fields.
+
+P6UI.5C corrects those points without pretending pending media backends exist:
+
+- Capture uses four tactile Lucide toggle buttons with exactly one active mode;
+- main and Settings hotkeys use one centered keycap visual grammar;
+- Audio and Microphone rows get Lucide identity, a visible capability-gated
+  on/off toggle and a compact device selector surface;
+- Webcam gets a capability-gated toggle and detected-device selector;
+- microphone/camera names come only from the existing native device snapshot;
+- System audio truthfully shows only `Default playback device` because no
+  playback-device catalog exists in the bridge yet;
+- pending audio/microphone/webcam controls remain disabled until the real
+  recording backends can change encoded output.
+
+This milestone is presentation-only. P6UI.4C-B Region repaint, P6UI.5A global
+hotkey, native RecorderSession and all capture/media authorities remain
+unchanged.
 
 ## 7. Current / exact next engineering milestone
 

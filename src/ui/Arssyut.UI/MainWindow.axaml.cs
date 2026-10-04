@@ -6,6 +6,7 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -245,20 +246,33 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e) =>
         Close();
 
-    private void CaptureMode_OnSelectionChanged(
+    private void CaptureMode_OnClick(
         object? sender,
-        SelectionChangedEventArgs e)
+        RoutedEventArgs e)
     {
         if (!_mainUiReady ||
-            sender is not ComboBox combo)
+            sender is not ToggleButton selected ||
+            !selected.IsEnabled)
             return;
 
+        var mode =
+            selected.Tag?.ToString();
+
+        ModeDisplay.IsChecked =
+            mode == "Display";
+        ModeWindow.IsChecked =
+            mode == "Window";
+        ModeRegion.IsChecked =
+            mode == "Region";
+        ModeGame.IsChecked =
+            mode == "Game";
+
         _captureMode =
-            combo.SelectedIndex switch
+            mode switch
             {
-                1 => PreviewCaptureMode.Window,
-                2 => PreviewCaptureMode.Region,
-                3 => PreviewCaptureMode.Game,
+                "Window" => PreviewCaptureMode.Window,
+                "Region" => PreviewCaptureMode.Region,
+                "Game" => PreviewCaptureMode.Game,
                 _ => PreviewCaptureMode.Display
             };
 
@@ -617,6 +631,11 @@ public sealed partial class MainWindow : Window
                 _cameraOptions,
                 devices.Cameras);
 
+            ApplyReadOnlyDeviceCombo(
+                MicrophoneDeviceComboMain,
+                devices.Microphones,
+                "No microphone detected");
+
             if (devices.Microphones.Count > 0)
             {
                 _microphoneDevice =
@@ -624,6 +643,11 @@ public sealed partial class MainWindow : Window
                 _microphoneDeviceToken =
                     devices.Microphones[0].Token;
             }
+
+            ApplyReadOnlyDeviceCombo(
+                CameraDeviceComboMain,
+                devices.Cameras,
+                "No camera detected");
 
             if (devices.Cameras.Count > 0)
             {
@@ -638,6 +662,36 @@ public sealed partial class MainWindow : Window
             // Device snapshots are read-only in P6UI.4A. Keep the UI alive if
             // device enumeration is temporarily unavailable.
         }
+    }
+
+    private static void ApplyReadOnlyDeviceCombo(
+        ComboBox combo,
+        IReadOnlyList<NativeDeviceItem> devices,
+        string emptyText)
+    {
+        combo.Items.Clear();
+
+        if (devices.Count == 0)
+        {
+            combo.Items.Add(
+                new ComboBoxItem
+                {
+                    Content = emptyText
+                });
+            combo.SelectedIndex = 0;
+            return;
+        }
+
+        foreach (var device in devices)
+        {
+            combo.Items.Add(
+                new ComboBoxItem
+                {
+                    Content = device.Name
+                });
+        }
+
+        combo.SelectedIndex = 0;
     }
 
     private static void ApplyNativeDeviceButtons(

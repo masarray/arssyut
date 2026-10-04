@@ -997,6 +997,29 @@ Mandatory rules:
   is one dropdown plus the existing native source picker; media blocks must not
   become fake backends.
 
+### P6UI.5C visual polish / tactile-control contract
+
+- Capture mode is one four-way tactile single-selection surface:
+  Display / Window / Region / Game. Display, Window and Region are live native
+  intents; Game stays visibly capability-gated until its native backend exists;
+- use Lucide icons directly for capture mode and media context identity;
+- hotkey presentation uses one keycap grammar across main and Settings:
+  centered content, compact fixed height, stronger bottom edge, and tabular
+  digits. A shortcut must never look like left-aligned text inside a generic
+  form field;
+- Audio, Microphone and Webcam context blocks may show their final toggle/device
+  layout before backends are ready, but those controls remain disabled and
+  explicitly pending until they can change real encoded output;
+- detected microphone/camera names may be projected read-only from the native
+  device snapshot. Do not fabricate devices, meters, or a system-playback
+  catalog that the bridge does not expose;
+- system audio may show only the truthful current product authority
+  ("Default playback device") until a real output-device catalog is added;
+- tactile/visual polish must not alter capture, Region, recorder transport,
+  media timing, compositor, encoder or device-discovery authority;
+- assemble visual-polish changes as one Git tree/commit and move the PR branch
+  once so one final CI validates the milestone.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a

@@ -467,7 +467,10 @@
                       <Button x:Name="RecordHotkeyButton" Grid.Column="1"
                               Classes="hotkey" Tag="Record"
                               Click="Hotkey_OnClick">
-                        <TextBlock x:Name="RecordHotkeyText" Text="F9" FontFeatures="+tnum" />
+                        <TextBlock x:Name="RecordHotkeyText" Text="F9" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center" />
                       </Button>
                     </Grid>
                   </Border>
@@ -479,7 +482,10 @@
                       </StackPanel>
                       <StackPanel Grid.Column="1" Spacing="3">
                         <Button x:Name="PauseHotkeyButton" Classes="hotkey" Tag="Pause" IsEnabled="False">
-                          <TextBlock x:Name="PauseHotkeyText" Text="F10" FontFeatures="+tnum" />
+                          <TextBlock x:Name="PauseHotkeyText" Text="F10" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center" />
                         </Button>
                         <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
                       </StackPanel>
@@ -493,7 +499,10 @@
                       </StackPanel>
                       <StackPanel Grid.Column="1" Spacing="3">
                         <Button x:Name="MicrophoneHotkeyButton" Classes="hotkey" Tag="Microphone" IsEnabled="False">
-                          <TextBlock x:Name="MicrophoneHotkeyText" Text="Ctrl+F9" FontFeatures="+tnum" />
+                          <TextBlock x:Name="MicrophoneHotkeyText" Text="Ctrl+F9" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center" />
                         </Button>
                         <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
                       </StackPanel>
@@ -507,7 +516,10 @@
                       </StackPanel>
                       <StackPanel Grid.Column="1" Spacing="3">
                         <Button x:Name="CameraHotkeyButton" Classes="hotkey" Tag="Camera" IsEnabled="False">
-                          <TextBlock x:Name="CameraHotkeyText" Text="Ctrl+F10" FontFeatures="+tnum" />
+                          <TextBlock x:Name="CameraHotkeyText" Text="Ctrl+F10" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center" />
                         </Button>
                         <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
                       </StackPanel>
