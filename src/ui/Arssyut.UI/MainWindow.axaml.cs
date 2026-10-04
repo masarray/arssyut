@@ -455,7 +455,7 @@ public sealed partial class MainWindow : Window
             SourceSubtitle.Text =
                 "Refresh or choose another capture mode";
             SourceIcon.Kind =
-                LucideIconKind.CircleHelp;
+                LucideIconKind.Monitor;
             _boundary?.HideBoundary();
             return;
         }
