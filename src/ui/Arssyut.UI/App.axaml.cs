@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 
 namespace Arssyut.UI;
@@ -53,6 +54,14 @@ public sealed partial class App : Application
             var previewSettings =
                 new SettingsPreviewState();
 
+            var bridgeAvailability =
+                NativeBridgeClient.TryCreate(
+                    out var nativeBridge);
+
+            desktop.Exit +=
+                (_, _) =>
+                    nativeBridge?.Dispose();
+
             desktop.MainWindow =
                 settingsPreview
                     ? new SettingsWindow(
@@ -60,6 +69,8 @@ public sealed partial class App : Application
                         settingsStress)
                     : new MainWindow(
                         previewSettings,
+                        nativeBridge,
+                        bridgeAvailability,
                         stressLongNames,
                         controllerPreview);
         }
