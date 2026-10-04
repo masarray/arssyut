@@ -97,7 +97,7 @@ jobs:
           }
 
           if ($violations.Count -gt 0) {
-            Write-Host "P6UI changed locked native implementation after $baseline:"
+            Write-Host "P6UI changed locked native implementation after ${baseline}:"
             $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
             throw "Existing native engine implementation is frozen. P6UI.4 may add bridge code under src/bridge but must not rewrite accepted src/app, src/core or src/platform authorities."
           }
