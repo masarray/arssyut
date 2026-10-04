@@ -773,9 +773,17 @@ public sealed partial class MainWindow : Window
         }
 
         var flags =
-            NativeStartFlags.SmartZoom |
-            NativeStartFlags.ClickVisual |
-            NativeStartFlags.ShortcutKeys;
+            NativeStartFlags.None;
+
+        if (_settings.SmartZoom)
+            flags |=
+                NativeStartFlags.SmartZoom;
+        if (_settings.ClickHighlight)
+            flags |=
+                NativeStartFlags.ClickVisual;
+        if (_settings.ShortcutKeys)
+            flags |=
+                NativeStartFlags.ShortcutKeys;
 
         if (_systemAudioEnabled)
             flags |=
@@ -796,8 +804,16 @@ public sealed partial class MainWindow : Window
                     new NativeStartRequest(
                         _captureMode,
                         _selectedSource.NativeToken,
-                        60,
-                        NativeVisualMode.PixelAccurate,
+                        _settings.FrameRate,
+                        _settings.VisualStyle switch
+                        {
+                            RecordingVisualStyle.CleanScreen =>
+                                NativeVisualMode.CleanScreen,
+                            RecordingVisualStyle.VividPresentation =>
+                                NativeVisualMode.VividPresentation,
+                            _ =>
+                                NativeVisualMode.PixelAccurate
+                        },
                         flags,
                         _microphoneDeviceToken,
                         _cameraDeviceToken,
@@ -1297,7 +1313,7 @@ public sealed partial class MainWindow : Window
                 : "video ready";
 
         StatusDetail.Text =
-            $"{source} · {bridge} · {inputState} · 60 fps · Smart Zoom on · {_settings.RecordHotkey}";
+            $"{source} · {bridge} · {inputState} · {_settings.FrameRate} fps · {VisualStyleLabel()} · Zoom {(_settings.SmartZoom ? "on" : "off")} · {_settings.RecordHotkey}";
     }
 
     private static string FormatNativeElapsed(
@@ -1307,6 +1323,17 @@ public sealed partial class MainWindow : Window
                 Math.Max(
                     0,
                     ticks)));
+
+    private string VisualStyleLabel() =>
+        _settings.VisualStyle switch
+        {
+            RecordingVisualStyle.CleanScreen =>
+                "Clean Screen",
+            RecordingVisualStyle.VividPresentation =>
+                "Vivid Presentation",
+            _ =>
+                "Pixel Accurate"
+        };
 
     private string BridgeUnavailableMessage() =>
         _bridgeAvailability switch
