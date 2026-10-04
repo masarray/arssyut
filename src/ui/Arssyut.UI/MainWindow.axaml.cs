@@ -443,7 +443,7 @@ public sealed partial class MainWindow : Window
 
         RebuildSourceFlyout();
         ApplySelectedSource();
-        SourceFlyout.Hide();
+        SourcePickerButton.Flyout?.Hide();
     }
 
     private void ApplySelectedSource()
