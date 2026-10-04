@@ -39,6 +39,8 @@ public sealed partial class SettingsWindow : Window
 
     private string? _capturingHotkeyAction;
     private int _meterStep;
+    private bool _uiReady;
+    private bool _syncingPreviewControls;
 
     public SettingsWindow(
         SettingsPreviewState preview,
@@ -49,6 +51,7 @@ public sealed partial class SettingsWindow : Window
         _nativeBridge = nativeBridge;
         _stressLayout = stressLayout;
         InitializeComponent();
+        _uiReady = true;
 
         TransparencyLevelHint =
         [
@@ -288,6 +291,10 @@ public sealed partial class SettingsWindow : Window
         object? sender,
         SelectionChangedEventArgs e)
     {
+        if (!_uiReady ||
+            _syncingPreviewControls)
+            return;
+
         if (sender is not ComboBox combo)
             return;
 
@@ -304,6 +311,10 @@ public sealed partial class SettingsWindow : Window
         object? sender,
         SelectionChangedEventArgs e)
     {
+        if (!_uiReady ||
+            _syncingPreviewControls)
+            return;
+
         if (sender is not ComboBox combo)
             return;
 
@@ -326,6 +337,10 @@ public sealed partial class SettingsWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
+        if (!_uiReady ||
+            _syncingPreviewControls)
+            return;
+
         _preview.SetSmartZoom(
             SmartZoomToggle.IsChecked ==
                 true);
@@ -338,6 +353,10 @@ public sealed partial class SettingsWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
+        if (!_uiReady ||
+            _syncingPreviewControls)
+            return;
+
         _preview.SetClickHighlight(
             ClickHighlightToggle.IsChecked ==
                 true);
@@ -350,6 +369,10 @@ public sealed partial class SettingsWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
+        if (!_uiReady ||
+            _syncingPreviewControls)
+            return;
+
         _preview.SetShortcutKeys(
             ShortcutKeysToggle.IsChecked ==
                 true);
@@ -678,31 +701,42 @@ public sealed partial class SettingsWindow : Window
 
     private void RefreshPreviewState()
     {
-        OutputFolderText.Text =
-            _preview.OutputFolder;
+        _syncingPreviewControls =
+            true;
 
-        FrameRateCombo.SelectedIndex =
-            _preview.FrameRate == 30
-                ? 0
-                : 1;
+        try
+        {
+            OutputFolderText.Text =
+                _preview.OutputFolder;
 
-        VisualStyleCombo.SelectedIndex =
-            _preview.VisualStyle switch
-            {
-                RecordingVisualStyle.CleanScreen => 1,
-                RecordingVisualStyle.VividPresentation => 2,
-                _ => 0
-            };
+            FrameRateCombo.SelectedIndex =
+                _preview.FrameRate == 30
+                    ? 0
+                    : 1;
 
-        SmartZoomToggle.IsChecked =
-            _preview.SmartZoom;
-        ClickHighlightToggle.IsChecked =
-            _preview.ClickHighlight;
-        ShortcutKeysToggle.IsChecked =
-            _preview.ShortcutKeys;
+            VisualStyleCombo.SelectedIndex =
+                _preview.VisualStyle switch
+                {
+                    RecordingVisualStyle.CleanScreen => 1,
+                    RecordingVisualStyle.VividPresentation => 2,
+                    _ => 0
+                };
 
-        RefreshHotkeyLabels();
-        UpdateCameraPlacementVisual();
+            SmartZoomToggle.IsChecked =
+                _preview.SmartZoom;
+            ClickHighlightToggle.IsChecked =
+                _preview.ClickHighlight;
+            ShortcutKeysToggle.IsChecked =
+                _preview.ShortcutKeys;
+
+            RefreshHotkeyLabels();
+            UpdateCameraPlacementVisual();
+        }
+        finally
+        {
+            _syncingPreviewControls =
+                false;
+        }
     }
 
     private void MarkPreviewChanged(
