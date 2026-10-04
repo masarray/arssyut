@@ -873,6 +873,30 @@ Mandatory rules:
   capture boundary, media clock, compositor or recorder session, stop and
   redesign around the existing authority.
 
+### P6UI.4 native bridge command contract
+
+- `src/bridge` is the only migration layer allowed to adapt Avalonia commands
+  to existing native recorder authorities; it must not duplicate capture,
+  Region, camera, compositor, encoder or media-clock algorithms;
+- exactly one bridge context owns the Avalonia product's native
+  `RecorderSession`;
+- source/device identities cross the ABI only as opaque generation-scoped
+  tokens and are resolved inside the native bridge; managed code must never
+  reconstruct HWND/HMONITOR/device IDs from labels or geometry;
+- the normal product Record/Stop path uses the native bridge. Preview session
+  state is permitted only in explicit deterministic design/stress scenarios;
+- Stop must never block the UI on an active recorder worker. Publish
+  `request_stop()` and observe native snapshots until worker completion;
+- joining/replacing a session is allowed only after `worker_finished=true`;
+- unsupported Region/Game/audio/microphone/camera commands must return a
+  structured unsupported/error status. Never silently fall back to a
+  different source or claim a stream was recorded;
+- Settings may provide presentation/config intent, but native
+  `RecorderConfig` remains the canonical recording configuration;
+- P6UI.4B must not modify the locked engine implementation under `src/app`,
+  `src/core` or `src/platform`; only explicit later baseline-preserving
+  engine fixes with reproduced evidence may cross that boundary.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a
