@@ -859,12 +859,36 @@ The next engine-facing work is therefore bridge-first, not rewrite-first.
 
 #### P6UI.4 — native bridge
 
-Only after P6UI.1-3 visual acceptance:
-- stable C ABI or equivalent narrow interop boundary;
-- source/device snapshots;
-- start/stop state;
-- result/diagnostic paths;
-- no recorder logic in C# view-models.
+**P6UI.4A status: IMPLEMENTED / CI + REAL GUI ACCEPTANCE PENDING**
+
+P6UI.4A read-only bridge:
+- versioned `arssyut_native_bridge.dll` C ABI;
+- one opaque bridge context for the Avalonia application lifetime;
+- native source snapshot from the existing P6R source catalog;
+- native microphone/camera snapshots from the existing device catalog;
+- read-only `RecorderSession::snapshot()` projection;
+- generation-scoped opaque source/device tokens; C# never reconstructs native
+  HWND/HMONITOR/device identifiers;
+- duplicate Avalonia Win32 source enumeration removed;
+- duplicate Avalonia capture-boundary window removed from the runtime;
+- packaged Avalonia launch smoke requires a compatible bridge DLL;
+- native bridge ABI has its own Windows regression executable.
+
+P6UI.4B command bridge next:
+- resolve selected source token inside the native bridge context;
+- canonicalize current UI settings into native RecorderConfig;
+- route Record/Stop through the one native RecorderSession;
+- expose real result and diagnostics paths;
+- remove PreviewRecorderSession authority from the normal product path.
+
+P6UI.4C overlay bridge after command authority:
+- reuse existing native RecorderOverlay;
+- selected target -> native capture boundary;
+- PresentationFrameState -> Smart Zoom viewport boundary;
+- existing native Region editor -> canonical Region rect;
+- no Avalonia crop/boundary implementation.
+
+See `docs/adr/ADR-008-native-ui-bridge.md`.
 
 #### P6UI.5 — floating controller + capture exclusion
 
