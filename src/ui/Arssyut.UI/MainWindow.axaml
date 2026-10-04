@@ -335,10 +335,12 @@
                   x:Name="SystemAudioToggle"
                   Grid.Column="2"
                   Classes="ar-toggle"
-                  IsChecked="True"
+                  IsChecked="False"
                   OnContent=""
                   OffContent=""
+                  Click="SystemAudioToggle_OnClick"
                   AutomationProperties.Name="System audio"
+                  ToolTip.Tip="System audio backend is scheduled for P6R.3"
                   VerticalAlignment="Center" />
             </Grid>
           </Border>
