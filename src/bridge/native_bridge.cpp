@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <mutex>
 #include <new>
 #include <string>
