@@ -15,14 +15,19 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 1;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 2;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
+constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
 enum ArssyutBridgeStatus : std::int32_t {
     ARSSYUT_BRIDGE_OK = 0,
     ARSSYUT_BRIDGE_INVALID_ARGUMENT = 1,
     ARSSYUT_BRIDGE_OUT_OF_RANGE = 2,
     ARSSYUT_BRIDGE_INTERNAL_ERROR = 3,
+    ARSSYUT_BRIDGE_BUSY = 4,
+    ARSSYUT_BRIDGE_UNSUPPORTED = 5,
+    ARSSYUT_BRIDGE_STALE_TOKEN = 6,
+    ARSSYUT_BRIDGE_START_FAILED = 7,
 };
 
 enum ArssyutBridgeSourceKind : std::uint32_t {
@@ -33,6 +38,28 @@ enum ArssyutBridgeSourceKind : std::uint32_t {
 enum ArssyutBridgeDeviceKind : std::uint32_t {
     ARSSYUT_BRIDGE_DEVICE_MICROPHONE = 0,
     ARSSYUT_BRIDGE_DEVICE_CAMERA = 1,
+};
+
+enum ArssyutBridgeCaptureMode : std::uint32_t {
+    ARSSYUT_BRIDGE_CAPTURE_DISPLAY = 0,
+    ARSSYUT_BRIDGE_CAPTURE_WINDOW = 1,
+    ARSSYUT_BRIDGE_CAPTURE_REGION = 2,
+    ARSSYUT_BRIDGE_CAPTURE_GAME = 3,
+};
+
+enum ArssyutBridgeVisualMode : std::uint32_t {
+    ARSSYUT_BRIDGE_VISUAL_PIXEL_ACCURATE = 0,
+    ARSSYUT_BRIDGE_VISUAL_CLEAN_SCREEN = 1,
+    ARSSYUT_BRIDGE_VISUAL_VIVID_PRESENTATION = 2,
+};
+
+enum ArssyutBridgeStartFlags : std::uint32_t {
+    ARSSYUT_BRIDGE_START_SYSTEM_AUDIO = 1U << 0U,
+    ARSSYUT_BRIDGE_START_MICROPHONE = 1U << 1U,
+    ARSSYUT_BRIDGE_START_CAMERA = 1U << 2U,
+    ARSSYUT_BRIDGE_START_SMART_ZOOM = 1U << 3U,
+    ARSSYUT_BRIDGE_START_CLICK_VISUAL = 1U << 4U,
+    ARSSYUT_BRIDGE_START_SHORTCUT_KEYS = 1U << 5U,
 };
 
 enum ArssyutBridgeRecorderState : std::uint32_t {
@@ -82,6 +109,28 @@ struct ArssyutBridgeRecorderSnapshotV1 {
     std::uint64_t video_rendered;
     std::uint64_t encoder_submitted;
     std::uint64_t encoder_backpressure;
+    std::uint32_t error_code;
+    std::uint32_t error_detail;
+};
+
+struct ArssyutBridgeStartRequestV1 {
+    std::uint32_t struct_size;
+    std::uint32_t capture_mode;
+    std::uint64_t source_token;
+    std::uint32_t frame_rate;
+    std::uint32_t visual_mode;
+    std::uint32_t flags;
+    std::uint32_t reserved0;
+    std::uint64_t microphone_device_token;
+    std::uint64_t camera_device_token;
+    wchar_t output_folder[ARSSYUT_BRIDGE_PATH_CAPACITY];
+};
+
+struct ArssyutBridgeRecorderResultV1 {
+    std::uint32_t struct_size;
+    std::uint32_t reserved0;
+    wchar_t output_path[ARSSYUT_BRIDGE_PATH_CAPACITY];
+    wchar_t diagnostics_path[ARSSYUT_BRIDGE_PATH_CAPACITY];
 };
 
 using ArssyutBridgeHandle = void *;
@@ -140,9 +189,26 @@ arssyut_bridge_device_at(
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_start(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeStartRequestV1 *request) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_stop(
+    ArssyutBridgeHandle handle) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_snapshot(
     ArssyutBridgeHandle handle,
     ArssyutBridgeRecorderSnapshotV1 *snapshot) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_result(
+    ArssyutBridgeHandle handle,
+    ArssyutBridgeRecorderResultV1 *result) noexcept;
 
 } // extern "C"
 
