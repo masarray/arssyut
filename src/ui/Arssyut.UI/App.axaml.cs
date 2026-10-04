@@ -54,9 +54,25 @@ public sealed partial class App : Application
             var previewSettings =
                 new SettingsPreviewState();
 
+            var bridgeRequired =
+                Array.Exists(
+                    args,
+                    arg => string.Equals(
+                        arg,
+                        "--bridge-required",
+                        StringComparison.OrdinalIgnoreCase));
+
             var bridgeAvailability =
                 NativeBridgeClient.TryCreate(
                     out var nativeBridge);
+
+            if (bridgeRequired &&
+                bridgeAvailability !=
+                    NativeBridgeAvailability.Available)
+            {
+                throw new InvalidOperationException(
+                    $"Native bridge is required but reported {bridgeAvailability}.");
+            }
 
             desktop.Exit +=
                 (_, _) =>
