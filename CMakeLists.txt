@@ -124,6 +124,7 @@ if(WIN32)
             dwmapi
             ole32
             psapi
+            shell32
             propsys
             uuid
     )
