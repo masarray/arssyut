@@ -241,7 +241,6 @@
 
             <Button.Flyout>
               <Flyout
-                  x:Name="SourceFlyout"
                   Placement="BottomEdgeAlignedLeft"
                   FlyoutPresenterClasses="device-flyout">
                 <StackPanel Width="430" Spacing="5">
