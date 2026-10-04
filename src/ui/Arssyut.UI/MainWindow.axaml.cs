@@ -110,7 +110,7 @@ public sealed partial class MainWindow : Window
                 ApplySessionState();
 
                 if (autoStartRecording)
-                    StartPreviewRecording();
+                    StartInteractionPreview();
             };
 
         Closed +=
