@@ -90,6 +90,32 @@ Expect(
     "Settings preview starts with the compact default output folder");
 
 Expect(
+    settings.FrameRate == 60 &&
+    settings.VisualStyle ==
+        RecordingVisualStyle.PixelAccurate &&
+    settings.SmartZoom &&
+    settings.ClickHighlight &&
+    settings.ShortcutKeys,
+    "Settings preview starts with canonical recorder presentation defaults");
+
+settings.SetFrameRate(30);
+settings.SetVisualStyle(
+    RecordingVisualStyle.CleanScreen);
+settings.SetSmartZoom(false);
+settings.SetClickHighlight(false);
+settings.SetShortcutKeys(false);
+
+Expect(
+    settings.FrameRate == 30 &&
+    settings.VisualStyle ==
+        RecordingVisualStyle.CleanScreen &&
+    !settings.SmartZoom &&
+    !settings.ClickHighlight &&
+    !settings.ShortcutKeys,
+    "Settings preview retains recorder presentation choices");
+
+
+Expect(
     settings.TrySetHotkey(
         "Record",
         "Ctrl+Shift+R",
@@ -133,7 +159,13 @@ Expect(
     settings.CameraPlacement ==
         CameraPlacement.BottomRight &&
     settings.OutputFolder ==
-        @"Videos\Arssyut",
+        @"Videos\Arssyut" &&
+    settings.FrameRate == 60 &&
+    settings.VisualStyle ==
+        RecordingVisualStyle.PixelAccurate &&
+    settings.SmartZoom &&
+    settings.ClickHighlight &&
+    settings.ShortcutKeys,
     "Settings preview Reset restores deterministic defaults");
 
 Console.WriteLine(
