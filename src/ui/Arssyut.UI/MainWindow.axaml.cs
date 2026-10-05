@@ -50,7 +50,7 @@ public sealed partial class MainWindow : Window
 
     private readonly Dictionary<
         NativeHotkeyAction,
-        string> _registeredHotkeys = [];
+        HotkeyChord> _registeredHotkeys = [];
 
     public MainWindow(
         SettingsPreviewState settings,
@@ -986,28 +986,28 @@ public sealed partial class MainWindow : Window
         var desired =
             new Dictionary<
                 NativeHotkeyAction,
-                string>
-            {
-                [NativeHotkeyAction.ToggleRecord] =
-                    _settings.RecordHotkey
-            };
+                HotkeyChord>();
 
         AddHotkeyIfAssigned(
             desired,
+            NativeHotkeyAction.ToggleRecord,
+            HotkeyActionIds.Record);
+        AddHotkeyIfAssigned(
+            desired,
             NativeHotkeyAction.ToggleZoom,
-            _settings.ToggleZoomHotkey);
+            HotkeyActionIds.ToggleZoom);
         AddHotkeyIfAssigned(
             desired,
             NativeHotkeyAction.ZoomIn,
-            _settings.ZoomInHotkey);
+            HotkeyActionIds.ZoomIn);
         AddHotkeyIfAssigned(
             desired,
             NativeHotkeyAction.ZoomOut,
-            _settings.ZoomOutHotkey);
+            HotkeyActionIds.ZoomOut);
         AddHotkeyIfAssigned(
             desired,
             NativeHotkeyAction.ResetFullFrame,
-            _settings.ResetZoomHotkey);
+            HotkeyActionIds.ResetZoom);
 
         if (SameHotkeyBindings(
                 desired,
@@ -1026,23 +1026,30 @@ public sealed partial class MainWindow : Window
         UpdateReadyDetail();
     }
 
-    private static void AddHotkeyIfAssigned(
-        IDictionary<NativeHotkeyAction, string> target,
-        NativeHotkeyAction action,
-        string gesture)
+    private void AddHotkeyIfAssigned(
+        IDictionary<
+            NativeHotkeyAction,
+            HotkeyChord> target,
+        NativeHotkeyAction nativeAction,
+        string productAction)
     {
-        if (!string.IsNullOrWhiteSpace(
-                gesture))
-            target[action] = gesture;
+        if (_settings.TryGetHotkeyChord(
+                productAction,
+                out var chord) &&
+            !chord.IsEmpty)
+        {
+            target[nativeAction] =
+                chord;
+        }
     }
 
     private static bool SameHotkeyBindings(
         IReadOnlyDictionary<
             NativeHotkeyAction,
-            string> desired,
+            HotkeyChord> desired,
         IReadOnlyDictionary<
             NativeHotkeyAction,
-            string> current)
+            HotkeyChord> current)
     {
         if (desired.Count != current.Count)
             return false;
@@ -1052,10 +1059,7 @@ public sealed partial class MainWindow : Window
             if (!current.TryGetValue(
                     binding.Key,
                     out var value) ||
-                !string.Equals(
-                    binding.Value,
-                    value,
-                    StringComparison.OrdinalIgnoreCase))
+                value != binding.Value)
             {
                 return false;
             }
@@ -1065,58 +1069,59 @@ public sealed partial class MainWindow : Window
     }
 
     private bool HasPresenterZoomHotkeys() =>
-        !string.IsNullOrWhiteSpace(
-            _settings.ToggleZoomHotkey) ||
-        !string.IsNullOrWhiteSpace(
-            _settings.HoldZoomHotkey) ||
-        !string.IsNullOrWhiteSpace(
-            _settings.ZoomInHotkey) ||
-        !string.IsNullOrWhiteSpace(
-            _settings.ZoomOutHotkey) ||
-        !string.IsNullOrWhiteSpace(
-            _settings.ResetZoomHotkey) ||
-        !string.IsNullOrWhiteSpace(
-            _settings.OverviewPeekHotkey);
+        HasAssignedHotkey(
+            HotkeyActionIds.ToggleZoom) ||
+        HasAssignedHotkey(
+            HotkeyActionIds.HoldZoom) ||
+        HasAssignedHotkey(
+            HotkeyActionIds.ZoomIn) ||
+        HasAssignedHotkey(
+            HotkeyActionIds.ZoomOut) ||
+        HasAssignedHotkey(
+            HotkeyActionIds.ResetZoom) ||
+        HasAssignedHotkey(
+            HotkeyActionIds.OverviewPeek);
 
-    private static NativeHotkeyChord MomentaryHotkey(
-        string gesture)
+    private bool HasAssignedHotkey(
+        string action) =>
+        _settings.TryGetHotkeyChord(
+            action,
+            out var chord) &&
+        !chord.IsEmpty;
+
+    private NativeHotkeyChord MomentaryHotkey(
+        string action)
     {
-        if (string.IsNullOrWhiteSpace(
-                gesture) ||
-            !HotkeyPreview.TryToNativeRegistration(
-                gesture,
-                out var modifiers,
-                out var virtualKey))
+        if (!_settings.TryGetHotkeyChord(
+                action,
+                out var chord) ||
+            chord.IsEmpty)
         {
             return NativeHotkeyChord.None;
         }
 
-        return new NativeHotkeyChord(
-            modifiers,
-            virtualKey);
+        return chord.ToNative();
     }
 
     private void RegisterGlobalHotkey(
         NativeHotkeyAction action,
-        string gesture)
+        HotkeyChord chord)
     {
         if (_nativeBridge is null ||
-            !HotkeyPreview.TryToNativeRegistration(
-                gesture,
-                out var modifiers,
-                out var virtualKey))
+            chord.IsEmpty ||
+            !chord.IsValid)
             return;
 
         try
         {
             if (_nativeBridge.RegisterHotkey(
                     action,
-                    modifiers,
-                    virtualKey) ==
+                    chord.Modifiers,
+                    chord.VirtualKey) ==
                 NativeBridgeStatus.Ok)
             {
                 _registeredHotkeys[action] =
-                    gesture;
+                    chord;
             }
         }
         catch (Exception)
@@ -1254,9 +1259,9 @@ public sealed partial class MainWindow : Window
                         _cameraDeviceToken,
                         _settings.OutputFolder,
                         MomentaryHotkey(
-                            _settings.HoldZoomHotkey),
+                            HotkeyActionIds.HoldZoom),
                         MomentaryHotkey(
-                            _settings.OverviewPeekHotkey)));
+                            HotkeyActionIds.OverviewPeek)));
         }
         catch (Exception)
         {

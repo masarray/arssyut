@@ -1053,6 +1053,30 @@ Presenter Controls Acceptance Lock:
 - otherwise explicitly defer them and proceed to P6UI.7A native
   system-audio/microphone completion.
 
+**P6UI.6A.1 status: IMPLEMENTED / CI + REAL HOTKEY ACCEPTANCE PENDING**
+
+Hotkey Product Hardening (intentional post-6C debt closure):
+- canonical modifier-mask + Windows-VK `HotkeyChord` runtime identity;
+- full Windows OEM punctuation family, Numpad, F1-F24 and navigation/editing
+  keys;
+- Settings capture, duplicate detection, persistence, global registration and
+  momentary start config share that one chord model;
+- bridge ABI v7 adds a temporary conflict probe on the existing hidden HWND;
+- rejected/conflicting assignments never mutate persistent state;
+- versioned `%LOCALAPPDATA%\Arssyut\settings.json` snapshot with write-through
+  temp + replace, all-or-nothing load and corrupt-file quarantine;
+- persistent state is disabled in preview/stress CLI modes;
+- Settings scrollbar owns a permanent content gutter;
+- regression matrix includes Ctrl+`, Ctrl+Shift+`, Ctrl+=, Ctrl+-, Alt+[,
+  Ctrl+Shift+F9, Win+Alt+F12 and Numpad+.
+
+**Next milestone: P6UI.6A.2 — Presenter Zoom Configuration**
+- expose configured Toggle Zoom amount in Settings;
+- persist the configured amount;
+- pass it through the existing bridge start contract;
+- remove the remaining hardcoded 2.0x native presenter-start value;
+- keep Zoom In/Out at 0.25x and preserve the accepted single ArZoom camera.
+
 #### P6UI.5 — real floating controller + transport
 
 - keep authoritative recorder state projected from native snapshots;

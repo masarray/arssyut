@@ -174,76 +174,63 @@ public sealed partial class SettingsWindow : Window
                 return;
             }
 
-            var gesture =
-                HotkeyPreview.FormatGesture(e);
-
-            var isGlobalTrigger =
-                TryNativeHotkeyAction(
-                    _capturingHotkeyAction,
-                    out var nativeAction);
-            var isMomentaryPresenter =
-                IsMomentaryPresenterAction(
-                    _capturingHotkeyAction);
-
-            var modifiers =
-                NativeHotkeyModifiers.None;
-            uint virtualKey = 0;
-
-            if ((isGlobalTrigger ||
-                 isMomentaryPresenter) &&
-                !HotkeyPreview.TryToNativeRegistration(
-                    gesture,
-                    out modifiers,
-                    out virtualKey))
+            if (!HotkeyChord.TryFromKeyEvent(
+                    e,
+                    out var chord))
             {
                 HotkeyFeedbackText.Text =
-                    "That key cannot be represented by the native Windows input path.";
+                    "That key is not supported by the canonical Windows hotkey map.";
                 HotkeyFeedbackText.Foreground =
                     Brush.Parse("#F1B85B");
                 e.Handled = true;
                 return;
             }
 
-            // Latch/step commands use RegisterHotKey and can be conflict-tested
-            // immediately. Hold/Peek deliberately do not register here: their
-            // key-up semantics are owned by PresentationInputWorker Raw Input.
-            if (_nativeBridge is not null &&
-                isGlobalTrigger)
-            {
-                var registration =
-                    _nativeBridge.RegisterHotkey(
-                        nativeAction,
-                        modifiers,
-                        virtualKey);
+            var isGlobalTrigger =
+                TryNativeHotkeyAction(
+                    _capturingHotkeyAction,
+                    out _);
+            var isMomentaryPresenter =
+                IsMomentaryPresenterAction(
+                    _capturingHotkeyAction);
 
-                if (registration != NativeBridgeStatus.Ok)
+            // Probe all native-facing shortcuts, including Raw-Input Hold/Peek.
+            // The probe reserves then immediately releases a temporary
+            // RegisterHotKey id; it never becomes the runtime owner.
+            if (_nativeBridge is not null &&
+                (isGlobalTrigger ||
+                 isMomentaryPresenter))
+            {
+                var probe =
+                    _nativeBridge.ProbeHotkey(
+                        chord.Modifiers,
+                        chord.VirtualKey);
+
+                if (probe != NativeBridgeStatus.Ok)
                 {
                     HotkeyFeedbackText.Text =
-                        registration == NativeBridgeStatus.Busy
-                            ? $"{gesture} is already reserved by Windows or another application."
-                            : "Windows could not register that shortcut.";
+                        probe == NativeBridgeStatus.Busy
+                            ? $"{chord.DisplayText} is already reserved by Windows or another application."
+                            : "Windows could not validate that shortcut.";
                     HotkeyFeedbackText.Foreground =
                         Brush.Parse("#F1B85B");
                     e.Handled = true;
                     return;
                 }
-
-                _nativeBridge.UnregisterHotkey(
-                    nativeAction);
             }
 
             if (_preview.TrySetHotkey(
                     _capturingHotkeyAction,
-                    gesture,
+                    chord,
                     out var error))
             {
                 EndHotkeyCapture();
                 HotkeyFeedbackText.Text =
-                    $"{gesture} assigned.";
+                    $"{chord.DisplayText} assigned.";
                 HotkeyFeedbackText.Foreground =
                     Brush.Parse("#49D49D");
                 MarkPreviewChanged(
-                    "Shortcut preview updated");
+                    "Shortcut saved");
             }
             else
             {
@@ -813,12 +800,12 @@ public sealed partial class SettingsWindow : Window
         RefreshPreviewState();
 
         HotkeyFeedbackText.Text =
-            "Preview values restored. Native settings were not changed.";
+            "Defaults restored. Hotkey defaults are persisted in product mode.";
         HotkeyFeedbackText.Foreground =
             Brush.Parse("#49D49D");
 
         MarkPreviewChanged(
-            "Preview reset");
+            "Defaults restored");
     }
 
     private void RefreshPreviewState()
@@ -880,53 +867,4 @@ public sealed partial class SettingsWindow : Window
             Key.LWin or
             Key.RWin;
 
-    private static string FormatGesture(
-        KeyEventArgs e)
-    {
-        var parts =
-            new List<string>();
-
-        if (e.KeyModifiers.HasFlag(
-                KeyModifiers.Control))
-            parts.Add("Ctrl");
-
-        if (e.KeyModifiers.HasFlag(
-                KeyModifiers.Shift))
-            parts.Add("Shift");
-
-        if (e.KeyModifiers.HasFlag(
-                KeyModifiers.Alt))
-            parts.Add("Alt");
-
-        if (e.KeyModifiers.HasFlag(
-                KeyModifiers.Meta))
-            parts.Add("Win");
-
-        parts.Add(
-            FormatKey(e.Key));
-
-        return string.Join(
-            "+",
-            parts);
-    }
-
-    private static string FormatKey(
-        Key key) =>
-        key switch
-        {
-            Key.D0 => "0",
-            Key.D1 => "1",
-            Key.D2 => "2",
-            Key.D3 => "3",
-            Key.D4 => "4",
-            Key.D5 => "5",
-            Key.D6 => "6",
-            Key.D7 => "7",
-            Key.D8 => "8",
-            Key.D9 => "9",
-            Key.Space => "Space",
-            Key.Return => "Enter",
-            Key.Back => "Backspace",
-            _ => key.ToString()
-        };
 }

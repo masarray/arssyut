@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -51,9 +52,6 @@ public sealed partial class App : Application
                         "--settings-stress",
                         StringComparison.OrdinalIgnoreCase));
 
-            var previewSettings =
-                new SettingsPreviewState();
-
             var explicitUiPreview =
                 Array.Exists(
                     args,
@@ -68,6 +66,47 @@ public sealed partial class App : Application
                 stressLongNames ||
                 settingsPreview ||
                 settingsStress;
+
+            var previewSettings =
+                new SettingsPreviewState();
+
+            if (!allowInteractionPreview)
+            {
+                var hotkeyStore =
+                    HotkeySettingsStore.CreateDefault();
+
+                if (hotkeyStore.TryLoad(
+                        out var persistedHotkeys,
+                        out var loadError))
+                {
+                    if (!previewSettings.TryRestoreHotkeys(
+                            persistedHotkeys,
+                            out var restoreError))
+                    {
+                        Debug.WriteLine(
+                            "Arssyut hotkey restore rejected: " +
+                            restoreError);
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(
+                             loadError))
+                {
+                    Debug.WriteLine(
+                        loadError);
+                }
+
+                previewSettings.HotkeysChanged +=
+                    (_, _) =>
+                    {
+                        if (!hotkeyStore.TrySave(
+                                previewSettings,
+                                out var saveError))
+                        {
+                            Debug.WriteLine(
+                                saveError);
+                        }
+                    };
+            }
 
             var bridgeRequired =
                 Array.Exists(

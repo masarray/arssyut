@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 6;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 7;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -240,6 +240,13 @@ std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_hotkey_register(
     ArssyutBridgeHandle handle,
     std::uint32_t action,
+    std::uint32_t modifiers,
+    std::uint32_t virtual_key) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_hotkey_probe(
+    ArssyutBridgeHandle handle,
     std::uint32_t modifiers,
     std::uint32_t virtual_key) noexcept;
 

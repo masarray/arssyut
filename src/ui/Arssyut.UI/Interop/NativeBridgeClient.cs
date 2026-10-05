@@ -163,7 +163,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 6;
+    private const uint ExpectedAbi = 7;
 
     private static readonly object NativeLoadGate =
         new();
@@ -583,6 +583,19 @@ public sealed class NativeBridgeClient : IDisposable
             NativeMethods.HotkeyRegister(
                 _handle,
                 (uint)action,
+                (uint)modifiers,
+                virtualKey);
+    }
+
+    public NativeBridgeStatus ProbeHotkey(
+        NativeHotkeyModifiers modifiers,
+        uint virtualKey)
+    {
+        ThrowIfDisposed();
+
+        return (NativeBridgeStatus)
+            NativeMethods.HotkeyProbe(
+                _handle,
                 (uint)modifiers,
                 virtualKey);
     }
@@ -1015,6 +1028,15 @@ public sealed class NativeBridgeClient : IDisposable
         public static extern int HotkeyRegister(
             IntPtr handle,
             uint action,
+            uint modifiers,
+            uint virtualKey);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_hotkey_probe",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int HotkeyProbe(
+            IntPtr handle,
             uint modifiers,
             uint virtualKey);
 

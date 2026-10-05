@@ -1102,6 +1102,44 @@ Mandatory rules:
 - real Windows acceptance still includes focus/alt-tab and release-order tests;
   CI geometry/state tests do not substitute for those physical input checks.
 
+### P6UI.6A.1 Hotkey Product Hardening contract
+
+- hotkey runtime identity is canonical `(modifier mask, Windows virtual key)`.
+  Display strings are labels only and must never become a second runtime
+  authority;
+- all Settings capture, duplicate detection, persistence, RegisterHotKey,
+  momentary Raw Input configuration and focused-preview matching must consume
+  the same `HotkeyChord` model;
+- Windows OEM punctuation must be mapped comprehensively, including
+  VK_OEM_1..VK_OEM_8 family keys. Do not fix individual symbols with
+  screen-local string special cases;
+- Numpad arithmetic/digits, F1-F24 and navigation/editing keys belong to the
+  same canonical map;
+- hotkey display text is derived from the canonical chord. Equivalent spellings
+  such as `Control + \`` and `Ctrl+\`` must compare as one identity;
+- Windows conflict validation uses the bridge hidden HWND through a temporary
+  reserve/release probe. The probe never becomes runtime ownership and must be
+  used before committing a new native-facing shortcut;
+- Hold Zoom / Overview Peek remain Raw Input runtime controls. The Windows probe
+  validates conflicts only; it must not replace their key-up authority;
+- persisted hotkeys live in
+  `%LOCALAPPDATA%\Arssyut\settings.json` as a versioned canonical snapshot;
+- persistence writes only on `HotkeysChanged`, uses same-volume temp +
+  write-through flush + replace, and never writes after a rejected assignment;
+- settings load is all-or-nothing. Wrong schema, unsupported VK/modifiers,
+  missing actions, duplicate chords or malformed JSON restore safe defaults;
+- malformed persisted files may be quarantined as `.corrupt`, but a
+  quarantine failure must never prevent startup;
+- preview/stress command-line modes must not read or mutate the user's
+  persistent hotkey file;
+- the Settings ScrollViewer reserves one content gutter for its vertical
+  scrollbar. Never repair CTA collisions with per-button right margins;
+- regression tests must include at minimum:
+  `Ctrl+\``, `Ctrl+Shift+\``, `Ctrl+=`, `Ctrl+-`, `Alt+[`,
+  `Ctrl+Shift+F9`, `Win+Alt+F12`, and `Numpad+`;
+- P6UI.6C presenter-camera/input authority remains frozen while closing this
+  earlier hotkey-product debt.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a
@@ -1150,9 +1188,11 @@ Rules:
 
 - Settings uses one row grammar across all categories; avoid page-specific
   mini design systems, giant cards or native-white control fallbacks;
-- P6UI.3 SettingsPreviewState is explicitly non-authoritative. Folder choices,
-  hotkeys, camera placement, devices and level meters remain preview-only until
-  the P6UI.4 bridge maps them to versioned native configuration contracts;
+- P6UI.3 SettingsPreviewState remains preview-only for folder/camera/device/
+  meter surfaces that have not been promoted. P6UI.6A.1 is the explicit
+  exception for hotkeys: its internal hotkey map is canonical product state,
+  persisted through HotkeySettingsStore and projected into native bridge/
+  Raw-Input contracts;
 - hotkey preview capture must reject duplicate assignments and never register
   global OS hotkeys during visual acceptance;
 - audio meters in Settings are deterministic presentation fixtures, not live

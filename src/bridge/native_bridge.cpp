@@ -435,6 +435,7 @@ constexpr wchar_t kBridgeOverlayOwnerClass[] =
     L"ArssyutBridgeOverlayOwner";
 constexpr UINT_PTR kBridgeOverlayTimer = 1;
 constexpr int kBridgeHotkeyIdBase = 0x5A40;
+constexpr int kBridgeHotkeyProbeId = 0x5AF0;
 constexpr std::uint32_t kBridgeHotkeyActionCount = 8;
 
 [[nodiscard]] bool valid_hotkey_action(std::uint32_t action) noexcept
@@ -1343,6 +1344,44 @@ arssyut_bridge_hotkey_register(
     binding.modifiers = modifiers;
     binding.virtual_key = virtual_key;
     binding.registered = true;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_hotkey_probe(
+    ArssyutBridgeHandle handle,
+    std::uint32_t modifiers,
+    std::uint32_t virtual_key) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context ||
+        virtual_key == 0 ||
+        virtual_key > 0xFFU ||
+        !valid_momentary_binding(
+            modifiers,
+            virtual_key)) {
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
+    if (!context->overlay_owner ||
+        context->overlay_thread_id != GetCurrentThreadId()) {
+        return ARSSYUT_BRIDGE_INVALID_STATE;
+    }
+
+    if (!RegisterHotKey(
+            context->overlay_owner,
+            kBridgeHotkeyProbeId,
+            windows_hotkey_modifiers(modifiers),
+            virtual_key)) {
+        const DWORD error = GetLastError();
+        return error == ERROR_HOTKEY_ALREADY_REGISTERED
+            ? ARSSYUT_BRIDGE_BUSY
+            : ARSSYUT_BRIDGE_INTERNAL_ERROR;
+    }
+
+    UnregisterHotKey(
+        context->overlay_owner,
+        kBridgeHotkeyProbeId);
     return ARSSYUT_BRIDGE_OK;
 }
 

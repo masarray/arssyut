@@ -177,7 +177,7 @@
                 HorizontalScrollBarVisibility="Disabled"
                 VerticalScrollBarVisibility="Auto">
 
-              <Grid>
+              <Grid Margin="0,0,18,0">
 
                 <!-- General -->
                 <StackPanel x:Name="PageGeneral" IsVisible="False">
@@ -636,7 +636,7 @@
                       <LucideIcon Kind="Keyboard" Size="15" StrokeWidth="1.8"
                                   Foreground="{DynamicResource ArBrush.TextSecondary}" />
                       <TextBlock x:Name="HotkeyFeedbackText" Grid.Column="1"
-                                 Text="Click the active shortcut, then press one chord. Ctrl/Shift/Alt/Win combinations are supported."
+                                 Text="Click a shortcut and press one chord. OEM symbols, Numpad, navigation keys, F1–F24, and Ctrl/Shift/Alt/Win combinations are supported."
                                  Classes="micro" TextWrapping="Wrap" />
                     </Grid>
                   </Border>

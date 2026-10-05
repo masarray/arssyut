@@ -1,3 +1,5 @@
+using System.IO;
+using Avalonia.Input;
 using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 
@@ -8,6 +10,194 @@ static void Expect(
     if (!condition)
         throw new InvalidOperationException(
             $"P6UI interaction test failed: {message}");
+}
+
+
+// P6UI.6A.1 canonical Windows hotkey acceptance matrix. Persistence and
+// runtime registration consume the same (modifier mask, VK) identity.
+var acceptedChords =
+    new (string Input, NativeHotkeyModifiers Modifiers, uint VirtualKey, string Display)[]
+    {
+        ("Ctrl+`", NativeHotkeyModifiers.Control, 0xC0, "Ctrl+`"),
+        ("Ctrl+Shift+`", NativeHotkeyModifiers.Control | NativeHotkeyModifiers.Shift, 0xC0, "Ctrl+Shift+`"),
+        ("Ctrl+=", NativeHotkeyModifiers.Control, 0xBB, "Ctrl+="),
+        ("Ctrl+-", NativeHotkeyModifiers.Control, 0xBD, "Ctrl+-"),
+        ("Alt+[", NativeHotkeyModifiers.Alt, 0xDB, "Alt+["),
+        ("Ctrl+Shift+F9", NativeHotkeyModifiers.Control | NativeHotkeyModifiers.Shift, 0x78, "Ctrl+Shift+F9"),
+        ("Win+Alt+F12", NativeHotkeyModifiers.Win | NativeHotkeyModifiers.Alt, 0x7B, "Alt+Win+F12"),
+        ("Numpad+", NativeHotkeyModifiers.None, 0x6B, "Numpad+"),
+        ("Ctrl+]", NativeHotkeyModifiers.Control, 0xDD, "Ctrl+]"),
+        ("Ctrl+\\", NativeHotkeyModifiers.Control, 0xDC, "Ctrl+\\"),
+        ("Alt+;", NativeHotkeyModifiers.Alt, 0xBA, "Alt+;"),
+        ("Shift+F12", NativeHotkeyModifiers.Shift, 0x7B, "Shift+F12"),
+        ("Ctrl+Numpad+", NativeHotkeyModifiers.Control, 0x6B, "Ctrl+Numpad+"),
+        ("Ctrl+Numpad-", NativeHotkeyModifiers.Control, 0x6D, "Ctrl+Numpad-"),
+        ("Home", NativeHotkeyModifiers.None, 0x24, "Home"),
+        ("PageDown", NativeHotkeyModifiers.None, 0x22, "PageDown"),
+        ("Insert", NativeHotkeyModifiers.None, 0x2D, "Insert")
+    };
+
+foreach (var accepted in acceptedChords)
+{
+    Expect(
+        HotkeyChord.TryParse(
+            accepted.Input,
+            out var chord) &&
+        chord.Modifiers ==
+            accepted.Modifiers &&
+        chord.VirtualKey ==
+            accepted.VirtualKey &&
+        chord.DisplayText ==
+            accepted.Display,
+        $"canonical hotkey parser accepts {accepted.Input}");
+}
+
+Expect(
+    HotkeyChord.TryFromAvaloniaKeyName(
+        "OemTilde",
+        KeyModifiers.Control,
+        out var capturedGrave) &&
+    capturedGrave.DisplayText ==
+        "Ctrl+`" &&
+    capturedGrave.VirtualKey ==
+        0xC0,
+    "Avalonia OEM grave key maps to Windows VK_OEM_3");
+
+Expect(
+    HotkeyChord.TryFromAvaloniaKeyName(
+        "Add",
+        KeyModifiers.Control,
+        out var capturedNumpadPlus) &&
+    capturedNumpadPlus.DisplayText ==
+        "Ctrl+Numpad+" &&
+    capturedNumpadPlus.VirtualKey ==
+        0x6B,
+    "Avalonia Numpad Add maps to Windows VK_ADD");
+
+var canonicalConflictState =
+    new SettingsPreviewState();
+
+Expect(
+    canonicalConflictState.TrySetHotkey(
+        HotkeyActionIds.ToggleZoom,
+        "Control + `",
+        out var canonicalFirstError) &&
+    string.IsNullOrEmpty(
+        canonicalFirstError),
+    "canonical state accepts normalized Control alias");
+
+Expect(
+    !canonicalConflictState.TrySetHotkey(
+        HotkeyActionIds.ZoomIn,
+        "Ctrl+`",
+        out var canonicalDuplicateError) &&
+    !string.IsNullOrEmpty(
+        canonicalDuplicateError),
+    "duplicate detection compares canonical chord identity, not display spelling");
+
+var persistenceRoot =
+    Path.Combine(
+        Path.GetTempPath(),
+        "arssyut-hotkey-" +
+        Guid.NewGuid().ToString("N"));
+
+Directory.CreateDirectory(
+    persistenceRoot);
+
+try
+{
+    var persistencePath =
+        Path.Combine(
+            persistenceRoot,
+            "settings.json");
+    var store =
+        new HotkeySettingsStore(
+            persistencePath);
+    var saved =
+        new SettingsPreviewState();
+
+    Expect(
+        saved.TrySetHotkey(
+            HotkeyActionIds.ToggleZoom,
+            "Ctrl+`",
+            out _) &&
+        saved.TrySetHotkey(
+            HotkeyActionIds.HoldZoom,
+            "Alt+[",
+            out _) &&
+        saved.TrySetHotkey(
+            HotkeyActionIds.ZoomIn,
+            "Ctrl+=",
+            out _) &&
+        saved.TrySetHotkey(
+            HotkeyActionIds.ZoomOut,
+            "Ctrl+-",
+            out _) &&
+        saved.TrySetHotkey(
+            HotkeyActionIds.ResetZoom,
+            "Win+Alt+F12",
+            out _) &&
+        saved.TrySetHotkey(
+            HotkeyActionIds.OverviewPeek,
+            "Numpad+",
+            out _),
+        "persistence fixture accepts canonical OEM/Numpad chords");
+
+    Expect(
+        store.TrySave(
+            saved,
+            out var saveError) &&
+        string.IsNullOrEmpty(
+            saveError) &&
+        File.Exists(
+            persistencePath),
+        "hotkey settings save atomically to a versioned product file");
+
+    Expect(
+        store.TryLoad(
+            out var loadedHotkeys,
+            out var loadError) &&
+        string.IsNullOrEmpty(
+            loadError),
+        "hotkey settings round-trip through JSON");
+
+    var restored =
+        new SettingsPreviewState();
+
+    Expect(
+        restored.TryRestoreHotkeys(
+            loadedHotkeys,
+            out var restoreError) &&
+        string.IsNullOrEmpty(
+            restoreError) &&
+        restored.ToggleZoomHotkey == "Ctrl+`" &&
+        restored.HoldZoomHotkey == "Alt+[" &&
+        restored.ZoomInHotkey == "Ctrl+=" &&
+        restored.ZoomOutHotkey == "Ctrl+-" &&
+        restored.ResetZoomHotkey == "Alt+Win+F12" &&
+        restored.OverviewPeekHotkey == "Numpad+",
+        "restored startup state preserves the last canonical hotkeys");
+
+    File.WriteAllText(
+        persistencePath,
+        "{ definitely-not-valid-json ");
+
+    Expect(
+        !store.TryLoad(
+            out _,
+            out var corruptError) &&
+        !string.IsNullOrEmpty(
+            corruptError) &&
+        File.Exists(
+            persistencePath +
+            ".corrupt"),
+        "corrupt settings fail safe to defaults and quarantine the bad file");
+}
+finally
+{
+    Directory.Delete(
+        persistenceRoot,
+        recursive: true);
 }
 
 var session =

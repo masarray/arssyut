@@ -473,6 +473,13 @@ int main()
         "duplicate Windows global hotkey must report Busy");
 
     require(
+        arssyut_bridge_hotkey_probe(
+            second_bridge,
+            hotkey_modifiers,
+            VK_F24) == ARSSYUT_BRIDGE_BUSY,
+        "hotkey probe must report a Windows registration conflict");
+
+    require(
         arssyut_bridge_hotkey_register(
             bridge,
             ARSSYUT_BRIDGE_HOTKEY_TOGGLE_ZOOM,
@@ -500,6 +507,19 @@ int main()
             hotkey_modifiers,
             VK_F24) == ARSSYUT_BRIDGE_OK,
         "released global hotkey must be reusable");
+
+    require(
+        arssyut_bridge_hotkey_unregister(
+            second_bridge,
+            ARSSYUT_BRIDGE_HOTKEY_TOGGLE_RECORD) == ARSSYUT_BRIDGE_OK,
+        "second global Record hotkey unregister failed");
+
+    require(
+        arssyut_bridge_hotkey_probe(
+            second_bridge,
+            hotkey_modifiers,
+            VK_F24) == ARSSYUT_BRIDGE_OK,
+        "hotkey probe must succeed after the conflicting binding is released");
 
     std::uint32_t pending_hotkeys = 0;
     require(

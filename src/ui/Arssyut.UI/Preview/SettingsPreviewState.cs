@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using Arssyut.UI.Interop;
 
 namespace Arssyut.UI.Preview;
 
@@ -19,7 +21,13 @@ public enum RecordingVisualStyle
 
 public sealed class SettingsPreviewState
 {
+    private readonly Dictionary<
+        string,
+        HotkeyChord> _hotkeys =
+            CreateDefaultHotkeys();
+
     public event EventHandler? Changed;
+    public event EventHandler? HotkeysChanged;
 
     public string OutputFolder { get; private set; } =
         @"Videos\Arssyut";
@@ -39,37 +47,45 @@ public sealed class SettingsPreviewState
     public bool ShortcutKeys { get; private set; } =
         true;
 
-    public string RecordHotkey { get; private set; } =
-        "F9";
+    public string RecordHotkey =>
+        HotkeyText(
+            HotkeyActionIds.Record);
 
-    public string PauseHotkey { get; private set; } =
-        "F10";
+    public string PauseHotkey =>
+        HotkeyText(
+            HotkeyActionIds.Pause);
 
-    public string MicrophoneHotkey { get; private set; } =
-        "Ctrl+F9";
+    public string MicrophoneHotkey =>
+        HotkeyText(
+            HotkeyActionIds.Microphone);
 
-    public string CameraHotkey { get; private set; } =
-        "Ctrl+F10";
+    public string CameraHotkey =>
+        HotkeyText(
+            HotkeyActionIds.Camera);
 
-    // ArZoom Presenter Controls are user-assigned in the source product. Keep
-    // these empty by default instead of inventing product-wide shortcuts.
-    public string ToggleZoomHotkey { get; private set; } =
-        string.Empty;
+    public string ToggleZoomHotkey =>
+        HotkeyText(
+            HotkeyActionIds.ToggleZoom);
 
-    public string HoldZoomHotkey { get; private set; } =
-        string.Empty;
+    public string HoldZoomHotkey =>
+        HotkeyText(
+            HotkeyActionIds.HoldZoom);
 
-    public string ZoomInHotkey { get; private set; } =
-        string.Empty;
+    public string ZoomInHotkey =>
+        HotkeyText(
+            HotkeyActionIds.ZoomIn);
 
-    public string ZoomOutHotkey { get; private set; } =
-        string.Empty;
+    public string ZoomOutHotkey =>
+        HotkeyText(
+            HotkeyActionIds.ZoomOut);
 
-    public string ResetZoomHotkey { get; private set; } =
-        string.Empty;
+    public string ResetZoomHotkey =>
+        HotkeyText(
+            HotkeyActionIds.ResetZoom);
 
-    public string OverviewPeekHotkey { get; private set; } =
-        string.Empty;
+    public string OverviewPeekHotkey =>
+        HotkeyText(
+            HotkeyActionIds.OverviewPeek);
 
     public CameraPlacement CameraPlacement { get; private set; } =
         CameraPlacement.BottomRight;
@@ -141,94 +157,156 @@ public sealed class SettingsPreviewState
         }
     }
 
+    public bool TryGetHotkeyChord(
+        string action,
+        out HotkeyChord chord) =>
+        _hotkeys.TryGetValue(
+            action,
+            out chord);
+
+    public IReadOnlyDictionary<
+        string,
+        HotkeyChord> ExportHotkeys() =>
+            new Dictionary<
+                string,
+                HotkeyChord>(
+                _hotkeys,
+                StringComparer.Ordinal);
+
+    public bool TryRestoreHotkeys(
+        IReadOnlyDictionary<
+            string,
+            HotkeyChord> hotkeys,
+        out string error)
+    {
+        error = string.Empty;
+
+        var candidate =
+            new Dictionary<
+                string,
+                HotkeyChord>(
+                    StringComparer.Ordinal);
+        var owner =
+            new Dictionary<
+                HotkeyChord,
+                string>();
+
+        foreach (var action in
+                 HotkeyActionIds.All)
+        {
+            if (!hotkeys.TryGetValue(
+                    action,
+                    out var chord))
+            {
+                error =
+                    $"Missing persisted shortcut {action}.";
+                return false;
+            }
+
+            if (!chord.IsValid)
+            {
+                error =
+                    $"Persisted shortcut {action} is invalid.";
+                return false;
+            }
+
+            if (!chord.IsEmpty)
+            {
+                if (owner.TryGetValue(
+                        chord,
+                        out var previous))
+                {
+                    error =
+                        $"{action} duplicates {previous}.";
+                    return false;
+                }
+
+                owner[chord] =
+                    action;
+            }
+
+            candidate[action] =
+                chord;
+        }
+
+        _hotkeys.Clear();
+
+        foreach (var pair in candidate)
+            _hotkeys[pair.Key] = pair.Value;
+
+        return true;
+    }
+
     public bool TrySetHotkey(
         string action,
         string gesture,
         out string error)
     {
+        if (!HotkeyChord.TryParse(
+                gesture,
+                out var chord))
+        {
+            error =
+                "Shortcut is not a supported Windows key chord.";
+            return false;
+        }
+
+        return TrySetHotkey(
+            action,
+            chord,
+            out error);
+    }
+
+    public bool TrySetHotkey(
+        string action,
+        HotkeyChord chord,
+        out string error)
+    {
         error = string.Empty;
 
-        var normalized =
-            NormalizeGesture(
-                gesture);
-
-        if (string.IsNullOrWhiteSpace(normalized))
+        if (!HotkeyActionIds.IsKnown(
+                action))
         {
             error =
-                "Shortcut cannot be empty.";
+                "Unknown shortcut action.";
             return false;
         }
 
-        var current =
-            action switch
-            {
-                "Record" => RecordHotkey,
-                "Pause" => PauseHotkey,
-                "Microphone" => MicrophoneHotkey,
-                "Camera" => CameraHotkey,
-                "ToggleZoom" => ToggleZoomHotkey,
-                "HoldZoom" => HoldZoomHotkey,
-                "ZoomIn" => ZoomInHotkey,
-                "ZoomOut" => ZoomOutHotkey,
-                "ResetZoom" => ResetZoomHotkey,
-                "OverviewPeek" => OverviewPeekHotkey,
-                _ => string.Empty
-            };
+        if (!chord.IsValid ||
+            chord.IsEmpty)
+        {
+            error =
+                "Shortcut cannot be empty or unsupported.";
+            return false;
+        }
 
-        if (string.Equals(
-                current,
-                normalized,
-                StringComparison.OrdinalIgnoreCase))
+        if (_hotkeys.TryGetValue(
+                action,
+                out var current) &&
+            current == chord)
             return true;
 
-        if (ConflictsWithOtherAction(
-                action,
-                normalized))
+        foreach (var pair in _hotkeys)
         {
-            error =
-                $"{normalized} is already assigned.";
-            return false;
-        }
-
-        switch (action)
-        {
-            case "Record":
-                RecordHotkey = normalized;
-                break;
-            case "Pause":
-                PauseHotkey = normalized;
-                break;
-            case "Microphone":
-                MicrophoneHotkey = normalized;
-                break;
-            case "Camera":
-                CameraHotkey = normalized;
-                break;
-            case "ToggleZoom":
-                ToggleZoomHotkey = normalized;
-                break;
-            case "HoldZoom":
-                HoldZoomHotkey = normalized;
-                break;
-            case "ZoomIn":
-                ZoomInHotkey = normalized;
-                break;
-            case "ZoomOut":
-                ZoomOutHotkey = normalized;
-                break;
-            case "ResetZoom":
-                ResetZoomHotkey = normalized;
-                break;
-            case "OverviewPeek":
-                OverviewPeekHotkey = normalized;
-                break;
-            default:
+            if (pair.Key != action &&
+                !pair.Value.IsEmpty &&
+                pair.Value == chord)
+            {
                 error =
-                    "Unknown shortcut action.";
+                    $"{chord.DisplayText} is already assigned to {pair.Key}.";
                 return false;
+            }
         }
 
-        Changed?.Invoke(this, EventArgs.Empty);
+        _hotkeys[action] =
+            chord;
+
+        HotkeysChanged?.Invoke(
+            this,
+            EventArgs.Empty);
+        Changed?.Invoke(
+            this,
+            EventArgs.Empty);
         return true;
     }
 
@@ -253,128 +331,71 @@ public sealed class SettingsPreviewState
             true;
         ShortcutKeys =
             true;
-        RecordHotkey =
-            "F9";
-        PauseHotkey =
-            "F10";
-        MicrophoneHotkey =
-            "Ctrl+F9";
-        CameraHotkey =
-            "Ctrl+F10";
-        ToggleZoomHotkey =
-            string.Empty;
-        HoldZoomHotkey =
-            string.Empty;
-        ZoomInHotkey =
-            string.Empty;
-        ZoomOutHotkey =
-            string.Empty;
-        ResetZoomHotkey =
-            string.Empty;
-        OverviewPeekHotkey =
-            string.Empty;
+
+        _hotkeys.Clear();
+        foreach (var pair in
+                 CreateDefaultHotkeys())
+        {
+            _hotkeys[pair.Key] =
+                pair.Value;
+        }
+
         CameraPlacement =
             CameraPlacement.BottomRight;
         MicrophoneDevice =
             "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
         CameraDevice =
             "USB2.0 HD UVC Webcam";
-        Changed?.Invoke(this, EventArgs.Empty);
+
+        HotkeysChanged?.Invoke(
+            this,
+            EventArgs.Empty);
+        Changed?.Invoke(
+            this,
+            EventArgs.Empty);
     }
 
-    private bool ConflictsWithOtherAction(
-        string action,
-        string gesture)
-    {
-        if (action != "Record" &&
-            string.Equals(
-                gesture,
-                RecordHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
+    private string HotkeyText(
+        string action) =>
+        _hotkeys.TryGetValue(
+            action,
+            out var chord)
+            ? chord.DisplayText
+            : string.Empty;
 
-        if (action != "Pause" &&
-            string.Equals(
-                gesture,
-                PauseHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (action != "Microphone" &&
-            string.Equals(
-                gesture,
-                MicrophoneHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (action != "Camera" &&
-            string.Equals(
-                gesture,
-                CameraHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (action != "ToggleZoom" &&
-            !string.IsNullOrWhiteSpace(ToggleZoomHotkey) &&
-            string.Equals(
-                gesture,
-                ToggleZoomHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (action != "HoldZoom" &&
-            !string.IsNullOrWhiteSpace(HoldZoomHotkey) &&
-            string.Equals(
-                gesture,
-                HoldZoomHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (action != "ZoomIn" &&
-            !string.IsNullOrWhiteSpace(ZoomInHotkey) &&
-            string.Equals(
-                gesture,
-                ZoomInHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (action != "ZoomOut" &&
-            !string.IsNullOrWhiteSpace(ZoomOutHotkey) &&
-            string.Equals(
-                gesture,
-                ZoomOutHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (action != "ResetZoom" &&
-            !string.IsNullOrWhiteSpace(ResetZoomHotkey) &&
-            string.Equals(
-                gesture,
-                ResetZoomHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (action != "OverviewPeek" &&
-            !string.IsNullOrWhiteSpace(OverviewPeekHotkey) &&
-            string.Equals(
-                gesture,
-                OverviewPeekHotkey,
-                StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
-    }
-
-    private static string NormalizeGesture(
-        string gesture) =>
-        gesture
-            .Replace(
-                "Control",
-                "Ctrl",
-                StringComparison.OrdinalIgnoreCase)
-            .Replace(
-                " ",
-                string.Empty,
-                StringComparison.Ordinal)
-            .Trim();
+    private static Dictionary<
+        string,
+        HotkeyChord> CreateDefaultHotkeys() =>
+            new(
+                StringComparer.Ordinal)
+            {
+                [HotkeyActionIds.Record] =
+                    new HotkeyChord(
+                        NativeHotkeyModifiers.None,
+                        0x78),
+                [HotkeyActionIds.Pause] =
+                    new HotkeyChord(
+                        NativeHotkeyModifiers.None,
+                        0x79),
+                [HotkeyActionIds.Microphone] =
+                    new HotkeyChord(
+                        NativeHotkeyModifiers.Control,
+                        0x78),
+                [HotkeyActionIds.Camera] =
+                    new HotkeyChord(
+                        NativeHotkeyModifiers.Control,
+                        0x79),
+                [HotkeyActionIds.ToggleZoom] =
+                    HotkeyChord.Empty,
+                [HotkeyActionIds.HoldZoom] =
+                    HotkeyChord.Empty,
+                [HotkeyActionIds.ZoomIn] =
+                    HotkeyChord.Empty,
+                [HotkeyActionIds.ZoomOut] =
+                    HotkeyChord.Empty,
+                [HotkeyActionIds.ResetZoom] =
+                    HotkeyChord.Empty,
+                [HotkeyActionIds.OverviewPeek] =
+                    HotkeyChord.Empty
+            };
 }

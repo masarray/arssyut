@@ -3,9 +3,9 @@
 **Updated:** 2026-10-05  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6C Presenter Controls Acceptance Lock implemented / CI + real Windows acceptance pending**  
+**Current engineering milestone:** **P6UI.6A.1 Hotkey Product Hardening implemented / CI + real Windows acceptance pending**  
 **Canonical baseline entering this milestone:**  
-`c2d4dca4a2b0ebc846185c6c86bd861671d677e8` (P6UI.6B Hold Zoom / Overview Peek)
+`5e9c858e2a51cda2594e823792f83a61c3fe601a` (P6UI.6C Presenter Controls Acceptance Lock)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -404,6 +404,40 @@ same accepted camera authority. If those controls are not release-critical,
 skip feature expansion and proceed to P6UI.7A native audio/microphone.
 
 
+
+### P6UI.6A.1 — Hotkey Product Hardening
+
+This milestone intentionally closes the earlier hotkey-product debt after the
+P6UI.6C presenter camera/input checkpoint. P6UI.6C remains frozen; this work
+does not reopen camera, Region or Raw Input ownership.
+
+Implemented:
+- one canonical managed `HotkeyChord` identity: modifier mask + Windows VK;
+- comprehensive OEM punctuation mapping including grave/backtick, brackets,
+  slash/backslash, semicolon/quote, comma/period, minus/equal;
+- Numpad digits/arithmetic, navigation/editing keys and F1-F24;
+- canonical display labels and alias normalization;
+- generic duplicate detection by chord identity rather than string spelling;
+- bridge ABI v7 temporary hotkey conflict probe using the existing hidden HWND;
+- Settings probes Windows conflicts before mutating/persisting any native-facing
+  shortcut, including Hold Zoom / Overview Peek;
+- MainWindow registration and momentary recorder-start config consume canonical
+  chords directly; no string reparse;
+- versioned hotkey snapshot persistence at
+  `%LOCALAPPDATA%\Arssyut\settings.json`;
+- atomic write-through temp + replace, all-or-nothing restore, corrupt-file
+  quarantine and safe-default fallback;
+- preview/stress CLI modes do not touch user persistence;
+- one ScrollViewer content gutter prevents the scrollbar from colliding with
+  keycap CTA controls;
+- automated acceptance matrix covers OEM, Numpad, F-key and navigation chords,
+  persistence round-trip and corrupt-file recovery.
+
+P6UI.6C presenter controls remain the accepted camera/input checkpoint.
+
+**Exact next milestone after real hotkey acceptance:** P6UI.6A.2 Presenter Zoom
+Configuration — persist/expose the configured Toggle Zoom amount and remove the
+remaining native hardcoded 2.0x start value without changing camera authority.
 
 ## 7. Current / exact next engineering milestone
 
