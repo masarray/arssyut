@@ -1,4 +1,6 @@
 #include "presentation/presentation_controller.hpp"
+#include "app/region_geometry.hpp"
+#include "presentation/momentary_presenter_gate.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -65,6 +67,35 @@ step_frames(
         ticks,
         0.72f,
         0.42f);
+}
+
+
+arssyut::presentation::PresentationFrameState
+step_frames_without_pointer_activity(
+    PresentationController &controller,
+    int frames,
+    std::int64_t &ticks,
+    float cursor_x = 0.72f,
+    float cursor_y = 0.42f)
+{
+    arssyut::presentation::PresentationFrameState state{};
+
+    for (int i = 0; i < frames; ++i) {
+        ticks +=
+            MonotonicClock::ticks_per_second / 60;
+
+        const TimePoint now{ticks};
+        state =
+            controller.step(
+                1.0f / 60.0f,
+                cursor_x,
+                cursor_y,
+                true,
+                now,
+                TimePoint{});
+    }
+
+    return state;
 }
 
 void test_toggle_and_reset(TestContext &test)
@@ -304,6 +335,235 @@ void test_overview_cancel_when_zoom_intent_ends(TestContext &test)
         "cancelled Overview Peek ends at full frame");
 }
 
+
+
+void test_reset_while_momentary_key_remains_held(
+    TestContext &test)
+{
+    arssyut::presentation::MomentaryReleaseGate gate;
+
+    test.expect(
+        gate.accept(true),
+        "momentary gate accepts an initial physical key-down");
+
+    gate.block_until_release();
+
+    test.expect(
+        !gate.accept(true) &&
+        gate.blocked(),
+        "Reset blocks a still-held momentary chord");
+
+    test.expect(
+        !gate.accept(true),
+        "still-held chord cannot re-arm on later presentation ticks");
+
+    test.expect(
+        !gate.accept(false) &&
+        !gate.blocked(),
+        "physical key-up clears the Reset interlock");
+
+    test.expect(
+        gate.accept(true),
+        "fresh key-down after release may activate again");
+}
+
+void test_toggle_hold_overlap_matrix(TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.zoom = 2.0f;
+
+    controller.reset();
+    controller.set_settings(settings);
+
+    std::int64_t ticks = 0;
+    controller.toggle_manual_zoom();
+    controller.set_hold_zoom(true);
+
+    auto state =
+        step_frames(controller, 120, ticks);
+
+    test.expect(
+        state.camera_zoom > 1.25f,
+        "Toggle + Hold converge on the same camera authority");
+
+    controller.set_hold_zoom(false);
+    state =
+        step_frames(controller, 45, ticks);
+
+    test.expect(
+        controller.manual_zoom_latched() &&
+        state.camera_zoom > 1.20f,
+        "releasing Hold does not clear Toggle Zoom intent");
+
+    controller.set_hold_zoom(true);
+    controller.toggle_manual_zoom();
+    state =
+        step_frames(controller, 45, ticks);
+
+    test.expect(
+        !controller.manual_zoom_latched() &&
+        state.camera_zoom > 1.20f,
+        "turning Toggle off does not clear an active Hold Zoom intent");
+
+    controller.set_hold_zoom(false);
+    state =
+        step_frames(controller, 180, ticks);
+
+    test.expect(
+        std::fabs(state.camera_zoom - 1.0f) < 0.02f,
+        "camera returns to full frame only after the final zoom owner releases");
+}
+
+void test_hold_smart_zoom_overlap(TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = true;
+    settings.presenter_controls = true;
+    settings.zoom = 2.0f;
+
+    controller.reset();
+    controller.set_settings(settings);
+
+    std::int64_t ticks = 1;
+    controller.on_click(
+        arssyut::presentation::ClickKind::Left,
+        0.75f,
+        0.40f,
+        TimePoint{ticks});
+    controller.set_hold_zoom(true);
+
+    auto state =
+        step_frames_without_pointer_activity(
+            controller,
+            60,
+            ticks);
+
+    test.expect(
+        state.camera_zoom > 1.20f,
+        "Smart Zoom and Hold share the accepted ArZoom camera");
+
+    controller.set_hold_zoom(false);
+    state =
+        step_frames_without_pointer_activity(
+            controller,
+            30,
+            ticks);
+
+    test.expect(
+        state.camera_zoom > 1.10f,
+        "releasing Hold preserves still-active Smart Zoom intent");
+
+    state =
+        step_frames_without_pointer_activity(
+            controller,
+            240,
+            ticks);
+
+    test.expect(
+        std::fabs(state.camera_zoom - 1.0f) < 0.03f,
+        "camera returns after Smart Zoom tail expires");
+}
+
+void test_region_boundary_tracks_hold_and_overview(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.zoom = 2.25f;
+
+    controller.reset();
+    controller.set_settings(settings);
+    controller.set_hold_zoom(true);
+
+    std::int64_t ticks = 0;
+    auto state =
+        step_frames_at(
+            controller,
+            160,
+            ticks,
+            0.78f,
+            0.38f);
+
+    const RECT region{
+        -1400,
+        120,
+        200,
+        1020};
+
+    const RECT saved_boundary =
+        arssyut::app::camera_viewport_rect(
+            region,
+            state.camera_center_x,
+            state.camera_center_y,
+            state.camera_zoom);
+
+    test.expect(
+        saved_boundary.left >= region.left &&
+        saved_boundary.top >= region.top &&
+        saved_boundary.right <= region.right &&
+        saved_boundary.bottom <= region.bottom &&
+        (saved_boundary.right - saved_boundary.left) <
+            (region.right - region.left),
+        "Hold Zoom boundary contracts inside the selected Region");
+
+    controller.set_overview_peek(true);
+    state =
+        step_frames_at(
+            controller,
+            60,
+            ticks,
+            0.10f,
+            0.90f);
+
+    const RECT overview_boundary =
+        arssyut::app::camera_viewport_rect(
+            region,
+            state.camera_center_x,
+            state.camera_center_y,
+            state.camera_zoom);
+
+    test.expect(
+        overview_boundary.left == region.left &&
+        overview_boundary.top == region.top &&
+        overview_boundary.right == region.right &&
+        overview_boundary.bottom == region.bottom,
+        "Overview Peek expands the native Region boundary to exact full frame");
+
+    controller.set_overview_peek(false);
+
+    for (int i = 0;
+         i < 120 && controller.overview_active();
+         ++i) {
+        state =
+            step_frames_at(
+                controller,
+                1,
+                ticks,
+                0.12f,
+                0.88f);
+    }
+
+    const RECT restored_boundary =
+        arssyut::app::camera_viewport_rect(
+            region,
+            state.camera_center_x,
+            state.camera_center_y,
+            state.camera_zoom);
+
+    test.expect(
+        restored_boundary.left == saved_boundary.left &&
+        restored_boundary.top == saved_boundary.top &&
+        restored_boundary.right == saved_boundary.right &&
+        restored_boundary.bottom == saved_boundary.bottom,
+        "Overview Peek restores the exact saved Region viewport after pointer movement");
+}
+
 } // namespace
 
 int main()
@@ -313,8 +573,12 @@ int main()
     test_toggle_and_reset(test);
     test_zoom_step_and_bounds(test);
     test_hold_zoom_press_release(test);
+    test_reset_while_momentary_key_remains_held(test);
+    test_toggle_hold_overlap_matrix(test);
+    test_hold_smart_zoom_overlap(test);
     test_overview_peek_saved_shot(test);
     test_overview_cancel_when_zoom_intent_ends(test);
+    test_region_boundary_tracks_hold_and_overview(test);
 
     if (test.failures != 0) {
         std::cerr

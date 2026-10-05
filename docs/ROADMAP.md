@@ -1033,14 +1033,25 @@ Press/release presenter controls:
 - Reset blocks still-held momentary chords until physical release;
 - deterministic tests cover Hold press/release, Peek restore and cancel-to-full-frame.
 
-**Next milestone: P6UI.6C — Presenter Controls Acceptance Lock**
-- real global press/release behavior while another app owns focus;
-- modifier-release and alt-tab/focus-loss stuck-key checks;
-- Toggle Zoom + Hold Zoom + Smart Zoom overlap matrix;
-- Overview Peek saved-shot restoration under pointer movement;
-- Region capture boundary follows the same camera state during Hold/Peek;
-- evaluate Freeze Camera / Toggle Smart Follow only after this acceptance gate;
-- no second keyboard hook and no second camera state.
+**P6UI.6C status: IMPLEMENTED / CI + REAL WINDOWS ACCEPTANCE PENDING**
+
+Presenter Controls Acceptance Lock:
+- Raw Input remains the only momentary activation authority;
+- `GetAsyncKeyState` is a release-only stale-state fuse and cannot activate a
+  chord;
+- deterministic Reset block-until-release gate prevents sticky re-arm;
+- Toggle/Hold and Hold/Smart Zoom ownership matrices are regression-locked;
+- Overview saved-shot return remains locked under pointer motion;
+- Region boundary uses the same camera state and is regression-locked for Hold,
+  1x Overview and exact saved viewport restoration;
+- no second keyboard hook, camera, Region solver or bridge ABI expansion.
+
+**Next milestone after real 6C acceptance: P6UI.6D — Presenter Advanced Controls Decision**
+- evaluate Freeze Camera and Toggle Smart Follow against the pinned ArZoom
+  authority and current single-camera architecture;
+- implement only if they are release-critical and can remain bounded;
+- otherwise explicitly defer them and proceed to P6UI.7A native
+  system-audio/microphone completion.
 
 #### P6UI.5 — real floating controller + transport
 

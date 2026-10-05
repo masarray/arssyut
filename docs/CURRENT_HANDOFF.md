@@ -3,9 +3,9 @@
 **Updated:** 2026-10-05  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6B Hold Zoom / Overview Peek implemented / CI + real recording acceptance pending**  
+**Current engineering milestone:** **P6UI.6C Presenter Controls Acceptance Lock implemented / CI + real Windows acceptance pending**  
 **Canonical baseline entering this milestone:**  
-`2918cb596e14da1d0fce0869e316cdae510c066e` (P6UI.6A ArZoom presenter hotkeys)
+`c2d4dca4a2b0ebc846185c6c86bd861671d677e8` (P6UI.6B Hold Zoom / Overview Peek)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -368,11 +368,42 @@ Implementation:
 No capture, Region, compositor, encoder, timing or second-camera authority is
 introduced.
 
-**Exact next milestone after real acceptance:** P6UI.6C Presenter Controls
-Acceptance Lock — real key-down/key-up, alt-tab/focus-loss, overlapping
-Toggle/Hold/Smart Zoom, Overview saved-shot restore, and Region boundary
-synchronization. Freeze Camera / Toggle Smart Follow remain deferred until
-those controls can be proven through the same camera authority.
+### P6UI.6C — Presenter Controls Acceptance Lock
+
+P6UI.6C hardens the P6UI.6A/6B presenter controls without creating another
+input or camera authority.
+
+Implemented lock:
+- Raw Input remains the only Hold/Peek activation source;
+- `GetAsyncKeyState` is used only as a stale-release fuse after Raw Input has
+  already matched the chord, so focus/desktop transitions fail safe toward
+  release rather than sticky zoom;
+- Reset's block-until-release behavior is formalized as a deterministic
+  `MomentaryReleaseGate` and regression-tested;
+- Toggle Zoom + Hold Zoom overlap is locked: releasing/toggling one owner does
+  not clear the other;
+- Hold Zoom + Smart Zoom overlap is locked: releasing Hold preserves the active
+  Smart Zoom window;
+- Overview Peek saved-shot restore remains locked under pointer movement;
+- presenter camera state is fed through the existing Region
+  `camera_viewport_rect()` path, with deterministic tests for contracted Hold
+  viewport, exact 1x Overview full frame and exact saved viewport restoration;
+- no bridge ABI change, capture change, Region geometry rewrite, compositor
+  change, media timing change, encoder change or second camera/input path.
+
+Real Windows acceptance remains required for:
+1. Hold/Peek while another application owns focus;
+2. release primary key vs modifier in different orders;
+3. alt-tab during a held chord;
+4. Reset while Hold/Peek remains physically down;
+5. Region boundary following Hold/Peek during a real recording.
+
+**Next after real 6C acceptance:** P6UI.6D Presenter Advanced Controls decision
+/ parity work for Freeze Camera and Toggle Smart Follow, but only through the
+same accepted camera authority. If those controls are not release-critical,
+skip feature expansion and proceed to P6UI.7A native audio/microphone.
+
+
 
 ## 7. Current / exact next engineering milestone
 

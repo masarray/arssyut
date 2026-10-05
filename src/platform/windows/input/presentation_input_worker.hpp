@@ -88,7 +88,22 @@ public:
             return false;
         }
 
-        return modifier_mask() == modifiers;
+        if (modifier_mask() != modifiers)
+            return false;
+
+        // P6UI.6C stale-state release fuse. Raw Input remains the only
+        // activation authority. GetAsyncKeyState is consulted only after the
+        // tracked Raw Input chord already matches, and therefore can only turn
+        // an apparent held chord OFF if Windows reports the physical key or
+        // modifier is no longer down (e.g. focus/desktop transition or a
+        // missed release). It can never activate a chord on its own.
+        if (!physical_key_down(
+                virtual_key)) {
+            return false;
+        }
+
+        return physical_modifier_mask() ==
+            modifiers;
     }
 
 private:
@@ -110,6 +125,45 @@ private:
     void handle_windows_key_hook(
         WPARAM message,
         const KBDLLHOOKSTRUCT &keyboard) noexcept;
+
+    [[nodiscard]] static bool physical_key_down(
+        std::uint16_t virtual_key) noexcept
+    {
+        return (GetAsyncKeyState(
+                    static_cast<int>(
+                        virtual_key)) &
+                0x8000) != 0;
+    }
+
+    [[nodiscard]] static std::uint8_t
+    physical_modifier_mask() noexcept
+    {
+        std::uint8_t result = 0;
+
+        const bool ctrl =
+            physical_key_down(VK_LCONTROL) ||
+            physical_key_down(VK_RCONTROL);
+        const bool shift =
+            physical_key_down(VK_LSHIFT) ||
+            physical_key_down(VK_RSHIFT);
+        const bool alt =
+            physical_key_down(VK_LMENU) ||
+            physical_key_down(VK_RMENU);
+        const bool win =
+            physical_key_down(VK_LWIN) ||
+            physical_key_down(VK_RWIN);
+
+        if (ctrl)
+            result |= arssyut::presentation::ShortcutCtrl;
+        if (shift)
+            result |= arssyut::presentation::ShortcutShift;
+        if (alt)
+            result |= arssyut::presentation::ShortcutAlt;
+        if (win)
+            result |= arssyut::presentation::ShortcutWin;
+
+        return result;
+    }
 
     [[nodiscard]] std::uint8_t modifier_mask() const noexcept;
     void publish_shortcut(

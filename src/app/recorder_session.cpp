@@ -9,6 +9,7 @@
 #include "platform/windows/input/presentation_input_worker.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
 #include "presentation/presentation_controller.hpp"
+#include "presentation/momentary_presenter_gate.hpp"
 
 #include <Psapi.h>
 #include <dwmapi.h>
@@ -882,10 +883,12 @@ void RecorderSession::worker_main() noexcept
     PresentationFrameState presentation_state{};
 
     // Reset / Full Frame in upstream ArZoom clears momentary state even when
-    // the user is still physically holding the chord. Do not re-arm until the
-    // chord has actually been released once.
-    bool hold_zoom_block_until_release = false;
-    bool overview_block_until_release = false;
+    // the user is still physically holding the chord. These deterministic
+    // interlocks prevent re-arm until each chord is actually released once.
+    arssyut::presentation::MomentaryReleaseGate
+        hold_zoom_gate;
+    arssyut::presentation::MomentaryReleaseGate
+        overview_gate;
 
     bool failed = false;
 
@@ -937,8 +940,8 @@ void RecorderSession::worker_main() noexcept
                     0,
                     std::memory_order_acq_rel) != 0) {
                 presentation_controller.reset_full_frame();
-                hold_zoom_block_until_release = true;
-                overview_block_until_release = true;
+                hold_zoom_gate.block_until_release();
+                overview_gate.block_until_release();
             }
 
             const bool hold_zoom_pressed =
@@ -946,23 +949,19 @@ void RecorderSession::worker_main() noexcept
                 presentation_input.chord_pressed(
                     config_.hold_zoom_hotkey.virtual_key,
                     config_.hold_zoom_hotkey.modifiers);
-            if (!hold_zoom_pressed)
-                hold_zoom_block_until_release = false;
 
             const bool overview_pressed =
                 config_.overview_peek_hotkey.configured() &&
                 presentation_input.chord_pressed(
                     config_.overview_peek_hotkey.virtual_key,
                     config_.overview_peek_hotkey.modifiers);
-            if (!overview_pressed)
-                overview_block_until_release = false;
 
             presentation_controller.set_hold_zoom(
-                hold_zoom_pressed &&
-                !hold_zoom_block_until_release);
+                hold_zoom_gate.accept(
+                    hold_zoom_pressed));
             presentation_controller.set_overview_peek(
-                overview_pressed &&
-                !overview_block_until_release);
+                overview_gate.accept(
+                    overview_pressed));
 
             arssyut::windows::MouseClickEvent click_event;
             while (presentation_input.try_pop_click(

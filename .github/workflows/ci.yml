@@ -90,12 +90,15 @@ jobs:
           $allowedNativeCorrections = @(
             # P6UI.4C-B reproduced Region layered-window repaint correction.
             "src/app/recorder_overlay.cpp",
-            # P6UI.6A bounded presenter-command mailbox only. Capture, timing,
-            # compositor, encoder and RecorderSession lifecycle remain unchanged.
+            # P6UI.6A-6C bounded presenter command / momentary release plumbing
+            # only. Capture, timing, compositor, encoder and RecorderSession
+            # lifecycle remain unchanged.
             "src/app/recorder_session.cpp",
             "src/app/recorder_session.hpp",
-            # P6UI.6B reads the already-authoritative Raw Input pressed-state
-            # table for momentary presenter chords. No second keyboard hook.
+            # P6UI.6B/6C reads the already-authoritative Raw Input pressed-state
+            # table for momentary presenter chords. P6UI.6C adds only a
+            # GetAsyncKeyState stale-release fuse; it cannot activate a chord
+            # and does not add a second keyboard hook.
             "src/platform/windows/input/presentation_input_worker.hpp"
           )
 
@@ -107,7 +110,7 @@ jobs:
           if ($violations.Count -gt 0) {
             Write-Host "P6UI changed locked native implementation after ${baseline}:"
             $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
-            throw "Existing native engine implementation is frozen. Only the documented RecorderOverlay repaint, bounded RecorderSession presenter mailbox, and P6UI.6B Raw Input held-state accessor are allowed."
+            throw "Existing native engine implementation is frozen. Only the documented RecorderOverlay repaint, bounded RecorderSession presenter plumbing, and P6UI.6B/6C Raw Input held-state + stale-release fuse are allowed."
           }
 
           Write-Host "Native baseline guard passed."

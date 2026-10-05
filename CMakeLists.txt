@@ -394,6 +394,7 @@ if(ARSSYUT_BUILD_TESTS)
 
         add_executable(arssyut_presenter_zoom_tests
             tests/windows/test_presenter_zoom_controls.cpp
+            src/app/region_geometry.cpp
         )
         target_link_libraries(
             arssyut_presenter_zoom_tests

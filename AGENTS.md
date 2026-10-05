@@ -1076,6 +1076,32 @@ Mandatory rules:
 - the only P6UI.6B protected-platform exception is the bounded read-only
   `PresentationInputWorker::chord_pressed()` accessor.
 
+### P6UI.6C Presenter Controls Acceptance Lock contract
+
+- Raw Input remains the sole activation authority for Hold Zoom / Overview Peek.
+  `GetAsyncKeyState` may only be used as a conservative stale-release fuse
+  after the Raw Input chord already matches; it must never activate a chord;
+- focus changes, alt-tab and modifier-release order must prefer a safe release
+  over sticky zoom. No second keyboard hook, worker or UI-held-key state;
+- Toggle Zoom, Hold Zoom and Smart Zoom are independent intents into the same
+  `PresentationController -> ArZoomCameraAdapter` camera. Releasing one intent
+  must never clear another active intent;
+- Reset / Full Frame owns the close action. A still-held momentary chord is
+  blocked until physical release, then may activate on a fresh press;
+- the Reset release interlock is deterministic presenter plumbing only. It does
+  not observe keys or become another input authority;
+- Overview Peek must preserve its P6UI.6B saved-shot behavior under pointer
+  movement and all overlap cases;
+- Region boundary acceptance uses the same
+  `PresentationFrameState / RecorderSnapshot` camera values passed through
+  existing `camera_viewport_rect()`. Do not add Region-specific presenter
+  geometry;
+- deterministic tests must cover Toggle/Hold overlap, Hold/Smart overlap,
+  Reset-while-held release gating, Overview saved-shot return and Region
+  boundary contraction/full-frame/restore;
+- real Windows acceptance still includes focus/alt-tab and release-order tests;
+  CI geometry/state tests do not substitute for those physical input checks.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a
