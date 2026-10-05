@@ -155,7 +155,8 @@ public sealed record NativeStartRequest(
     ulong CameraDeviceToken,
     string OutputFolder,
     NativeHotkeyChord HoldZoomHotkey,
-    NativeHotkeyChord OverviewPeekHotkey);
+    NativeHotkeyChord OverviewPeekHotkey,
+    float PresenterZoom);
 
 public sealed class NativeBridgeClient : IDisposable
 {
@@ -163,7 +164,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 7;
+    private const uint ExpectedAbi = 8;
 
     private static readonly object NativeLoadGate =
         new();
@@ -757,7 +758,10 @@ public sealed class NativeBridgeClient : IDisposable
                 OverviewPeekModifiers =
                     (uint)request.OverviewPeekHotkey.Modifiers,
                 OverviewPeekVirtualKey =
-                    request.OverviewPeekHotkey.VirtualKey
+                    request.OverviewPeekHotkey.VirtualKey,
+                PresenterZoom =
+                    request.PresenterZoom,
+                Reserved1 = 0
             };
 
         return (NativeBridgeStatus)
@@ -937,6 +941,8 @@ public sealed class NativeBridgeClient : IDisposable
         public uint HoldZoomVirtualKey;
         public uint OverviewPeekModifiers;
         public uint OverviewPeekVirtualKey;
+        public float PresenterZoom;
+        public uint Reserved1;
     }
 
     [StructLayout(

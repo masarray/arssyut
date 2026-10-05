@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <iterator>
@@ -1573,6 +1574,13 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
     }
 
+    if (!std::isfinite(
+            request->presenter_zoom) ||
+        request->presenter_zoom < 1.10f ||
+        request->presenter_zoom > 4.00f) {
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
     if (request->capture_mode ==
         ARSSYUT_BRIDGE_CAPTURE_GAME) {
         return ARSSYUT_BRIDGE_UNSUPPORTED;
@@ -1706,7 +1714,7 @@ arssyut_bridge_recorder_start(
             request->hold_zoom_virtual_key != 0 ||
             request->overview_peek_virtual_key != 0;
         config.presentation.zoom =
-            2.0f;
+            request->presenter_zoom;
         config.hold_zoom_hotkey.virtual_key =
             static_cast<std::uint16_t>(
                 request->hold_zoom_virtual_key);

@@ -75,10 +75,10 @@
                 Text="Preferences"
                 Classes="micro"
                 FontWeight="SemiBold"
-                Margin="10,6,0,9" />
+                Margin="14,6,0,9" />
 
             <StackPanel Grid.Row="1" Spacing="3">
-              <Button x:Name="NavGeneral" AutomationProperties.Name="General settings" Classes="nav" Click="Nav_OnClick" Tag="General">
+              <Button x:Name="NavGeneral" AutomationProperties.Name="General settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="General">
                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Settings2" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -86,7 +86,7 @@
                 </StackPanel>
               </Button>
 
-              <Button x:Name="NavRecording" AutomationProperties.Name="Recording settings" Classes="nav selected" Click="Nav_OnClick" Tag="Recording">
+              <Button x:Name="NavRecording" AutomationProperties.Name="Recording settings" Classes="nav settings-nav selected" Click="Nav_OnClick" Tag="Recording">
                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Video" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -94,7 +94,7 @@
                 </StackPanel>
               </Button>
 
-              <Button x:Name="NavOutput" AutomationProperties.Name="Output settings" Classes="nav" Click="Nav_OnClick" Tag="Output">
+              <Button x:Name="NavOutput" AutomationProperties.Name="Output settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Output">
                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="FolderOpen" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -102,7 +102,7 @@
                 </StackPanel>
               </Button>
 
-              <Button x:Name="NavAudio" AutomationProperties.Name="Audio settings" Classes="nav" Click="Nav_OnClick" Tag="Audio">
+              <Button x:Name="NavAudio" AutomationProperties.Name="Audio settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Audio">
                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Volume2" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -110,7 +110,7 @@
                 </StackPanel>
               </Button>
 
-              <Button x:Name="NavCamera" AutomationProperties.Name="Camera settings" Classes="nav" Click="Nav_OnClick" Tag="Camera">
+              <Button x:Name="NavCamera" AutomationProperties.Name="Camera settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Camera">
                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Camera" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -118,7 +118,7 @@
                 </StackPanel>
               </Button>
 
-              <Button x:Name="NavMouse" AutomationProperties.Name="Mouse and keystroke settings" Classes="nav" Click="Nav_OnClick" Tag="Mouse">
+              <Button x:Name="NavMouse" AutomationProperties.Name="Mouse and keystroke settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Mouse">
                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="MousePointer2" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -126,7 +126,7 @@
                 </StackPanel>
               </Button>
 
-              <Button x:Name="NavHotkeys" AutomationProperties.Name="Hotkey settings" Classes="nav" Click="Nav_OnClick" Tag="Hotkeys">
+              <Button x:Name="NavHotkeys" AutomationProperties.Name="Hotkey settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Hotkeys">
                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Keyboard" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -134,7 +134,7 @@
                 </StackPanel>
               </Button>
 
-              <Button x:Name="NavAdvanced" AutomationProperties.Name="Advanced settings" Classes="nav" Click="Nav_OnClick" Tag="Advanced">
+              <Button x:Name="NavAdvanced" AutomationProperties.Name="Advanced settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Advanced">
                 <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
                   <LucideIcon Kind="Wrench" Size="15" StrokeWidth="1.8"
                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -143,7 +143,7 @@
               </Button>
             </StackPanel>
 
-            <StackPanel Grid.Row="2" Margin="10,10,6,4" Spacing="2">
+            <StackPanel Grid.Row="2" Margin="14,10,6,4" Spacing="2">
               <TextBlock Text="Native product shell" Classes="micro" />
               <TextBlock Text="Unavailable features stay locked" FontSize="9.5" Foreground="{DynamicResource ArBrush.TextDim}" />
             </StackPanel>
@@ -483,6 +483,20 @@
                       <TextBlock Text="ArZoom presenter intent; active only while recording." Classes="micro" />
                     </StackPanel>
                   </Grid>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Zoom amount" FontWeight="Medium" />
+                        <TextBlock Text="Base shot used by Toggle Zoom and Hold Zoom; Zoom In/Out continues in 0.25× steps." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="PresenterZoomCombo"
+                                Grid.Column="1"
+                                Classes="ar-select"
+                                SelectionChanged="PresenterZoom_OnSelectionChanged"
+                                AutomationProperties.Name="Presenter zoom amount" />
+                    </Grid>
+                  </Border>
 
                   <Border Classes="setting-row">
                     <Grid ColumnDefinitions="*,190" ColumnSpacing="24">

@@ -111,10 +111,26 @@ try
             persistenceRoot,
             "settings.json");
     var store =
-        new HotkeySettingsStore(
+        new ProductSettingsStore(
             persistencePath);
     var saved =
         new SettingsPreviewState();
+
+    Expect(
+        saved.PresenterZoom ==
+            SettingsPreviewState.DefaultPresenterZoom &&
+        saved.TrySetPresenterZoom(
+            3.00f) &&
+        saved.PresenterZoom ==
+            3.00f,
+        "presenter zoom starts at 2.00x and accepts the 3.00x product preset");
+
+    Expect(
+        !saved.TrySetPresenterZoom(
+            1.09f) &&
+        saved.PresenterZoom ==
+            3.00f,
+        "unsupported presenter zoom is rejected without mutating the configured value");
 
     Expect(
         saved.TrySetHotkey(
@@ -151,22 +167,23 @@ try
             saveError) &&
         File.Exists(
             persistencePath),
-        "hotkey settings save atomically to a versioned product file");
+        "product settings save atomically to one versioned file");
 
     Expect(
         store.TryLoad(
-            out var loadedHotkeys,
+            out var loadedSettings,
             out var loadError) &&
         string.IsNullOrEmpty(
-            loadError),
-        "hotkey settings round-trip through JSON");
+            loadError) &&
+        loadedSettings.PresenterZoom == 3.00f,
+        "product settings round-trip hotkeys and presenter zoom through JSON");
 
     var restored =
         new SettingsPreviewState();
 
     Expect(
-        restored.TryRestoreHotkeys(
-            loadedHotkeys,
+        restored.TryRestorePersistentSettings(
+            loadedSettings,
             out var restoreError) &&
         string.IsNullOrEmpty(
             restoreError) &&
@@ -175,8 +192,54 @@ try
         restored.ZoomInHotkey == "Ctrl+=" &&
         restored.ZoomOutHotkey == "Ctrl+-" &&
         restored.ResetZoomHotkey == "Alt+Win+F12" &&
-        restored.OverviewPeekHotkey == "Numpad+",
-        "restored startup state preserves the last canonical hotkeys");
+        restored.OverviewPeekHotkey == "Numpad+" &&
+        restored.PresenterZoom == 3.00f,
+        "restored startup state preserves canonical hotkeys and presenter zoom");
+
+    var schemaV2Lines =
+        File.ReadAllLines(
+            persistencePath);
+    var schemaV1Lines =
+        new List<string>();
+
+    foreach (var line in schemaV2Lines)
+    {
+        if (line.Contains(
+                "\"PresenterZoom\"",
+                StringComparison.Ordinal))
+            continue;
+
+        schemaV1Lines.Add(
+            line.Replace(
+                "\"SchemaVersion\": 2",
+                "\"SchemaVersion\": 1",
+                StringComparison.Ordinal));
+    }
+
+    var legacyPath =
+        Path.Combine(
+            persistenceRoot,
+            "settings-v1.json");
+    File.WriteAllLines(
+        legacyPath,
+        schemaV1Lines);
+
+    var legacyStore =
+        new ProductSettingsStore(
+            legacyPath);
+
+    Expect(
+        legacyStore.TryLoad(
+            out var legacySettings,
+            out var legacyLoadError) &&
+        string.IsNullOrEmpty(
+            legacyLoadError) &&
+        legacySettings.PresenterZoom ==
+            SettingsPreviewState.DefaultPresenterZoom &&
+        legacySettings.Hotkeys[
+            HotkeyActionIds.ToggleZoom].
+            DisplayText == "Ctrl+`",
+        "schema v1 hotkeys migrate without loss and receive the 2.00x zoom default");
 
     File.WriteAllText(
         persistencePath,
@@ -191,7 +254,7 @@ try
         File.Exists(
             persistencePath +
             ".corrupt"),
-        "corrupt settings fail safe to defaults and quarantine the bad file");
+        "corrupt product settings fail safe to defaults and quarantine the bad file");
 }
 finally
 {
@@ -427,8 +490,10 @@ Expect(
         RecordingVisualStyle.PixelAccurate &&
     settings.SmartZoom &&
     settings.ClickHighlight &&
-    settings.ShortcutKeys,
-    "Settings preview Reset restores deterministic defaults");
+    settings.ShortcutKeys &&
+    settings.PresenterZoom ==
+        SettingsPreviewState.DefaultPresenterZoom,
+    "Settings preview Reset restores deterministic defaults including presenter zoom");
 
 Console.WriteLine(
     "P6UI interaction-state checks passed.");

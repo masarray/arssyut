@@ -1070,12 +1070,22 @@ Hotkey Product Hardening (intentional post-6C debt closure):
 - regression matrix includes Ctrl+`, Ctrl+Shift+`, Ctrl+=, Ctrl+-, Alt+[,
   Ctrl+Shift+F9, Win+Alt+F12 and Numpad+.
 
-**Next milestone: P6UI.6A.2 — Presenter Zoom Configuration**
-- expose configured Toggle Zoom amount in Settings;
-- persist the configured amount;
-- pass it through the existing bridge start contract;
-- remove the remaining hardcoded 2.0x native presenter-start value;
-- keep Zoom In/Out at 0.25x and preserve the accepted single ArZoom camera.
+**P6UI.6A.2 status: IMPLEMENTED / CI + REAL WINDOWS ACCEPTANCE PENDING**
+
+Presenter Zoom Configuration:
+- one canonical product preset set: 1.10x, 1.25x, 1.50x, 1.75x, 2.00x,
+  2.50x, 3.00x and 4.00x;
+- Toggle/Hold use the configured presenter zoom at recording start;
+- Zoom In/Out remain native 0.25x runtime steps;
+- bridge ABI v8 carries validated `presenter_zoom` and removes the bridge
+  hardcoded 2.0x assignment;
+- one product settings schema v2 persists canonical hotkeys + presenter zoom;
+- schema v1 hotkey-only settings migrate losslessly with default 2.00x zoom;
+- Settings Preferences sidebar uses a fixed settings-only left alignment rail;
+- P6UI.6C camera/Region/Raw Input authorities remain unchanged.
+
+**Next after real P6UI.6A.2 acceptance: P6UI.6D — Presenter Advanced Controls
+Decision**, then P6UI.7A if Freeze Camera / Toggle Smart Follow are deferred.
 
 #### P6UI.5 — real floating controller + transport
 

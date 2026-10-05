@@ -6,13 +6,20 @@ using Arssyut.UI.Interop;
 
 namespace Arssyut.UI.Preview;
 
-public sealed class HotkeySettingsStore
+public sealed record ProductSettingsSnapshot(
+    IReadOnlyDictionary<
+        string,
+        HotkeyChord> Hotkeys,
+    float PresenterZoom);
+
+public sealed class ProductSettingsStore
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int LegacyHotkeySchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
 
     private readonly string _path;
 
-    public HotkeySettingsStore(
+    public ProductSettingsStore(
         string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -26,14 +33,14 @@ public sealed class HotkeySettingsStore
     public string Path =>
         _path;
 
-    public static HotkeySettingsStore CreateDefault()
+    public static ProductSettingsStore CreateDefault()
     {
         var local =
             Environment.GetFolderPath(
                 Environment.SpecialFolder.
                     LocalApplicationData);
 
-        return new HotkeySettingsStore(
+        return new ProductSettingsStore(
             System.IO.Path.Combine(
                 local,
                 "Arssyut",
@@ -41,15 +48,16 @@ public sealed class HotkeySettingsStore
     }
 
     public bool TryLoad(
-        out IReadOnlyDictionary<
-            string,
-            HotkeyChord> hotkeys,
+        out ProductSettingsSnapshot settings,
         out string error)
     {
-        hotkeys =
-            new Dictionary<
-                string,
-                HotkeyChord>();
+        settings =
+            new ProductSettingsSnapshot(
+                new Dictionary<
+                    string,
+                    HotkeyChord>(),
+                SettingsPreviewState.
+                    DefaultPresenterZoom);
         error = string.Empty;
 
         if (!File.Exists(_path))
@@ -71,58 +79,49 @@ public sealed class HotkeySettingsStore
                     JsonOptions());
 
             if (document is null ||
-                document.SchemaVersion !=
-                    CurrentSchemaVersion ||
-                document.Hotkeys is null)
+                document.Hotkeys is null ||
+                (document.SchemaVersion !=
+                     LegacyHotkeySchemaVersion &&
+                 document.SchemaVersion !=
+                     CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
                     "Unsupported or incomplete settings schema.");
             }
 
             var loaded =
-                new Dictionary<
-                    string,
-                    HotkeyChord>(
-                    StringComparer.Ordinal);
-
-            foreach (var action in
-                     HotkeyActionIds.All)
-            {
-                if (!document.Hotkeys.
-                        TryGetValue(
-                            action,
-                            out var persisted))
-                {
-                    throw new InvalidDataException(
-                        $"Missing hotkey action {action}.");
-                }
-
-                var chord =
-                    new HotkeyChord(
-                        (NativeHotkeyModifiers)
-                            persisted.Modifiers,
-                        persisted.VirtualKey);
-
-                if (!chord.IsValid)
-                {
-                    throw new InvalidDataException(
-                        $"Invalid hotkey chord for {action}.");
-                }
-
-                loaded[action] =
-                    chord;
-            }
+                ReadHotkeys(
+                    document.Hotkeys);
 
             EnsureNoDuplicateChords(
                 loaded);
 
-            hotkeys = loaded;
+            var presenterZoom =
+                document.SchemaVersion ==
+                    LegacyHotkeySchemaVersion
+                    ? SettingsPreviewState.
+                        DefaultPresenterZoom
+                    : document.PresenterZoom ??
+                        float.NaN;
+
+            if (!SettingsPreviewState.
+                    IsSupportedPresenterZoom(
+                        presenterZoom))
+            {
+                throw new InvalidDataException(
+                    "Invalid presenter zoom.");
+            }
+
+            settings =
+                new ProductSettingsSnapshot(
+                    loaded,
+                    presenterZoom);
             return true;
         }
         catch (Exception exception)
         {
             error =
-                "Hotkey settings were invalid and defaults were restored: " +
+                "Product settings were invalid and defaults were restored: " +
                 exception.GetType().Name;
 
             QuarantineCorruptFile();
@@ -155,11 +154,21 @@ public sealed class HotkeySettingsStore
             EnsureNoDuplicateChords(
                 hotkeys);
 
+            if (!SettingsPreviewState.
+                    IsSupportedPresenterZoom(
+                        settings.PresenterZoom))
+            {
+                throw new InvalidDataException(
+                    "Cannot persist invalid presenter zoom.");
+            }
+
             var document =
                 new PersistedSettings
                 {
                     SchemaVersion =
-                        CurrentSchemaVersion
+                        CurrentSchemaVersion,
+                    PresenterZoom =
+                        settings.PresenterZoom
                 };
 
             foreach (var action in
@@ -230,10 +239,53 @@ public sealed class HotkeySettingsStore
         catch (Exception exception)
         {
             error =
-                "Could not save hotkey settings: " +
+                "Could not save product settings: " +
                 exception.GetType().Name;
             return false;
         }
+    }
+
+    private static Dictionary<
+        string,
+        HotkeyChord> ReadHotkeys(
+        IReadOnlyDictionary<
+            string,
+            PersistedHotkey> source)
+    {
+        var loaded =
+            new Dictionary<
+                string,
+                HotkeyChord>(
+                StringComparer.Ordinal);
+
+        foreach (var action in
+                 HotkeyActionIds.All)
+        {
+            if (!source.TryGetValue(
+                    action,
+                    out var persisted))
+            {
+                throw new InvalidDataException(
+                    $"Missing hotkey action {action}.");
+            }
+
+            var chord =
+                new HotkeyChord(
+                    (NativeHotkeyModifiers)
+                        persisted.Modifiers,
+                    persisted.VirtualKey);
+
+            if (!chord.IsValid)
+            {
+                throw new InvalidDataException(
+                    $"Invalid hotkey chord for {action}.");
+            }
+
+            loaded[action] =
+                chord;
+        }
+
+        return loaded;
     }
 
     private void QuarantineCorruptFile()
@@ -253,8 +305,8 @@ public sealed class HotkeySettingsStore
         }
         catch
         {
-            // Loading defaults is the safety guarantee. Quarantine is
-            // best-effort and must never prevent application startup.
+            // Defaults are the safety guarantee. Quarantine is best-effort and
+            // must never prevent application startup.
         }
     }
 
@@ -304,6 +356,8 @@ public sealed class HotkeySettingsStore
         }
 
         public int SchemaVersion { get; set; }
+
+        public float? PresenterZoom { get; set; }
 
         public Dictionary<
             string,

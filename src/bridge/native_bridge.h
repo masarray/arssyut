@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 7;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 8;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -162,6 +162,8 @@ struct ArssyutBridgeStartRequestV1 {
     std::uint32_t hold_zoom_virtual_key;
     std::uint32_t overview_peek_modifiers;
     std::uint32_t overview_peek_virtual_key;
+    float presenter_zoom;
+    std::uint32_t reserved1;
 };
 
 struct ArssyutBridgeRecorderResultV1 {

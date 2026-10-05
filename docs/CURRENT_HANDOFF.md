@@ -3,9 +3,9 @@
 **Updated:** 2026-10-05  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6A.1 Hotkey Product Hardening implemented / CI + real Windows acceptance pending**  
+**Current engineering milestone:** **P6UI.6A.2 Presenter Zoom Configuration implemented / CI + real Windows acceptance pending**  
 **Canonical baseline entering this milestone:**  
-`5e9c858e2a51cda2594e823792f83a61c3fe601a` (P6UI.6C Presenter Controls Acceptance Lock)
+`c394e3e2dfb262cf193878353eb9ec7fefc74b62` (P6UI.6A.1 Hotkey Product Hardening)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -438,6 +438,32 @@ P6UI.6C presenter controls remain the accepted camera/input checkpoint.
 **Exact next milestone after real hotkey acceptance:** P6UI.6A.2 Presenter Zoom
 Configuration — persist/expose the configured Toggle Zoom amount and remove the
 remaining native hardcoded 2.0x start value without changing camera authority.
+
+### P6UI.6A.2 — Presenter Zoom Configuration
+
+Implemented in the current candidate:
+- one product presenter-zoom configuration authority in
+  `SettingsPreviewState`;
+- Settings preset selector: 1.10x, 1.25x, 1.50x, 1.75x, 2.00x, 2.50x,
+  3.00x and 4.00x;
+- Toggle/Hold consume the configured value at native recording start;
+- Zoom In/Out remain native 0.25x runtime steps;
+- bridge ABI v8 carries and validates `presenter_zoom`;
+- bridge hardcoded `config.presentation.zoom = 2.0f` is removed;
+- persistence evolves from hotkey-only schema v1 to product schema v2 without
+  introducing a second file/writer;
+- schema v1 migrates hotkeys losslessly and receives default 2.00x zoom;
+- invalid presenter zoom rejects the whole persistent snapshot safely;
+- Settings Preferences navigation now uses a settings-only fixed left rail so
+  all icons and labels align consistently.
+
+P6UI.6C camera/Region/Raw Input authorities remain frozen. No changes are
+required under `src/app`, `src/core`, `src/platform` or
+`src/presentation`.
+
+**Next after real P6UI.6A.2 acceptance:** return to **P6UI.6D — Presenter
+Advanced Controls Decision**, then proceed to P6UI.7A if advanced controls are
+not release-critical.
 
 ## 7. Current / exact next engineering milestone
 

@@ -51,6 +51,15 @@ public sealed partial class SettingsWindow : Window
         _nativeBridge = nativeBridge;
         _stressLayout = stressLayout;
         InitializeComponent();
+
+        PresenterZoomCombo.ItemsSource =
+            SettingsPreviewState.
+                PresenterZoomPresets.
+                Select(
+                    zoom =>
+                        $"{zoom:0.00}×").
+                ToArray();
+
         _uiReady = true;
 
         TransparencyLevelHint =
@@ -371,6 +380,27 @@ public sealed partial class SettingsWindow : Window
 
         MarkPreviewChanged(
             "Visual style updated");
+    }
+
+    private void PresenterZoom_OnSelectionChanged(
+        object? sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_uiReady ||
+            _syncingPreviewControls ||
+            sender is not ComboBox combo ||
+            combo.SelectedIndex < 0 ||
+            combo.SelectedIndex >=
+                SettingsPreviewState.PresenterZoomPresets.Count)
+            return;
+
+        if (_preview.TrySetPresenterZoom(
+                SettingsPreviewState.PresenterZoomPresets[
+                    combo.SelectedIndex]))
+        {
+            MarkPreviewChanged(
+                $"Presenter zoom set to {_preview.PresenterZoom:0.00}×");
+        }
     }
 
     private void SmartZoom_OnClick(
@@ -838,6 +868,10 @@ public sealed partial class SettingsWindow : Window
             ShortcutKeysToggle.IsChecked =
                 _preview.ShortcutKeys;
 
+            PresenterZoomCombo.SelectedIndex =
+                PresenterZoomPresetIndex(
+                    _preview.PresenterZoom);
+
             RefreshHotkeyLabels();
             UpdateCameraPlacementVisual();
         }
@@ -853,6 +887,35 @@ public sealed partial class SettingsWindow : Window
     {
         PreviewStatusText.Text =
             message;
+    }
+
+    private static int PresenterZoomPresetIndex(
+        float zoom)
+    {
+        var bestIndex = 0;
+        var bestDistance =
+            float.MaxValue;
+
+        for (var index = 0;
+             index < SettingsPreviewState.PresenterZoomPresets.Count;
+             ++index)
+        {
+            var distance =
+                Math.Abs(
+                    SettingsPreviewState.PresenterZoomPresets[index] -
+                    zoom);
+
+            if (distance <
+                bestDistance)
+            {
+                bestDistance =
+                    distance;
+                bestIndex =
+                    index;
+            }
+        }
+
+        return bestIndex;
     }
 
     private static bool IsModifierKey(

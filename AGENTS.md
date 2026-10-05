@@ -1124,8 +1124,9 @@ Mandatory rules:
   validates conflicts only; it must not replace their key-up authority;
 - persisted hotkeys live in
   `%LOCALAPPDATA%\Arssyut\settings.json` as a versioned canonical snapshot;
-- persistence writes only on `HotkeysChanged`, uses same-volume temp +
-  write-through flush + replace, and never writes after a rejected assignment;
+- persistence writes only on `PersistentSettingsChanged`, uses same-volume
+  temp + write-through flush + replace, and never writes after a rejected
+  assignment;
 - settings load is all-or-nothing. Wrong schema, unsupported VK/modifiers,
   missing actions, duplicate chords or malformed JSON restore safe defaults;
 - malformed persisted files may be quarantined as `.corrupt`, but a
@@ -1139,6 +1140,42 @@ Mandatory rules:
   `Ctrl+Shift+F9`, `Win+Alt+F12`, and `Numpad+`;
 - P6UI.6C presenter-camera/input authority remains frozen while closing this
   earlier hotkey-product debt.
+
+### P6UI.6A.2 Presenter Zoom Configuration contract
+
+- presenter zoom configuration is product configuration only. The native
+  `PresentationController -> ArZoomCameraAdapter` remains the sole camera
+  authority;
+- Settings owns a compact preset selector for the configured presenter zoom.
+  The canonical preset set is owned once by `SettingsPreviewState`; XAML and
+  code-behind must not duplicate a second list;
+- product presets are 1.10x, 1.25x, 1.50x, 1.75x, 2.00x, 2.50x, 3.00x and
+  4.00x. Default remains 2.00x;
+- Toggle Zoom and Hold Zoom start from the configured presenter zoom. Zoom In
+  and Zoom Out continue to mutate the same native runtime zoom in accepted
+  0.25x steps and remain clamped by the existing 1.10x..4.00x native contract;
+- bridge ABI v8 carries `presenter_zoom` as recording-start configuration.
+  The bridge must reject non-finite/out-of-range values before source/session
+  work and must not substitute a hardcoded 2.0x;
+- no `src/app`, `src/core`, `src/platform` or `src/presentation`
+  behavior rewrite is permitted for this milestone. Existing native clamping
+  remains defense-in-depth;
+- `%LOCALAPPDATA%\Arssyut\settings.json` remains the one persistence file
+  and one writer. P6UI.6A.2 evolves it to product schema v2 containing
+  canonical hotkeys plus presenter zoom;
+- schema v1 hotkey-only files must migrate losslessly in memory, preserving all
+  hotkeys and assigning the historical/default 2.00x presenter zoom. The next
+  persistent change writes schema v2;
+- invalid schema v2 presenter zoom is rejected as a whole snapshot and follows
+  the same safe-default/quarantine behavior as malformed hotkeys;
+- preview/stress CLI modes must continue to avoid reading or mutating the
+  user's persistent settings;
+- Settings Preferences navigation uses one settings-specific fixed left rail:
+  icon starts align, label starts align, and no per-item padding hacks are
+  allowed;
+- deterministic tests must cover default/set/reset zoom, schema v2 round-trip,
+  schema v1 migration, invalid zoom rejection, ABI bounds validation and
+  unchanged hotkey persistence.
 
 ### P6UI Avalonia presentation contract
 
@@ -1191,7 +1228,7 @@ Rules:
 - P6UI.3 SettingsPreviewState remains preview-only for folder/camera/device/
   meter surfaces that have not been promoted. P6UI.6A.1 is the explicit
   exception for hotkeys: its internal hotkey map is canonical product state,
-  persisted through HotkeySettingsStore and projected into native bridge/
+  persisted through ProductSettingsStore and projected into native bridge/
   Raw-Input contracts;
 - hotkey preview capture must reject duplicate assignments and never register
   global OS hotkeys during visual acceptance;

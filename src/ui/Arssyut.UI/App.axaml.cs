@@ -73,18 +73,18 @@ public sealed partial class App : Application
             if (!allowInteractionPreview)
             {
                 var hotkeyStore =
-                    HotkeySettingsStore.CreateDefault();
+                    ProductSettingsStore.CreateDefault();
 
                 if (hotkeyStore.TryLoad(
-                        out var persistedHotkeys,
+                        out var persistedSettings,
                         out var loadError))
                 {
-                    if (!previewSettings.TryRestoreHotkeys(
-                            persistedHotkeys,
+                    if (!previewSettings.TryRestorePersistentSettings(
+                            persistedSettings,
                             out var restoreError))
                     {
                         Debug.WriteLine(
-                            "Arssyut hotkey restore rejected: " +
+                            "Arssyut product settings restore rejected: " +
                             restoreError);
                     }
                 }
@@ -95,7 +95,7 @@ public sealed partial class App : Application
                         loadError);
                 }
 
-                previewSettings.HotkeysChanged +=
+                previewSettings.PersistentSettingsChanged +=
                     (_, _) =>
                     {
                         if (!hotkeyStore.TrySave(

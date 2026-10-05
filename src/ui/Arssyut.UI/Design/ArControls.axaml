@@ -237,6 +237,11 @@
     </Setter>
   </Style>
 
+  <Style Selector="Button.settings-nav">
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Padding" Value="14,0" />
+  </Style>
+
   <Style Selector="Button.nav:pointerover">
     <Setter Property="Background" Value="{DynamicResource ArBrush.SurfaceHover}" />
     <Setter Property="Foreground" Value="{DynamicResource ArBrush.Text}" />

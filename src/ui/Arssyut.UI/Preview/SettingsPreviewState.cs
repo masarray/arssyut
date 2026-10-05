@@ -21,13 +21,36 @@ public enum RecordingVisualStyle
 
 public sealed class SettingsPreviewState
 {
+    public const float MinimumPresenterZoom = 1.10f;
+    public const float MaximumPresenterZoom = 4.00f;
+    public const float DefaultPresenterZoom = 2.00f;
+
+    private static readonly IReadOnlyList<float>
+        PresenterZoomPresetValues =
+            Array.AsReadOnly(
+                new float[]
+                {
+                    1.10f,
+                    1.25f,
+                    1.50f,
+                    1.75f,
+                    2.00f,
+                    2.50f,
+                    3.00f,
+                    4.00f
+                });
+
+    public static IReadOnlyList<float>
+        PresenterZoomPresets =>
+            PresenterZoomPresetValues;
+
     private readonly Dictionary<
         string,
         HotkeyChord> _hotkeys =
             CreateDefaultHotkeys();
 
     public event EventHandler? Changed;
-    public event EventHandler? HotkeysChanged;
+    public event EventHandler? PersistentSettingsChanged;
 
     public string OutputFolder { get; private set; } =
         @"Videos\Arssyut";
@@ -46,6 +69,9 @@ public sealed class SettingsPreviewState
 
     public bool ShortcutKeys { get; private set; } =
         true;
+
+    public float PresenterZoom { get; private set; } =
+        DefaultPresenterZoom;
 
     public string RecordHotkey =>
         HotkeyText(
@@ -147,6 +173,30 @@ public sealed class SettingsPreviewState
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public bool TrySetPresenterZoom(
+        float zoom)
+    {
+        if (!IsSupportedPresenterZoom(
+                zoom))
+            return false;
+
+        if (Math.Abs(
+                PresenterZoom -
+                zoom) <= 0.0005f)
+            return true;
+
+        PresenterZoom =
+            zoom;
+
+        PersistentSettingsChanged?.Invoke(
+            this,
+            EventArgs.Empty);
+        Changed?.Invoke(
+            this,
+            EventArgs.Empty);
+        return true;
+    }
+
     public void SetOutputFolder(
         string path)
     {
@@ -173,67 +223,33 @@ public sealed class SettingsPreviewState
                 _hotkeys,
                 StringComparer.Ordinal);
 
-    public bool TryRestoreHotkeys(
-        IReadOnlyDictionary<
-            string,
-            HotkeyChord> hotkeys,
+    public bool TryRestorePersistentSettings(
+        ProductSettingsSnapshot snapshot,
         out string error)
     {
         error = string.Empty;
 
-        var candidate =
-            new Dictionary<
-                string,
-                HotkeyChord>(
-                    StringComparer.Ordinal);
-        var owner =
-            new Dictionary<
-                HotkeyChord,
-                string>();
-
-        foreach (var action in
-                 HotkeyActionIds.All)
+        if (!IsSupportedPresenterZoom(
+                snapshot.PresenterZoom))
         {
-            if (!hotkeys.TryGetValue(
-                    action,
-                    out var chord))
-            {
-                error =
-                    $"Missing persisted shortcut {action}.";
-                return false;
-            }
-
-            if (!chord.IsValid)
-            {
-                error =
-                    $"Persisted shortcut {action} is invalid.";
-                return false;
-            }
-
-            if (!chord.IsEmpty)
-            {
-                if (owner.TryGetValue(
-                        chord,
-                        out var previous))
-                {
-                    error =
-                        $"{action} duplicates {previous}.";
-                    return false;
-                }
-
-                owner[chord] =
-                    action;
-            }
-
-            candidate[action] =
-                chord;
+            error =
+                "Persisted presenter zoom is invalid.";
+            return false;
         }
+
+        if (!TryBuildHotkeyCandidate(
+                snapshot.Hotkeys,
+                out var candidate,
+                out error))
+            return false;
 
         _hotkeys.Clear();
 
         foreach (var pair in candidate)
             _hotkeys[pair.Key] = pair.Value;
 
+        PresenterZoom =
+            snapshot.PresenterZoom;
         return true;
     }
 
@@ -301,7 +317,7 @@ public sealed class SettingsPreviewState
         _hotkeys[action] =
             chord;
 
-        HotkeysChanged?.Invoke(
+        PersistentSettingsChanged?.Invoke(
             this,
             EventArgs.Empty);
         Changed?.Invoke(
@@ -331,6 +347,8 @@ public sealed class SettingsPreviewState
             true;
         ShortcutKeys =
             true;
+        PresenterZoom =
+            DefaultPresenterZoom;
 
         _hotkeys.Clear();
         foreach (var pair in
@@ -347,12 +365,92 @@ public sealed class SettingsPreviewState
         CameraDevice =
             "USB2.0 HD UVC Webcam";
 
-        HotkeysChanged?.Invoke(
+        PersistentSettingsChanged?.Invoke(
             this,
             EventArgs.Empty);
         Changed?.Invoke(
             this,
             EventArgs.Empty);
+    }
+
+    public static bool IsSupportedPresenterZoom(
+        float zoom)
+    {
+        if (!float.IsFinite(
+                zoom))
+            return false;
+
+        foreach (var preset in
+                 PresenterZoomPresetValues)
+        {
+            if (Math.Abs(
+                    preset -
+                    zoom) <= 0.0005f)
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryBuildHotkeyCandidate(
+        IReadOnlyDictionary<
+            string,
+            HotkeyChord> hotkeys,
+        out Dictionary<
+            string,
+            HotkeyChord> candidate,
+        out string error)
+    {
+        error = string.Empty;
+        candidate =
+            new Dictionary<
+                string,
+                HotkeyChord>(
+                StringComparer.Ordinal);
+        var owner =
+            new Dictionary<
+                HotkeyChord,
+                string>();
+
+        foreach (var action in
+                 HotkeyActionIds.All)
+        {
+            if (!hotkeys.TryGetValue(
+                    action,
+                    out var chord))
+            {
+                error =
+                    $"Missing persisted shortcut {action}.";
+                return false;
+            }
+
+            if (!chord.IsValid)
+            {
+                error =
+                    $"Persisted shortcut {action} is invalid.";
+                return false;
+            }
+
+            if (!chord.IsEmpty)
+            {
+                if (owner.TryGetValue(
+                        chord,
+                        out var previous))
+                {
+                    error =
+                        $"{action} duplicates {previous}.";
+                    return false;
+                }
+
+                owner[chord] =
+                    action;
+            }
+
+            candidate[action] =
+                chord;
+        }
+
+        return true;
     }
 
     private string HotkeyText(

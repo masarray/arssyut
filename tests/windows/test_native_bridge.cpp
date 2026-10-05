@@ -614,6 +614,8 @@ int main()
         ARSSYUT_BRIDGE_START_SMART_ZOOM |
         ARSSYUT_BRIDGE_START_CLICK_VISUAL |
         ARSSYUT_BRIDGE_START_SHORTCUT_KEYS;
+    invalid_start.presenter_zoom =
+        2.0f;
 
     invalid_start.hold_zoom_modifiers =
         0x80000000U;
@@ -629,13 +631,32 @@ int main()
 
     invalid_start.hold_zoom_modifiers = 0;
     invalid_start.hold_zoom_virtual_key = 0;
+    invalid_start.presenter_zoom = 0.0f;
+
+    require(
+        arssyut_bridge_recorder_start(
+            bridge,
+            &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+        "presenter zoom below 1.10x must be rejected");
+
+    invalid_start.presenter_zoom = 4.01f;
+
+    require(
+        arssyut_bridge_recorder_start(
+            bridge,
+            &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+        "presenter zoom above 4.00x must be rejected");
+
+    invalid_start.presenter_zoom = 2.50f;
 
     require(
         arssyut_bridge_recorder_start(
             bridge,
             &invalid_start) ==
             ARSSYUT_BRIDGE_STALE_TOKEN,
-        "zero source token must be rejected as stale");
+        "valid presenter zoom must continue to normal source-token validation");
 
     if (source_count > 0) {
         ArssyutBridgeSourceV1 source{};
@@ -667,6 +688,8 @@ int main()
         unsupported.flags =
             ARSSYUT_BRIDGE_START_MICROPHONE |
             ARSSYUT_BRIDGE_START_SMART_ZOOM;
+        unsupported.presenter_zoom =
+            2.0f;
 
         require(
             arssyut_bridge_recorder_start(
