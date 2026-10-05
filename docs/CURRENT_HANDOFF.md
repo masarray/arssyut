@@ -1,11 +1,11 @@
 # Current Handoff — Arssyut P6UI
 
-**Updated:** 2026-10-04  
+**Updated:** 2026-10-05  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.5C visual polish + tactile-control lock implemented / CI + real GUI acceptance pending**  
-**Canonical baseline entering this correction:**  
-`91959c43f9d62972d98bfeaea6ec7eea035cba3d` (P6UI.4C native overlay / Region bridge)
+**Current engineering milestone:** **P6UI.6A ArZoom presenter zoom hotkeys implemented / CI + real recording acceptance pending**  
+**Canonical baseline entering this milestone:**  
+`07674357c3555b73d8b850d6853d1d104fc83494` (P6UI.5C visual / tactile lock)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -305,6 +305,41 @@ P6UI.5C corrects those points without pretending pending media backends exist:
 This milestone is presentation-only. P6UI.4C-B Region repaint, P6UI.5A global
 hotkey, native RecorderSession and all capture/media authorities remain
 unchanged.
+
+### P6UI.6A — ArZoom presenter zoom hotkeys
+
+The user accepted the P6UI.5C GUI direction for continued functional progress
+and explicitly requested zoom hotkeys like ArZoom.
+
+Authority was verified against the pinned upstream source already used by P3R:
+`masarray/arzoom-follow-obs@ada8f5269246c64429d7aceb6cc72f81e72120ba`.
+
+P6UI.6A implements the safe latch/step subset:
+- Toggle Zoom;
+- Zoom In (+0.25x);
+- Zoom Out (-0.25x);
+- Reset / Full Frame.
+
+Behavior remains owned by the existing `PresentationController ->
+ArZoomCameraAdapter` path:
+- manual latch is OR-composed with existing Smart Zoom intent;
+- configured zoom remains bounded to ArZoom 1.10x..4.00x;
+- Reset clears active manual/automatic zoom and returns smoothly to 1x while
+  preserving configured zoom amount;
+- RecorderSession receives commands through a bounded atomic mailbox;
+- bridge ABI v5 exposes global presenter actions through the same hidden HWND;
+- repeat-sensitive Zoom In/Out commands dispatch directly from WM_HOTKEY into
+  the bounded native mailbox, avoiding UI-timer event coalescing;
+- Settings exposes assignable presenter keycaps with no invented defaults;
+- the presentation input worker is enabled for this feature only when at least
+  one presenter hotkey is assigned.
+
+Hold Zoom and Overview Peek are intentionally deferred to P6UI.6B because they
+need press/release semantics. P6UI.6B must extend the existing raw-input worker
+rather than create another keyboard hook.
+
+P6UI.5D multi-DPI/focus polish remains a hardening task but no longer blocks
+functional progression after the accepted real screenshot direction.
 
 ## 7. Current / exact next engineering milestone
 

@@ -31,6 +31,7 @@ using arssyut::app::DeviceChoice;
 using arssyut::app::RecorderConfig;
 using arssyut::app::RecorderOverlay;
 using arssyut::app::RecorderOverlayCommands;
+using arssyut::app::PresenterCommand;
 using arssyut::app::RecorderSession;
 using arssyut::app::RecorderSnapshot;
 using arssyut::app::RecorderState;
@@ -73,7 +74,7 @@ struct NativeBridgeContext final {
         bool registered = false;
     };
 
-    std::array<HotkeyBinding, 4> hotkeys{};
+    std::array<HotkeyBinding, 8> hotkeys{};
     std::atomic<std::uint32_t> pending_hotkey_events{0};
 };
 
@@ -434,7 +435,7 @@ constexpr wchar_t kBridgeOverlayOwnerClass[] =
     L"ArssyutBridgeOverlayOwner";
 constexpr UINT_PTR kBridgeOverlayTimer = 1;
 constexpr int kBridgeHotkeyIdBase = 0x5A40;
-constexpr std::uint32_t kBridgeHotkeyActionCount = 4;
+constexpr std::uint32_t kBridgeHotkeyActionCount = 8;
 
 [[nodiscard]] bool valid_hotkey_action(std::uint32_t action) noexcept
 {
@@ -450,6 +451,39 @@ constexpr std::uint32_t kBridgeHotkeyActionCount = 4;
     if ((modifiers & ARSSYUT_BRIDGE_HOTKEY_ALT) != 0) native |= MOD_ALT;
     if ((modifiers & ARSSYUT_BRIDGE_HOTKEY_WIN) != 0) native |= MOD_WIN;
     return native;
+}
+
+void dispatch_presenter_hotkey(
+    NativeBridgeContext &context,
+    std::uint32_t action) noexcept
+{
+    PresenterCommand command{};
+
+    switch (action) {
+    case ARSSYUT_BRIDGE_HOTKEY_TOGGLE_ZOOM:
+        command = PresenterCommand::ToggleZoom;
+        break;
+    case ARSSYUT_BRIDGE_HOTKEY_ZOOM_IN:
+        command = PresenterCommand::ZoomIn;
+        break;
+    case ARSSYUT_BRIDGE_HOTKEY_ZOOM_OUT:
+        command = PresenterCommand::ZoomOut;
+        break;
+    case ARSSYUT_BRIDGE_HOTKEY_RESET_FULL_FRAME:
+        command = PresenterCommand::ResetFullFrame;
+        break;
+    default:
+        return;
+    }
+
+    std::scoped_lock lock(
+        context.mutex);
+
+    if (context.recorder) {
+        (void)context.recorder->
+            request_presenter_command(
+                command);
+    }
 }
 
 void unregister_all_hotkeys(NativeBridgeContext &context) noexcept
@@ -522,9 +556,24 @@ LRESULT CALLBACK bridge_overlay_owner_proc(
         if (action >= 0 &&
             action < static_cast<int>(
                 kBridgeHotkeyActionCount)) {
-            context->pending_hotkey_events.fetch_or(
-                1U << static_cast<std::uint32_t>(action),
-                std::memory_order_relaxed);
+            const auto native_action =
+                static_cast<std::uint32_t>(
+                    action);
+
+            if (native_action >=
+                ARSSYUT_BRIDGE_HOTKEY_TOGGLE_ZOOM) {
+                // Presenter zoom is a repeat-sensitive semantic command:
+                // dispatch every WM_HOTKEY directly into the recorder's
+                // bounded atomic mailbox. Do not coalesce Zoom In/Out through
+                // the UI event bitmask.
+                dispatch_presenter_hotkey(
+                    *context,
+                    native_action);
+            } else {
+                context->pending_hotkey_events.fetch_or(
+                    1U << native_action,
+                    std::memory_order_relaxed);
+            }
             return 0;
         }
     }
@@ -1584,6 +1633,9 @@ arssyut_bridge_recorder_start(
         config.presentation.shortcut_keys =
             (request->flags &
              ARSSYUT_BRIDGE_START_SHORTCUT_KEYS) != 0;
+        config.presentation.presenter_controls =
+            (request->flags &
+             ARSSYUT_BRIDGE_START_PRESENTER_CONTROLS) != 0;
         config.presentation.zoom =
             2.0f;
 
@@ -1621,6 +1673,47 @@ arssyut_bridge_recorder_start(
     } catch (...) {
         return ARSSYUT_BRIDGE_INTERNAL_ERROR;
     }
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_presenter_command(
+    ArssyutBridgeHandle handle,
+    std::uint32_t command) noexcept
+{
+    auto *context =
+        as_context(handle);
+    if (!context)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    PresenterCommand native_command{};
+    switch (command) {
+    case ARSSYUT_BRIDGE_PRESENTER_TOGGLE_ZOOM:
+        native_command = PresenterCommand::ToggleZoom;
+        break;
+    case ARSSYUT_BRIDGE_PRESENTER_ZOOM_IN:
+        native_command = PresenterCommand::ZoomIn;
+        break;
+    case ARSSYUT_BRIDGE_PRESENTER_ZOOM_OUT:
+        native_command = PresenterCommand::ZoomOut;
+        break;
+    case ARSSYUT_BRIDGE_PRESENTER_RESET_FULL_FRAME:
+        native_command = PresenterCommand::ResetFullFrame;
+        break;
+    default:
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
+    std::scoped_lock lock(
+        context->mutex);
+
+    if (!context->recorder)
+        return ARSSYUT_BRIDGE_INVALID_STATE;
+
+    return context->recorder->
+               request_presenter_command(
+                   native_command)
+        ? ARSSYUT_BRIDGE_OK
+        : ARSSYUT_BRIDGE_INVALID_STATE;
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL

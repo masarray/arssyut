@@ -49,6 +49,12 @@ void PresentationController::reset() noexcept
     keyboard_generation_ = 0;
     have_last_shortcut_ = false;
     emphasis_pending_ = false;
+    manual_zoom_latched_ = false;
+    runtime_zoom_ =
+        std::clamp(
+            settings_.zoom,
+            1.10f,
+            4.00f);
 }
 
 void PresentationController::set_settings(
@@ -56,6 +62,10 @@ void PresentationController::set_settings(
 {
     settings.zoom = std::clamp(settings.zoom, 1.10f, 4.00f);
     settings_ = settings;
+    runtime_zoom_ = settings.zoom;
+
+    if (!settings_.presenter_controls)
+        manual_zoom_latched_ = false;
 }
 
 void PresentationController::push_click(
@@ -194,6 +204,53 @@ void PresentationController::on_shortcut(
         time.ticks_100ns + kKeyboardHoldTicks;
 }
 
+void PresentationController::toggle_manual_zoom() noexcept
+{
+    if (!settings_.presenter_controls)
+        return;
+
+    manual_zoom_latched_ =
+        !manual_zoom_latched_;
+
+    // Match ArZoom Toggle Zoom intent: activation uses the same accepted
+    // camera and current pointer focus. Turning it OFF owns the close action,
+    // so any still-running Smart Zoom tail is cancelled for this activation.
+    if (manual_zoom_latched_) {
+        emphasis_pending_ = true;
+    } else {
+        zoom_until_ = {};
+        emphasis_pending_ = false;
+    }
+}
+
+void PresentationController::adjust_manual_zoom(
+    float delta) noexcept
+{
+    if (!settings_.presenter_controls)
+        return;
+
+    // ArZoom Presenter Controls use 0.25x steps and clamp the configured
+    // framing range to 1.10x..4.00x. The caller supplies the step so this
+    // controller stays reusable and deterministic.
+    runtime_zoom_ =
+        std::clamp(
+            runtime_zoom_ + delta,
+            1.10f,
+            4.00f);
+}
+
+void PresentationController::reset_full_frame() noexcept
+{
+    if (!settings_.presenter_controls)
+        return;
+
+    // ArZoom Reset / Full Frame clears active zoom intent but deliberately
+    // preserves the configured zoom amount for the next activation.
+    manual_zoom_latched_ = false;
+    zoom_until_ = {};
+    emphasis_pending_ = false;
+}
+
 void PresentationController::update_keyboard(
     ShortcutChord chord) noexcept
 {
@@ -233,9 +290,12 @@ PresentationFrameState PresentationController::step(
     };
     intent.cursor_valid = cursor_valid;
     intent.zoom_requested =
-        settings_.smart_zoom &&
-        now.ticks_100ns < zoom_until_.ticks_100ns;
-    intent.configured_zoom = settings_.zoom;
+        manual_zoom_latched_ ||
+        (settings_.smart_zoom &&
+         now.ticks_100ns <
+             zoom_until_.ticks_100ns);
+    intent.configured_zoom =
+        runtime_zoom_;
     intent.emphasis_event = emphasis_pending_;
     emphasis_pending_ = false;
 

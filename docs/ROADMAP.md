@@ -1001,14 +1001,32 @@ Visual polish / tactile-control lock:
 - truthful Default playback device surface until an output-device catalog exists;
 - no engine/capture/media authority changes.
 
-**Next milestone: P6UI.5D — Visual Acceptance + DPI/Interaction Lock**
-- real 100% / 125% / 150% DPI screenshot review;
-- hover/pressed/focus/disabled-state acceptance for capture toggles, keycaps,
-  device selectors and Record control;
-- keyboard navigation and tab-order acceptance;
-- long device-name/truncation acceptance;
-- only token/spacing/focus corrections are allowed here, not feature/backend
-  expansion.
+**P6UI.5D — Visual Acceptance + DPI/Interaction Lock: HARDENING OPEN / NON-BLOCKING**
+- real P6UI.5C screenshot direction accepted for functional progression;
+- retain 100% / 125% / 150% DPI, hover/focus, keyboard navigation and long-name
+  checks as a later hardening gate;
+- only token/spacing/focus corrections belong here.
+
+**P6UI.6A status: IMPLEMENTED / CI + REAL RECORDING ACCEPTANCE PENDING**
+
+ArZoom presenter zoom hotkeys:
+- behavior pinned to `masarray/arzoom-follow-obs@ada8f5269246c64429d7aceb6cc72f81e72120ba`;
+- Toggle Zoom, Zoom In, Zoom Out and Reset / Full Frame use the existing ArZoom
+  camera authority;
+- Zoom In/Out use 0.25x steps and clamp to 1.10x..4.00x;
+- Reset returns to full frame while preserving configured zoom amount;
+- bridge ABI v5 extends the existing global-hotkey HWND instead of adding a
+  keyboard subsystem;
+- RecorderSession uses a bounded atomic presenter mailbox;
+- presenter input worker is gated off when no presenter zoom hotkey is assigned;
+- Settings presenter shortcuts begin unassigned rather than inventing defaults.
+
+**Next milestone: P6UI.6B — Press/Release Presenter Controls**
+- Hold Zoom and Overview Peek using the existing PresentationInputWorker
+  key-down/key-up state;
+- evaluate Freeze Camera / Toggle Smart Follow only through the same camera
+  authority;
+- no second keyboard hook and no second camera state.
 
 #### P6UI.5 — real floating controller + transport
 

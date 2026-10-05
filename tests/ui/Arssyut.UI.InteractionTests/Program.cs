@@ -128,6 +128,30 @@ Expect(
     "multi-key chord maps deterministically to Windows modifiers + VK_F9");
 
 Expect(
+    string.IsNullOrEmpty(settings.ToggleZoomHotkey) &&
+    string.IsNullOrEmpty(settings.ZoomInHotkey) &&
+    string.IsNullOrEmpty(settings.ZoomOutHotkey) &&
+    string.IsNullOrEmpty(settings.ResetZoomHotkey),
+    "ArZoom presenter hotkeys start unassigned instead of inventing defaults");
+
+Expect(
+    settings.TrySetHotkey(
+        "ToggleZoom",
+        "Ctrl+Alt+Z",
+        out var toggleZoomError) &&
+    string.IsNullOrEmpty(toggleZoomError) &&
+    settings.ToggleZoomHotkey == "Ctrl+Alt+Z",
+    "Settings accepts a global Toggle Zoom chord");
+
+Expect(
+    !settings.TrySetHotkey(
+        "ZoomIn",
+        "Ctrl+Alt+Z",
+        out var zoomConflictError) &&
+    !string.IsNullOrEmpty(zoomConflictError),
+    "presenter zoom shortcuts participate in duplicate-chord conflict checks");
+
+Expect(
     settings.TrySetHotkey(
         "Record",
         "Ctrl+Shift+R",
@@ -170,6 +194,10 @@ Expect(
         "Ctrl+F9" &&
     settings.CameraHotkey ==
         "Ctrl+F10" &&
+    string.IsNullOrEmpty(settings.ToggleZoomHotkey) &&
+    string.IsNullOrEmpty(settings.ZoomInHotkey) &&
+    string.IsNullOrEmpty(settings.ZoomOutHotkey) &&
+    string.IsNullOrEmpty(settings.ResetZoomHotkey) &&
     settings.CameraPlacement ==
         CameraPlacement.BottomRight &&
     settings.OutputFolder ==

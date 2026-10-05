@@ -95,6 +95,10 @@ public sealed partial class SettingsWindow : Window
         _hotkeyButtons =
         [
             RecordHotkeyButton,
+            ToggleZoomHotkeyButton,
+            ZoomInHotkeyButton,
+            ZoomOutHotkeyButton,
+            ResetZoomHotkeyButton,
             PauseHotkeyButton,
             MicrophoneHotkeyButton,
             CameraHotkeyButton
@@ -171,8 +175,10 @@ public sealed partial class SettingsWindow : Window
             var gesture =
                 HotkeyPreview.FormatGesture(e);
 
-            if (_capturingHotkeyAction == "Record" &&
-                _nativeBridge is not null)
+            if (_nativeBridge is not null &&
+                TryNativeHotkeyAction(
+                    _capturingHotkeyAction,
+                    out var nativeAction))
             {
                 if (!HotkeyPreview.TryToNativeRegistration(
                         gesture,
@@ -189,7 +195,7 @@ public sealed partial class SettingsWindow : Window
 
                 var registration =
                     _nativeBridge.RegisterHotkey(
-                        NativeHotkeyAction.ToggleRecord,
+                        nativeAction,
                         modifiers,
                         virtualKey);
 
@@ -206,7 +212,7 @@ public sealed partial class SettingsWindow : Window
                 }
 
                 _nativeBridge.UnregisterHotkey(
-                    NativeHotkeyAction.ToggleRecord);
+                    nativeAction);
             }
 
             if (_preview.TrySetHotkey(
@@ -593,6 +599,29 @@ public sealed partial class SettingsWindow : Window
                 : VerticalAlignment.Bottom;
     }
 
+    private static bool TryNativeHotkeyAction(
+        string action,
+        out NativeHotkeyAction nativeAction)
+    {
+        nativeAction =
+            action switch
+            {
+                "Record" => NativeHotkeyAction.ToggleRecord,
+                "ToggleZoom" => NativeHotkeyAction.ToggleZoom,
+                "ZoomIn" => NativeHotkeyAction.ZoomIn,
+                "ZoomOut" => NativeHotkeyAction.ZoomOut,
+                "ResetZoom" => NativeHotkeyAction.ResetFullFrame,
+                _ => NativeHotkeyAction.ToggleRecord
+            };
+
+        return action is
+            "Record" or
+            "ToggleZoom" or
+            "ZoomIn" or
+            "ZoomOut" or
+            "ResetZoom";
+    }
+
     private void Hotkey_OnClick(
         object? sender,
         RoutedEventArgs e)
@@ -656,7 +685,25 @@ public sealed partial class SettingsWindow : Window
             _preview.MicrophoneHotkey;
         CameraHotkeyText.Text =
             _preview.CameraHotkey;
+        ToggleZoomHotkeyText.Text =
+            HotkeyLabel(
+                _preview.ToggleZoomHotkey);
+        ZoomInHotkeyText.Text =
+            HotkeyLabel(
+                _preview.ZoomInHotkey);
+        ZoomOutHotkeyText.Text =
+            HotkeyLabel(
+                _preview.ZoomOutHotkey);
+        ResetZoomHotkeyText.Text =
+            HotkeyLabel(
+                _preview.ResetZoomHotkey);
     }
+
+    private static string HotkeyLabel(
+        string value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? "Set key"
+            : value;
 
     private TextBlock GetHotkeyText(
         string action) =>
@@ -668,6 +715,14 @@ public sealed partial class SettingsWindow : Window
                 MicrophoneHotkeyText,
             "Camera" =>
                 CameraHotkeyText,
+            "ToggleZoom" =>
+                ToggleZoomHotkeyText,
+            "ZoomIn" =>
+                ZoomInHotkeyText,
+            "ZoomOut" =>
+                ZoomOutHotkeyText,
+            "ResetZoom" =>
+                ResetZoomHotkeyText,
             _ =>
                 RecordHotkeyText
         };

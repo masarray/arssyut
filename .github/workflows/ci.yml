@@ -88,7 +88,12 @@ jobs:
           git fetch origin $baseline --depth=1
 
           $allowedNativeCorrections = @(
-            "src/app/recorder_overlay.cpp"
+            # P6UI.4C-B reproduced Region layered-window repaint correction.
+            "src/app/recorder_overlay.cpp",
+            # P6UI.6A bounded presenter-command mailbox only. Capture, timing,
+            # compositor, encoder and RecorderSession lifecycle remain unchanged.
+            "src/app/recorder_session.cpp",
+            "src/app/recorder_session.hpp"
           )
 
           $violations = @(
@@ -99,7 +104,7 @@ jobs:
           if ($violations.Count -gt 0) {
             Write-Host "P6UI changed locked native implementation after ${baseline}:"
             $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
-            throw "Existing native engine implementation is frozen. P6UI.4 may add bridge code under src/bridge but must not rewrite accepted src/app, src/core or src/platform authorities."
+            throw "Existing native engine implementation is frozen. Only the documented RecorderOverlay repaint and bounded RecorderSession presenter-command mailbox exceptions are allowed."
           }
 
           Write-Host "Native baseline guard passed."

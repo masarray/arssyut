@@ -34,6 +34,13 @@ enum class RecorderState : std::uint8_t {
     Failed,
 };
 
+enum class PresenterCommand : std::uint8_t {
+    ToggleZoom = 0,
+    ZoomIn,
+    ZoomOut,
+    ResetFullFrame,
+};
+
 struct RecorderTarget {
     arssyut::windows::CaptureTargetKind kind =
         arssyut::windows::CaptureTargetKind::Monitor;
@@ -119,6 +126,11 @@ public:
     void request_stop() noexcept;
     void wait() noexcept;
 
+    // Lock-free bounded presenter command mailbox. Commands are consumed by
+    // the recorder's existing presentation controller on its worker cadence.
+    [[nodiscard]] bool request_presenter_command(
+        PresenterCommand command) noexcept;
+
     [[nodiscard]] RecorderSnapshot snapshot() const noexcept;
 
     [[nodiscard]] const std::filesystem::path &
@@ -195,6 +207,13 @@ private:
     std::atomic<float> presentation_camera_center_x_{0.5f};
     std::atomic<float> presentation_camera_center_y_{0.5f};
     std::atomic<float> presentation_camera_zoom_{1.0f};
+
+    // Bounded O(1) presenter intent mailbox; no command queue/history grows
+    // with recording duration or hotkey activity.
+    std::atomic<std::uint32_t> presenter_toggle_zoom_requests_{0};
+    std::atomic<std::int32_t> presenter_zoom_steps_{0};
+    std::atomic<std::uint32_t> presenter_reset_requests_{0};
+
     std::atomic<bool> worker_finished_{true};
 
     std::atomic<std::uint64_t> memory_private_bytes_{0};

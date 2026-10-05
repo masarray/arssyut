@@ -441,6 +441,13 @@ int main()
             ARSSYUT_BRIDGE_OK,
         "overlay hide failed");
 
+    require(
+        arssyut_bridge_recorder_presenter_command(
+            bridge,
+            ARSSYUT_BRIDGE_PRESENTER_TOGGLE_ZOOM) ==
+            ARSSYUT_BRIDGE_INVALID_STATE,
+        "presenter command must reject idle recorder state");
+
     constexpr std::uint32_t hotkey_modifiers =
         ARSSYUT_BRIDGE_HOTKEY_CTRL |
         ARSSYUT_BRIDGE_HOTKEY_SHIFT;
@@ -464,6 +471,21 @@ int main()
             hotkey_modifiers,
             VK_F24) == ARSSYUT_BRIDGE_BUSY,
         "duplicate Windows global hotkey must report Busy");
+
+    require(
+        arssyut_bridge_hotkey_register(
+            bridge,
+            ARSSYUT_BRIDGE_HOTKEY_TOGGLE_ZOOM,
+            ARSSYUT_BRIDGE_HOTKEY_CTRL |
+                ARSSYUT_BRIDGE_HOTKEY_ALT,
+            VK_F23) == ARSSYUT_BRIDGE_OK,
+        "global Toggle Zoom hotkey registration failed");
+
+    require(
+        arssyut_bridge_hotkey_unregister(
+            bridge,
+            ARSSYUT_BRIDGE_HOTKEY_TOGGLE_ZOOM) == ARSSYUT_BRIDGE_OK,
+        "global Toggle Zoom hotkey unregister failed");
 
     require(
         arssyut_bridge_hotkey_unregister(

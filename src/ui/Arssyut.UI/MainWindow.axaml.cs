@@ -46,9 +46,11 @@ public sealed partial class MainWindow : Window
     private NativeRecorderSnapshot? _lastNativeSnapshot;
     private NativeRecorderResult? _nativeResult;
     private bool _mainUiReady;
-    private bool _recordHotkeyRegistered;
     private bool _settingsOpen;
-    private string _registeredRecordHotkey = string.Empty;
+
+    private readonly Dictionary<
+        NativeHotkeyAction,
+        string> _registeredHotkeys = [];
 
     public MainWindow(
         SettingsPreviewState settings,
@@ -120,7 +122,7 @@ public sealed partial class MainWindow : Window
                 ApplyProductCapabilitySurface();
                 RefreshSettingsSurface();
                 ApplySessionState();
-                SyncGlobalRecordHotkey();
+                SyncGlobalHotkeys();
                 _hotkeyTimer.Start();
 
                 if (autoStartRecording &&
@@ -136,7 +138,7 @@ public sealed partial class MainWindow : Window
                 _settings.Changed -=
                     Settings_OnChanged;
                 _hotkeyTimer.Stop();
-                SuspendGlobalRecordHotkey();
+                SuspendGlobalHotkeys();
 
                 if (_nativeBridge is not null)
                 {
@@ -170,7 +172,8 @@ public sealed partial class MainWindow : Window
         KeyEventArgs e)
     {
         if ((_allowInteractionPreview ||
-             !_recordHotkeyRegistered) &&
+             !IsHotkeyRegistered(
+                 NativeHotkeyAction.ToggleRecord)) &&
             HotkeyPreview.Matches(
                 e,
                 _settings.RecordHotkey))
@@ -206,7 +209,7 @@ public sealed partial class MainWindow : Window
         EventArgs e)
     {
         RefreshSettingsSurface();
-        SyncGlobalRecordHotkey();
+        SyncGlobalHotkeys();
     }
 
     private async void Settings_OnClick(
@@ -214,7 +217,7 @@ public sealed partial class MainWindow : Window
         RoutedEventArgs e)
     {
         _settingsOpen = true;
-        SuspendGlobalRecordHotkey();
+        SuspendGlobalHotkeys();
 
         try
         {
@@ -232,7 +235,7 @@ public sealed partial class MainWindow : Window
         finally
         {
             _settingsOpen = false;
-            SyncGlobalRecordHotkey();
+            SyncGlobalHotkeys();
         }
     }
 
@@ -920,7 +923,7 @@ public sealed partial class MainWindow : Window
         EventArgs e)
     {
         if (_nativeBridge is null ||
-            !_recordHotkeyRegistered ||
+            _registeredHotkeys.Count == 0 ||
             _settingsOpen)
             return;
 
@@ -929,13 +932,14 @@ public sealed partial class MainWindow : Window
             var events =
                 _nativeBridge.TakeHotkeyEvents();
 
-            if ((events & NativeHotkeyEvents.ToggleRecord) != 0)
+            if ((events &
+                 NativeHotkeyEvents.ToggleRecord) != 0) {
                 HandleGlobalRecordHotkey();
+            }
         }
         catch (Exception)
         {
-            _recordHotkeyRegistered = false;
-            _registeredRecordHotkey = string.Empty;
+            SuspendGlobalHotkeys();
         }
     }
 
@@ -947,7 +951,8 @@ public sealed partial class MainWindow : Window
         NativeRecorderSnapshot snapshot;
         try
         {
-            snapshot = _nativeBridge.Snapshot();
+            snapshot =
+                _nativeBridge.Snapshot();
         }
         catch (Exception)
         {
@@ -970,7 +975,7 @@ public sealed partial class MainWindow : Window
         StartNativeRecording();
     }
 
-    private void SyncGlobalRecordHotkey()
+    private void SyncGlobalHotkeys()
     {
         if (!_mainUiReady ||
             _nativeBridge is null ||
@@ -978,64 +983,149 @@ public sealed partial class MainWindow : Window
             _settingsOpen)
             return;
 
-        if (_recordHotkeyRegistered &&
-            string.Equals(
-                _registeredRecordHotkey,
-                _settings.RecordHotkey,
-                StringComparison.OrdinalIgnoreCase))
+        var desired =
+            new Dictionary<
+                NativeHotkeyAction,
+                string>
+            {
+                [NativeHotkeyAction.ToggleRecord] =
+                    _settings.RecordHotkey
+            };
+
+        AddHotkeyIfAssigned(
+            desired,
+            NativeHotkeyAction.ToggleZoom,
+            _settings.ToggleZoomHotkey);
+        AddHotkeyIfAssigned(
+            desired,
+            NativeHotkeyAction.ZoomIn,
+            _settings.ZoomInHotkey);
+        AddHotkeyIfAssigned(
+            desired,
+            NativeHotkeyAction.ZoomOut,
+            _settings.ZoomOutHotkey);
+        AddHotkeyIfAssigned(
+            desired,
+            NativeHotkeyAction.ResetFullFrame,
+            _settings.ResetZoomHotkey);
+
+        if (SameHotkeyBindings(
+                desired,
+                _registeredHotkeys))
             return;
 
-        SuspendGlobalRecordHotkey();
+        SuspendGlobalHotkeys();
 
-        if (!HotkeyPreview.TryToNativeRegistration(
-                _settings.RecordHotkey,
-                out var modifiers,
-                out var virtualKey))
+        foreach (var binding in desired)
         {
-            UpdateReadyDetail();
-            return;
-        }
-
-        try
-        {
-            var status =
-                _nativeBridge.RegisterHotkey(
-                    NativeHotkeyAction.ToggleRecord,
-                    modifiers,
-                    virtualKey);
-
-            _recordHotkeyRegistered =
-                status == NativeBridgeStatus.Ok;
-
-            if (_recordHotkeyRegistered)
-                _registeredRecordHotkey =
-                    _settings.RecordHotkey;
-        }
-        catch (Exception)
-        {
-            _recordHotkeyRegistered = false;
+            RegisterGlobalHotkey(
+                binding.Key,
+                binding.Value);
         }
 
         UpdateReadyDetail();
     }
 
-    private void SuspendGlobalRecordHotkey()
+    private static void AddHotkeyIfAssigned(
+        IDictionary<NativeHotkeyAction, string> target,
+        NativeHotkeyAction action,
+        string gesture)
     {
-        if (_nativeBridge is not null &&
-            _recordHotkeyRegistered)
+        if (!string.IsNullOrWhiteSpace(
+                gesture))
+            target[action] = gesture;
+    }
+
+    private static bool SameHotkeyBindings(
+        IReadOnlyDictionary<
+            NativeHotkeyAction,
+            string> desired,
+        IReadOnlyDictionary<
+            NativeHotkeyAction,
+            string> current)
+    {
+        if (desired.Count != current.Count)
+            return false;
+
+        foreach (var binding in desired)
         {
-            try
+            if (!current.TryGetValue(
+                    binding.Key,
+                    out var value) ||
+                !string.Equals(
+                    binding.Value,
+                    value,
+                    StringComparison.OrdinalIgnoreCase))
             {
-                _nativeBridge.UnregisterHotkey(
-                    NativeHotkeyAction.ToggleRecord);
-            }
-            catch (Exception)
-            {
+                return false;
             }
         }
 
-        _recordHotkeyRegistered = false;
-        _registeredRecordHotkey = string.Empty;
+        return true;
+    }
+
+    private bool HasPresenterZoomHotkeys() =>
+        !string.IsNullOrWhiteSpace(
+            _settings.ToggleZoomHotkey) ||
+        !string.IsNullOrWhiteSpace(
+            _settings.ZoomInHotkey) ||
+        !string.IsNullOrWhiteSpace(
+            _settings.ZoomOutHotkey) ||
+        !string.IsNullOrWhiteSpace(
+            _settings.ResetZoomHotkey);
+
+    private void RegisterGlobalHotkey(
+        NativeHotkeyAction action,
+        string gesture)
+    {
+        if (_nativeBridge is null ||
+            !HotkeyPreview.TryToNativeRegistration(
+                gesture,
+                out var modifiers,
+                out var virtualKey))
+            return;
+
+        try
+        {
+            if (_nativeBridge.RegisterHotkey(
+                    action,
+                    modifiers,
+                    virtualKey) ==
+                NativeBridgeStatus.Ok)
+            {
+                _registeredHotkeys[action] =
+                    gesture;
+            }
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private bool IsHotkeyRegistered(
+        NativeHotkeyAction action) =>
+        _registeredHotkeys.ContainsKey(
+            action);
+
+    private void SuspendGlobalHotkeys()
+    {
+        if (_nativeBridge is not null)
+        {
+            foreach (var action in
+                     _registeredHotkeys.Keys.ToArray())
+            {
+                try
+                {
+                    _nativeBridge.UnregisterHotkey(
+                        action);
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+
+        _registeredHotkeys.Clear();
     }
 
     private void Record_OnClick(
@@ -1103,6 +1193,10 @@ public sealed partial class MainWindow : Window
         if (_settings.ShortcutKeys)
             flags |=
                 NativeStartFlags.ShortcutKeys;
+
+        if (HasPresenterZoomHotkeys())
+            flags |=
+                NativeStartFlags.PresenterControls;
 
         if (_systemAudioEnabled)
             flags |=
@@ -1737,7 +1831,8 @@ public sealed partial class MainWindow : Window
         var hotkey =
             _nativeBridge is not null &&
             !_allowInteractionPreview
-                ? _recordHotkeyRegistered
+                ? IsHotkeyRegistered(
+                      NativeHotkeyAction.ToggleRecord)
                     ? $"global {_settings.RecordHotkey}"
                     : $"{_settings.RecordHotkey} unavailable"
                 : _settings.RecordHotkey;

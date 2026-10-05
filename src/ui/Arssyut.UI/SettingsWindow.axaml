@@ -474,6 +474,80 @@
                       </Button>
                     </Grid>
                   </Border>
+
+                  <Grid Margin="0,14,0,2" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                    <LucideIcon Kind="ScanLine" Size="14" StrokeWidth="1.8"
+                                Foreground="{DynamicResource ArBrush.Record}" />
+                    <StackPanel Grid.Column="1" Spacing="1">
+                      <TextBlock Text="Presenter zoom" FontSize="11" FontWeight="SemiBold" />
+                      <TextBlock Text="ArZoom presenter intent; active only while recording." Classes="micro" />
+                    </StackPanel>
+                  </Grid>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Toggle Zoom" FontWeight="Medium" />
+                        <TextBlock Text="Latch or release the existing ArZoom camera without changing Smart Zoom automation." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="ToggleZoomHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="ToggleZoom"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="ToggleZoomHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Zoom In" FontWeight="Medium" />
+                        <TextBlock Text="Increase presenter framing by 0.25×; bounded to the ArZoom 1.10×–4.00× range." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="ZoomInHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="ZoomIn"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="ZoomInHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Zoom Out" FontWeight="Medium" />
+                        <TextBlock Text="Decrease presenter framing by 0.25× without replaying zoom activation." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="ZoomOutHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="ZoomOut"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="ZoomOutHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Reset / Full Frame" FontWeight="Medium" />
+                        <TextBlock Text="Return smoothly to 1× while preserving the configured zoom amount for the next activation." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="ResetZoomHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="ResetZoom"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="ResetZoomHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
                   <Border Classes="setting-row">
                     <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">

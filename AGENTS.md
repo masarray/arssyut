@@ -1020,6 +1020,32 @@ Mandatory rules:
 - assemble visual-polish changes as one Git tree/commit and move the PR branch
   once so one final CI validates the milestone.
 
+### P6UI.6A ArZoom presenter-hotkey contract
+
+- presenter zoom behavior is transplanted from the pinned ArZoom authority
+  `masarray/arzoom-follow-obs@ada8f5269246c64429d7aceb6cc72f81e72120ba`;
+- Arssyut reuses presenter intent only. OBS hotkey/property plumbing does not
+  enter the recorder;
+- Toggle Zoom, Zoom In, Zoom Out and Reset / Full Frame must feed the existing
+  `PresentationController -> ArZoomCameraAdapter` authority. Never create a
+  UI camera or second zoom planner;
+- Zoom In / Zoom Out use ArZoom's 0.25x step and clamp configured framing to
+  1.10x..4.00x. Adjusting framing while zoom is active must not replay the
+  cinematic activation;
+- Reset / Full Frame clears manual/automatic active zoom intent and returns
+  smoothly to 1x while preserving configured zoom amount for the next
+  activation;
+- presenter commands cross into RecorderSession through bounded O(1) atomic
+  intent state. Do not add an unbounded command queue or blocking worker lock;
+- presenter input capture is enabled only when at least one presenter zoom
+  hotkey is assigned. No hotkey assignment means no extra presentation-input
+  worker solely for this feature;
+- Windows global bindings remain owned by the existing bridge HWND with
+  `RegisterHotKey + MOD_NOREPEAT`;
+- Hold Zoom and Overview Peek require press/release semantics and belong in
+  P6UI.6B by extending the existing PresentationInputWorker key-state path.
+  Never add a second global keyboard hook for them.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a

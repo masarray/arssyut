@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 4;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 5;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -60,6 +60,10 @@ enum ArssyutBridgeHotkeyAction : std::uint32_t {
     ARSSYUT_BRIDGE_HOTKEY_TOGGLE_PAUSE = 1,
     ARSSYUT_BRIDGE_HOTKEY_TOGGLE_MICROPHONE = 2,
     ARSSYUT_BRIDGE_HOTKEY_TOGGLE_CAMERA = 3,
+    ARSSYUT_BRIDGE_HOTKEY_TOGGLE_ZOOM = 4,
+    ARSSYUT_BRIDGE_HOTKEY_ZOOM_IN = 5,
+    ARSSYUT_BRIDGE_HOTKEY_ZOOM_OUT = 6,
+    ARSSYUT_BRIDGE_HOTKEY_RESET_FULL_FRAME = 7,
 };
 
 enum ArssyutBridgeHotkeyEvents : std::uint32_t {
@@ -67,6 +71,13 @@ enum ArssyutBridgeHotkeyEvents : std::uint32_t {
     ARSSYUT_BRIDGE_HOTKEY_EVENT_PAUSE = 1U << 1U,
     ARSSYUT_BRIDGE_HOTKEY_EVENT_MICROPHONE = 1U << 2U,
     ARSSYUT_BRIDGE_HOTKEY_EVENT_CAMERA = 1U << 3U,
+};
+
+enum ArssyutBridgePresenterCommand : std::uint32_t {
+    ARSSYUT_BRIDGE_PRESENTER_TOGGLE_ZOOM = 0,
+    ARSSYUT_BRIDGE_PRESENTER_ZOOM_IN = 1,
+    ARSSYUT_BRIDGE_PRESENTER_ZOOM_OUT = 2,
+    ARSSYUT_BRIDGE_PRESENTER_RESET_FULL_FRAME = 3,
 };
 
 enum ArssyutBridgeVisualMode : std::uint32_t {
@@ -82,6 +93,7 @@ enum ArssyutBridgeStartFlags : std::uint32_t {
     ARSSYUT_BRIDGE_START_SMART_ZOOM = 1U << 3U,
     ARSSYUT_BRIDGE_START_CLICK_VISUAL = 1U << 4U,
     ARSSYUT_BRIDGE_START_SHORTCUT_KEYS = 1U << 5U,
+    ARSSYUT_BRIDGE_START_PRESENTER_CONTROLS = 1U << 6U,
 };
 
 enum ArssyutBridgeRecorderState : std::uint32_t {
@@ -264,6 +276,12 @@ std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_start(
     ArssyutBridgeHandle handle,
     const ArssyutBridgeStartRequestV1 *request) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_presenter_command(
+    ArssyutBridgeHandle handle,
+    std::uint32_t command) noexcept;
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL

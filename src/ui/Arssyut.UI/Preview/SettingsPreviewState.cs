@@ -51,6 +51,20 @@ public sealed class SettingsPreviewState
     public string CameraHotkey { get; private set; } =
         "Ctrl+F10";
 
+    // ArZoom Presenter Controls are user-assigned in the source product. Keep
+    // these empty by default instead of inventing product-wide shortcuts.
+    public string ToggleZoomHotkey { get; private set; } =
+        string.Empty;
+
+    public string ZoomInHotkey { get; private set; } =
+        string.Empty;
+
+    public string ZoomOutHotkey { get; private set; } =
+        string.Empty;
+
+    public string ResetZoomHotkey { get; private set; } =
+        string.Empty;
+
     public CameraPlacement CameraPlacement { get; private set; } =
         CameraPlacement.BottomRight;
 
@@ -146,6 +160,10 @@ public sealed class SettingsPreviewState
                 "Pause" => PauseHotkey,
                 "Microphone" => MicrophoneHotkey,
                 "Camera" => CameraHotkey,
+                "ToggleZoom" => ToggleZoomHotkey,
+                "ZoomIn" => ZoomInHotkey,
+                "ZoomOut" => ZoomOutHotkey,
+                "ResetZoom" => ResetZoomHotkey,
                 _ => string.Empty
             };
 
@@ -177,6 +195,18 @@ public sealed class SettingsPreviewState
                 break;
             case "Camera":
                 CameraHotkey = normalized;
+                break;
+            case "ToggleZoom":
+                ToggleZoomHotkey = normalized;
+                break;
+            case "ZoomIn":
+                ZoomInHotkey = normalized;
+                break;
+            case "ZoomOut":
+                ZoomOutHotkey = normalized;
+                break;
+            case "ResetZoom":
+                ResetZoomHotkey = normalized;
                 break;
             default:
                 error =
@@ -217,6 +247,14 @@ public sealed class SettingsPreviewState
             "Ctrl+F9";
         CameraHotkey =
             "Ctrl+F10";
+        ToggleZoomHotkey =
+            string.Empty;
+        ZoomInHotkey =
+            string.Empty;
+        ZoomOutHotkey =
+            string.Empty;
+        ResetZoomHotkey =
+            string.Empty;
         CameraPlacement =
             CameraPlacement.BottomRight;
         MicrophoneDevice =
@@ -255,6 +293,38 @@ public sealed class SettingsPreviewState
             string.Equals(
                 gesture,
                 CameraHotkey,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (action != "ToggleZoom" &&
+            !string.IsNullOrWhiteSpace(ToggleZoomHotkey) &&
+            string.Equals(
+                gesture,
+                ToggleZoomHotkey,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (action != "ZoomIn" &&
+            !string.IsNullOrWhiteSpace(ZoomInHotkey) &&
+            string.Equals(
+                gesture,
+                ZoomInHotkey,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (action != "ZoomOut" &&
+            !string.IsNullOrWhiteSpace(ZoomOutHotkey) &&
+            string.Equals(
+                gesture,
+                ZoomOutHotkey,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (action != "ResetZoom" &&
+            !string.IsNullOrWhiteSpace(ResetZoomHotkey) &&
+            string.Equals(
+                gesture,
+                ResetZoomHotkey,
                 StringComparison.OrdinalIgnoreCase))
             return true;
 

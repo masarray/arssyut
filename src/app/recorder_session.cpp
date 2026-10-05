@@ -309,6 +309,15 @@ Status RecorderSession::start(
     presentation_camera_zoom_.store(
         1.0f,
         std::memory_order_release);
+    presenter_toggle_zoom_requests_.store(
+        0,
+        std::memory_order_release);
+    presenter_zoom_steps_.store(
+        0,
+        std::memory_order_release);
+    presenter_reset_requests_.store(
+        0,
+        std::memory_order_release);
     worker_finished_.store(
         false,
         std::memory_order_release);
@@ -341,6 +350,44 @@ void RecorderSession::request_stop() noexcept
     stop_requested_.store(
         true,
         std::memory_order_release);
+}
+
+bool RecorderSession::request_presenter_command(
+    PresenterCommand command) noexcept
+{
+    const auto state =
+        state_.load(
+            std::memory_order_acquire);
+
+    if (state != RecorderState::Preparing &&
+        state != RecorderState::Recording) {
+        return false;
+    }
+
+    switch (command) {
+    case PresenterCommand::ToggleZoom:
+        presenter_toggle_zoom_requests_.fetch_add(
+            1,
+            std::memory_order_release);
+        return true;
+    case PresenterCommand::ZoomIn:
+        presenter_zoom_steps_.fetch_add(
+            1,
+            std::memory_order_release);
+        return true;
+    case PresenterCommand::ZoomOut:
+        presenter_zoom_steps_.fetch_sub(
+            1,
+            std::memory_order_release);
+        return true;
+    case PresenterCommand::ResetFullFrame:
+        presenter_reset_requests_.fetch_add(
+            1,
+            std::memory_order_release);
+        return true;
+    default:
+        return false;
+    }
 }
 
 void RecorderSession::wait() noexcept
@@ -613,6 +660,7 @@ void RecorderSession::worker_main() noexcept
     }
 
     const bool presentation_enabled =
+        config_.presentation.presenter_controls ||
         config_.presentation.smart_zoom ||
         config_.presentation.click_visual ||
         config_.presentation.shortcut_keys;
@@ -858,6 +906,33 @@ void RecorderSession::worker_main() noexcept
 
         if (presentation_enabled &&
             !(now < next_presentation)) {
+            // Consume bridge presenter intent at the same cadence as the
+            // existing ArZoom camera. Reset is applied last so Full Frame wins
+            // a same-tick race without changing the configured zoom amount.
+            const auto toggle_requests =
+                presenter_toggle_zoom_requests_.exchange(
+                    0,
+                    std::memory_order_acq_rel);
+            if ((toggle_requests & 1U) != 0)
+                presentation_controller.toggle_manual_zoom();
+
+            const auto zoom_steps =
+                presenter_zoom_steps_.exchange(
+                    0,
+                    std::memory_order_acq_rel);
+            if (zoom_steps != 0) {
+                presentation_controller.adjust_manual_zoom(
+                    0.25f *
+                    static_cast<float>(
+                        zoom_steps));
+            }
+
+            if (presenter_reset_requests_.exchange(
+                    0,
+                    std::memory_order_acq_rel) != 0) {
+                presentation_controller.reset_full_frame();
+            }
+
             arssyut::windows::MouseClickEvent click_event;
             while (presentation_input.try_pop_click(
                 click_event)) {

@@ -53,7 +53,11 @@ public enum NativeHotkeyAction : uint
     ToggleRecord = 0,
     TogglePause = 1,
     ToggleMicrophone = 2,
-    ToggleCamera = 3
+    ToggleCamera = 3,
+    ToggleZoom = 4,
+    ZoomIn = 5,
+    ZoomOut = 6,
+    ResetFullFrame = 7
 }
 
 [Flags]
@@ -76,6 +80,14 @@ public enum NativeHotkeyEvents : uint
     ToggleCamera = 1U << 3
 }
 
+public enum NativePresenterCommand : uint
+{
+    ToggleZoom = 0,
+    ZoomIn = 1,
+    ZoomOut = 2,
+    ResetFullFrame = 3
+}
+
 public enum NativeVisualMode : uint
 {
     PixelAccurate = 0,
@@ -92,7 +104,8 @@ public enum NativeStartFlags : uint
     Camera = 1U << 2,
     SmartZoom = 1U << 3,
     ClickVisual = 1U << 4,
-    ShortcutKeys = 1U << 5
+    ShortcutKeys = 1U << 5,
+    PresenterControls = 1U << 6
 }
 
 public sealed record NativeDeviceItem(
@@ -138,7 +151,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 4;
+    private const uint ExpectedAbi = 5;
 
     private static readonly object NativeLoadGate =
         new();
@@ -720,6 +733,17 @@ public sealed class NativeBridgeClient : IDisposable
                 ref native);
     }
 
+    public NativeBridgeStatus PresenterCommand(
+        NativePresenterCommand command)
+    {
+        ThrowIfDisposed();
+
+        return (NativeBridgeStatus)
+            NativeMethods.RecorderPresenterCommand(
+                _handle,
+                (uint)command);
+    }
+
     public NativeBridgeStatus StopRecording()
     {
         ThrowIfDisposed();
@@ -1020,6 +1044,14 @@ public sealed class NativeBridgeClient : IDisposable
         public static extern int RecorderStart(
             IntPtr handle,
             ref NativeStartRequestV1 request);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_presenter_command",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderPresenterCommand(
+            IntPtr handle,
+            uint command);
 
         [DllImport(
             LibraryName,

@@ -14,6 +14,7 @@ struct PresentationSettings {
     bool smart_zoom = true;
     bool click_visual = true;
     bool shortcut_keys = true;
+    bool presenter_controls = false;
     float zoom = 2.0f;
 };
 
@@ -32,6 +33,23 @@ public:
     void on_shortcut(
         ShortcutChord chord,
         arssyut::core::TimePoint time) noexcept;
+
+    // ArZoom Presenter Controls intent. These methods only change presenter
+    // intent consumed by the existing ArZoomCameraAdapter; they never create a
+    // second camera/planner or mutate capture geometry.
+    void toggle_manual_zoom() noexcept;
+    void adjust_manual_zoom(float delta) noexcept;
+    void reset_full_frame() noexcept;
+
+    [[nodiscard]] bool manual_zoom_latched() const noexcept
+    {
+        return manual_zoom_latched_;
+    }
+
+    [[nodiscard]] float configured_zoom() const noexcept
+    {
+        return runtime_zoom_;
+    }
 
     [[nodiscard]] PresentationFrameState step(
         float dt,
@@ -78,6 +96,8 @@ private:
     std::uint32_t keyboard_generation_ = 0;
     bool have_last_shortcut_ = false;
     bool emphasis_pending_ = false;
+    bool manual_zoom_latched_ = false;
+    float runtime_zoom_ = 2.0f;
 };
 
 } // namespace arssyut::presentation

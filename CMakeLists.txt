@@ -392,6 +392,27 @@ if(ARSSYUT_BUILD_TESTS)
             COMMAND arssyut_native_bridge_tests
         )
 
+        add_executable(arssyut_presenter_zoom_tests
+            tests/windows/test_presenter_zoom_controls.cpp
+        )
+        target_link_libraries(
+            arssyut_presenter_zoom_tests
+            PRIVATE
+                arssyut_windows
+        )
+        if(MSVC)
+            target_compile_options(arssyut_presenter_zoom_tests PRIVATE
+                /W4
+                /permissive-
+                /utf-8
+                /Zc:__cplusplus
+            )
+        endif()
+        add_test(
+            NAME arssyut_presenter_zoom_tests
+            COMMAND arssyut_presenter_zoom_tests
+        )
+
         add_executable(arssyut_windows_shortcut_tests
             tests/windows/test_shortcut_keymap.cpp
         )
