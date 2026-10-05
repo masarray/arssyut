@@ -881,6 +881,12 @@ void RecorderSession::worker_main() noexcept
 
     PresentationFrameState presentation_state{};
 
+    // Reset / Full Frame in upstream ArZoom clears momentary state even when
+    // the user is still physically holding the chord. Do not re-arm until the
+    // chord has actually been released once.
+    bool hold_zoom_block_until_release = false;
+    bool overview_block_until_release = false;
+
     bool failed = false;
 
     while (!stop_requested_.load(
@@ -931,7 +937,32 @@ void RecorderSession::worker_main() noexcept
                     0,
                     std::memory_order_acq_rel) != 0) {
                 presentation_controller.reset_full_frame();
+                hold_zoom_block_until_release = true;
+                overview_block_until_release = true;
             }
+
+            const bool hold_zoom_pressed =
+                config_.hold_zoom_hotkey.configured() &&
+                presentation_input.chord_pressed(
+                    config_.hold_zoom_hotkey.virtual_key,
+                    config_.hold_zoom_hotkey.modifiers);
+            if (!hold_zoom_pressed)
+                hold_zoom_block_until_release = false;
+
+            const bool overview_pressed =
+                config_.overview_peek_hotkey.configured() &&
+                presentation_input.chord_pressed(
+                    config_.overview_peek_hotkey.virtual_key,
+                    config_.overview_peek_hotkey.modifiers);
+            if (!overview_pressed)
+                overview_block_until_release = false;
+
+            presentation_controller.set_hold_zoom(
+                hold_zoom_pressed &&
+                !hold_zoom_block_until_release);
+            presentation_controller.set_overview_peek(
+                overview_pressed &&
+                !overview_block_until_release);
 
             arssyut::windows::MouseClickEvent click_event;
             while (presentation_input.try_pop_click(

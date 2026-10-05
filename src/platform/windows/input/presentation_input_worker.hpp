@@ -73,6 +73,24 @@ public:
             std::memory_order_acquire);
     }
 
+    // Momentary presenter controls use the existing Raw Input key-state
+    // authority. Exact modifier matching prevents Ctrl+F9 from also matching
+    // Ctrl+Shift+F9, and polling state means release order cannot leave a
+    // sticky Hold Zoom / Overview Peek.
+    [[nodiscard]] bool chord_pressed(
+        std::uint16_t virtual_key,
+        std::uint8_t modifiers) const noexcept
+    {
+        if (virtual_key == 0 ||
+            virtual_key >= pressed_.size() ||
+            !pressed_[virtual_key].load(
+                std::memory_order_relaxed)) {
+            return false;
+        }
+
+        return modifier_mask() == modifiers;
+    }
+
 private:
     static LRESULT CALLBACK window_proc(
         HWND window,

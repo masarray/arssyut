@@ -3,9 +3,9 @@
 **Updated:** 2026-10-05  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6A ArZoom presenter zoom hotkeys implemented / CI + real recording acceptance pending**  
+**Current engineering milestone:** **P6UI.6B Hold Zoom / Overview Peek implemented / CI + real recording acceptance pending**  
 **Canonical baseline entering this milestone:**  
-`07674357c3555b73d8b850d6853d1d104fc83494` (P6UI.5C visual / tactile lock)
+`2918cb596e14da1d0fce0869e316cdae510c066e` (P6UI.6A ArZoom presenter hotkeys)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -340,6 +340,39 @@ rather than create another keyboard hook.
 
 P6UI.5D multi-DPI/focus polish remains a hardening task but no longer blocks
 functional progression after the accepted real screenshot direction.
+
+### P6UI.6B — Hold Zoom / Overview Peek
+
+P6UI.6B completes the press/release presenter subset from the pinned ArZoom
+authority without adding another keyboard subsystem.
+
+Implementation:
+- Hold Zoom and Overview Peek bindings are passed through bridge ABI v6 as
+  recording-start configuration;
+- bindings are not registered with `RegisterHotKey`; RecorderSession samples
+  the existing `PresentationInputWorker` Raw Input pressed-state table on the
+  existing presentation cadence;
+- exact modifier matching means releasing Ctrl/Shift/Alt/Win immediately
+  releases the momentary action even if the primary key is still down;
+- Hold Zoom is OR-composed with Toggle Zoom and Smart Zoom;
+- the exact upstream `OverviewPeekController` is vendored into the existing
+  ArZoom include surface and reuses the same camera transform math;
+- Overview Peek saves the shot, glides to centered full frame, freezes camera
+  retargeting while visible, and restores the saved shot on release;
+- if zoom intent ends during Peek, cancel-to-overview ends at full frame;
+- Reset / Full Frame blocks still-held Hold/Peek chords until physical release,
+  matching upstream non-sticky behavior;
+- deterministic tests lock Hold press/release, saved-shot Peek restore, and Peek
+  cancellation when zoom intent disappears.
+
+No capture, Region, compositor, encoder, timing or second-camera authority is
+introduced.
+
+**Exact next milestone after real acceptance:** P6UI.6C Presenter Controls
+Acceptance Lock — real key-down/key-up, alt-tab/focus-loss, overlapping
+Toggle/Hold/Smart Zoom, Overview saved-shot restore, and Region boundary
+synchronization. Freeze Camera / Toggle Smart Follow remain deferred until
+those controls can be proven through the same camera authority.
 
 ## 7. Current / exact next engineering milestone
 

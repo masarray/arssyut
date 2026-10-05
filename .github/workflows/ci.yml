@@ -93,7 +93,10 @@ jobs:
             # P6UI.6A bounded presenter-command mailbox only. Capture, timing,
             # compositor, encoder and RecorderSession lifecycle remain unchanged.
             "src/app/recorder_session.cpp",
-            "src/app/recorder_session.hpp"
+            "src/app/recorder_session.hpp",
+            # P6UI.6B reads the already-authoritative Raw Input pressed-state
+            # table for momentary presenter chords. No second keyboard hook.
+            "src/platform/windows/input/presentation_input_worker.hpp"
           )
 
           $violations = @(
@@ -104,7 +107,7 @@ jobs:
           if ($violations.Count -gt 0) {
             Write-Host "P6UI changed locked native implementation after ${baseline}:"
             $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
-            throw "Existing native engine implementation is frozen. Only the documented RecorderOverlay repaint and bounded RecorderSession presenter-command mailbox exceptions are allowed."
+            throw "Existing native engine implementation is frozen. Only the documented RecorderOverlay repaint, bounded RecorderSession presenter mailbox, and P6UI.6B Raw Input held-state accessor are allowed."
           }
 
           Write-Host "Native baseline guard passed."

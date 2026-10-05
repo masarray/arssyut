@@ -50,6 +50,12 @@ void PresentationController::reset() noexcept
     have_last_shortcut_ = false;
     emphasis_pending_ = false;
     manual_zoom_latched_ = false;
+    hold_zoom_active_ = false;
+    overview_requested_ = false;
+    overview_.reset();
+    last_camera_center_x_ = 0.5f;
+    last_camera_center_y_ = 0.5f;
+    last_camera_zoom_ = 1.0f;
     runtime_zoom_ =
         std::clamp(
             settings_.zoom,
@@ -64,8 +70,12 @@ void PresentationController::set_settings(
     settings_ = settings;
     runtime_zoom_ = settings.zoom;
 
-    if (!settings_.presenter_controls)
+    if (!settings_.presenter_controls) {
         manual_zoom_latched_ = false;
+        hold_zoom_active_ = false;
+        overview_requested_ = false;
+        overview_.reset();
+    }
 }
 
 void PresentationController::push_click(
@@ -244,11 +254,40 @@ void PresentationController::reset_full_frame() noexcept
     if (!settings_.presenter_controls)
         return;
 
-    // ArZoom Reset / Full Frame clears active zoom intent but deliberately
-    // preserves the configured zoom amount for the next activation.
+    // ArZoom Reset / Full Frame clears every active presenter zoom intent but
+    // deliberately preserves the configured zoom amount for the next
+    // activation. If Overview Peek is in flight, step() uses its upstream
+    // cancel-to-overview path instead of snapping the render transform.
     manual_zoom_latched_ = false;
+    hold_zoom_active_ = false;
+    overview_requested_ = false;
     zoom_until_ = {};
     emphasis_pending_ = false;
+}
+
+void PresentationController::set_hold_zoom(
+    bool active) noexcept
+{
+    if (!settings_.presenter_controls) {
+        hold_zoom_active_ = false;
+        return;
+    }
+
+    if (active && !hold_zoom_active_)
+        emphasis_pending_ = true;
+
+    hold_zoom_active_ = active;
+}
+
+void PresentationController::set_overview_peek(
+    bool active) noexcept
+{
+    if (!settings_.presenter_controls) {
+        overview_requested_ = false;
+        return;
+    }
+
+    overview_requested_ = active;
 }
 
 void PresentationController::update_keyboard(
@@ -282,6 +321,15 @@ PresentationFrameState PresentationController::step(
                 now.ticks_100ns + kZoomMotionTailTicks);
     }
 
+    const bool smart_zoom_requested =
+        settings_.smart_zoom &&
+        now.ticks_100ns <
+            zoom_until_.ticks_100ns;
+    const bool wants_zoom =
+        manual_zoom_latched_ ||
+        hold_zoom_active_ ||
+        smart_zoom_requested;
+
     ArZoomCameraIntent intent;
     intent.dt = std::clamp(dt, 0.0f, 0.10f);
     intent.cursor = {
@@ -289,17 +337,99 @@ PresentationFrameState PresentationController::step(
         std::clamp(cursor_y, 0.0f, 1.0f)
     };
     intent.cursor_valid = cursor_valid;
-    intent.zoom_requested =
-        manual_zoom_latched_ ||
-        (settings_.smart_zoom &&
-         now.ticks_100ns <
-             zoom_until_.ticks_100ns);
-    intent.configured_zoom =
-        runtime_zoom_;
+    intent.zoom_requested = wants_zoom;
+    intent.configured_zoom = runtime_zoom_;
     intent.emphasis_event = emphasis_pending_;
     emphasis_pending_ = false;
 
-    const auto camera = camera_.step(intent);
+    const arzoom::Vec2 visible_center{
+        last_camera_center_x_,
+        last_camera_center_y_
+    };
+    const float visible_zoom =
+        last_camera_zoom_;
+
+    if (overview_requested_ &&
+        !overview_.active() &&
+        wants_zoom &&
+        visible_zoom > 1.0005f) {
+        (void)overview_.begin(
+            visible_center,
+            visible_zoom);
+    }
+
+    float camera_center_x = 0.5f;
+    float camera_center_y = 0.5f;
+    float camera_zoom = 1.0f;
+
+    if (overview_.active()) {
+        const auto phase =
+            overview_.phase();
+
+        if (!wants_zoom &&
+            phase !=
+                arzoom::OverviewPhase::CancelToOverview) {
+            overview_.cancel_to_overview(
+                visible_center,
+                visible_zoom);
+        } else if (!overview_requested_ &&
+                   phase !=
+                       arzoom::OverviewPhase::ToShot) {
+            overview_.release(
+                visible_center,
+                visible_zoom);
+        }
+
+        const auto profile =
+            arzoom::camera_profile(
+                arzoom::CameraMotionStyle::Cinematic);
+        const float out_seconds =
+            std::clamp(
+                profile.zoom_out_seconds * 0.62f,
+                0.24f,
+                0.42f);
+        const float back_seconds =
+            std::clamp(
+                profile.zoom_in_seconds * 0.72f,
+                0.24f,
+                0.40f);
+
+        const auto overview_output =
+            overview_.step(
+                intent.dt,
+                out_seconds,
+                back_seconds);
+
+        camera_center_x =
+            overview_output.center.x;
+        camera_center_y =
+            overview_output.center.y;
+        camera_zoom =
+            overview_output.zoom;
+
+        if (overview_output.cancelled) {
+            camera_.reset();
+            camera_center_x = 0.5f;
+            camera_center_y = 0.5f;
+            camera_zoom = 1.0f;
+        }
+    } else {
+        const auto camera =
+            camera_.step(intent);
+        camera_center_x =
+            camera.center.x;
+        camera_center_y =
+            camera.center.y;
+        camera_zoom =
+            camera.zoom;
+    }
+
+    last_camera_center_x_ =
+        camera_center_x;
+    last_camera_center_y_ =
+        camera_center_y;
+    last_camera_zoom_ =
+        camera_zoom;
 
     constexpr float kLeftClickLifetime = 0.88f;
     constexpr float kRightClickLifetime = 0.90f;
@@ -323,9 +453,9 @@ PresentationFrameState PresentationController::step(
     }
 
     PresentationFrameState result;
-    result.camera_center_x = camera.center.x;
-    result.camera_center_y = camera.center.y;
-    result.camera_zoom = camera.zoom;
+    result.camera_center_x = camera_center_x;
+    result.camera_center_y = camera_center_y;
+    result.camera_zoom = camera_zoom;
     for (std::size_t i = 0;
          i < clicks_.size();
          ++i) {

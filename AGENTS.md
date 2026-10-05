@@ -1046,6 +1046,36 @@ Mandatory rules:
   P6UI.6B by extending the existing PresentationInputWorker key-state path.
   Never add a second global keyboard hook for them.
 
+### P6UI.6B Hold Zoom / Overview Peek contract
+
+- behavior remains pinned to
+  `masarray/arzoom-follow-obs@ada8f5269246c64429d7aceb6cc72f81e72120ba`;
+- Hold Zoom and Overview Peek are **momentary** controls. They must observe
+  physical key-down/key-up state through the existing
+  `PresentationInputWorker` Raw Input pressed-state table;
+- do not register Hold Zoom / Overview Peek with `RegisterHotKey`: that API is
+  appropriate for latch/step triggers but does not provide the release
+  semantics required here;
+- do not add another keyboard hook, worker, polling thread or UI-side held-key
+  state. RecorderSession reads the existing atomic key-state table only on the
+  established presentation cadence;
+- momentary chord matching requires exact Ctrl/Shift/Alt/Win modifier state so
+  a broader chord cannot accidentally activate a narrower one;
+- Hold Zoom composes with Toggle Zoom and Smart Zoom as
+  `latched || held || smart`. Releasing Hold returns only when no other zoom
+  intent remains;
+- Overview Peek must save the current zoomed shot, transition to centered 1x
+  with the upstream minimum-jerk transform, pause camera retargeting while
+  visible, and restore the saved shot on release;
+- if underlying zoom intent disappears while Overview Peek is held, follow the
+  upstream cancel-to-overview path and end at full frame;
+- Reset / Full Frame clears momentary intent and blocks re-arming until each
+  still-held chord is physically released once;
+- bridge ABI v6 transports momentary chord bindings as recording-start config.
+  Managed code must not reconstruct raw-input state or own camera behavior;
+- the only P6UI.6B protected-platform exception is the bounded read-only
+  `PresentationInputWorker::chord_pressed()` accessor.
+
 ### P6UI Avalonia presentation contract
 
 The final desktop presentation shell is Avalonia. The Win32/GDI shell is a

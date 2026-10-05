@@ -129,9 +129,11 @@ Expect(
 
 Expect(
     string.IsNullOrEmpty(settings.ToggleZoomHotkey) &&
+    string.IsNullOrEmpty(settings.HoldZoomHotkey) &&
     string.IsNullOrEmpty(settings.ZoomInHotkey) &&
     string.IsNullOrEmpty(settings.ZoomOutHotkey) &&
-    string.IsNullOrEmpty(settings.ResetZoomHotkey),
+    string.IsNullOrEmpty(settings.ResetZoomHotkey) &&
+    string.IsNullOrEmpty(settings.OverviewPeekHotkey),
     "ArZoom presenter hotkeys start unassigned instead of inventing defaults");
 
 Expect(
@@ -144,12 +146,38 @@ Expect(
     "Settings accepts a global Toggle Zoom chord");
 
 Expect(
+    settings.TrySetHotkey(
+        "HoldZoom",
+        "Ctrl+Shift+H",
+        out var holdZoomError) &&
+    string.IsNullOrEmpty(holdZoomError) &&
+    settings.HoldZoomHotkey == "Ctrl+Shift+H",
+    "Settings accepts a Hold Zoom press/release chord");
+
+Expect(
+    settings.TrySetHotkey(
+        "OverviewPeek",
+        "Alt+O",
+        out var overviewError) &&
+    string.IsNullOrEmpty(overviewError) &&
+    settings.OverviewPeekHotkey == "Alt+O",
+    "Settings accepts an Overview Peek press/release chord");
+
+Expect(
     !settings.TrySetHotkey(
         "ZoomIn",
         "Ctrl+Alt+Z",
         out var zoomConflictError) &&
     !string.IsNullOrEmpty(zoomConflictError),
     "presenter zoom shortcuts participate in duplicate-chord conflict checks");
+
+Expect(
+    !settings.TrySetHotkey(
+        "OverviewPeek",
+        "Ctrl+Shift+H",
+        out var momentaryConflictError) &&
+    !string.IsNullOrEmpty(momentaryConflictError),
+    "momentary presenter shortcuts share the same duplicate-chord authority");
 
 Expect(
     settings.TrySetHotkey(
@@ -195,9 +223,11 @@ Expect(
     settings.CameraHotkey ==
         "Ctrl+F10" &&
     string.IsNullOrEmpty(settings.ToggleZoomHotkey) &&
+    string.IsNullOrEmpty(settings.HoldZoomHotkey) &&
     string.IsNullOrEmpty(settings.ZoomInHotkey) &&
     string.IsNullOrEmpty(settings.ZoomOutHotkey) &&
     string.IsNullOrEmpty(settings.ResetZoomHotkey) &&
+    string.IsNullOrEmpty(settings.OverviewPeekHotkey) &&
     settings.CameraPlacement ==
         CameraPlacement.BottomRight &&
     settings.OutputFolder ==

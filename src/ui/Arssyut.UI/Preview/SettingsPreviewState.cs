@@ -56,6 +56,9 @@ public sealed class SettingsPreviewState
     public string ToggleZoomHotkey { get; private set; } =
         string.Empty;
 
+    public string HoldZoomHotkey { get; private set; } =
+        string.Empty;
+
     public string ZoomInHotkey { get; private set; } =
         string.Empty;
 
@@ -63,6 +66,9 @@ public sealed class SettingsPreviewState
         string.Empty;
 
     public string ResetZoomHotkey { get; private set; } =
+        string.Empty;
+
+    public string OverviewPeekHotkey { get; private set; } =
         string.Empty;
 
     public CameraPlacement CameraPlacement { get; private set; } =
@@ -161,9 +167,11 @@ public sealed class SettingsPreviewState
                 "Microphone" => MicrophoneHotkey,
                 "Camera" => CameraHotkey,
                 "ToggleZoom" => ToggleZoomHotkey,
+                "HoldZoom" => HoldZoomHotkey,
                 "ZoomIn" => ZoomInHotkey,
                 "ZoomOut" => ZoomOutHotkey,
                 "ResetZoom" => ResetZoomHotkey,
+                "OverviewPeek" => OverviewPeekHotkey,
                 _ => string.Empty
             };
 
@@ -199,6 +207,9 @@ public sealed class SettingsPreviewState
             case "ToggleZoom":
                 ToggleZoomHotkey = normalized;
                 break;
+            case "HoldZoom":
+                HoldZoomHotkey = normalized;
+                break;
             case "ZoomIn":
                 ZoomInHotkey = normalized;
                 break;
@@ -207,6 +218,9 @@ public sealed class SettingsPreviewState
                 break;
             case "ResetZoom":
                 ResetZoomHotkey = normalized;
+                break;
+            case "OverviewPeek":
+                OverviewPeekHotkey = normalized;
                 break;
             default:
                 error =
@@ -249,11 +263,15 @@ public sealed class SettingsPreviewState
             "Ctrl+F10";
         ToggleZoomHotkey =
             string.Empty;
+        HoldZoomHotkey =
+            string.Empty;
         ZoomInHotkey =
             string.Empty;
         ZoomOutHotkey =
             string.Empty;
         ResetZoomHotkey =
+            string.Empty;
+        OverviewPeekHotkey =
             string.Empty;
         CameraPlacement =
             CameraPlacement.BottomRight;
@@ -304,6 +322,14 @@ public sealed class SettingsPreviewState
                 StringComparison.OrdinalIgnoreCase))
             return true;
 
+        if (action != "HoldZoom" &&
+            !string.IsNullOrWhiteSpace(HoldZoomHotkey) &&
+            string.Equals(
+                gesture,
+                HoldZoomHotkey,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
         if (action != "ZoomIn" &&
             !string.IsNullOrWhiteSpace(ZoomInHotkey) &&
             string.Equals(
@@ -325,6 +351,14 @@ public sealed class SettingsPreviewState
             string.Equals(
                 gesture,
                 ResetZoomHotkey,
+                StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (action != "OverviewPeek" &&
+            !string.IsNullOrWhiteSpace(OverviewPeekHotkey) &&
+            string.Equals(
+                gesture,
+                OverviewPeekHotkey,
                 StringComparison.OrdinalIgnoreCase))
             return true;
 

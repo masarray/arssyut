@@ -1068,11 +1068,33 @@ public sealed partial class MainWindow : Window
         !string.IsNullOrWhiteSpace(
             _settings.ToggleZoomHotkey) ||
         !string.IsNullOrWhiteSpace(
+            _settings.HoldZoomHotkey) ||
+        !string.IsNullOrWhiteSpace(
             _settings.ZoomInHotkey) ||
         !string.IsNullOrWhiteSpace(
             _settings.ZoomOutHotkey) ||
         !string.IsNullOrWhiteSpace(
-            _settings.ResetZoomHotkey);
+            _settings.ResetZoomHotkey) ||
+        !string.IsNullOrWhiteSpace(
+            _settings.OverviewPeekHotkey);
+
+    private static NativeHotkeyChord MomentaryHotkey(
+        string gesture)
+    {
+        if (string.IsNullOrWhiteSpace(
+                gesture) ||
+            !HotkeyPreview.TryToNativeRegistration(
+                gesture,
+                out var modifiers,
+                out var virtualKey))
+        {
+            return NativeHotkeyChord.None;
+        }
+
+        return new NativeHotkeyChord(
+            modifiers,
+            virtualKey);
+    }
 
     private void RegisterGlobalHotkey(
         NativeHotkeyAction action,
@@ -1230,7 +1252,11 @@ public sealed partial class MainWindow : Window
                         flags,
                         _microphoneDeviceToken,
                         _cameraDeviceToken,
-                        _settings.OutputFolder));
+                        _settings.OutputFolder,
+                        MomentaryHotkey(
+                            _settings.HoldZoomHotkey),
+                        MomentaryHotkey(
+                            _settings.OverviewPeekHotkey)));
         }
         catch (Exception)
         {

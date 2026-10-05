@@ -2,6 +2,7 @@
 
 #include "core/time/monotonic_clock.hpp"
 #include "presentation/arzoom_camera_adapter.hpp"
+#include "arzoom-presenter-controls.hpp"
 #include "presentation/presentation_state.hpp"
 #include "presentation/shortcut.hpp"
 
@@ -40,6 +41,8 @@ public:
     void toggle_manual_zoom() noexcept;
     void adjust_manual_zoom(float delta) noexcept;
     void reset_full_frame() noexcept;
+    void set_hold_zoom(bool active) noexcept;
+    void set_overview_peek(bool active) noexcept;
 
     [[nodiscard]] bool manual_zoom_latched() const noexcept
     {
@@ -49,6 +52,11 @@ public:
     [[nodiscard]] float configured_zoom() const noexcept
     {
         return runtime_zoom_;
+    }
+
+    [[nodiscard]] bool overview_active() const noexcept
+    {
+        return overview_.active();
     }
 
     [[nodiscard]] PresentationFrameState step(
@@ -97,7 +105,17 @@ private:
     bool have_last_shortcut_ = false;
     bool emphasis_pending_ = false;
     bool manual_zoom_latched_ = false;
+    bool hold_zoom_active_ = false;
+    bool overview_requested_ = false;
     float runtime_zoom_ = 2.0f;
+    arzoom::OverviewPeekController overview_{};
+
+    // Current rendered camera transform. Overview Peek pauses the underlying
+    // camera, so release/cancel transitions must start from what the viewer is
+    // actually seeing rather than camera_.output()'s frozen saved shot.
+    float last_camera_center_x_ = 0.5f;
+    float last_camera_center_y_ = 0.5f;
+    float last_camera_zoom_ = 1.0f;
 };
 
 } // namespace arssyut::presentation

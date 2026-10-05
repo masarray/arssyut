@@ -96,9 +96,11 @@ public sealed partial class SettingsWindow : Window
         [
             RecordHotkeyButton,
             ToggleZoomHotkeyButton,
+            HoldZoomHotkeyButton,
             ZoomInHotkeyButton,
             ZoomOutHotkeyButton,
             ResetZoomHotkeyButton,
+            OverviewPeekHotkeyButton,
             PauseHotkeyButton,
             MicrophoneHotkeyButton,
             CameraHotkeyButton
@@ -175,24 +177,39 @@ public sealed partial class SettingsWindow : Window
             var gesture =
                 HotkeyPreview.FormatGesture(e);
 
-            if (_nativeBridge is not null &&
+            var isGlobalTrigger =
                 TryNativeHotkeyAction(
                     _capturingHotkeyAction,
-                    out var nativeAction))
-            {
-                if (!HotkeyPreview.TryToNativeRegistration(
-                        gesture,
-                        out var modifiers,
-                        out var virtualKey))
-                {
-                    HotkeyFeedbackText.Text =
-                        "That key cannot be registered as a Windows global shortcut.";
-                    HotkeyFeedbackText.Foreground =
-                        Brush.Parse("#F1B85B");
-                    e.Handled = true;
-                    return;
-                }
+                    out var nativeAction);
+            var isMomentaryPresenter =
+                IsMomentaryPresenterAction(
+                    _capturingHotkeyAction);
 
+            var modifiers =
+                NativeHotkeyModifiers.None;
+            uint virtualKey = 0;
+
+            if ((isGlobalTrigger ||
+                 isMomentaryPresenter) &&
+                !HotkeyPreview.TryToNativeRegistration(
+                    gesture,
+                    out modifiers,
+                    out virtualKey))
+            {
+                HotkeyFeedbackText.Text =
+                    "That key cannot be represented by the native Windows input path.";
+                HotkeyFeedbackText.Foreground =
+                    Brush.Parse("#F1B85B");
+                e.Handled = true;
+                return;
+            }
+
+            // Latch/step commands use RegisterHotKey and can be conflict-tested
+            // immediately. Hold/Peek deliberately do not register here: their
+            // key-up semantics are owned by PresentationInputWorker Raw Input.
+            if (_nativeBridge is not null &&
+                isGlobalTrigger)
+            {
                 var registration =
                     _nativeBridge.RegisterHotkey(
                         nativeAction,
@@ -622,6 +639,12 @@ public sealed partial class SettingsWindow : Window
             "ResetZoom";
     }
 
+    private static bool IsMomentaryPresenterAction(
+        string action) =>
+        action is
+            "HoldZoom" or
+            "OverviewPeek";
+
     private void Hotkey_OnClick(
         object? sender,
         RoutedEventArgs e)
@@ -688,6 +711,9 @@ public sealed partial class SettingsWindow : Window
         ToggleZoomHotkeyText.Text =
             HotkeyLabel(
                 _preview.ToggleZoomHotkey);
+        HoldZoomHotkeyText.Text =
+            HotkeyLabel(
+                _preview.HoldZoomHotkey);
         ZoomInHotkeyText.Text =
             HotkeyLabel(
                 _preview.ZoomInHotkey);
@@ -697,6 +723,9 @@ public sealed partial class SettingsWindow : Window
         ResetZoomHotkeyText.Text =
             HotkeyLabel(
                 _preview.ResetZoomHotkey);
+        OverviewPeekHotkeyText.Text =
+            HotkeyLabel(
+                _preview.OverviewPeekHotkey);
     }
 
     private static string HotkeyLabel(
@@ -717,12 +746,16 @@ public sealed partial class SettingsWindow : Window
                 CameraHotkeyText,
             "ToggleZoom" =>
                 ToggleZoomHotkeyText,
+            "HoldZoom" =>
+                HoldZoomHotkeyText,
             "ZoomIn" =>
                 ZoomInHotkeyText,
             "ZoomOut" =>
                 ZoomOutHotkeyText,
             "ResetZoom" =>
                 ResetZoomHotkeyText,
+            "OverviewPeek" =>
+                OverviewPeekHotkeyText,
             _ =>
                 RecordHotkeyText
         };

@@ -48,6 +48,16 @@ public enum NativeRecorderState : uint
     Failed = 6
 }
 
+public readonly record struct NativeHotkeyChord(
+    NativeHotkeyModifiers Modifiers,
+    uint VirtualKey)
+{
+    public static NativeHotkeyChord None =>
+        new(
+            NativeHotkeyModifiers.None,
+            0);
+}
+
 public enum NativeHotkeyAction : uint
 {
     ToggleRecord = 0,
@@ -143,7 +153,9 @@ public sealed record NativeStartRequest(
     NativeStartFlags Flags,
     ulong MicrophoneDeviceToken,
     ulong CameraDeviceToken,
-    string OutputFolder);
+    string OutputFolder,
+    NativeHotkeyChord HoldZoomHotkey,
+    NativeHotkeyChord OverviewPeekHotkey);
 
 public sealed class NativeBridgeClient : IDisposable
 {
@@ -151,7 +163,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 5;
+    private const uint ExpectedAbi = 6;
 
     private static readonly object NativeLoadGate =
         new();
@@ -724,7 +736,15 @@ public sealed class NativeBridgeClient : IDisposable
                 CameraDeviceToken =
                     request.CameraDeviceToken,
                 OutputFolder =
-                    request.OutputFolder ?? string.Empty
+                    request.OutputFolder ?? string.Empty,
+                HoldZoomModifiers =
+                    (uint)request.HoldZoomHotkey.Modifiers,
+                HoldZoomVirtualKey =
+                    request.HoldZoomHotkey.VirtualKey,
+                OverviewPeekModifiers =
+                    (uint)request.OverviewPeekHotkey.Modifiers,
+                OverviewPeekVirtualKey =
+                    request.OverviewPeekHotkey.VirtualKey
             };
 
         return (NativeBridgeStatus)
@@ -899,6 +919,11 @@ public sealed class NativeBridgeClient : IDisposable
             UnmanagedType.ByValTStr,
             SizeConst = 512)]
         public string OutputFolder;
+
+        public uint HoldZoomModifiers;
+        public uint HoldZoomVirtualKey;
+        public uint OverviewPeekModifiers;
+        public uint OverviewPeekVirtualKey;
     }
 
     [StructLayout(

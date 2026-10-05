@@ -1021,11 +1021,25 @@ ArZoom presenter zoom hotkeys:
 - presenter input worker is gated off when no presenter zoom hotkey is assigned;
 - Settings presenter shortcuts begin unassigned rather than inventing defaults.
 
-**Next milestone: P6UI.6B — Press/Release Presenter Controls**
-- Hold Zoom and Overview Peek using the existing PresentationInputWorker
-  key-down/key-up state;
-- evaluate Freeze Camera / Toggle Smart Follow only through the same camera
-  authority;
+**P6UI.6B status: IMPLEMENTED / CI + REAL RECORDING ACCEPTANCE PENDING**
+
+Press/release presenter controls:
+- Hold Zoom and Overview Peek use the existing PresentationInputWorker Raw Input
+  pressed-state table; no second keyboard hook or worker;
+- bridge ABI v6 carries exact momentary chord bindings at recorder start;
+- Hold Zoom composes with Toggle/Smart Zoom and releases only its own intent;
+- Overview Peek uses the pinned upstream saved-shot minimum-jerk controller;
+- pointer movement during Peek cannot retarget the stored shot;
+- Reset blocks still-held momentary chords until physical release;
+- deterministic tests cover Hold press/release, Peek restore and cancel-to-full-frame.
+
+**Next milestone: P6UI.6C — Presenter Controls Acceptance Lock**
+- real global press/release behavior while another app owns focus;
+- modifier-release and alt-tab/focus-loss stuck-key checks;
+- Toggle Zoom + Hold Zoom + Smart Zoom overlap matrix;
+- Overview Peek saved-shot restoration under pointer movement;
+- Region capture boundary follows the same camera state during Hold/Peek;
+- evaluate Freeze Camera / Toggle Smart Follow only after this acceptance gate;
 - no second keyboard hook and no second camera state.
 
 #### P6UI.5 — real floating controller + transport

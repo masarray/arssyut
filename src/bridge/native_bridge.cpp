@@ -442,6 +442,25 @@ constexpr std::uint32_t kBridgeHotkeyActionCount = 8;
     return action < kBridgeHotkeyActionCount;
 }
 
+[[nodiscard]] bool valid_momentary_binding(
+    std::uint32_t modifiers,
+    std::uint32_t virtual_key) noexcept
+{
+    constexpr std::uint32_t valid_modifiers =
+        ARSSYUT_BRIDGE_HOTKEY_CTRL |
+        ARSSYUT_BRIDGE_HOTKEY_SHIFT |
+        ARSSYUT_BRIDGE_HOTKEY_ALT |
+        ARSSYUT_BRIDGE_HOTKEY_WIN;
+
+    if ((modifiers & ~valid_modifiers) != 0)
+        return false;
+
+    if (virtual_key == 0)
+        return modifiers == 0;
+
+    return virtual_key <= 0xFFU;
+}
+
 [[nodiscard]] UINT windows_hotkey_modifiers(
     std::uint32_t modifiers) noexcept
 {
@@ -1506,6 +1525,15 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
     }
 
+    if (!valid_momentary_binding(
+            request->hold_zoom_modifiers,
+            request->hold_zoom_virtual_key) ||
+        !valid_momentary_binding(
+            request->overview_peek_modifiers,
+            request->overview_peek_virtual_key)) {
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
     if (request->capture_mode ==
         ARSSYUT_BRIDGE_CAPTURE_GAME) {
         return ARSSYUT_BRIDGE_UNSUPPORTED;
@@ -1635,9 +1663,23 @@ arssyut_bridge_recorder_start(
              ARSSYUT_BRIDGE_START_SHORTCUT_KEYS) != 0;
         config.presentation.presenter_controls =
             (request->flags &
-             ARSSYUT_BRIDGE_START_PRESENTER_CONTROLS) != 0;
+             ARSSYUT_BRIDGE_START_PRESENTER_CONTROLS) != 0 ||
+            request->hold_zoom_virtual_key != 0 ||
+            request->overview_peek_virtual_key != 0;
         config.presentation.zoom =
             2.0f;
+        config.hold_zoom_hotkey.virtual_key =
+            static_cast<std::uint16_t>(
+                request->hold_zoom_virtual_key);
+        config.hold_zoom_hotkey.modifiers =
+            static_cast<std::uint8_t>(
+                request->hold_zoom_modifiers);
+        config.overview_peek_hotkey.virtual_key =
+            static_cast<std::uint16_t>(
+                request->overview_peek_virtual_key);
+        config.overview_peek_hotkey.modifiers =
+            static_cast<std::uint8_t>(
+                request->overview_peek_modifiers);
 
         auto recorder =
             std::make_unique<

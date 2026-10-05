@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 5;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 6;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -158,6 +158,10 @@ struct ArssyutBridgeStartRequestV1 {
     std::uint64_t microphone_device_token;
     std::uint64_t camera_device_token;
     wchar_t output_folder[ARSSYUT_BRIDGE_PATH_CAPACITY];
+    std::uint32_t hold_zoom_modifiers;
+    std::uint32_t hold_zoom_virtual_key;
+    std::uint32_t overview_peek_modifiers;
+    std::uint32_t overview_peek_virtual_key;
 };
 
 struct ArssyutBridgeRecorderResultV1 {

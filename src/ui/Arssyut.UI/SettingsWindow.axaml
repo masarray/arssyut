@@ -503,6 +503,22 @@
                   <Border Classes="setting-row">
                     <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
+                        <TextBlock Text="Hold Zoom" FontWeight="Medium" />
+                        <TextBlock Text="Hold to momentarily request the configured ArZoom shot; release to return when no other zoom intent remains." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="HoldZoomHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="HoldZoom"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="HoldZoomHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
                         <TextBlock Text="Zoom In" FontWeight="Medium" />
                         <TextBlock Text="Increase presenter framing by 0.25×; bounded to the ArZoom 1.10×–4.00× range." Classes="micro" />
                       </StackPanel>
@@ -542,6 +558,22 @@
                               Classes="hotkey" Tag="ResetZoom"
                               Click="Hotkey_OnClick">
                         <TextBlock x:Name="ResetZoomHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Overview Peek" FontWeight="Medium" />
+                        <TextBlock Text="Hold while zoomed to glide to full frame; release restores the saved shot without cursor retargeting." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="OverviewPeekHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="OverviewPeek"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="OverviewPeekHotkeyText" Text="Set key" FontFeatures="+tnum"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    TextAlignment="Center" />
                       </Button>

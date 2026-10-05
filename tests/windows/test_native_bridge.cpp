@@ -595,6 +595,21 @@ int main()
         ARSSYUT_BRIDGE_START_CLICK_VISUAL |
         ARSSYUT_BRIDGE_START_SHORTCUT_KEYS;
 
+    invalid_start.hold_zoom_modifiers =
+        0x80000000U;
+    invalid_start.hold_zoom_virtual_key =
+        VK_F12;
+
+    require(
+        arssyut_bridge_recorder_start(
+            bridge,
+            &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+        "invalid momentary presenter modifier mask must be rejected");
+
+    invalid_start.hold_zoom_modifiers = 0;
+    invalid_start.hold_zoom_virtual_key = 0;
+
     require(
         arssyut_bridge_recorder_start(
             bridge,

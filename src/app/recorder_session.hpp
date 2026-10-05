@@ -49,6 +49,16 @@ struct RecorderTarget {
     std::wstring label;
 };
 
+struct PresenterMomentaryBinding {
+    std::uint16_t virtual_key = 0;
+    std::uint8_t modifiers = 0;
+
+    [[nodiscard]] bool configured() const noexcept
+    {
+        return virtual_key != 0;
+    }
+};
+
 struct RecorderConfig {
     RecorderTarget target;
     std::filesystem::path output_path;
@@ -65,6 +75,8 @@ struct RecorderConfig {
     bool presentation_screen_rect_valid = false;
     std::uint32_t bitrate_bps = 18'000'000;
     arssyut::presentation::PresentationSettings presentation{};
+    PresenterMomentaryBinding hold_zoom_hotkey{};
+    PresenterMomentaryBinding overview_peek_hotkey{};
     arssyut::visual::ArVisualProductMode visual_mode =
         arssyut::visual::ArVisualProductMode::PixelAccurate;
     arssyut::visual::ArVisualGradeSettings visual =
