@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <type_traits>
 
 namespace {
 
@@ -468,6 +469,256 @@ void test_hold_smart_zoom_overlap(TestContext &test)
         "camera returns after Smart Zoom tail expires");
 }
 
+
+void test_spotlight_state_is_bounded_and_master_is_not_runtime(
+    TestContext &test)
+{
+    using arssyut::presentation::SpotlightFrameState;
+
+    static_assert(std::is_trivially_copyable_v<SpotlightFrameState>);
+    static_assert(sizeof(SpotlightFrameState) <= 64);
+
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.spotlight.enabled = true;
+    settings.spotlight.link_to_zoom = true;
+
+    controller.reset();
+    controller.set_settings(settings);
+
+    std::int64_t ticks = 0;
+    auto state = step_frames_at(
+        controller, 1, ticks, 0.73f, 0.36f);
+
+    test.expect(
+        state.spotlight.enabled &&
+        !state.spotlight.runtime_requested,
+        "Spotlight master enable does not put the effect on-air by itself");
+    test.expect(
+        state.spotlight.focus_mix == 0.0f &&
+        state.spotlight.dim_mix == 0.0f,
+        "P6UI.6D-B remains exact visual pass-through before choreography");
+
+    controller.toggle_manual_zoom();
+    state = step_frames_at(
+        controller, 1, ticks, 0.73f, 0.36f);
+
+    test.expect(
+        state.spotlight.runtime_requested &&
+        state.spotlight.focus_valid,
+        "zoom-linked Spotlight requests runtime only after zoom plus proven focus");
+    test.expect(
+        std::fabs(state.spotlight.content_x - 0.73f) < 1.0e-6f &&
+        std::fabs(state.spotlight.content_y - 0.36f) < 1.0e-6f,
+        "Spotlight stores canonical content-space focus without output remapping");
+}
+
+void test_spotlight_cannot_change_camera_authority(
+    TestContext &test)
+{
+    PresentationSettings baseline_settings;
+    baseline_settings.smart_zoom = false;
+    baseline_settings.presenter_controls = true;
+    baseline_settings.zoom = 2.75f;
+
+    PresentationSettings spotlight_settings = baseline_settings;
+    spotlight_settings.spotlight.enabled = true;
+    spotlight_settings.spotlight.link_to_zoom = true;
+
+    PresentationController baseline;
+    PresentationController spotlight;
+    baseline.reset();
+    spotlight.reset();
+    baseline.set_settings(baseline_settings);
+    spotlight.set_settings(spotlight_settings);
+    baseline.toggle_manual_zoom();
+    spotlight.toggle_manual_zoom();
+
+    std::int64_t baseline_ticks = 0;
+    std::int64_t spotlight_ticks = 0;
+    bool identical = true;
+
+    for (int frame = 0; frame < 240; ++frame) {
+        const float x =
+            frame < 100 ? 0.78f :
+            (frame < 170 ? 0.22f : 0.64f);
+        const float y =
+            frame < 100 ? 0.35f :
+            (frame < 170 ? 0.78f : 0.46f);
+
+        const auto a = step_frames_at(
+            baseline, 1, baseline_ticks, x, y);
+        const auto b = step_frames_at(
+            spotlight, 1, spotlight_ticks, x, y);
+
+        identical =
+            identical &&
+            std::fabs(a.camera_center_x - b.camera_center_x) < 1.0e-7f &&
+            std::fabs(a.camera_center_y - b.camera_center_y) < 1.0e-7f &&
+            std::fabs(a.camera_zoom - b.camera_zoom) < 1.0e-7f;
+    }
+
+    test.expect(
+        identical,
+        "Spotlight state is read-only and cannot perturb SmartCamera output");
+}
+
+void test_spotlight_focus_modes_share_canonical_content_space(
+    TestContext &test)
+{
+    PresentationController smart;
+    PresentationSettings smart_settings;
+    smart_settings.smart_zoom = false;
+    smart_settings.presenter_controls = true;
+    smart_settings.spotlight.enabled = true;
+    smart_settings.spotlight.mode =
+        arssyut::presentation::SpotlightMode::SmartFocus;
+    smart.reset();
+    smart.set_settings(smart_settings);
+    smart.toggle_manual_zoom();
+
+    std::int64_t smart_ticks = 0;
+    auto smart_state = step_frames_at(
+        smart, 1, smart_ticks, 0.76f, 0.34f);
+    const float smart_x = smart_state.spotlight.content_x;
+    const float smart_y = smart_state.spotlight.content_y;
+
+    smart_state = step_frames_at(
+        smart, 90, smart_ticks, 0.53f, 0.47f);
+
+    test.expect(
+        std::fabs(smart_state.spotlight.content_x - smart_x) < 1.0e-7f &&
+        std::fabs(smart_state.spotlight.content_y - smart_y) < 1.0e-7f,
+        "Smart Focus does not chase local pointer motion with an independent planner");
+
+    PresentationController cursor;
+    auto cursor_settings = smart_settings;
+    cursor_settings.spotlight.mode =
+        arssyut::presentation::SpotlightMode::Cursor;
+    cursor.reset();
+    cursor.set_settings(cursor_settings);
+    cursor.toggle_manual_zoom();
+
+    std::int64_t cursor_ticks = 0;
+    auto cursor_state = step_frames_at(
+        cursor, 1, cursor_ticks, 0.68f, 0.31f);
+    cursor_state = step_frames_at(
+        cursor, 1, cursor_ticks, 0.21f, 0.82f);
+
+    test.expect(
+        std::fabs(cursor_state.spotlight.content_x - 0.21f) < 1.0e-6f &&
+        std::fabs(cursor_state.spotlight.content_y - 0.82f) < 1.0e-6f,
+        "Cursor Spotlight consumes canonical mapped pointer coordinates directly");
+
+    PresentationController invalid;
+    invalid.reset();
+    invalid.set_settings(smart_settings);
+    invalid.toggle_manual_zoom();
+    std::int64_t invalid_ticks = 0;
+    auto invalid_state = step_frames_at(
+        invalid, 1, invalid_ticks, 0.5f, 0.5f, false);
+
+    test.expect(
+        !invalid_state.spotlight.focus_valid &&
+        !invalid_state.spotlight.runtime_requested,
+        "Spotlight refuses to invent focus when pointer mapping is unavailable");
+
+    invalid_state = step_frames_at(
+        invalid, 1, invalid_ticks, 0.62f, 0.29f, true);
+    test.expect(
+        invalid_state.spotlight.focus_valid &&
+        invalid_state.spotlight.runtime_requested &&
+        std::fabs(invalid_state.spotlight.content_x - 0.62f) < 1.0e-6f,
+        "Spotlight activates only after valid canonical focus is acquired");
+}
+
+void test_click_spotlight_owns_one_anchor_not_history(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.click_visual = false;
+    settings.presenter_controls = true;
+    settings.spotlight.enabled = true;
+    settings.spotlight.mode =
+        arssyut::presentation::SpotlightMode::Click;
+
+    controller.reset();
+    controller.set_settings(settings);
+    controller.on_click(
+        arssyut::presentation::ClickKind::Left,
+        0.81f,
+        0.27f,
+        TimePoint{1});
+    controller.toggle_manual_zoom();
+
+    std::int64_t ticks = 0;
+    auto state = step_frames_at(
+        controller, 60, ticks, 0.15f, 0.88f);
+
+    test.expect(
+        state.spotlight.focus_valid &&
+        std::fabs(state.spotlight.content_x - 0.81f) < 1.0e-6f &&
+        std::fabs(state.spotlight.content_y - 0.27f) < 1.0e-6f,
+        "Click Spotlight locks one canonical content anchor independent of click-ring rendering");
+
+    controller.on_click(
+        arssyut::presentation::ClickKind::Right,
+        0.32f,
+        0.64f,
+        TimePoint{ticks + 1});
+    state = step_frames_at(
+        controller, 1, ticks, 0.95f, 0.05f);
+
+    test.expect(
+        std::fabs(state.spotlight.content_x - 0.32f) < 1.0e-6f &&
+        std::fabs(state.spotlight.content_y - 0.64f) < 1.0e-6f,
+        "next Click Spotlight focus replaces the single bounded anchor");
+}
+
+
+void test_spotlight_reset_clears_transient_focus(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.spotlight.enabled = true;
+    settings.spotlight.mode =
+        arssyut::presentation::SpotlightMode::Click;
+
+    controller.reset();
+    controller.set_settings(settings);
+    controller.on_click(
+        arssyut::presentation::ClickKind::Left,
+        0.79f,
+        0.24f,
+        TimePoint{1});
+    controller.toggle_manual_zoom();
+
+    std::int64_t ticks = 0;
+    auto state = step_frames_at(
+        controller, 1, ticks, 0.2f, 0.8f);
+
+    test.expect(
+        state.spotlight.runtime_requested &&
+        state.spotlight.focus_valid,
+        "Click Spotlight has one active bounded focus before Reset");
+
+    controller.reset_full_frame();
+    state = step_frames_at(
+        controller, 1, ticks, 0.2f, 0.8f);
+
+    test.expect(
+        !state.spotlight.runtime_requested &&
+        !state.spotlight.focus_valid,
+        "Reset / Full Frame clears transient Spotlight focus deterministically");
+}
+
 void test_region_boundary_tracks_hold_and_overview(
     TestContext &test)
 {
@@ -576,6 +827,11 @@ int main()
     test_reset_while_momentary_key_remains_held(test);
     test_toggle_hold_overlap_matrix(test);
     test_hold_smart_zoom_overlap(test);
+    test_spotlight_state_is_bounded_and_master_is_not_runtime(test);
+    test_spotlight_cannot_change_camera_authority(test);
+    test_spotlight_focus_modes_share_canonical_content_space(test);
+    test_click_spotlight_owns_one_anchor_not_history(test);
+    test_spotlight_reset_clears_transient_focus(test);
     test_overview_peek_saved_shot(test);
     test_overview_cancel_when_zoom_intent_ends(test);
     test_region_boundary_tracks_hold_and_overview(test);

@@ -53,6 +53,13 @@ void PresentationController::reset() noexcept
     hold_zoom_active_ = false;
     overview_requested_ = false;
     overview_.reset();
+    spotlight_focus_valid_ = false;
+    spotlight_focus_x_ = 0.5f;
+    spotlight_focus_y_ = 0.5f;
+    spotlight_click_anchor_valid_ = false;
+    spotlight_click_anchor_x_ = 0.5f;
+    spotlight_click_anchor_y_ = 0.5f;
+    spotlight_zoom_was_requested_ = false;
     last_camera_center_x_ = 0.5f;
     last_camera_center_y_ = 0.5f;
     last_camera_zoom_ = 1.0f;
@@ -67,6 +74,35 @@ void PresentationController::set_settings(
     PresentationSettings settings) noexcept
 {
     settings.zoom = std::clamp(settings.zoom, 1.10f, 4.00f);
+
+    // Normalize only safety ranges here. Visual tuning stays owned by the
+    // pinned upstream contract and later recorded-output acceptance.
+    settings.spotlight.area_scale_percent =
+        std::clamp(
+            std::isfinite(settings.spotlight.area_scale_percent)
+                ? settings.spotlight.area_scale_percent
+                : 100.0f,
+            50.0f,
+            200.0f);
+    settings.spotlight.feather_short_edge_fraction =
+        std::clamp(
+            std::isfinite(settings.spotlight.feather_short_edge_fraction)
+                ? settings.spotlight.feather_short_edge_fraction
+                : 0.12f,
+            0.0f,
+            0.50f);
+    settings.spotlight.dim_strength =
+        std::clamp(
+            std::isfinite(settings.spotlight.dim_strength)
+                ? settings.spotlight.dim_strength
+                : 0.38f,
+            0.0f,
+            0.75f);
+
+    const bool reset_spotlight_focus =
+        !settings.spotlight.enabled ||
+        settings.spotlight.mode != settings_.spotlight.mode;
+
     settings_ = settings;
     runtime_zoom_ = settings.zoom;
 
@@ -75,6 +111,12 @@ void PresentationController::set_settings(
         hold_zoom_active_ = false;
         overview_requested_ = false;
         overview_.reset();
+    }
+
+    if (reset_spotlight_focus) {
+        spotlight_focus_valid_ = false;
+        spotlight_click_anchor_valid_ = false;
+        spotlight_zoom_was_requested_ = false;
     }
 }
 
@@ -167,6 +209,21 @@ void PresentationController::on_click(
             kind,
             content_x,
             content_y);
+    }
+
+    // Click Spotlight consumes the same validated content-space event as click
+    // feedback. One anchor replaces one anchor: bounded O(1), no history.
+    if (kind != ClickKind::None &&
+        settings_.spotlight.enabled &&
+        settings_.spotlight.mode == SpotlightMode::Click) {
+        spotlight_click_anchor_x_ =
+            std::clamp(content_x, 0.0f, 1.0f);
+        spotlight_click_anchor_y_ =
+            std::clamp(content_y, 0.0f, 1.0f);
+        spotlight_click_anchor_valid_ = true;
+        spotlight_focus_x_ = spotlight_click_anchor_x_;
+        spotlight_focus_y_ = spotlight_click_anchor_y_;
+        spotlight_focus_valid_ = true;
     }
 
     if (settings_.smart_zoom) {
@@ -263,6 +320,13 @@ void PresentationController::reset_full_frame() noexcept
     overview_requested_ = false;
     zoom_until_ = {};
     emphasis_pending_ = false;
+
+    // Reset / Full Frame also clears transient Spotlight focus. This does not
+    // add render/camera authority; it only invalidates the bounded read-only
+    // focus snapshot so the next activation must prove a fresh target.
+    spotlight_focus_valid_ = false;
+    spotlight_click_anchor_valid_ = false;
+    spotlight_zoom_was_requested_ = false;
 }
 
 void PresentationController::set_hold_zoom(
@@ -330,6 +394,10 @@ PresentationFrameState PresentationController::step(
         hold_zoom_active_ ||
         smart_zoom_requested;
 
+    const bool spotlight_zoom_rising =
+        wants_zoom &&
+        !spotlight_zoom_was_requested_;
+
     ArZoomCameraIntent intent;
     intent.dt = std::clamp(dt, 0.0f, 0.10f);
     intent.cursor = {
@@ -341,6 +409,42 @@ PresentationFrameState PresentationController::step(
     intent.configured_zoom = runtime_zoom_;
     intent.emphasis_event = emphasis_pending_;
     emphasis_pending_ = false;
+
+    if (settings_.spotlight.enabled) {
+        switch (settings_.spotlight.mode) {
+        case SpotlightMode::Cursor:
+            // Cursor mode follows only the canonical mapped pointer. Missing
+            // mapping holds the last proven coordinate; it never guesses.
+            if (intent.cursor_valid) {
+                spotlight_focus_x_ = intent.cursor.x;
+                spotlight_focus_y_ = intent.cursor.y;
+                spotlight_focus_valid_ = true;
+            }
+            break;
+
+        case SpotlightMode::Click:
+            if (spotlight_click_anchor_valid_) {
+                spotlight_focus_x_ = spotlight_click_anchor_x_;
+                spotlight_focus_y_ = spotlight_click_anchor_y_;
+                spotlight_focus_valid_ = true;
+            }
+            break;
+
+        case SpotlightMode::SmartFocus:
+        default:
+            // Until P6UI.6D-F proves a read-only semantic-focus seam, capture
+            // the same canonical pointer used to activate SmartCamera once per
+            // zoom session. Local pointer motion cannot become a second planner.
+            if (intent.cursor_valid &&
+                (spotlight_zoom_rising ||
+                 !spotlight_focus_valid_)) {
+                spotlight_focus_x_ = intent.cursor.x;
+                spotlight_focus_y_ = intent.cursor.y;
+                spotlight_focus_valid_ = true;
+            }
+            break;
+        }
+    }
 
     const arzoom::Vec2 visible_center{
         last_camera_center_x_,
@@ -456,6 +560,46 @@ PresentationFrameState PresentationController::step(
     result.camera_center_x = camera_center_x;
     result.camera_center_y = camera_center_y;
     result.camera_zoom = camera_zoom;
+
+    result.spotlight.enabled =
+        settings_.spotlight.enabled;
+    result.spotlight.link_to_zoom =
+        settings_.spotlight.link_to_zoom;
+    result.spotlight.mode =
+        settings_.spotlight.mode;
+    result.spotlight.size =
+        settings_.spotlight.size;
+    result.spotlight.shape =
+        settings_.spotlight.shape;
+    result.spotlight.cinematic_speed =
+        settings_.spotlight.cinematic_speed;
+    result.spotlight.area_scale_percent =
+        settings_.spotlight.area_scale_percent;
+    result.spotlight.feather_short_edge_fraction =
+        settings_.spotlight.feather_short_edge_fraction;
+    result.spotlight.dim_strength =
+        settings_.spotlight.dim_strength;
+    result.spotlight.focus_valid =
+        spotlight_focus_valid_;
+    result.spotlight.content_x =
+        spotlight_focus_x_;
+    result.spotlight.content_y =
+        spotlight_focus_y_;
+
+    // P6UI.6D-B is state-only. P6UI.6D-C owns the pinned minimum-jerk
+    // aperture/dim choreography, so these remain exact pass-through here.
+    result.spotlight.focus_mix = 0.0f;
+    result.spotlight.dim_mix = 0.0f;
+    result.spotlight.zoom_resize_scale = 1.0f;
+    result.spotlight.runtime_requested =
+        settings_.spotlight.enabled &&
+        settings_.spotlight.link_to_zoom &&
+        wants_zoom &&
+        spotlight_focus_valid_;
+
+    spotlight_zoom_was_requested_ =
+        wants_zoom;
+
     for (std::size_t i = 0;
          i < clicks_.size();
          ++i) {
