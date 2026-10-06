@@ -589,6 +589,22 @@
                   <Border Classes="setting-row">
                     <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
+                        <TextBlock Text="Freeze Camera" FontWeight="Medium" />
+                        <TextBlock Text="Lock the exact current camera framing; press again to resume smoothly from the same shot." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="FreezeCameraHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="FreezeCamera"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="FreezeCameraHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
                         <TextBlock Text="Overview Peek" FontWeight="Medium" />
                         <TextBlock Text="Hold while zoomed to glide to full frame; release restores the saved shot without cursor retargeting." Classes="micro" />
                       </StackPanel>
