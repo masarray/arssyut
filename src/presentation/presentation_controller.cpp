@@ -60,6 +60,10 @@ void PresentationController::reset() noexcept
     spotlight_click_anchor_x_ = 0.5f;
     spotlight_click_anchor_y_ = 0.5f;
     spotlight_zoom_was_requested_ = false;
+    spotlight_cinematic_.reset();
+    spotlight_zoom_resize_.reset();
+    spotlight_runtime_was_requested_ = false;
+    spotlight_close_armed_ = false;
     last_camera_center_x_ = 0.5f;
     last_camera_center_y_ = 0.5f;
     last_camera_zoom_ = 1.0f;
@@ -117,6 +121,10 @@ void PresentationController::set_settings(
         spotlight_focus_valid_ = false;
         spotlight_click_anchor_valid_ = false;
         spotlight_zoom_was_requested_ = false;
+        spotlight_cinematic_.reset();
+        spotlight_zoom_resize_.reset();
+        spotlight_runtime_was_requested_ = false;
+        spotlight_close_armed_ = false;
     }
 }
 
@@ -327,6 +335,12 @@ void PresentationController::reset_full_frame() noexcept
     spotlight_focus_valid_ = false;
     spotlight_click_anchor_valid_ = false;
     spotlight_zoom_was_requested_ = false;
+    spotlight_cinematic_.set_target(
+        false,
+        arzoom::CinematicFocusSpeed::Balanced);
+    spotlight_zoom_resize_.reset();
+    spotlight_runtime_was_requested_ = false;
+    spotlight_close_armed_ = false;
 }
 
 void PresentationController::set_hold_zoom(
@@ -535,6 +549,60 @@ PresentationFrameState PresentationController::step(
     last_camera_zoom_ =
         camera_zoom;
 
+    // P6UI.6D-C: Spotlight choreography observes the one authoritative camera.
+    // Zoom starts first. The aperture is not allowed to close until a rendered
+    // camera frame has actually departed full-frame; this avoids inventing a
+    // second timing authority while preserving the requested framing-first cue.
+    const bool spotlight_requested =
+        settings_.spotlight.enabled &&
+        settings_.spotlight.link_to_zoom &&
+        wants_zoom &&
+        spotlight_focus_valid_ &&
+        !overview_.active();
+
+    arzoom::CinematicFocusSpeed spotlight_speed =
+        arzoom::CinematicFocusSpeed::Balanced;
+    switch (settings_.spotlight.cinematic_speed) {
+    case SpotlightCinematicSpeed::Smooth:
+        spotlight_speed = arzoom::CinematicFocusSpeed::Smooth;
+        break;
+    case SpotlightCinematicSpeed::Snappy:
+        spotlight_speed = arzoom::CinematicFocusSpeed::Snappy;
+        break;
+    case SpotlightCinematicSpeed::Balanced:
+    default:
+        break;
+    }
+
+    if (!spotlight_requested) {
+        spotlight_close_armed_ = false;
+        spotlight_cinematic_.set_target(false, spotlight_speed);
+    } else {
+        if (!spotlight_runtime_was_requested_)
+            spotlight_close_armed_ = false;
+
+        if (spotlight_close_armed_) {
+            spotlight_cinematic_.set_target(true, spotlight_speed);
+        } else if (camera_zoom > 1.0005f) {
+            // Arm only after this already-renderable frame proves that the
+            // camera has begun framing. Closing begins on the following tick.
+            spotlight_close_armed_ = true;
+        }
+    }
+
+    spotlight_cinematic_.step(intent.dt);
+
+    // Zoom +/- is resize-only. It follows live camera zoom from the same
+    // session and cannot replay or alter the cinematic activation state.
+    spotlight_zoom_resize_.observe(
+        spotlight_requested,
+        runtime_zoom_,
+        camera_zoom);
+    spotlight_zoom_resize_.step(camera_zoom);
+
+    spotlight_runtime_was_requested_ =
+        spotlight_requested;
+
     constexpr float kLeftClickLifetime = 0.88f;
     constexpr float kRightClickLifetime = 0.90f;
     constexpr float kMiddleClickLifetime = 0.84f;
@@ -586,16 +654,22 @@ PresentationFrameState PresentationController::step(
     result.spotlight.content_y =
         spotlight_focus_y_;
 
-    // P6UI.6D-B is state-only. P6UI.6D-C owns the pinned minimum-jerk
-    // aperture/dim choreography, so these remain exact pass-through here.
-    result.spotlight.focus_mix = 0.0f;
-    result.spotlight.dim_mix = 0.0f;
-    result.spotlight.zoom_resize_scale = 1.0f;
+    result.spotlight.focus_mix =
+        spotlight_cinematic_.value;
+    result.spotlight.dim_mix =
+        arzoom::cinematic_dim_mix(
+            spotlight_cinematic_.value);
+    result.spotlight.zoom_resize_scale =
+        spotlight_zoom_resize_.scale;
+
+    // Keep the existing compositor alive while an opening transition is still
+    // visually non-zero. This prevents Zoom-off/reversal from becoming a hard
+    // cut while still returning exact pass-through at the endpoint.
     result.spotlight.runtime_requested =
         settings_.spotlight.enabled &&
-        settings_.spotlight.link_to_zoom &&
-        wants_zoom &&
-        spotlight_focus_valid_;
+        spotlight_focus_valid_ &&
+        (spotlight_requested ||
+         spotlight_cinematic_.visually_active());
 
     spotlight_zoom_was_requested_ =
         wants_zoom;
