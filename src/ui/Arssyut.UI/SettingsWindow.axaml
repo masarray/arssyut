@@ -488,7 +488,7 @@
                                 Foreground="{DynamicResource ArBrush.Record}" />
                     <StackPanel Grid.Column="1" Spacing="1">
                       <TextBlock Text="Presenter" FontSize="11" FontWeight="SemiBold" />
-                      <TextBlock Text="ArZoom camera and Spotlight presentation controls used by the native recorder." Classes="micro" />
+                      <TextBlock Text="Camera framing and focus controls for presentations." Classes="micro" />
                     </StackPanel>
                   </Grid>
 
@@ -510,7 +510,7 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Spotlight" FontWeight="Medium" />
-                        <TextBlock Text="Gently dim outside the presentation focus area using the native analytic mask." Classes="micro" />
+                        <TextBlock Text="Gently dim outside the focus area so attention stays on what you are showing." Classes="micro" />
                       </StackPanel>
                       <ToggleSwitch x:Name="SpotlightToggle"
                                     Grid.Column="1"
@@ -527,7 +527,7 @@
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Spotlight with Zoom" FontWeight="Medium" />
-                        <TextBlock Text="Start with camera framing, then close the Spotlight smoothly around the proven focus." Classes="micro" />
+                        <TextBlock Text="Frame the area first, then bring the Spotlight in smoothly." Classes="micro" />
                       </StackPanel>
                       <ToggleSwitch x:Name="SpotlightWithZoomToggle"
                                     Grid.Column="1"
@@ -544,7 +544,7 @@
                     <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Focus size" FontWeight="Medium" />
-                        <TextBlock Text="Choose how tightly the native Spotlight frames the current presentation focus." Classes="micro" />
+                        <TextBlock Text="Choose how tightly the Spotlight frames the focus area." Classes="micro" />
                       </StackPanel>
                       <ComboBox x:Name="SpotlightSizeCombo"
                                 Grid.Column="1"
@@ -580,7 +580,7 @@
                     <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
                       <StackPanel Spacing="3">
                         <TextBlock Text="Motion" FontWeight="Medium" />
-                        <TextBlock Text="Controls only Spotlight aperture choreography; camera motion remains the accepted Cinematic SmartCamera." Classes="micro" />
+                        <TextBlock Text="Choose how calmly the Spotlight opens and closes." Classes="micro" />
                       </StackPanel>
                       <ComboBox x:Name="SpotlightMotionCombo"
                                 Grid.Column="1"
