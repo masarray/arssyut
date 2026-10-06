@@ -4,10 +4,12 @@
 
 #include "core/time/monotonic_clock.hpp"
 #include "platform/windows/graphics/d3d11_arvisual_scene_analyzer.hpp"
+#include "arzoom-spotlight.hpp"
 
 #include <d3dcompiler.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cwchar>
 #include <limits>
 #include <new>
@@ -43,6 +45,9 @@ cbuffer PresentationConstants : register(b0)
     float4 click1;
     float4 click2;
     float4 click3;
+    float4 spotlight0;
+    float4 spotlight1;
+    float4 spotlight2;
 };
 
 Texture2D source_texture : register(t0);
@@ -703,6 +708,145 @@ float2 event_delta_px(
     return (output_uv - center) * safe_viewport;
 }
 
+
+/*
+ * P6UI.6D-D Spotlight renderer primitive.
+ *
+ * Spotlight is analytic math inside the existing presentation pixel shader.
+ * It reuses project_content(), the same camera/content projection as click
+ * feedback. No texture, blur, readback, extra draw or second coordinate solver
+ * exists here.
+ *
+ * spotlight0 = content_x, content_y, runtime_active, shape
+ * spotlight1 = target_half_x_px, target_half_y_px, feather_px, dim_strength
+ * spotlight2 = focus_mix, dim_mix, corner_radius_px, reserved
+ */
+float spotlight_signed_distance_px(
+    float2 delta_px,
+    float2 half_size_px,
+    float corner_radius_px,
+    float shape)
+{
+    const float2 half_size =
+        max(half_size_px, float2(1.0, 1.0));
+
+    if (shape < 0.5) {
+        return length(delta_px) -
+               max(half_size.x, 1.0);
+    }
+
+    if (shape < 1.5) {
+        const float2 normalized =
+            delta_px / half_size;
+        return (length(normalized) - 1.0) *
+               min(half_size.x, half_size.y);
+    }
+
+    const float radius = clamp(
+        corner_radius_px,
+        0.0,
+        min(half_size.x, half_size.y));
+    const float2 q =
+        abs(delta_px) -
+        (half_size - float2(radius, radius));
+    const float2 outside =
+        max(q, float2(0.0, 0.0));
+    return length(outside) +
+           min(max(q.x, q.y), 0.0) -
+           radius;
+}
+
+float3 apply_spotlight(
+    float3 base,
+    float2 output_uv,
+    float2 camera_center,
+    float safe_zoom,
+    float2 safe_viewport)
+{
+    if (spotlight0.z < 0.5 ||
+        spotlight2.y <= 0.0001) {
+        return base;
+    }
+
+    const float2 center_output =
+        project_content(
+            spotlight0.xy,
+            camera_center,
+            safe_zoom);
+    const float2 center_px =
+        center_output * safe_viewport;
+    const float2 far_corner_axis_px =
+        max(
+            abs(center_px),
+            abs(safe_viewport - center_px));
+
+    const float feather_px =
+        max(spotlight1.z, 1.0);
+    const float focus_mix =
+        saturate(spotlight2.x);
+    const float2 target_half_px =
+        max(spotlight1.xy, float2(1.0, 1.0));
+    const float shape =
+        spotlight0.w;
+
+    const float2 delta_px =
+        (output_uv - center_output) *
+        safe_viewport;
+
+    float signed_distance_px = 0.0;
+
+    if (shape < 0.5) {
+        // Exact full-frame circular aperture from the actual focus center:
+        // farthest corner + feather + fixed safety margin.
+        const float full_radius_px =
+            length(far_corner_axis_px) +
+            feather_px +
+            24.0;
+        const float current_radius_px =
+            lerp(
+                full_radius_px,
+                target_half_px.x,
+                focus_mix);
+        signed_distance_px =
+            length(delta_px) -
+            max(current_radius_px, 1.0);
+    } else {
+        // Ellipse/rounded rectangle expand independently far enough on each
+        // axis to cover the complete frame before focus closes.
+        const float2 full_half_px =
+            far_corner_axis_px +
+            float2(
+                feather_px + 24.0,
+                feather_px + 24.0);
+        const float2 current_half_px =
+            lerp(
+                full_half_px,
+                target_half_px,
+                focus_mix);
+
+        signed_distance_px =
+            spotlight_signed_distance_px(
+                delta_px,
+                current_half_px,
+                spotlight2.z,
+                shape);
+    }
+
+    const float focus_weight =
+        1.0 -
+        smoothstep(
+            0.0,
+            feather_px,
+            signed_distance_px);
+    const float dim =
+        saturate(
+            spotlight1.w *
+            saturate(spotlight2.y));
+
+    return base *
+        (1.0 - dim * (1.0 - focus_weight));
+}
+
 float3 click_color(float type)
 {
     if (type < 1.5)
@@ -912,6 +1056,13 @@ float4 ps_main(VertexOutput input) : SV_Target
     const float2 safe_viewport =
         max(output_info.xy, float2(1.0f, 1.0f));
 
+    color.rgb = apply_spotlight(
+        color.rgb,
+        input.uv,
+        camera_center,
+        zoom,
+        safe_viewport);
+
     color.rgb = apply_click(
         color.rgb,
         input.uv,
@@ -1030,6 +1181,21 @@ struct PresentationConstants {
     float arvisual_smart_screen_ui;
 
     float clicks[16]{};
+
+    float spotlight_content_x = 0.5f;
+    float spotlight_content_y = 0.5f;
+    float spotlight_runtime_active = 0.0f;
+    float spotlight_shape = 0.0f;
+
+    float spotlight_half_x_px = 1.0f;
+    float spotlight_half_y_px = 1.0f;
+    float spotlight_feather_px = 1.0f;
+    float spotlight_dim_strength = 0.0f;
+
+    float spotlight_focus_mix = 0.0f;
+    float spotlight_dim_mix = 0.0f;
+    float spotlight_corner_radius_px = 0.0f;
+    float spotlight_reserved = 0.0f;
 };
 
 constexpr UINT kKeyboardWidth = 768;
@@ -2086,6 +2252,133 @@ Status D3D11Compositor::render_retained(
         grade.neutral_surface_anchor;
     constants.arvisual_smart_screen_ui =
         grade.smart_screen_ui;
+
+    const auto &spotlight =
+        state.spotlight;
+    const bool spotlight_runtime =
+        spotlight.enabled &&
+        spotlight.runtime_requested &&
+        spotlight.focus_valid;
+
+    constants.spotlight_content_x =
+        std::clamp(
+            std::isfinite(spotlight.content_x)
+                ? spotlight.content_x
+                : 0.5f,
+            0.0f,
+            1.0f);
+    constants.spotlight_content_y =
+        std::clamp(
+            std::isfinite(spotlight.content_y)
+                ? spotlight.content_y
+                : 0.5f,
+            0.0f,
+            1.0f);
+    constants.spotlight_runtime_active =
+        spotlight_runtime ? 1.0f : 0.0f;
+
+    arzoom::SpotlightShape upstream_shape =
+        arzoom::SpotlightShape::Circle;
+    switch (spotlight.shape) {
+    case arssyut::presentation::SpotlightShape::Ellipse:
+        upstream_shape =
+            arzoom::SpotlightShape::Ellipse;
+        constants.spotlight_shape = 1.0f;
+        break;
+    case arssyut::presentation::SpotlightShape::RoundedRectangle:
+        upstream_shape =
+            arzoom::SpotlightShape::RoundedRectangle;
+        constants.spotlight_shape = 2.0f;
+        break;
+    case arssyut::presentation::SpotlightShape::Circle:
+    default:
+        constants.spotlight_shape = 0.0f;
+        break;
+    }
+
+    const float area_scale_percent =
+        std::clamp(
+            std::isfinite(spotlight.area_scale_percent)
+                ? spotlight.area_scale_percent
+                : 100.0f,
+            50.0f,
+            200.0f);
+    const float resize_scale =
+        std::clamp(
+            std::isfinite(spotlight.zoom_resize_scale)
+                ? spotlight.zoom_resize_scale
+                : 1.0f,
+            0.35f,
+            4.0f);
+    const auto target_half_size =
+        arzoom::spotlight_focus_half_size_px(
+            upstream_shape,
+            area_scale_percent,
+            constants.output_width,
+            constants.output_height);
+
+    constants.spotlight_half_x_px =
+        std::max(
+            target_half_size.x *
+                resize_scale,
+            1.0f);
+    constants.spotlight_half_y_px =
+        std::max(
+            target_half_size.y *
+                resize_scale,
+            1.0f);
+
+    const float short_edge =
+        std::max(
+            std::min(
+                constants.output_width,
+                constants.output_height),
+            1.0f);
+    const float feather_fraction =
+        std::clamp(
+            std::isfinite(
+                spotlight.feather_short_edge_fraction)
+                ? spotlight.feather_short_edge_fraction
+                : 0.12f,
+            0.0f,
+            0.50f);
+    constants.spotlight_feather_px =
+        std::max(
+            short_edge *
+                feather_fraction,
+            1.0f);
+    constants.spotlight_dim_strength =
+        std::clamp(
+            std::isfinite(spotlight.dim_strength)
+                ? spotlight.dim_strength
+                : 0.38f,
+            0.0f,
+            0.75f);
+    constants.spotlight_focus_mix =
+        std::clamp(
+            std::isfinite(spotlight.focus_mix)
+                ? spotlight.focus_mix
+                : 0.0f,
+            0.0f,
+            1.0f);
+    constants.spotlight_dim_mix =
+        std::clamp(
+            std::isfinite(spotlight.dim_mix)
+                ? spotlight.dim_mix
+                : 0.0f,
+            0.0f,
+            1.0f);
+
+    // Grounded in the pinned upstream SpotlightGeometry default (42 px at
+    // 1080 short edge), scaled only with output/area/Zoom-resize geometry.
+    const arzoom::SpotlightGeometry upstream_defaults{};
+    constants.spotlight_corner_radius_px =
+        std::max(
+            upstream_defaults.corner_radius_px *
+                (short_edge / 1080.0f) *
+                (area_scale_percent / 100.0f) *
+                resize_scale,
+            1.0f);
 
     for (std::size_t i = 0;
          i < state.clicks.size();
