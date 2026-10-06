@@ -719,6 +719,111 @@ void test_spotlight_reset_clears_transient_focus(
         "Reset / Full Frame clears transient Spotlight focus deterministically");
 }
 
+
+void test_spotlight_cinematic_choreography_and_resize(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.zoom = 2.0f;
+    settings.spotlight.enabled = true;
+    settings.spotlight.link_to_zoom = true;
+    settings.spotlight.cinematic_speed =
+        arssyut::presentation::SpotlightCinematicSpeed::Balanced;
+
+    controller.reset();
+    controller.set_settings(settings);
+    controller.toggle_manual_zoom();
+
+    std::int64_t ticks = 0;
+
+    const auto first = step_frames_at(
+        controller, 1, ticks, 0.76f, 0.34f);
+    test.expect(
+        first.spotlight.runtime_requested &&
+        first.spotlight.focus_mix == 0.0f &&
+        first.spotlight.dim_mix == 0.0f,
+        "Spotlight stays full-frame while the authoritative camera starts framing");
+
+    auto state = step_frames_at(
+        controller, 24, ticks, 0.76f, 0.34f);
+    test.expect(
+        state.spotlight.focus_mix > 0.0f &&
+        state.spotlight.focus_mix <= 1.0f,
+        "Spotlight closes only after camera framing has begun");
+    test.expect(
+        state.spotlight.dim_mix <= state.spotlight.focus_mix,
+        "Spotlight dimming trails aperture closure");
+
+    state = step_frames_at(
+        controller, 90, ticks, 0.76f, 0.34f);
+    test.expect(
+        std::fabs(state.spotlight.focus_mix - 1.0f) < 0.01f &&
+        std::fabs(state.spotlight.dim_mix - 1.0f) < 0.01f,
+        "Spotlight reaches the exact focused endpoint");
+
+    const float focused_before_resize =
+        state.spotlight.focus_mix;
+    controller.adjust_manual_zoom(0.50f);
+
+    float previous_scale =
+        state.spotlight.zoom_resize_scale;
+    bool monotonic_resize = true;
+    for (int i = 0; i < 90; ++i) {
+        state = step_frames_at(
+            controller, 1, ticks, 0.76f, 0.34f);
+        monotonic_resize =
+            monotonic_resize &&
+            state.spotlight.zoom_resize_scale + 1.0e-5f >=
+                previous_scale;
+        previous_scale =
+            state.spotlight.zoom_resize_scale;
+    }
+
+    test.expect(
+        monotonic_resize &&
+        state.spotlight.zoom_resize_scale > 1.20f,
+        "Zoom plus resizes Spotlight monotonically from live camera progress");
+    test.expect(
+        std::fabs(state.spotlight.focus_mix - focused_before_resize) < 0.02f,
+        "Zoom plus does not replay Spotlight activation");
+
+    controller.toggle_manual_zoom();
+    const float close_value =
+        state.spotlight.focus_mix;
+    state = step_frames_at(
+        controller, 1, ticks, 0.76f, 0.34f);
+
+    test.expect(
+        state.spotlight.runtime_requested &&
+        state.spotlight.focus_mix <= close_value &&
+        state.spotlight.focus_mix > 0.0f,
+        "Zoom off opens Spotlight smoothly instead of hard-cutting the renderer");
+
+    controller.toggle_manual_zoom();
+    const float before_reversal =
+        state.spotlight.focus_mix;
+    state = step_frames_at(
+        controller, 2, ticks, 0.76f, 0.34f);
+
+    test.expect(
+        std::fabs(state.spotlight.focus_mix - before_reversal) < 0.20f,
+        "mid-transition Spotlight reversal starts from current visual state");
+
+    controller.toggle_manual_zoom();
+    state = step_frames_at(
+        controller, 120, ticks, 0.76f, 0.34f);
+
+    test.expect(
+        !state.spotlight.runtime_requested &&
+        std::fabs(state.spotlight.focus_mix) < 1.0e-5f &&
+        std::fabs(state.spotlight.dim_mix) < 1.0e-5f,
+        "Spotlight returns to exact pass-through after opening completes");
+}
+
+
 void test_region_boundary_tracks_hold_and_overview(
     TestContext &test)
 {
@@ -832,6 +937,7 @@ int main()
     test_spotlight_focus_modes_share_canonical_content_space(test);
     test_click_spotlight_owns_one_anchor_not_history(test);
     test_spotlight_reset_clears_transient_focus(test);
+    test_spotlight_cinematic_choreography_and_resize(test);
     test_overview_peek_saved_shot(test);
     test_overview_cancel_when_zoom_intent_ends(test);
     test_region_boundary_tracks_hold_and_overview(test);

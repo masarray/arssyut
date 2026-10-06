@@ -3,6 +3,8 @@
 #include "core/time/monotonic_clock.hpp"
 #include "presentation/arzoom_camera_adapter.hpp"
 #include "arzoom-presenter-controls.hpp"
+#include "arzoom-cinematic-spotlight.hpp"
+#include "arzoom-spotlight-zoom-resize.hpp"
 #include "presentation/presentation_state.hpp"
 #include "presentation/shortcut.hpp"
 
@@ -138,6 +140,14 @@ private:
     float spotlight_click_anchor_x_ = 0.5f;
     float spotlight_click_anchor_y_ = 0.5f;
     bool spotlight_zoom_was_requested_ = false;
+
+    // P6UI.6D-C owns only Spotlight visual choreography. These bounded
+    // upstream states observe the authoritative camera; neither can write
+    // camera intent or create an independent motion plan.
+    arzoom::CinematicSpotlightState spotlight_cinematic_{};
+    arzoom::SpotlightZoomResizeState spotlight_zoom_resize_{};
+    bool spotlight_runtime_was_requested_ = false;
+    bool spotlight_close_armed_ = false;
 
     // Current rendered camera transform. Overview Peek pauses the underlying
     // camera, so release/cancel transitions must start from what the viewer is
