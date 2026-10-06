@@ -133,6 +133,21 @@ try
             3.00f,
         "unsupported presenter zoom is rejected without mutating the configured value");
 
+
+    saved.SetSpotlightEnabled(
+        true);
+    saved.SetSpotlightLinkToZoom(
+        false);
+
+    Expect(
+        saved.TrySetSpotlightSize(
+            NativeSpotlightSize.Wide) &&
+        saved.TrySetSpotlightMotion(
+            NativeSpotlightMotion.Smooth) &&
+        saved.TrySetSpotlightDimStrength(
+            0.46f),
+        "Spotlight product settings accept only canonical product presets");
+
     Expect(
         saved.TrySetHotkey(
             HotkeyActionIds.ToggleZoom,
@@ -180,8 +195,17 @@ try
             out var loadError) &&
         string.IsNullOrEmpty(
             loadError) &&
-        loadedSettings.PresenterZoom == 3.00f,
-        "product settings round-trip hotkeys and presenter zoom through JSON");
+        loadedSettings.PresenterZoom == 3.00f &&
+        loadedSettings.SpotlightEnabled &&
+        !loadedSettings.SpotlightLinkToZoom &&
+        loadedSettings.SpotlightSize ==
+            NativeSpotlightSize.Wide &&
+        loadedSettings.SpotlightMotion ==
+            NativeSpotlightMotion.Smooth &&
+        Math.Abs(
+            loadedSettings.SpotlightDimStrength -
+            0.46f) < 0.0005f,
+        "product settings round-trip hotkeys, presenter zoom and Spotlight through JSON");
 
     var restored =
         new SettingsPreviewState();
@@ -199,12 +223,81 @@ try
         restored.ResetZoomHotkey == "Alt+Win+F12" &&
         restored.OverviewPeekHotkey == "Numpad+" &&
         restored.FreezeCameraHotkey == "Shift+F12" &&
-        restored.PresenterZoom == 3.00f,
-        "restored startup state preserves canonical hotkeys, Freeze and presenter zoom");
+        restored.PresenterZoom == 3.00f &&
+        restored.SpotlightEnabled &&
+        !restored.SpotlightLinkToZoom &&
+        restored.SpotlightSize ==
+            NativeSpotlightSize.Wide &&
+        restored.SpotlightMotion ==
+            NativeSpotlightMotion.Smooth &&
+        Math.Abs(
+            restored.SpotlightDimStrength -
+            0.46f) < 0.0005f,
+        "restored startup state preserves canonical presenter and Spotlight settings");
 
-    var schemaV3Lines =
+    var schemaV4Lines =
         File.ReadAllLines(
             persistencePath);
+
+    // Schema v3 predates Spotlight product settings. Migration must keep all
+    // existing hotkeys/zoom and introduce inert Spotlight defaults.
+    var schemaV3Lines =
+        schemaV4Lines
+            .Where(
+                line =>
+                    !line.Contains(
+                        "\"SpotlightEnabled\"",
+                        StringComparison.Ordinal) &&
+                    !line.Contains(
+                        "\"SpotlightLinkToZoom\"",
+                        StringComparison.Ordinal) &&
+                    !line.Contains(
+                        "\"SpotlightSize\"",
+                        StringComparison.Ordinal) &&
+                    !line.Contains(
+                        "\"SpotlightMotion\"",
+                        StringComparison.Ordinal) &&
+                    !line.Contains(
+                        "\"SpotlightDimStrength\"",
+                        StringComparison.Ordinal))
+            .Select(
+                line =>
+                    line.Replace(
+                        "\"SchemaVersion\": 4",
+                        "\"SchemaVersion\": 3",
+                        StringComparison.Ordinal))
+            .ToArray();
+
+    var schemaV3Path =
+        Path.Combine(
+            persistenceRoot,
+            "settings-v3.json");
+    File.WriteAllLines(
+        schemaV3Path,
+        schemaV3Lines);
+
+    var schemaV3Store =
+        new ProductSettingsStore(
+            schemaV3Path);
+
+    Expect(
+        schemaV3Store.TryLoad(
+            out var schemaV3Settings,
+            out var schemaV3Error) &&
+        string.IsNullOrEmpty(
+            schemaV3Error) &&
+        !schemaV3Settings.SpotlightEnabled &&
+        schemaV3Settings.SpotlightLinkToZoom &&
+        schemaV3Settings.SpotlightSize ==
+            NativeSpotlightSize.Balanced &&
+        schemaV3Settings.SpotlightMotion ==
+            NativeSpotlightMotion.Balanced &&
+        Math.Abs(
+            schemaV3Settings.SpotlightDimStrength -
+            SettingsPreviewState.
+                DefaultSpotlightDimStrength) <
+            0.0005f,
+        "schema v3 migrates to inert balanced Spotlight defaults without data loss");
 
     // Schema v2 predates Freeze Camera. It must migrate by adding one
     // unassigned Freeze chord rather than quarantining the user's settings.
