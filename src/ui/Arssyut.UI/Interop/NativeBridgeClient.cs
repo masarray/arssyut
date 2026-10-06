@@ -117,7 +117,23 @@ public enum NativeStartFlags : uint
     SmartZoom = 1U << 3,
     ClickVisual = 1U << 4,
     ShortcutKeys = 1U << 5,
-    PresenterControls = 1U << 6
+    PresenterControls = 1U << 6,
+    Spotlight = 1U << 7,
+    SpotlightLinkToZoom = 1U << 8
+}
+
+public enum NativeSpotlightSize : uint
+{
+    Compact = 0,
+    Balanced = 1,
+    Wide = 2
+}
+
+public enum NativeSpotlightMotion : uint
+{
+    Smooth = 0,
+    Balanced = 1,
+    Snappy = 2
 }
 
 public sealed record NativeDeviceItem(
@@ -158,7 +174,10 @@ public sealed record NativeStartRequest(
     string OutputFolder,
     NativeHotkeyChord HoldZoomHotkey,
     NativeHotkeyChord OverviewPeekHotkey,
-    float PresenterZoom);
+    float PresenterZoom,
+    NativeSpotlightSize SpotlightSize,
+    NativeSpotlightMotion SpotlightMotion,
+    float SpotlightDimStrength);
 
 public sealed class NativeBridgeClient : IDisposable
 {
@@ -166,7 +185,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 8;
+    private const uint ExpectedAbi = 9;
 
     private static readonly object NativeLoadGate =
         new();
@@ -763,7 +782,14 @@ public sealed class NativeBridgeClient : IDisposable
                     request.OverviewPeekHotkey.VirtualKey,
                 PresenterZoom =
                     request.PresenterZoom,
-                Reserved1 = 0
+                Reserved1 = 0,
+                SpotlightSize =
+                    (uint)request.SpotlightSize,
+                SpotlightMotion =
+                    (uint)request.SpotlightMotion,
+                SpotlightDimStrength =
+                    request.SpotlightDimStrength,
+                Reserved2 = 0
             };
 
         return (NativeBridgeStatus)
@@ -945,6 +971,10 @@ public sealed class NativeBridgeClient : IDisposable
         public uint OverviewPeekVirtualKey;
         public float PresenterZoom;
         public uint Reserved1;
+        public uint SpotlightSize;
+        public uint SpotlightMotion;
+        public float SpotlightDimStrength;
+        public uint Reserved2;
     }
 
     [StructLayout(

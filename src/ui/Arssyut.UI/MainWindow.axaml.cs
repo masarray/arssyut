@@ -1268,7 +1268,10 @@ public sealed partial class MainWindow : Window
                             HotkeyActionIds.HoldZoom),
                         MomentaryHotkey(
                             HotkeyActionIds.OverviewPeek),
-                        _settings.PresenterZoom));
+                        _settings.PresenterZoom,
+                        NativeSpotlightSize.Balanced,
+                        NativeSpotlightMotion.Balanced,
+                        0.38f));
         }
         catch (Exception)
         {
