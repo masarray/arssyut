@@ -220,6 +220,25 @@ try
                 "\"FreezeCamera\"",
                 StringComparison.Ordinal))
         {
+            // FreezeCamera is the final schema-v3 hotkey entry. Removing it
+            // for a schema-v2 fixture also removes the previous entry's comma.
+            if (schemaV2Lines.Count > 0)
+            {
+                var previous =
+                    schemaV2Lines[^1];
+                var comma =
+                    previous.LastIndexOf(
+                        ',');
+
+                if (comma >= 0)
+                {
+                    schemaV2Lines[^1] =
+                        previous.Remove(
+                            comma,
+                            1);
+                }
+            }
+
             skippingFreeze = true;
             freezeDepth = 0;
             continue;
