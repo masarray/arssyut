@@ -67,7 +67,8 @@ public enum NativeHotkeyAction : uint
     ToggleZoom = 4,
     ZoomIn = 5,
     ZoomOut = 6,
-    ResetFullFrame = 7
+    ResetFullFrame = 7,
+    FreezeCamera = 8
 }
 
 [Flags]
@@ -95,7 +96,8 @@ public enum NativePresenterCommand : uint
     ToggleZoom = 0,
     ZoomIn = 1,
     ZoomOut = 2,
-    ResetFullFrame = 3
+    ResetFullFrame = 3,
+    ToggleFreezeCamera = 4
 }
 
 public enum NativeVisualMode : uint
