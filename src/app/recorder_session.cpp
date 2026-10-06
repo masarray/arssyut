@@ -319,6 +319,9 @@ Status RecorderSession::start(
     presenter_reset_requests_.store(
         0,
         std::memory_order_release);
+    presenter_freeze_toggle_requests_.store(
+        0,
+        std::memory_order_release);
     worker_finished_.store(
         false,
         std::memory_order_release);
@@ -383,6 +386,11 @@ bool RecorderSession::request_presenter_command(
         return true;
     case PresenterCommand::ResetFullFrame:
         presenter_reset_requests_.fetch_add(
+            1,
+            std::memory_order_release);
+        return true;
+    case PresenterCommand::ToggleFreezeCamera:
+        presenter_freeze_toggle_requests_.fetch_add(
             1,
             std::memory_order_release);
         return true;
@@ -935,6 +943,13 @@ void RecorderSession::worker_main() noexcept
                     static_cast<float>(
                         zoom_steps));
             }
+
+            const auto freeze_toggle_requests =
+                presenter_freeze_toggle_requests_.exchange(
+                    0,
+                    std::memory_order_acq_rel);
+            if ((freeze_toggle_requests & 1U) != 0)
+                presentation_controller.toggle_freeze_camera();
 
             if (presenter_reset_requests_.exchange(
                     0,
