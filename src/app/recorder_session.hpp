@@ -39,6 +39,7 @@ enum class PresenterCommand : std::uint8_t {
     ZoomIn,
     ZoomOut,
     ResetFullFrame,
+    ToggleFreezeCamera,
 };
 
 struct RecorderTarget {
@@ -225,6 +226,7 @@ private:
     std::atomic<std::uint32_t> presenter_toggle_zoom_requests_{0};
     std::atomic<std::int32_t> presenter_zoom_steps_{0};
     std::atomic<std::uint32_t> presenter_reset_requests_{0};
+    std::atomic<std::uint32_t> presenter_freeze_toggle_requests_{0};
 
     std::atomic<bool> worker_finished_{true};
 
