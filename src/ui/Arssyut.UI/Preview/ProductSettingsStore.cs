@@ -15,7 +15,8 @@ public sealed record ProductSettingsSnapshot(
 public sealed class ProductSettingsStore
 {
     private const int LegacyHotkeySchemaVersion = 1;
-    private const int CurrentSchemaVersion = 2;
+    private const int PresenterZoomSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
 
     private readonly string _path;
 
@@ -83,6 +84,8 @@ public sealed class ProductSettingsStore
                 (document.SchemaVersion !=
                      LegacyHotkeySchemaVersion &&
                  document.SchemaVersion !=
+                     PresenterZoomSchemaVersion &&
+                 document.SchemaVersion !=
                      CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
@@ -91,7 +94,10 @@ public sealed class ProductSettingsStore
 
             var loaded =
                 ReadHotkeys(
-                    document.Hotkeys);
+                    document.Hotkeys,
+                    allowMissingFreezeCamera:
+                        document.SchemaVersion <
+                            CurrentSchemaVersion);
 
             EnsureNoDuplicateChords(
                 loaded);
@@ -250,7 +256,8 @@ public sealed class ProductSettingsStore
         HotkeyChord> ReadHotkeys(
         IReadOnlyDictionary<
             string,
-            PersistedHotkey> source)
+            PersistedHotkey> source,
+        bool allowMissingFreezeCamera)
     {
         var loaded =
             new Dictionary<
@@ -265,6 +272,15 @@ public sealed class ProductSettingsStore
                     action,
                     out var persisted))
             {
+                if (allowMissingFreezeCamera &&
+                    action ==
+                        HotkeyActionIds.FreezeCamera)
+                {
+                    loaded[action] =
+                        HotkeyChord.Empty;
+                    continue;
+                }
+
                 throw new InvalidDataException(
                     $"Missing hotkey action {action}.");
             }
