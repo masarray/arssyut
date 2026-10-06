@@ -24,6 +24,7 @@ public sealed class SettingsPreviewState
     public const float MinimumPresenterZoom = 1.10f;
     public const float MaximumPresenterZoom = 4.00f;
     public const float DefaultPresenterZoom = 2.00f;
+    public const float DefaultSpotlightDimStrength = 0.38f;
 
     private static readonly IReadOnlyList<float>
         PresenterZoomPresetValues =
@@ -43,6 +44,20 @@ public sealed class SettingsPreviewState
     public static IReadOnlyList<float>
         PresenterZoomPresets =>
             PresenterZoomPresetValues;
+
+    private static readonly IReadOnlyList<float>
+        SpotlightStrengthPresetValues =
+            Array.AsReadOnly(
+                new float[]
+                {
+                    0.30f,
+                    DefaultSpotlightDimStrength,
+                    0.46f
+                });
+
+    public static IReadOnlyList<float>
+        SpotlightStrengthPresets =>
+            SpotlightStrengthPresetValues;
 
     private readonly Dictionary<
         string,
@@ -72,6 +87,21 @@ public sealed class SettingsPreviewState
 
     public float PresenterZoom { get; private set; } =
         DefaultPresenterZoom;
+
+    public bool SpotlightEnabled { get; private set; } =
+        false;
+
+    public bool SpotlightLinkToZoom { get; private set; } =
+        true;
+
+    public NativeSpotlightSize SpotlightSize { get; private set; } =
+        NativeSpotlightSize.Balanced;
+
+    public NativeSpotlightMotion SpotlightMotion { get; private set; } =
+        NativeSpotlightMotion.Balanced;
+
+    public float SpotlightDimStrength { get; private set; } =
+        DefaultSpotlightDimStrength;
 
     public string RecordHotkey =>
         HotkeyText(
@@ -201,6 +231,97 @@ public sealed class SettingsPreviewState
         return true;
     }
 
+
+    public void SetSpotlightEnabled(
+        bool enabled)
+    {
+        if (SpotlightEnabled == enabled)
+            return;
+
+        SpotlightEnabled = enabled;
+        PersistentSettingsChanged?.Invoke(
+            this,
+            EventArgs.Empty);
+        Changed?.Invoke(
+            this,
+            EventArgs.Empty);
+    }
+
+    public void SetSpotlightLinkToZoom(
+        bool enabled)
+    {
+        if (SpotlightLinkToZoom == enabled)
+            return;
+
+        SpotlightLinkToZoom = enabled;
+        PersistentSettingsChanged?.Invoke(
+            this,
+            EventArgs.Empty);
+        Changed?.Invoke(
+            this,
+            EventArgs.Empty);
+    }
+
+    public bool TrySetSpotlightSize(
+        NativeSpotlightSize size)
+    {
+        if (!Enum.IsDefined(size))
+            return false;
+
+        if (SpotlightSize == size)
+            return true;
+
+        SpotlightSize = size;
+        PersistentSettingsChanged?.Invoke(
+            this,
+            EventArgs.Empty);
+        Changed?.Invoke(
+            this,
+            EventArgs.Empty);
+        return true;
+    }
+
+    public bool TrySetSpotlightMotion(
+        NativeSpotlightMotion motion)
+    {
+        if (!Enum.IsDefined(motion))
+            return false;
+
+        if (SpotlightMotion == motion)
+            return true;
+
+        SpotlightMotion = motion;
+        PersistentSettingsChanged?.Invoke(
+            this,
+            EventArgs.Empty);
+        Changed?.Invoke(
+            this,
+            EventArgs.Empty);
+        return true;
+    }
+
+    public bool TrySetSpotlightDimStrength(
+        float strength)
+    {
+        if (!IsSupportedSpotlightDimStrength(
+                strength))
+            return false;
+
+        if (Math.Abs(
+                SpotlightDimStrength -
+                strength) <= 0.0005f)
+            return true;
+
+        SpotlightDimStrength = strength;
+        PersistentSettingsChanged?.Invoke(
+            this,
+            EventArgs.Empty);
+        Changed?.Invoke(
+            this,
+            EventArgs.Empty);
+        return true;
+    }
+
     public void SetOutputFolder(
         string path)
     {
@@ -254,6 +375,16 @@ public sealed class SettingsPreviewState
 
         PresenterZoom =
             snapshot.PresenterZoom;
+        SpotlightEnabled =
+            snapshot.SpotlightEnabled;
+        SpotlightLinkToZoom =
+            snapshot.SpotlightLinkToZoom;
+        SpotlightSize =
+            snapshot.SpotlightSize;
+        SpotlightMotion =
+            snapshot.SpotlightMotion;
+        SpotlightDimStrength =
+            snapshot.SpotlightDimStrength;
         return true;
     }
 
@@ -353,6 +484,16 @@ public sealed class SettingsPreviewState
             true;
         PresenterZoom =
             DefaultPresenterZoom;
+        SpotlightEnabled =
+            false;
+        SpotlightLinkToZoom =
+            true;
+        SpotlightSize =
+            NativeSpotlightSize.Balanced;
+        SpotlightMotion =
+            NativeSpotlightMotion.Balanced;
+        SpotlightDimStrength =
+            DefaultSpotlightDimStrength;
 
         _hotkeys.Clear();
         foreach (var pair in
@@ -390,6 +531,26 @@ public sealed class SettingsPreviewState
             if (Math.Abs(
                     preset -
                     zoom) <= 0.0005f)
+                return true;
+        }
+
+        return false;
+    }
+
+
+    public static bool IsSupportedSpotlightDimStrength(
+        float strength)
+    {
+        if (!float.IsFinite(
+                strength))
+            return false;
+
+        foreach (var preset in
+                 SpotlightStrengthPresetValues)
+        {
+            if (Math.Abs(
+                    preset -
+                    strength) <= 0.0005f)
                 return true;
         }
 
