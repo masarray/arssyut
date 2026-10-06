@@ -52,6 +52,7 @@ void PresentationController::reset() noexcept
     manual_zoom_latched_ = false;
     hold_zoom_active_ = false;
     overview_requested_ = false;
+    camera_frozen_ = false;
     overview_.reset();
     spotlight_focus_valid_ = false;
     spotlight_focus_x_ = 0.5f;
@@ -114,6 +115,7 @@ void PresentationController::set_settings(
         manual_zoom_latched_ = false;
         hold_zoom_active_ = false;
         overview_requested_ = false;
+        camera_frozen_ = false;
         overview_.reset();
     }
 
@@ -293,6 +295,9 @@ void PresentationController::toggle_manual_zoom() noexcept
     if (manual_zoom_latched_) {
         emphasis_pending_ = true;
     } else {
+        // Zoom-off wins over Freeze so the accepted camera can return to
+        // full-frame instead of leaving a stale frozen zoomed viewport.
+        camera_frozen_ = false;
         zoom_until_ = {};
         emphasis_pending_ = false;
     }
@@ -326,6 +331,7 @@ void PresentationController::reset_full_frame() noexcept
     manual_zoom_latched_ = false;
     hold_zoom_active_ = false;
     overview_requested_ = false;
+    camera_frozen_ = false;
     zoom_until_ = {};
     emphasis_pending_ = false;
 
@@ -368,6 +374,20 @@ void PresentationController::set_overview_peek(
     overview_requested_ = active;
 }
 
+
+void PresentationController::toggle_freeze_camera() noexcept
+{
+    if (!settings_.presenter_controls) {
+        camera_frozen_ = false;
+        return;
+    }
+
+    // Freeze is intent inside the existing PresentationController. The camera
+    // object is neither copied nor replaced; step() simply pauses the one
+    // authoritative camera/overview state at the exact rendered transform.
+    camera_frozen_ = !camera_frozen_;
+}
+
 void PresentationController::update_keyboard(
     ShortcutChord chord) noexcept
 {
@@ -407,6 +427,12 @@ PresentationFrameState PresentationController::step(
         manual_zoom_latched_ ||
         hold_zoom_active_ ||
         smart_zoom_requested;
+
+    // Freeze is only meaningful while a zoom owner exists. Natural Smart Zoom
+    // expiry / Hold release / Toggle off therefore wins and cannot strand a
+    // stale frozen zoomed viewport.
+    if (!wants_zoom)
+        camera_frozen_ = false;
 
     const bool spotlight_zoom_rising =
         wants_zoom &&
@@ -480,7 +506,14 @@ PresentationFrameState PresentationController::step(
     float camera_center_y = 0.5f;
     float camera_zoom = 1.0f;
 
-    if (overview_.active()) {
+    if (camera_frozen_) {
+        // Exact rendered shot hold. Do not step either the accepted SmartCamera
+        // or Overview controller, so their internal state is paused rather than
+        // reconciled against a second snapshot/transform authority.
+        camera_center_x = visible_center.x;
+        camera_center_y = visible_center.y;
+        camera_zoom = visible_zoom;
+    } else if (overview_.active()) {
         const auto phase =
             overview_.phase();
 
