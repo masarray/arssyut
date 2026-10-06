@@ -1584,6 +1584,23 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
     }
 
+    if (request->spotlight_size >
+        ARSSYUT_BRIDGE_SPOTLIGHT_WIDE) {
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
+    if (request->spotlight_motion >
+        ARSSYUT_BRIDGE_SPOTLIGHT_SNAPPY) {
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
+    if (!std::isfinite(
+            request->spotlight_dim_strength) ||
+        request->spotlight_dim_strength < 0.0f ||
+        request->spotlight_dim_strength > 0.75f) {
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+
     if (request->capture_mode ==
         ARSSYUT_BRIDGE_CAPTURE_GAME) {
         return ARSSYUT_BRIDGE_UNSUPPORTED;
@@ -1718,6 +1735,23 @@ arssyut_bridge_recorder_start(
             request->overview_peek_virtual_key != 0;
         config.presentation.zoom =
             request->presenter_zoom;
+
+        config.presentation.spotlight.enabled =
+            (request->flags &
+             ARSSYUT_BRIDGE_START_SPOTLIGHT) != 0;
+        config.presentation.spotlight.link_to_zoom =
+            (request->flags &
+             ARSSYUT_BRIDGE_START_SPOTLIGHT_LINK_TO_ZOOM) != 0;
+        config.presentation.spotlight.size =
+            static_cast<
+                arssyut::presentation::SpotlightSize>(
+                    request->spotlight_size);
+        config.presentation.spotlight.cinematic_speed =
+            static_cast<
+                arssyut::presentation::SpotlightCinematicSpeed>(
+                    request->spotlight_motion);
+        config.presentation.spotlight.dim_strength =
+            request->spotlight_dim_strength;
         config.hold_zoom_hotkey.virtual_key =
             static_cast<std::uint16_t>(
                 request->hold_zoom_virtual_key);
