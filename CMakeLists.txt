@@ -318,6 +318,42 @@ if(ARSSYUT_BUILD_TESTS)
         COMMAND arssyut_arzoom_upstream_phase1_gate
     )
 
+
+    # P6UI.6D-A: exact upstream Spotlight contracts are compiled directly
+    # against the immutable vendored ArZoom snapshot before product integration.
+    add_executable(arssyut_arzoom_spotlight_gate
+        tests/upstream/arzoom_spotlight_gate.cpp
+    )
+    target_include_directories(arssyut_arzoom_spotlight_gate PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/arzoom/include
+    )
+    add_test(
+        NAME arssyut_arzoom_spotlight_gate
+        COMMAND arssyut_arzoom_spotlight_gate
+    )
+
+    add_executable(arssyut_arzoom_cinematic_spotlight_gate
+        tests/upstream/arzoom_cinematic_spotlight_gate.cpp
+    )
+    target_include_directories(arssyut_arzoom_cinematic_spotlight_gate PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/arzoom/include
+    )
+    add_test(
+        NAME arssyut_arzoom_cinematic_spotlight_gate
+        COMMAND arssyut_arzoom_cinematic_spotlight_gate
+    )
+
+    add_executable(arssyut_arzoom_spotlight_zoom_resize_gate
+        tests/upstream/arzoom_spotlight_zoom_resize_gate.cpp
+    )
+    target_include_directories(arssyut_arzoom_spotlight_zoom_resize_gate PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/arzoom/include
+    )
+    add_test(
+        NAME arssyut_arzoom_spotlight_zoom_resize_gate
+        COMMAND arssyut_arzoom_spotlight_zoom_resize_gate
+    )
+
     if(WIN32)
         add_executable(arssyut_windows_tests
             tests/windows/test_d3d11_device.cpp

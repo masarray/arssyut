@@ -14,6 +14,9 @@ Vendored files:
 - `src/arzoom-scene-viewport-planner.hpp`
 - `src/arzoom-camera.hpp`
 - `src/arzoom-click-visual.hpp`
+- `src/arzoom-spotlight.hpp`
+- `src/arzoom-cinematic-spotlight.hpp`
+- `src/arzoom-spotlight-zoom-resize.hpp`
 
 The files are copied byte-for-byte into `third_party/arzoom/include`.
 Arssyut-specific behavior belongs in `src/presentation/arzoom_camera_adapter.hpp`
@@ -32,3 +35,20 @@ P3R parity contract:
    source-frame cadence.
 5. Camera adapter regression tests compare every output field against the
    pinned upstream engine for the same canonical input sequence.
+
+
+P6UI.6D Spotlight authority lock:
+
+1. Spotlight helpers are vendored byte-for-byte from the same pinned upstream
+   commit. Arssyut never edits these headers in place.
+2. Spotlight is presentation state only. It may read canonical camera/pointer
+   state but may not write camera intent, plan a viewport, or create another
+   coordinate solver.
+3. Cinematic Spotlight and Zoom-resize state observe the existing camera output;
+   they are not a post-camera smoothing layer.
+4. Renderer integration must extend the retained presentation compositor. It
+   may not create a second compositor, frame readback, blur pass, or per-frame
+   allocation path.
+5. Freeze Camera is implemented at the existing PresentationController camera
+   gate by pausing advancement of the same camera authority; Reset/full-frame
+   remains higher priority.
