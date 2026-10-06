@@ -11,12 +11,31 @@
 
 namespace arssyut::presentation {
 
+struct SpotlightSettings {
+    // Existing-user compatibility: Spotlight remains opt-in until the
+    // product-facing controls are wired in P6UI.6D-H.
+    bool enabled = false;
+    bool link_to_zoom = true;
+    SpotlightMode mode = SpotlightMode::SmartFocus;
+    SpotlightSize size = SpotlightSize::Balanced;
+    SpotlightShape shape = SpotlightShape::Circle;
+    SpotlightCinematicSpeed cinematic_speed =
+        SpotlightCinematicSpeed::Balanced;
+
+    // Upstream P5 starting contract. The compositor resolves actual output
+    // pixels later; the presentation authority never owns render geometry.
+    float area_scale_percent = 100.0f;
+    float feather_short_edge_fraction = 0.12f;
+    float dim_strength = 0.38f;
+};
+
 struct PresentationSettings {
     bool smart_zoom = true;
     bool click_visual = true;
     bool shortcut_keys = true;
     bool presenter_controls = false;
     float zoom = 2.0f;
+    SpotlightSettings spotlight{};
 };
 
 class PresentationController final {
@@ -109,6 +128,16 @@ private:
     bool overview_requested_ = false;
     float runtime_zoom_ = 2.0f;
     arzoom::OverviewPeekController overview_{};
+
+    // Exactly one bounded Spotlight focus snapshot lives inside the existing
+    // presentation authority. It is read-only with respect to camera intent.
+    bool spotlight_focus_valid_ = false;
+    float spotlight_focus_x_ = 0.5f;
+    float spotlight_focus_y_ = 0.5f;
+    bool spotlight_click_anchor_valid_ = false;
+    float spotlight_click_anchor_x_ = 0.5f;
+    float spotlight_click_anchor_y_ = 0.5f;
+    bool spotlight_zoom_was_requested_ = false;
 
     // Current rendered camera transform. Overview Peek pauses the underlying
     // camera, so release/cancel transitions must start from what the viewer is
