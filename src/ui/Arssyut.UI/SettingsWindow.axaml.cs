@@ -645,6 +645,7 @@ public sealed partial class SettingsWindow : Window
                 "ZoomIn" => NativeHotkeyAction.ZoomIn,
                 "ZoomOut" => NativeHotkeyAction.ZoomOut,
                 "ResetZoom" => NativeHotkeyAction.ResetFullFrame,
+                "FreezeCamera" => NativeHotkeyAction.FreezeCamera,
                 _ => NativeHotkeyAction.ToggleRecord
             };
 
@@ -653,7 +654,8 @@ public sealed partial class SettingsWindow : Window
             "ToggleZoom" or
             "ZoomIn" or
             "ZoomOut" or
-            "ResetZoom";
+            "ResetZoom" or
+            "FreezeCamera";
     }
 
     private static bool IsMomentaryPresenterAction(
@@ -743,6 +745,9 @@ public sealed partial class SettingsWindow : Window
         OverviewPeekHotkeyText.Text =
             HotkeyLabel(
                 _preview.OverviewPeekHotkey);
+        FreezeCameraHotkeyText.Text =
+            HotkeyLabel(
+                _preview.FreezeCameraHotkey);
     }
 
     private static string HotkeyLabel(
@@ -773,6 +778,8 @@ public sealed partial class SettingsWindow : Window
                 ResetZoomHotkeyText,
             "OverviewPeek" =>
                 OverviewPeekHotkeyText,
+            "FreezeCamera" =>
+                FreezeCameraHotkeyText,
             _ =>
                 RecordHotkeyText
         };
