@@ -64,6 +64,7 @@ public:
     void reset_full_frame() noexcept;
     void set_hold_zoom(bool active) noexcept;
     void set_overview_peek(bool active) noexcept;
+    void toggle_freeze_camera() noexcept;
 
     [[nodiscard]] bool manual_zoom_latched() const noexcept
     {
@@ -78,6 +79,11 @@ public:
     [[nodiscard]] bool overview_active() const noexcept
     {
         return overview_.active();
+    }
+
+    [[nodiscard]] bool camera_frozen() const noexcept
+    {
+        return camera_frozen_;
     }
 
     [[nodiscard]] PresentationFrameState step(
@@ -128,6 +134,7 @@ private:
     bool manual_zoom_latched_ = false;
     bool hold_zoom_active_ = false;
     bool overview_requested_ = false;
+    bool camera_frozen_ = false;
     float runtime_zoom_ = 2.0f;
     arzoom::OverviewPeekController overview_{};
 
