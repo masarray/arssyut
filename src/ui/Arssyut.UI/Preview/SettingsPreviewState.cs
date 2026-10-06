@@ -362,6 +362,18 @@ public sealed class SettingsPreviewState
             return false;
         }
 
+        if (!Enum.IsDefined(
+                snapshot.SpotlightSize) ||
+            !Enum.IsDefined(
+                snapshot.SpotlightMotion) ||
+            !IsSupportedSpotlightDimStrength(
+                snapshot.SpotlightDimStrength))
+        {
+            error =
+                "Persisted Spotlight settings are invalid.";
+            return false;
+        }
+
         if (!TryBuildHotkeyCandidate(
                 snapshot.Hotkeys,
                 out var candidate,
