@@ -2894,6 +2894,186 @@ void test_arvisual_async_scene_analyzer(
 }
 
 
+
+struct SpotlightPerfSample {
+    std::uint32_t cpu_p95_us = 0;
+    std::uint32_t gpu_p95_us = 0;
+    std::uint64_t cpu_samples = 0;
+    std::uint64_t gpu_samples = 0;
+    std::uint64_t stable_generation = 0;
+    bool renders_ok = false;
+};
+
+SpotlightPerfSample run_spotlight_perf_sample(
+    arssyut::windows::D3D11Device &owner,
+    arssyut::core::FrameSize output_size,
+    bool enabled)
+{
+    SpotlightPerfSample sample;
+
+    auto source =
+        create_solid_texture(
+            owner.device(),
+            8,
+            8,
+            0xFF707070u);
+    if (!source)
+        return sample;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    if (!compositor_result)
+        return sample;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    arssyut::presentation::PresentationFrameState state{};
+    state.camera_center_x = 0.58f;
+    state.camera_center_y = 0.46f;
+    state.camera_zoom = 2.0f;
+    state.spotlight.enabled = true;
+    state.spotlight.runtime_requested = enabled;
+    state.spotlight.focus_valid = true;
+    state.spotlight.content_x = 0.62f;
+    state.spotlight.content_y = 0.48f;
+    state.spotlight.focus_mix = 1.0f;
+    state.spotlight.dim_mix = enabled ? 1.0f : 0.0f;
+    state.spotlight.area_scale_percent = 100.0f;
+    state.spotlight.feather_short_edge_fraction = 0.12f;
+    state.spotlight.dim_strength = 0.38f;
+
+    if (!compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 8, 8},
+            output_size,
+            &state).ok()) {
+        return sample;
+    }
+
+    sample.stable_generation =
+        compositor.resource_generation();
+
+    const int frames =
+        output_size.width >= 3840
+            ? 6
+            : 12;
+
+    sample.renders_ok = true;
+    for (int frame = 0; frame < frames; ++frame) {
+        if (!compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 8, 8},
+                output_size,
+                &state).ok() ||
+            compositor.resource_generation() !=
+                sample.stable_generation) {
+            sample.renders_ok = false;
+            break;
+        }
+    }
+
+    owner.immediate_context()->Flush();
+
+    // One more retained render gives pending timestamp queries an opportunity
+    // to resolve without adding a synchronization/readback path to production.
+    if (sample.renders_ok) {
+        sample.renders_ok =
+            compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 8, 8},
+                output_size,
+                &state).ok() &&
+            compositor.resource_generation() ==
+                sample.stable_generation;
+    }
+
+    const auto cpu =
+        compositor.cpu_submit_latency();
+    const auto gpu =
+        compositor.gpu_execution_latency();
+
+    sample.cpu_samples =
+        cpu.total;
+    sample.gpu_samples =
+        gpu.total;
+    sample.cpu_p95_us =
+        cpu.quantile_upper_bound(
+            95,
+            100);
+    sample.gpu_p95_us =
+        gpu.quantile_upper_bound(
+            95,
+            100);
+
+    return sample;
+}
+
+void test_spotlight_resolution_performance_contract(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    const std::array<
+        arssyut::core::FrameSize,
+        2> outputs{
+            arssyut::core::FrameSize{
+                1920,
+                1080},
+            arssyut::core::FrameSize{
+                3840,
+                2160}
+        };
+
+    for (const auto output : outputs) {
+        const auto off =
+            run_spotlight_perf_sample(
+                owner,
+                output,
+                false);
+        const auto on =
+            run_spotlight_perf_sample(
+                owner,
+                output,
+                true);
+
+        test.expect(
+            off.renders_ok &&
+                on.renders_ok,
+            output.width >= 3840
+                ? "P6UI.6D-I 4K Spotlight OFF/ON retained renders succeed"
+                : "P6UI.6D-I 1080p Spotlight OFF/ON retained renders succeed");
+
+        test.expect(
+            off.cpu_samples > 0 &&
+                on.cpu_samples > 0,
+            output.width >= 3840
+                ? "P6UI.6D-I 4K OFF/ON CPU latency diagnostics are populated"
+                : "P6UI.6D-I 1080p OFF/ON CPU latency diagnostics are populated");
+
+        test.expect(
+            off.stable_generation ==
+                on.stable_generation,
+            output.width >= 3840
+                ? "P6UI.6D-I 4K Spotlight toggle requires no extra retained GPU resource generation"
+                : "P6UI.6D-I 1080p Spotlight toggle requires no extra retained GPU resource generation");
+
+        std::cout
+            << "P6UI.6D-I Spotlight WARP diagnostic "
+            << output.width << "x" << output.height
+            << " OFF cpu_p95_us=" << off.cpu_p95_us
+            << " gpu_p95_us=" << off.gpu_p95_us
+            << " gpu_samples=" << off.gpu_samples
+            << " | ON cpu_p95_us=" << on.cpu_p95_us
+            << " gpu_p95_us=" << on.gpu_p95_us
+            << " gpu_samples=" << on.gpu_samples
+            << '\n';
+    }
+}
+
 void test_spotlight_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -3402,6 +3582,9 @@ int main()
     test_screen_text_legibility(test, device);
     test_arvisual_async_scene_analyzer(test, device);
     test_spotlight_compositor(test, device);
+    test_spotlight_resolution_performance_contract(
+        test,
+        device);
     test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
 
