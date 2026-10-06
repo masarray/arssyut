@@ -156,8 +156,12 @@ try
         saved.TrySetHotkey(
             HotkeyActionIds.OverviewPeek,
             "Numpad+",
+            out _) &&
+        saved.TrySetHotkey(
+            HotkeyActionIds.FreezeCamera,
+            "Shift+F12",
             out _),
-        "persistence fixture accepts canonical OEM/Numpad chords");
+        "persistence fixture accepts canonical OEM/Numpad/Freeze chords");
 
     Expect(
         store.TrySave(
@@ -193,12 +197,86 @@ try
         restored.ZoomOutHotkey == "Ctrl+-" &&
         restored.ResetZoomHotkey == "Alt+Win+F12" &&
         restored.OverviewPeekHotkey == "Numpad+" &&
+        restored.FreezeCameraHotkey == "Shift+F12" &&
         restored.PresenterZoom == 3.00f,
-        "restored startup state preserves canonical hotkeys and presenter zoom");
+        "restored startup state preserves canonical hotkeys, Freeze and presenter zoom");
 
-    var schemaV2Lines =
+    var schemaV3Lines =
         File.ReadAllLines(
             persistencePath);
+
+    // Schema v2 predates Freeze Camera. It must migrate by adding one
+    // unassigned Freeze chord rather than quarantining the user's settings.
+    var schemaV2Lines =
+        new List<string>();
+    var skippingFreeze = false;
+    var freezeDepth = 0;
+
+    foreach (var line in schemaV3Lines)
+    {
+        if (!skippingFreeze &&
+            line.Contains(
+                "\"FreezeCamera\"",
+                StringComparison.Ordinal))
+        {
+            skippingFreeze = true;
+            freezeDepth = 0;
+            continue;
+        }
+
+        if (skippingFreeze)
+        {
+            freezeDepth +=
+                line.Count(
+                    character =>
+                        character == '{');
+            freezeDepth -=
+                line.Count(
+                    character =>
+                        character == '}');
+
+            if (line.TrimStart().
+                    StartsWith(
+                        "}",
+                        StringComparison.Ordinal) &&
+                freezeDepth <= -1)
+            {
+                skippingFreeze = false;
+            }
+
+            continue;
+        }
+
+        schemaV2Lines.Add(
+            line.Replace(
+                "\"SchemaVersion\": 3",
+                "\"SchemaVersion\": 2",
+                StringComparison.Ordinal));
+    }
+
+    var schemaV2Path =
+        Path.Combine(
+            persistenceRoot,
+            "settings-v2.json");
+    File.WriteAllLines(
+        schemaV2Path,
+        schemaV2Lines);
+
+    var schemaV2Store =
+        new ProductSettingsStore(
+            schemaV2Path);
+
+    Expect(
+        schemaV2Store.TryLoad(
+            out var schemaV2Settings,
+            out var schemaV2Error) &&
+        string.IsNullOrEmpty(
+            schemaV2Error) &&
+        schemaV2Settings.Hotkeys[
+            HotkeyActionIds.FreezeCamera].
+            IsEmpty,
+        "schema v2 migrates with Freeze Camera unassigned");
+
     var schemaV1Lines =
         new List<string>();
 
