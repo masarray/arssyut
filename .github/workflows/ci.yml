@@ -102,15 +102,44 @@ jobs:
             "src/platform/windows/input/presentation_input_worker.hpp"
           )
 
-          $violations = @(
-            git diff --name-only $baseline HEAD -- src/app src/core src/platform |
-              Where-Object { $allowedNativeCorrections -notcontains $_ }
+          # Issue #32 intentionally extends the existing retained compositor for
+          # Spotlight. Do not convert this into a broad path allowlist: lock the
+          # approved P6UI.6D-D implementation to its exact Git blob so any later
+          # native compositor edit fails closed until it is separately audited.
+          $lockedNativeCorrectionBlobs = @{
+            "src/platform/windows/graphics/d3d11_compositor.cpp" = "e369e88a77e8612ded45db1cb186cbddc2a35942"
+          }
+
+          $changedNative = @(
+            git diff --name-only $baseline HEAD -- src/app src/core src/platform
           )
+          $violations = @()
+
+          foreach ($path in $changedNative) {
+            if ($allowedNativeCorrections -contains $path) {
+              continue
+            }
+
+            if ($lockedNativeCorrectionBlobs.ContainsKey($path)) {
+              $actualBlob = (git rev-parse "HEAD:$path").Trim()
+              $expectedBlob = $lockedNativeCorrectionBlobs[$path]
+              if ($actualBlob -eq $expectedBlob) {
+                Write-Host "Locked native correction verified: $path @ $actualBlob"
+                continue
+              }
+
+              Write-Host "Locked native correction drifted: $path"
+              Write-Host "  expected blob: $expectedBlob"
+              Write-Host "  actual blob:   $actualBlob"
+            }
+
+            $violations += $path
+          }
 
           if ($violations.Count -gt 0) {
             Write-Host "P6UI changed locked native implementation after ${baseline}:"
             $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
-            throw "Existing native engine implementation is frozen. Only the documented RecorderOverlay repaint, bounded RecorderSession presenter plumbing, and P6UI.6B/6C Raw Input held-state + stale-release fuse are allowed."
+            throw "Existing native engine implementation is frozen. Only documented corrections are allowed; P6UI.6D compositor changes must match the audited exact blob."
           }
 
           Write-Host "Native baseline guard passed."
