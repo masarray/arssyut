@@ -1,17 +1,51 @@
 # Current Handoff — Arssyut P6UI
 
-**Updated:** 2026-10-05  
+**Updated:** 2026-10-07  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6A.2 Presenter Zoom Configuration implemented / CI + real Windows acceptance pending**  
-**Canonical baseline entering this milestone:**  
-`c394e3e2dfb262cf193878353eb9ec7fefc74b62` (P6UI.6A.1 Hotkey Product Hardening)
+**Current engineering milestone:** **P6UI.6D Spotlight + Freeze implementation complete; Region/performance deterministic gate and real-video acceptance lock in progress**  
+**Current implementation head entering acceptance:**  
+`9bb8342bcd8ef631d4a1bbeb5e43d28878eb9642` (P6UI.6D-I Region + Spotlight performance regression gates)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
 
 Do not reconstruct project state from old chat messages. The repository is the
 source of truth.
+
+---
+
+## P6UI.6D current lock — read before changing presenter code
+
+Issue #32 now has the following forward-only progression on the active P6UI
+branch:
+
+- P6UI.6D-C Zoom -> Spotlight cinematic choreography: CI #316 green;
+- P6UI.6D-E Freeze Camera core: CI #317 green;
+- P6UI.6D-E3 Freeze hotkey + persistence migration: CI #318 green;
+- P6UI.6D-F SmartCamera motion audit: CI #319 green; decision is to keep the
+  existing per-source SmartCamera authority;
+- P6UI.6D-H1 Spotlight ABI/configuration contract: CI #320 green;
+- P6UI.6D-H2 beginner-facing Spotlight Settings + schema-v4 migration:
+  CI #321 green;
+- P6UI.6D-I Region + 1080p/4K structural performance regression:
+  canonical CI #322 is the current deterministic gate.
+
+Do **not** switch the recorder to SceneViewportPlanner / SceneKinematicMotion.
+The accepted recorder path is still PresenterAwareSmartCamera with
+`scene_context=false`, Smart follow and Cinematic motion.
+
+Do **not** add a second Spotlight renderer or Region solver. Spotlight is
+analytic math in the existing retained D3D11 presentation shader and uses the
+same `project_content()` camera transform as click feedback. Region pointer
+normalization continues to use the native authoritative
+`presentation_screen_rect`.
+
+Product Spotlight defaults remain backward-compatible: Off, linked-to-Zoom On,
+Balanced size, 38% dim strength and Balanced motion.
+
+Real-video closure procedure:
+`docs/P6UI6D_REAL_VIDEO_ACCEPTANCE_LOCK.md`.
 
 ---
 
