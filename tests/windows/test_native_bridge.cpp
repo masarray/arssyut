@@ -673,12 +673,49 @@ int main()
 
     invalid_start.presenter_zoom = 2.50f;
 
+    invalid_start.spotlight_size = 99;
+    require(
+        arssyut_bridge_recorder_start(
+            bridge,
+            &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+        "invalid Spotlight size must be rejected");
+
+    invalid_start.spotlight_size =
+        ARSSYUT_BRIDGE_SPOTLIGHT_BALANCED;
+    invalid_start.spotlight_motion = 99;
+    require(
+        arssyut_bridge_recorder_start(
+            bridge,
+            &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+        "invalid Spotlight motion must be rejected");
+
+    invalid_start.spotlight_motion =
+        ARSSYUT_BRIDGE_SPOTLIGHT_MOTION_BALANCED;
+    invalid_start.spotlight_dim_strength = -0.01f;
+    require(
+        arssyut_bridge_recorder_start(
+            bridge,
+            &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+        "negative Spotlight dim strength must be rejected");
+
+    invalid_start.spotlight_dim_strength = 0.76f;
+    require(
+        arssyut_bridge_recorder_start(
+            bridge,
+            &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+        "Spotlight dim strength above the bounded product range must be rejected");
+
+    invalid_start.spotlight_dim_strength = 0.38f;
     require(
         arssyut_bridge_recorder_start(
             bridge,
             &invalid_start) ==
             ARSSYUT_BRIDGE_STALE_TOKEN,
-        "valid presenter zoom must continue to normal source-token validation");
+        "valid Spotlight settings must continue to normal source-token validation");
 
     if (source_count > 0) {
         ArssyutBridgeSourceV1 source{};
