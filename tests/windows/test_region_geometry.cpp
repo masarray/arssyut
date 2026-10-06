@@ -153,6 +153,54 @@ void test_camera_viewport(
         "Smart Zoom boundary never escapes Region");
 }
 
+
+void test_negative_origin_camera_viewport(
+    TestContext &test)
+{
+    const RECT region{
+        -1680,
+        -820,
+        -480,
+        -100};
+
+    const RECT viewport =
+        arssyut::app::
+            camera_viewport_rect(
+                region,
+                0.12f,
+                0.88f,
+                2.5f);
+
+    test.expect(
+        viewport.left >= region.left &&
+            viewport.top >= region.top &&
+            viewport.right <= region.right &&
+            viewport.bottom <= region.bottom,
+        "negative-origin Region camera viewport remains inside selected Region");
+
+    test.expect(
+        viewport.right - viewport.left ==
+                480 &&
+            viewport.bottom - viewport.top ==
+                288,
+        "negative-origin Region camera viewport preserves requested zoom geometry");
+
+    const RECT frozen =
+        arssyut::app::
+            camera_viewport_rect(
+                region,
+                0.12f,
+                0.88f,
+                2.5f);
+
+    test.expect(
+        frozen.left == viewport.left &&
+            frozen.top == viewport.top &&
+            frozen.right == viewport.right &&
+            frozen.bottom == viewport.bottom,
+        "identical frozen camera state maps to the exact same Region viewport");
+}
+
 void test_clamp_and_default(
     TestContext &test)
 {
@@ -211,6 +259,7 @@ int main()
     test_negative_origin_mapping(test);
     test_even_nv12_alignment(test);
     test_camera_viewport(test);
+    test_negative_origin_camera_viewport(test);
     test_clamp_and_default(test);
 
     std::cout
