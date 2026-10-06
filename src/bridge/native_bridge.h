@@ -64,6 +64,7 @@ enum ArssyutBridgeHotkeyAction : std::uint32_t {
     ARSSYUT_BRIDGE_HOTKEY_ZOOM_IN = 5,
     ARSSYUT_BRIDGE_HOTKEY_ZOOM_OUT = 6,
     ARSSYUT_BRIDGE_HOTKEY_RESET_FULL_FRAME = 7,
+    ARSSYUT_BRIDGE_HOTKEY_FREEZE_CAMERA = 8,
 };
 
 enum ArssyutBridgeHotkeyEvents : std::uint32_t {
@@ -78,6 +79,7 @@ enum ArssyutBridgePresenterCommand : std::uint32_t {
     ARSSYUT_BRIDGE_PRESENTER_ZOOM_IN = 1,
     ARSSYUT_BRIDGE_PRESENTER_ZOOM_OUT = 2,
     ARSSYUT_BRIDGE_PRESENTER_RESET_FULL_FRAME = 3,
+    ARSSYUT_BRIDGE_PRESENTER_TOGGLE_FREEZE_CAMERA = 4,
 };
 
 enum ArssyutBridgeVisualMode : std::uint32_t {
