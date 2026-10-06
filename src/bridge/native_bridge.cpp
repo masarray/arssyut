@@ -75,7 +75,7 @@ struct NativeBridgeContext final {
         bool registered = false;
     };
 
-    std::array<HotkeyBinding, 8> hotkeys{};
+    std::array<HotkeyBinding, 9> hotkeys{};
     std::atomic<std::uint32_t> pending_hotkey_events{0};
 };
 
@@ -437,7 +437,7 @@ constexpr wchar_t kBridgeOverlayOwnerClass[] =
 constexpr UINT_PTR kBridgeOverlayTimer = 1;
 constexpr int kBridgeHotkeyIdBase = 0x5A40;
 constexpr int kBridgeHotkeyProbeId = 0x5AF0;
-constexpr std::uint32_t kBridgeHotkeyActionCount = 8;
+constexpr std::uint32_t kBridgeHotkeyActionCount = 9;
 
 [[nodiscard]] bool valid_hotkey_action(std::uint32_t action) noexcept
 {
@@ -492,6 +492,9 @@ void dispatch_presenter_hotkey(
         break;
     case ARSSYUT_BRIDGE_HOTKEY_RESET_FULL_FRAME:
         command = PresenterCommand::ResetFullFrame;
+        break;
+    case ARSSYUT_BRIDGE_HOTKEY_FREEZE_CAMERA:
+        command = PresenterCommand::ToggleFreezeCamera;
         break;
     default:
         return;
@@ -1787,6 +1790,9 @@ arssyut_bridge_recorder_presenter_command(
         break;
     case ARSSYUT_BRIDGE_PRESENTER_RESET_FULL_FRAME:
         native_command = PresenterCommand::ResetFullFrame;
+        break;
+    case ARSSYUT_BRIDGE_PRESENTER_TOGGLE_FREEZE_CAMERA:
+        native_command = PresenterCommand::ToggleFreezeCamera;
         break;
     default:
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
