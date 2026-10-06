@@ -720,6 +720,159 @@ void test_spotlight_reset_clears_transient_focus(
 }
 
 
+
+void test_freeze_camera_exact_hold_and_resume(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.zoom = 2.25f;
+
+    controller.reset();
+    controller.set_settings(settings);
+    controller.toggle_manual_zoom();
+
+    std::int64_t ticks = 0;
+    auto state = step_frames_at(
+        controller, 42, ticks, 0.82f, 0.30f);
+
+    controller.toggle_freeze_camera();
+    const float frozen_x = state.camera_center_x;
+    const float frozen_y = state.camera_center_y;
+    const float frozen_zoom = state.camera_zoom;
+
+    bool exact = true;
+    for (int i = 0; i < 120; ++i) {
+        state = step_frames_at(
+            controller, 1, ticks, 0.08f, 0.92f);
+        exact =
+            exact &&
+            state.camera_center_x == frozen_x &&
+            state.camera_center_y == frozen_y &&
+            state.camera_zoom == frozen_zoom;
+    }
+
+    test.expect(
+        controller.camera_frozen() && exact,
+        "Freeze holds the exact rendered center and zoom through remote pointer motion");
+
+    controller.adjust_manual_zoom(0.50f);
+    state = step_frames_at(
+        controller, 45, ticks, 0.08f, 0.92f);
+
+    test.expect(
+        state.camera_center_x == frozen_x &&
+        state.camera_center_y == frozen_y &&
+        state.camera_zoom == frozen_zoom &&
+        std::fabs(controller.configured_zoom() - 2.75f) < 1.0e-6f,
+        "Zoom plus while frozen changes only the future configured target");
+
+    controller.toggle_freeze_camera();
+    const auto first_resumed = step_frames_at(
+        controller, 1, ticks, 0.08f, 0.92f);
+
+    test.expect(
+        !controller.camera_frozen() &&
+        std::fabs(first_resumed.camera_center_x - frozen_x) < 0.03f &&
+        std::fabs(first_resumed.camera_center_y - frozen_y) < 0.03f &&
+        std::fabs(first_resumed.camera_zoom - frozen_zoom) < 0.08f,
+        "unfreeze resumes the existing camera continuously without a snap");
+
+    state = step_frames_at(
+        controller, 180, ticks, 0.08f, 0.92f);
+    test.expect(
+        state.camera_zoom > frozen_zoom &&
+        state.camera_zoom <= 2.76f,
+        "unfreeze converges through the same camera toward the queued zoom target");
+}
+
+
+void test_freeze_mid_activation_and_reset_priority(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.zoom = 2.50f;
+
+    controller.reset();
+    controller.set_settings(settings);
+    controller.toggle_manual_zoom();
+
+    std::int64_t ticks = 0;
+    auto state = step_frames_at(
+        controller, 8, ticks, 0.78f, 0.36f);
+
+    controller.toggle_freeze_camera();
+    const float frozen_x = state.camera_center_x;
+    const float frozen_y = state.camera_center_y;
+    const float frozen_zoom = state.camera_zoom;
+
+    state = step_frames_at(
+        controller, 75, ticks, 0.15f, 0.85f);
+
+    test.expect(
+        controller.camera_frozen() &&
+        state.camera_center_x == frozen_x &&
+        state.camera_center_y == frozen_y &&
+        state.camera_zoom == frozen_zoom,
+        "Freeze during activation pauses the exact in-flight camera state");
+
+    controller.reset_full_frame();
+    test.expect(
+        !controller.camera_frozen(),
+        "Reset Full Frame clears Freeze with priority");
+
+    state = step_frames_at(
+        controller, 180, ticks, 0.15f, 0.85f);
+
+    test.expect(
+        std::fabs(state.camera_zoom - 1.0f) < 0.02f &&
+        std::fabs(state.camera_center_x - 0.5f) < 0.03f &&
+        std::fabs(state.camera_center_y - 0.5f) < 0.03f,
+        "Reset after Freeze returns through the accepted camera to full frame");
+}
+
+
+void test_zoom_off_clears_freeze(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.zoom = 2.0f;
+
+    controller.reset();
+    controller.set_settings(settings);
+    controller.toggle_manual_zoom();
+
+    std::int64_t ticks = 0;
+    auto state = step_frames_at(
+        controller, 120, ticks, 0.72f, 0.40f);
+
+    controller.toggle_freeze_camera();
+    test.expect(
+        controller.camera_frozen(),
+        "Freeze can lock a stable zoomed shot");
+
+    controller.toggle_manual_zoom();
+    test.expect(
+        !controller.camera_frozen(),
+        "Toggle Zoom off wins and clears Freeze");
+
+    state = step_frames_at(
+        controller, 180, ticks, 0.72f, 0.40f);
+
+    test.expect(
+        std::fabs(state.camera_zoom - 1.0f) < 0.02f,
+        "Zoom off after Freeze still returns to full frame");
+}
+
+
 void test_spotlight_cinematic_choreography_and_resize(
     TestContext &test)
 {
@@ -937,6 +1090,9 @@ int main()
     test_spotlight_focus_modes_share_canonical_content_space(test);
     test_click_spotlight_owns_one_anchor_not_history(test);
     test_spotlight_reset_clears_transient_focus(test);
+    test_freeze_camera_exact_hold_and_resume(test);
+    test_freeze_mid_activation_and_reset_priority(test);
+    test_zoom_off_clears_freeze(test);
     test_spotlight_cinematic_choreography_and_resize(test);
     test_overview_peek_saved_shot(test);
     test_overview_cancel_when_zoom_intent_ends(test);
