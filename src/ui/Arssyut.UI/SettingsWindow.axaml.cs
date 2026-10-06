@@ -403,6 +403,102 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+
+    private void Spotlight_OnClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (!_uiReady ||
+            _syncingPreviewControls)
+            return;
+
+        _preview.SetSpotlightEnabled(
+            SpotlightToggle.IsChecked ==
+                true);
+
+        MarkPreviewChanged(
+            _preview.SpotlightEnabled
+                ? "Spotlight enabled"
+                : "Spotlight disabled");
+    }
+
+    private void SpotlightWithZoom_OnClick(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (!_uiReady ||
+            _syncingPreviewControls)
+            return;
+
+        _preview.SetSpotlightLinkToZoom(
+            SpotlightWithZoomToggle.IsChecked ==
+                true);
+
+        MarkPreviewChanged(
+            "Spotlight Zoom choreography updated");
+    }
+
+    private void SpotlightSize_OnSelectionChanged(
+        object? sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_uiReady ||
+            _syncingPreviewControls ||
+            sender is not ComboBox combo ||
+            combo.SelectedIndex is < 0 or > 2)
+            return;
+
+        if (_preview.TrySetSpotlightSize(
+                (NativeSpotlightSize)
+                    combo.SelectedIndex))
+        {
+            MarkPreviewChanged(
+                "Spotlight focus size updated");
+        }
+    }
+
+    private void SpotlightStrength_OnSelectionChanged(
+        object? sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_uiReady ||
+            _syncingPreviewControls ||
+            sender is not ComboBox combo ||
+            combo.SelectedIndex < 0 ||
+            combo.SelectedIndex >=
+                SettingsPreviewState.
+                    SpotlightStrengthPresets.Count)
+            return;
+
+        if (_preview.TrySetSpotlightDimStrength(
+                SettingsPreviewState.
+                    SpotlightStrengthPresets[
+                        combo.SelectedIndex]))
+        {
+            MarkPreviewChanged(
+                "Spotlight focus strength updated");
+        }
+    }
+
+    private void SpotlightMotion_OnSelectionChanged(
+        object? sender,
+        SelectionChangedEventArgs e)
+    {
+        if (!_uiReady ||
+            _syncingPreviewControls ||
+            sender is not ComboBox combo ||
+            combo.SelectedIndex is < 0 or > 2)
+            return;
+
+        if (_preview.TrySetSpotlightMotion(
+                (NativeSpotlightMotion)
+                    combo.SelectedIndex))
+        {
+            MarkPreviewChanged(
+                "Spotlight motion updated");
+        }
+    }
+
     private void SmartZoom_OnClick(
         object? sender,
         RoutedEventArgs e)
@@ -879,6 +975,18 @@ public sealed partial class SettingsWindow : Window
                 PresenterZoomPresetIndex(
                     _preview.PresenterZoom);
 
+            SpotlightToggle.IsChecked =
+                _preview.SpotlightEnabled;
+            SpotlightWithZoomToggle.IsChecked =
+                _preview.SpotlightLinkToZoom;
+            SpotlightSizeCombo.SelectedIndex =
+                (int)_preview.SpotlightSize;
+            SpotlightStrengthCombo.SelectedIndex =
+                SpotlightStrengthPresetIndex(
+                    _preview.SpotlightDimStrength);
+            SpotlightMotionCombo.SelectedIndex =
+                (int)_preview.SpotlightMotion;
+
             RefreshHotkeyLabels();
             UpdateCameraPlacementVisual();
         }
@@ -894,6 +1002,38 @@ public sealed partial class SettingsWindow : Window
     {
         PreviewStatusText.Text =
             message;
+    }
+
+    private static int SpotlightStrengthPresetIndex(
+        float strength)
+    {
+        var bestIndex = 0;
+        var bestDistance =
+            float.MaxValue;
+
+        for (var index = 0;
+             index <
+                 SettingsPreviewState.
+                     SpotlightStrengthPresets.Count;
+             ++index)
+        {
+            var distance =
+                Math.Abs(
+                    SettingsPreviewState.
+                        SpotlightStrengthPresets[index] -
+                    strength);
+
+            if (distance <
+                bestDistance)
+            {
+                bestDistance =
+                    distance;
+                bestIndex =
+                    index;
+            }
+        }
+
+        return bestIndex;
     }
 
     private static int PresenterZoomPresetIndex(
