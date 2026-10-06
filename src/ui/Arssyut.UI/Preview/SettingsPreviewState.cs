@@ -113,6 +113,10 @@ public sealed class SettingsPreviewState
         HotkeyText(
             HotkeyActionIds.OverviewPeek);
 
+    public string FreezeCameraHotkey =>
+        HotkeyText(
+            HotkeyActionIds.FreezeCamera);
+
     public CameraPlacement CameraPlacement { get; private set; } =
         CameraPlacement.BottomRight;
 
@@ -494,6 +498,8 @@ public sealed class SettingsPreviewState
                 [HotkeyActionIds.ResetZoom] =
                     HotkeyChord.Empty,
                 [HotkeyActionIds.OverviewPeek] =
+                    HotkeyChord.Empty,
+                [HotkeyActionIds.FreezeCamera] =
                     HotkeyChord.Empty
             };
 }
