@@ -487,8 +487,8 @@
                     <LucideIcon Kind="ScanLine" Size="14" StrokeWidth="1.8"
                                 Foreground="{DynamicResource ArBrush.Record}" />
                     <StackPanel Grid.Column="1" Spacing="1">
-                      <TextBlock Text="Presenter zoom" FontSize="11" FontWeight="SemiBold" />
-                      <TextBlock Text="ArZoom presenter intent; active only while recording." Classes="micro" />
+                      <TextBlock Text="Presenter" FontSize="11" FontWeight="SemiBold" />
+                      <TextBlock Text="Camera framing and focus controls for presentations." Classes="micro" />
                     </StackPanel>
                   </Grid>
 
@@ -503,6 +503,94 @@
                                 Classes="ar-select"
                                 SelectionChanged="PresenterZoom_OnSelectionChanged"
                                 AutomationProperties.Name="Presenter zoom amount" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Spotlight" FontWeight="Medium" />
+                        <TextBlock Text="Gently dim outside the focus area so attention stays on what you are showing." Classes="micro" />
+                      </StackPanel>
+                      <ToggleSwitch x:Name="SpotlightToggle"
+                                    Grid.Column="1"
+                                    Classes="ar-toggle"
+                                    IsChecked="False"
+                                    OnContent=""
+                                    OffContent=""
+                                    Click="Spotlight_OnClick"
+                                    AutomationProperties.Name="Spotlight" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Spotlight with Zoom" FontWeight="Medium" />
+                        <TextBlock Text="Frame the area first, then bring the Spotlight in smoothly." Classes="micro" />
+                      </StackPanel>
+                      <ToggleSwitch x:Name="SpotlightWithZoomToggle"
+                                    Grid.Column="1"
+                                    Classes="ar-toggle"
+                                    IsChecked="True"
+                                    OnContent=""
+                                    OffContent=""
+                                    Click="SpotlightWithZoom_OnClick"
+                                    AutomationProperties.Name="Spotlight with Zoom" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Focus size" FontWeight="Medium" />
+                        <TextBlock Text="Choose how tightly the Spotlight frames the focus area." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="SpotlightSizeCombo"
+                                Grid.Column="1"
+                                Classes="ar-select"
+                                SelectionChanged="SpotlightSize_OnSelectionChanged"
+                                AutomationProperties.Name="Spotlight focus size">
+                        <ComboBoxItem Content="Compact" />
+                        <ComboBoxItem Content="Balanced" />
+                        <ComboBoxItem Content="Wide" />
+                      </ComboBox>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Focus strength" FontWeight="Medium" />
+                        <TextBlock Text="Outside-area dimming only; the focus area remains at natural brightness." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="SpotlightStrengthCombo"
+                                Grid.Column="1"
+                                Classes="ar-select"
+                                SelectionChanged="SpotlightStrength_OnSelectionChanged"
+                                AutomationProperties.Name="Spotlight focus strength">
+                        <ComboBoxItem Content="Gentle · 30%" />
+                        <ComboBoxItem Content="Balanced · 38%" />
+                        <ComboBoxItem Content="Strong · 46%" />
+                      </ComboBox>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Motion" FontWeight="Medium" />
+                        <TextBlock Text="Choose how calmly the Spotlight opens and closes." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="SpotlightMotionCombo"
+                                Grid.Column="1"
+                                Classes="ar-select"
+                                SelectionChanged="SpotlightMotion_OnSelectionChanged"
+                                AutomationProperties.Name="Spotlight motion">
+                        <ComboBoxItem Content="Smooth" />
+                        <ComboBoxItem Content="Balanced" />
+                        <ComboBoxItem Content="Snappy" />
+                      </ComboBox>
                     </Grid>
                   </Border>
 

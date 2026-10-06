@@ -1231,6 +1231,13 @@ public sealed partial class MainWindow : Window
             flags |=
                 NativeStartFlags.PresenterControls;
 
+        if (_settings.SpotlightEnabled)
+            flags |=
+                NativeStartFlags.Spotlight;
+        if (_settings.SpotlightLinkToZoom)
+            flags |=
+                NativeStartFlags.SpotlightLinkToZoom;
+
         if (_systemAudioEnabled)
             flags |=
                 NativeStartFlags.SystemAudio;
@@ -1269,9 +1276,9 @@ public sealed partial class MainWindow : Window
                         MomentaryHotkey(
                             HotkeyActionIds.OverviewPeek),
                         _settings.PresenterZoom,
-                        NativeSpotlightSize.Balanced,
-                        NativeSpotlightMotion.Balanced,
-                        0.38f));
+                        _settings.SpotlightSize,
+                        _settings.SpotlightMotion,
+                        _settings.SpotlightDimStrength));
         }
         catch (Exception)
         {

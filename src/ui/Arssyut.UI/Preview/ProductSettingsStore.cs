@@ -10,13 +10,19 @@ public sealed record ProductSettingsSnapshot(
     IReadOnlyDictionary<
         string,
         HotkeyChord> Hotkeys,
-    float PresenterZoom);
+    float PresenterZoom,
+    bool SpotlightEnabled,
+    bool SpotlightLinkToZoom,
+    NativeSpotlightSize SpotlightSize,
+    NativeSpotlightMotion SpotlightMotion,
+    float SpotlightDimStrength);
 
 public sealed class ProductSettingsStore
 {
     private const int LegacyHotkeySchemaVersion = 1;
     private const int PresenterZoomSchemaVersion = 2;
-    private const int CurrentSchemaVersion = 3;
+    private const int FreezeHotkeySchemaVersion = 3;
+    private const int CurrentSchemaVersion = 4;
 
     private readonly string _path;
 
@@ -58,7 +64,13 @@ public sealed class ProductSettingsStore
                     string,
                     HotkeyChord>(),
                 SettingsPreviewState.
-                    DefaultPresenterZoom);
+                    DefaultPresenterZoom,
+                false,
+                true,
+                NativeSpotlightSize.Balanced,
+                NativeSpotlightMotion.Balanced,
+                SettingsPreviewState.
+                    DefaultSpotlightDimStrength);
         error = string.Empty;
 
         if (!File.Exists(_path))
@@ -86,6 +98,8 @@ public sealed class ProductSettingsStore
                  document.SchemaVersion !=
                      PresenterZoomSchemaVersion &&
                  document.SchemaVersion !=
+                     FreezeHotkeySchemaVersion &&
+                 document.SchemaVersion !=
                      CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
@@ -97,7 +111,7 @@ public sealed class ProductSettingsStore
                     document.Hotkeys,
                     allowMissingFreezeCamera:
                         document.SchemaVersion <
-                            CurrentSchemaVersion);
+                            FreezeHotkeySchemaVersion);
 
             EnsureNoDuplicateChords(
                 loaded);
@@ -118,10 +132,66 @@ public sealed class ProductSettingsStore
                     "Invalid presenter zoom.");
             }
 
+            var spotlightEnabled =
+                false;
+            var spotlightLinkToZoom =
+                true;
+            var spotlightSize =
+                NativeSpotlightSize.Balanced;
+            var spotlightMotion =
+                NativeSpotlightMotion.Balanced;
+            var spotlightDimStrength =
+                SettingsPreviewState.
+                    DefaultSpotlightDimStrength;
+
+            if (document.SchemaVersion ==
+                CurrentSchemaVersion)
+            {
+                if (document.SpotlightEnabled is null ||
+                    document.SpotlightLinkToZoom is null ||
+                    document.SpotlightSize is null ||
+                    document.SpotlightMotion is null ||
+                    document.SpotlightDimStrength is null)
+                {
+                    throw new InvalidDataException(
+                        "Incomplete Spotlight settings.");
+                }
+
+                spotlightEnabled =
+                    document.SpotlightEnabled.Value;
+                spotlightLinkToZoom =
+                    document.SpotlightLinkToZoom.Value;
+                spotlightSize =
+                    (NativeSpotlightSize)
+                        document.SpotlightSize.Value;
+                spotlightMotion =
+                    (NativeSpotlightMotion)
+                        document.SpotlightMotion.Value;
+                spotlightDimStrength =
+                    document.SpotlightDimStrength.Value;
+
+                if (!Enum.IsDefined(
+                        spotlightSize) ||
+                    !Enum.IsDefined(
+                        spotlightMotion) ||
+                    !SettingsPreviewState.
+                        IsSupportedSpotlightDimStrength(
+                            spotlightDimStrength))
+                {
+                    throw new InvalidDataException(
+                        "Invalid Spotlight settings.");
+                }
+            }
+
             settings =
                 new ProductSettingsSnapshot(
                     loaded,
-                    presenterZoom);
+                    presenterZoom,
+                    spotlightEnabled,
+                    spotlightLinkToZoom,
+                    spotlightSize,
+                    spotlightMotion,
+                    spotlightDimStrength);
             return true;
         }
         catch (Exception exception)
@@ -168,13 +238,36 @@ public sealed class ProductSettingsStore
                     "Cannot persist invalid presenter zoom.");
             }
 
+
+            if (!Enum.IsDefined(
+                    settings.SpotlightSize) ||
+                !Enum.IsDefined(
+                    settings.SpotlightMotion) ||
+                !SettingsPreviewState.
+                    IsSupportedSpotlightDimStrength(
+                        settings.SpotlightDimStrength))
+            {
+                throw new InvalidDataException(
+                    "Cannot persist invalid Spotlight settings.");
+            }
+
             var document =
                 new PersistedSettings
                 {
                     SchemaVersion =
                         CurrentSchemaVersion,
                     PresenterZoom =
-                        settings.PresenterZoom
+                        settings.PresenterZoom,
+                    SpotlightEnabled =
+                        settings.SpotlightEnabled,
+                    SpotlightLinkToZoom =
+                        settings.SpotlightLinkToZoom,
+                    SpotlightSize =
+                        (uint)settings.SpotlightSize,
+                    SpotlightMotion =
+                        (uint)settings.SpotlightMotion,
+                    SpotlightDimStrength =
+                        settings.SpotlightDimStrength
                 };
 
             foreach (var action in
@@ -374,6 +467,12 @@ public sealed class ProductSettingsStore
         public int SchemaVersion { get; set; }
 
         public float? PresenterZoom { get; set; }
+
+        public bool? SpotlightEnabled { get; set; }
+        public bool? SpotlightLinkToZoom { get; set; }
+        public uint? SpotlightSize { get; set; }
+        public uint? SpotlightMotion { get; set; }
+        public float? SpotlightDimStrength { get; set; }
 
         public Dictionary<
             string,
