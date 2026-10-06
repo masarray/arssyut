@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 8;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 9;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -96,6 +96,20 @@ enum ArssyutBridgeStartFlags : std::uint32_t {
     ARSSYUT_BRIDGE_START_CLICK_VISUAL = 1U << 4U,
     ARSSYUT_BRIDGE_START_SHORTCUT_KEYS = 1U << 5U,
     ARSSYUT_BRIDGE_START_PRESENTER_CONTROLS = 1U << 6U,
+    ARSSYUT_BRIDGE_START_SPOTLIGHT = 1U << 7U,
+    ARSSYUT_BRIDGE_START_SPOTLIGHT_LINK_TO_ZOOM = 1U << 8U,
+};
+
+enum ArssyutBridgeSpotlightSize : std::uint32_t {
+    ARSSYUT_BRIDGE_SPOTLIGHT_COMPACT = 0,
+    ARSSYUT_BRIDGE_SPOTLIGHT_BALANCED = 1,
+    ARSSYUT_BRIDGE_SPOTLIGHT_WIDE = 2,
+};
+
+enum ArssyutBridgeSpotlightMotion : std::uint32_t {
+    ARSSYUT_BRIDGE_SPOTLIGHT_SMOOTH = 0,
+    ARSSYUT_BRIDGE_SPOTLIGHT_MOTION_BALANCED = 1,
+    ARSSYUT_BRIDGE_SPOTLIGHT_SNAPPY = 2,
 };
 
 enum ArssyutBridgeRecorderState : std::uint32_t {
@@ -166,6 +180,10 @@ struct ArssyutBridgeStartRequestV1 {
     std::uint32_t overview_peek_virtual_key;
     float presenter_zoom;
     std::uint32_t reserved1;
+    std::uint32_t spotlight_size;
+    std::uint32_t spotlight_motion;
+    float spotlight_dim_strength;
+    std::uint32_t reserved2;
 };
 
 struct ArssyutBridgeRecorderResultV1 {
