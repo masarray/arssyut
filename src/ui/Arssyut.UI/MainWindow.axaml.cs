@@ -1008,6 +1008,10 @@ public sealed partial class MainWindow : Window
             desired,
             NativeHotkeyAction.ResetFullFrame,
             HotkeyActionIds.ResetZoom);
+        AddHotkeyIfAssigned(
+            desired,
+            NativeHotkeyAction.FreezeCamera,
+            HotkeyActionIds.FreezeCamera);
 
         if (SameHotkeyBindings(
                 desired,
@@ -1080,7 +1084,9 @@ public sealed partial class MainWindow : Window
         HasAssignedHotkey(
             HotkeyActionIds.ResetZoom) ||
         HasAssignedHotkey(
-            HotkeyActionIds.OverviewPeek);
+            HotkeyActionIds.OverviewPeek) ||
+        HasAssignedHotkey(
+            HotkeyActionIds.FreezeCamera);
 
     private bool HasAssignedHotkey(
         string action) =>
