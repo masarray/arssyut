@@ -17,6 +17,7 @@ public static class HotkeyActionIds
     public const string ZoomOut = "ZoomOut";
     public const string ResetZoom = "ResetZoom";
     public const string OverviewPeek = "OverviewPeek";
+    public const string FreezeCamera = "FreezeCamera";
 
     public static readonly string[] All =
     [
@@ -29,7 +30,8 @@ public static class HotkeyActionIds
         ZoomIn,
         ZoomOut,
         ResetZoom,
-        OverviewPeek
+        OverviewPeek,
+        FreezeCamera
     ];
 
     public static bool IsKnown(string action) =>
