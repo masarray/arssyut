@@ -448,6 +448,13 @@ int main()
             ARSSYUT_BRIDGE_INVALID_STATE,
         "presenter command must reject idle recorder state");
 
+    require(
+        arssyut_bridge_recorder_presenter_command(
+            bridge,
+            ARSSYUT_BRIDGE_PRESENTER_TOGGLE_FREEZE_CAMERA) ==
+            ARSSYUT_BRIDGE_INVALID_STATE,
+        "Freeze Camera command must use the same recorder-state gate");
+
     constexpr std::uint32_t hotkey_modifiers =
         ARSSYUT_BRIDGE_HOTKEY_CTRL |
         ARSSYUT_BRIDGE_HOTKEY_SHIFT;
@@ -493,6 +500,21 @@ int main()
             bridge,
             ARSSYUT_BRIDGE_HOTKEY_TOGGLE_ZOOM) == ARSSYUT_BRIDGE_OK,
         "global Toggle Zoom hotkey unregister failed");
+
+    require(
+        arssyut_bridge_hotkey_register(
+            bridge,
+            ARSSYUT_BRIDGE_HOTKEY_FREEZE_CAMERA,
+            ARSSYUT_BRIDGE_HOTKEY_CTRL |
+                ARSSYUT_BRIDGE_HOTKEY_SHIFT,
+            VK_F22) == ARSSYUT_BRIDGE_OK,
+        "Freeze Camera must register through the canonical global hotkey bridge");
+
+    require(
+        arssyut_bridge_hotkey_unregister(
+            bridge,
+            ARSSYUT_BRIDGE_HOTKEY_FREEZE_CAMERA) == ARSSYUT_BRIDGE_OK,
+        "Freeze Camera hotkey unregister failed");
 
     require(
         arssyut_bridge_hotkey_unregister(
