@@ -540,8 +540,19 @@ Expect(
         RecordingVisualStyle.PixelAccurate &&
     settings.SmartZoom &&
     settings.ClickHighlight &&
-    settings.ShortcutKeys,
-    "Settings preview starts with canonical recorder presentation defaults");
+    settings.ShortcutKeys &&
+    !settings.SpotlightEnabled &&
+    settings.SpotlightLinkToZoom &&
+    settings.SpotlightSize ==
+        NativeSpotlightSize.Balanced &&
+    settings.SpotlightMotion ==
+        NativeSpotlightMotion.Balanced &&
+    Math.Abs(
+        settings.SpotlightDimStrength -
+        SettingsPreviewState.
+            DefaultSpotlightDimStrength) <
+        0.0005f,
+    "Settings preview starts with canonical recorder and inert Spotlight defaults");
 
 settings.SetFrameRate(30);
 settings.SetVisualStyle(
@@ -558,6 +569,27 @@ Expect(
     !settings.ClickHighlight &&
     !settings.ShortcutKeys,
     "Settings preview retains recorder presentation choices");
+
+settings.SetSpotlightEnabled(
+    true);
+settings.SetSpotlightLinkToZoom(
+    false);
+
+Expect(
+    settings.TrySetSpotlightSize(
+        NativeSpotlightSize.Compact) &&
+    settings.TrySetSpotlightMotion(
+        NativeSpotlightMotion.Snappy) &&
+    settings.TrySetSpotlightDimStrength(
+        0.30f) &&
+    settings.SpotlightEnabled &&
+    !settings.SpotlightLinkToZoom,
+    "Settings preview retains real Spotlight product choices");
+
+Expect(
+    !settings.TrySetSpotlightDimStrength(
+        0.37f),
+    "Spotlight strength rejects unsupported engineering values outside product presets");
 
 
 Expect(
@@ -683,8 +715,19 @@ Expect(
     settings.ClickHighlight &&
     settings.ShortcutKeys &&
     settings.PresenterZoom ==
-        SettingsPreviewState.DefaultPresenterZoom,
-    "Settings preview Reset restores deterministic defaults including presenter zoom");
+        SettingsPreviewState.DefaultPresenterZoom &&
+    !settings.SpotlightEnabled &&
+    settings.SpotlightLinkToZoom &&
+    settings.SpotlightSize ==
+        NativeSpotlightSize.Balanced &&
+    settings.SpotlightMotion ==
+        NativeSpotlightMotion.Balanced &&
+    Math.Abs(
+        settings.SpotlightDimStrength -
+        SettingsPreviewState.
+            DefaultSpotlightDimStrength) <
+        0.0005f,
+    "Settings preview Reset restores deterministic presenter and Spotlight defaults");
 
 Console.WriteLine(
     "P6UI interaction-state checks passed.");
