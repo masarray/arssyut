@@ -3,7 +3,7 @@
 **Updated:** 2026-10-07  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6D Spotlight + Freeze implementation complete; Region/performance deterministic gate and real-video acceptance lock in progress**  
+**Current engineering milestone:** **P6UI.6D deterministic implementation gates green through CI #322; real-video acceptance still pending**  
 **Current implementation head entering acceptance:**  
 `9bb8342bcd8ef631d4a1bbeb5e43d28878eb9642` (P6UI.6D-I Region + Spotlight performance regression gates)
 
@@ -29,7 +29,9 @@ branch:
 - P6UI.6D-H2 beginner-facing Spotlight Settings + schema-v4 migration:
   CI #321 green;
 - P6UI.6D-I Region + 1080p/4K structural performance regression:
-  canonical CI #322 is the current deterministic gate.
+  canonical CI #322 green (13/13 native tests, Avalonia build and smoke tests);
+- P6UI.6D-J real-video acceptance documentation is the next lock;
+  real Windows video/GPU evidence remains pending.
 
 Do **not** switch the recorder to SceneViewportPlanner / SceneKinematicMotion.
 The accepted recorder path is still PresenterAwareSmartCamera with
