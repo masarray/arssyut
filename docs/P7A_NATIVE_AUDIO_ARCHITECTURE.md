@@ -153,23 +153,21 @@ One `AudioProfile` is resolved before the realtime path starts.
 
 ### Output rate
 
-Preferred output is 48 kHz because it is standard for video-oriented workflows
-and supported by the Microsoft AAC encoder.
+P7A uses one fixed **48 kHz stereo float32 program bus**.
 
-44.1 kHz is also valid when all enabled sources can use it without unnecessary
-conversion.
+This is a deliberate refinement after benchmarking OBS/libobs and the Windows
+AAC stack. A fixed 48 kHz bus reduces format-state combinations and makes the
+canonical 1024-frame block exactly 21.333 ms for every recording.
 
-Policy:
+Source policy:
 
-1. if all enabled sources are 48 kHz -> 48 kHz, no SRC;
-2. if all enabled sources are 44.1 kHz -> 44.1 kHz, no SRC;
-3. if sources disagree -> 48 kHz canonical bus;
-4. if an endpoint exposes another shared-engine rate -> convert explicitly to
-   the resolved 44.1/48 kHz AAC-compatible bus.
+1. endpoint already 48 kHz -> no sample-rate conversion;
+2. 44.1 kHz endpoint -> high-quality conversion to 48 kHz;
+3. 96/192/other endpoint -> explicit conversion to 48 kHz because the current
+   Microsoft AAC product path cannot encode those rates directly;
+4. source negotiated format/rate remains visible in diagnostics.
 
-This is **no avoidable resampling**, not a false promise that every arbitrary
-96/192 kHz device format can be placed unchanged into the current AAC product
-profile.
+There is no metadata-only “conversion”. Samples are actually converted.
 
 ### AAC boundary
 
@@ -233,6 +231,15 @@ Forbidden in source workers:
 - dynamic allocation per packet;
 - sample-rate guessing.
 
+Scheduling policy:
+
+- shared-mode event-driven WASAPI;
+- one joinable worker per active endpoint;
+- MMCSS `Audio` while servicing endpoint buffers;
+- drain all available packets per wake, then return to wait;
+- do not request minimum device periods or `Pro Audio` priority unless real
+  stress telemetry proves the normal policy misses deadlines.
+
 ---
 
 ## 7. Buffering and backpressure
@@ -243,15 +250,20 @@ Each source:
 
 - one fixed-capacity packet pool;
 - one fixed-capacity SPSC ring;
-- capacity derived from measured endpoint period + maximum accepted scheduling
-  stall, not an arbitrary “large enough” number;
+- capacity derived at preflight from endpoint buffer/period, maximum packet
+  frames, an accepted scheduler-stall budget and a fixed safety margin;
+- compile-time/product min/max clamps;
+- no dynamic capacity growth after Armed;
 - queue depth and pool high-water exposed in diagnostics.
 
 Mixer output:
 
-- fixed-size retained blocks;
-- preferred block size aligned to AAC's 1024-sample frame contract;
+- fixed-size retained **1024-frame** blocks;
+- one canonical 48 kHz stereo float32 program format;
 - one bounded SPSC handoff to the sole writer caller.
+
+The mixer is notification/deadline driven; it does not wake on a blind 1 ms
+poll.
 
 Overflow contract:
 
@@ -351,6 +363,16 @@ Synthetic tests must inject known positive/negative ppm drift and prove:
 
 Exact ppm clamp/window constants are chosen only after tests.
 
+Timestamp-quality guard:
+
+- trusted device QPC requires no WASAPI timestamp-error flag, monotonic QPC,
+  monotonic device-frame position and plausible deltas;
+- one bad packet is reconstructed from the last trusted anchor + exact frame
+  count when possible;
+- repeated bad timing enters host-QPC fallback;
+- invalid timing never enters the drift estimator;
+- re-lock to device timing is explicit and bounded.
+
 ---
 
 ## 10. Mixing contract
@@ -381,16 +403,19 @@ Microphone mute is gain=0 on the mix timeline. It does not stop/restart WASAPI.
 
 ## 11. Device-loss and endpoint-change policy
 
-Initial P7A is deterministic rather than “clever”:
+Initial P7A is deterministic rather than silently switching sources:
 
-- selected endpoint identity is frozen for the recording;
-- default-device changes affect the next recording, not the active session;
+- “Default” is resolved to a concrete endpoint ID at recording preparation and
+  pinned for the session;
+- a different new default device affects the next recording, not the current
+  session;
 - device invalidation becomes an explicit source state;
-- the unavailable source contributes timeline-aligned silence;
-- diagnostics/status expose the loss;
-- no silent automatic switch to a different microphone/speaker mid-record.
+- bounded, stop-aware recovery may reopen only the same pinned endpoint ID;
+- the unavailable interval contributes timeline-aligned silence;
+- successful same-endpoint recovery explicitly re-anchors source timing;
+- diagnostics/status expose invalidation, recovery attempts and outcome.
 
-Future hot-rebind can be a separate milestone after evidence.
+Following a different default endpoint mid-record is future opt-in behavior.
 
 ---
 
@@ -438,6 +463,7 @@ P7A diagnostics must make audio failures measurable.
 Per source:
 
 - negotiated sample rate / sample type / channels / channel mask;
+- timestamp-quality state and timing fallback transitions;
 - packet count;
 - frame count;
 - silent frame count;
