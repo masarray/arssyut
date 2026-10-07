@@ -3,9 +3,9 @@
 **Updated:** 2026-10-07  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6F truthful ACTION reveal + cartoon keycap bounce; canonical CI pending**  
+**Current engineering milestone:** **P6UI.6F truthful ACTION reveal + cartoon keycap bounce canonical-green; real Windows acceptance pending**  
 **Current implementation candidate:**  
-`feat/p6ui6f-keycap-cartoon-bounce`
+`cc9717f3a72a4cb3d416df6f3c80524aa4ed56cf` / CI #335 / Avalonia artifact #11469838435
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -108,9 +108,7 @@ P6UI.6F corrects both without adding a new rendering/input authority:
 - D3D11 regression locks steady-state compositor resource generation while the
   bounce transform changes.
 
-A new diagnostics file from the real P6UI.6F candidate remains required to
-measure `commit_to_first_frame_us`; subjective timing alone is not evidence of
-a native one-second delay.
+Canonical CI #335 is green for P6UI.6F at `cc9717f3...`; exact Avalonia artifact is #11469838435. A new diagnostics file from this exact candidate remains required to measure `commit_to_first_frame_us`; subjective timing alone is not evidence of a native one-second delay.
 
 ---
 
