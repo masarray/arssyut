@@ -1,7 +1,9 @@
 # P6UI.6E — Deterministic Armed Start Acceptance Lock
 
-**Baseline before E:** `c428b525fb549866483b8b189e62cc1ba9435a76` / CI #330  
-**P6UI.6E-E objective:** overlap native preparation with the visible three-second countdown without weakening the Armed barrier.
+**Canonical E candidate:** `1e17a26d679a3064d2cc29da78720a4e3c43415b`  
+**Canonical CI:** #332 / run `37585130506` — Native + Avalonia green  
+**Product artifact:** `arssyut-p6ui-avalonia-windows-x64` / artifact `11465933250`  
+**SHA-256:** `616c0cc0ee4a065098c17ab113246696c551bbe2d6e771551c318e02667a2df4`
 
 ## Product contract
 
