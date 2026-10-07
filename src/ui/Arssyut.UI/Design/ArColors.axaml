@@ -30,6 +30,20 @@
   <Color x:Key="ArColor.SuccessSoft">#2049D49D</Color>
   <Color x:Key="ArColor.Warning">#F1B85B</Color>
 
+  <!-- Semantic translucent/chrome roles. Keep alpha decisions centralized so
+       individual windows never own palette math or local hex variants. -->
+  <Color x:Key="ArColor.WindowChromeMain">#F20B0E12</Color>
+  <Color x:Key="ArColor.WindowChromeSettings">#F00B0E12</Color>
+  <Color x:Key="ArColor.Surface1Overlay">#7810141A</Color>
+  <Color x:Key="ArColor.Surface1Subtle">#5C10141A</Color>
+  <Color x:Key="ArColor.Surface2Overlay">#76161B23</Color>
+  <Color x:Key="ArColor.FloatingSurface">#E8161B23</Color>
+  <Color x:Key="ArColor.RecordStroke">#78FF5864</Color>
+  <Color x:Key="ArColor.RecordTextBright">#FF7A84</Color>
+  <Color x:Key="ArColor.CountdownScrim">#A6000000</Color>
+  <Color x:Key="ArColor.CountdownLeader">#A8FFFFFF</Color>
+  <Color x:Key="ArColor.CountdownGuide">#42FFFFFF</Color>
+
   <SolidColorBrush x:Key="ArBrush.Canvas" Color="{StaticResource ArColor.Canvas}" />
   <SolidColorBrush x:Key="ArBrush.Surface1" Color="{StaticResource ArColor.Surface1}" />
   <SolidColorBrush x:Key="ArBrush.Surface2" Color="{StaticResource ArColor.Surface2}" />
@@ -55,4 +69,16 @@
   <SolidColorBrush x:Key="ArBrush.Success" Color="{StaticResource ArColor.Success}" />
   <SolidColorBrush x:Key="ArBrush.SuccessSoft" Color="{StaticResource ArColor.SuccessSoft}" />
   <SolidColorBrush x:Key="ArBrush.Warning" Color="{StaticResource ArColor.Warning}" />
+
+  <SolidColorBrush x:Key="ArBrush.WindowChromeMain" Color="{StaticResource ArColor.WindowChromeMain}" />
+  <SolidColorBrush x:Key="ArBrush.WindowChromeSettings" Color="{StaticResource ArColor.WindowChromeSettings}" />
+  <SolidColorBrush x:Key="ArBrush.Surface1Overlay" Color="{StaticResource ArColor.Surface1Overlay}" />
+  <SolidColorBrush x:Key="ArBrush.Surface1Subtle" Color="{StaticResource ArColor.Surface1Subtle}" />
+  <SolidColorBrush x:Key="ArBrush.Surface2Overlay" Color="{StaticResource ArColor.Surface2Overlay}" />
+  <SolidColorBrush x:Key="ArBrush.FloatingSurface" Color="{StaticResource ArColor.FloatingSurface}" />
+  <SolidColorBrush x:Key="ArBrush.RecordStroke" Color="{StaticResource ArColor.RecordStroke}" />
+  <SolidColorBrush x:Key="ArBrush.RecordTextBright" Color="{StaticResource ArColor.RecordTextBright}" />
+  <SolidColorBrush x:Key="ArBrush.CountdownScrim" Color="{StaticResource ArColor.CountdownScrim}" />
+  <SolidColorBrush x:Key="ArBrush.CountdownLeader" Color="{StaticResource ArColor.CountdownLeader}" />
+  <SolidColorBrush x:Key="ArBrush.CountdownGuide" Color="{StaticResource ArColor.CountdownGuide}" />
 </ResourceDictionary>
