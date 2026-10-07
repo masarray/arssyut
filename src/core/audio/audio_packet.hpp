@@ -54,7 +54,6 @@ struct AudioTimestampEvidence {
     std::int64_t packet_start_qpc_100ns = 0;
     std::int64_t host_observed_qpc_100ns = 0;
     std::uint64_t device_frame_position = 0;
-    bool eligible_for_drift = false;
 };
 
 struct AudioTimingState {
@@ -79,18 +78,33 @@ struct AudioSourcePacket {
     std::uint32_t pool_slot = kInvalidAudioPoolSlot;
     std::uint32_t payload_bytes = 0;
 
+    [[nodiscard]] bool eligible_for_drift() const noexcept
+    {
+        return timing.quality == AudioTimestampQuality::DeviceQpcTrusted &&
+               !has_flag(flags, AudioPacketFlag::TimestampError) &&
+               !has_flag(flags, AudioPacketFlag::Discontinuity);
+    }
+
     [[nodiscard]] bool metadata_valid() const noexcept
     {
         if (!native_format.valid() || frame_count == 0)
             return false;
 
-        if (has_flag(flags, AudioPacketFlag::Silent))
-            return payload_bytes == 0 ||
-                   pool_slot != kInvalidAudioPoolSlot;
+        const auto expected_bytes =
+            native_format.bytes_for_frames(frame_count);
+
+        if (has_flag(flags, AudioPacketFlag::Silent)) {
+            const bool allocation_free =
+                pool_slot == kInvalidAudioPoolSlot &&
+                payload_bytes == 0;
+            const bool retained_zero_fill =
+                pool_slot != kInvalidAudioPoolSlot &&
+                payload_bytes == expected_bytes;
+            return allocation_free || retained_zero_fill;
+        }
 
         return pool_slot != kInvalidAudioPoolSlot &&
-               payload_bytes ==
-                   native_format.bytes_for_frames(frame_count);
+               payload_bytes == expected_bytes;
     }
 };
 

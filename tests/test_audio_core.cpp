@@ -328,18 +328,23 @@ void test_packet_contract(TestContext &test)
             .packet_start_qpc_100ns = 100'000,
             .host_observed_qpc_100ns = 100'100,
             .device_frame_position = 1'024,
-            .eligible_for_drift = true,
         },
         .flags = AudioPacketFlag::None,
         .pool_slot = 2,
         .payload_bytes = 1'024,
     };
     test.expect(packet.metadata_valid(), "Audio packet metadata is self-describing");
+    test.expect(
+        packet.eligible_for_drift(),
+        "Trusted device-QPC packet is canonically eligible for drift evidence");
 
     packet.flags |= AudioPacketFlag::TimestampError;
     test.expect(
         has_flag(packet.flags, AudioPacketFlag::TimestampError),
         "Timestamp error flag survives packet contract");
+    test.expect(
+        !packet.eligible_for_drift(),
+        "Timestamp-error packet cannot enter drift estimation");
 
     AudioSourcePacket silence = packet;
     silence.flags = AudioPacketFlag::Silent;
@@ -348,6 +353,28 @@ void test_packet_contract(TestContext &test)
     test.expect(
         silence.metadata_valid(),
         "Silent packet may preserve timeline without payload allocation");
+
+    AudioSourcePacket retained_silence = packet;
+    retained_silence.flags = AudioPacketFlag::Silent;
+    retained_silence.payload_bytes =
+        retained_silence.native_format.bytes_for_frames(
+            retained_silence.frame_count);
+    test.expect(
+        retained_silence.metadata_valid(),
+        "Retained silent payload requires exact frame byte count");
+
+    retained_silence.payload_bytes = 1;
+    test.expect(
+        !retained_silence.metadata_valid(),
+        "Silent retained payload rejects short or contradictory byte count");
+
+    AudioSourcePacket reconstructed = packet;
+    reconstructed.flags = AudioPacketFlag::None;
+    reconstructed.timing.quality =
+        AudioTimestampQuality::ContinuityReconstructed;
+    test.expect(
+        !reconstructed.eligible_for_drift(),
+        "Continuity-reconstructed timing cannot become trusted drift evidence");
 
     CanonicalAudioBlock block;
     block.clear(1'024);
