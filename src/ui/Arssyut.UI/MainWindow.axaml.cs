@@ -1473,8 +1473,9 @@ public sealed partial class MainWindow : Window
             _lastNativeSnapshot =
                 recording;
 
-            if (recording.State ==
-                NativeRecorderState.Recording)
+            if (RecordingStartCountdownPolicy.
+                    CanRevealAction(
+                        recording.State))
                 break;
 
             if (recording.State ==
