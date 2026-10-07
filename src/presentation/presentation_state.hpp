@@ -83,6 +83,14 @@ struct KeyboardOverlayFrame {
     std::array<KeycapFrame, kMaxShortcutKeycaps> keycaps{};
     std::size_t keycap_count = 0;
     float opacity = 0.0f;
+
+    // Presentation-only transform for the existing single keyboard texture.
+    // This keeps cartoon emphasis O(1): no per-frame texture rebuild, no extra
+    // GPU pass, and no second shortcut renderer.
+    float scale_x = 1.0f;
+    float scale_y = 1.0f;
+    float lift_output_fraction = 0.0f;
+
     std::uint32_t generation = 0;
 };
 
