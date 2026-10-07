@@ -3,9 +3,9 @@
 **Updated:** 2026-10-07  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6D first real-video corrections green through CI #326; re-test visual acceptance on the new candidate**  
+**Current engineering milestone:** **P6UI.6E deterministic Armed Start + cardless movie countdown green through CI #330; real-video timing acceptance pending**  
 **Current implementation head entering acceptance:**  
-`8543be821883678362eb33128116cfd4f70e6d8f` (P6UI.6D-M Cursor-follow + larger Spotlight candidate)
+`c428b525fb549866483b8b189e62cc1ba9435a76` (P6UI.6E-C Armed pre-roll + movie-leader countdown visual)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -51,6 +51,40 @@ Product Spotlight defaults remain backward-compatible at master Off / linked-to-
 
 Real-video closure procedure:
 `docs/P6UI6D_REAL_VIDEO_ACCEPTANCE_LOCK.md`.
+
+---
+
+## P6UI.6E current lock — deterministic Armed Start
+
+The user's real recording exposed an ambiguous Start/F9 experience: native
+pipeline preparation happened after the command, so the user could not know the
+actual frame-zero moment.
+
+P6UI.6E corrects this without moving media-clock authority into Avalonia:
+
+- RecorderSession now has an explicit `Armed` pre-roll state;
+- product start requests use `ArmedStart`, while native still owns capture,
+  encoder and CFR setup;
+- native waits for a real WGC source frame before publishing Armed;
+- the UI countdown starts only after Armed is observed;
+- visual direction is full-target dim + large cardless movie-leader
+  `3 -> 2 -> 1 -> ACTION!`;
+- countdown HWND is capture-excluded;
+- ACTION clears dimming first, then bridge `recorder_commit_start` releases the
+  native media-clock gate;
+- pre-roll presentation events/command mailboxes are discarded at commit;
+- Stop/F9 in Preparing/Armed cancels before frame zero;
+- elapsed duration stops before MP4 finalization;
+- diagnostics now expose `prepare_latency_ms`, `armed_wait_ms`,
+  `commit_to_first_frame_us` and `capture_preroll_received`;
+- CI #330 is green for commit `c428b525...`; exact Avalonia artifact is
+  #11463199673.
+
+Do not replace this with a UI-only countdown followed by `StartRecording()`.
+That would reintroduce the original nondeterministic delay after ACTION.
+
+Real-video acceptance procedure:
+`docs/P6UI6E_ARMED_START_ACCEPTANCE_LOCK.md`.
 
 ---
 
