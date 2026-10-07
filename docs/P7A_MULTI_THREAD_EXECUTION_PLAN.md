@@ -229,6 +229,10 @@ Must not implement WASAPI or drift correction.
 
 Responsibilities:
 
+- own the fixed 48 kHz / 1024-frame `AudioProgramClock` derived from
+  RecorderSession media zero;
+- render source timelines into exact program intervals rather than following
+  packet arrival cadence;
 - align source packets to RecorderSession-compatible media time;
 - high-quality required SRC;
 - bounded clock-drift estimation/correction using trusted timing evidence;
@@ -238,6 +242,8 @@ Responsibilities:
 - source gain/mute;
 - headroom/clipping policy;
 - fixed AAC-size output blocks;
+- per-source peak/RMS/clip latest-wins meter snapshots;
+- program-deadline miss diagnostics;
 - start trim/silence and stop cut semantics.
 
 Must not enumerate devices, call WASAPI directly, mutate UI or call MF writer
@@ -255,7 +261,8 @@ Owns:
 - managed bridge projection;
 - UI capability/mute/device state required to expose accepted native audio;
 - integration diagnostics plumbing;
-- AV writer orchestration.
+- AV writer orchestration;
+- latest-wins Mic/System meter projection only (no audio media copy into UI).
 
 Responsibilities:
 
@@ -265,6 +272,8 @@ Responsibilities:
 - use existing media-zero commit;
 - sole caller/owner path into AV writer;
 - Stop/Finalize ordering;
+- bounded/fair service of ready audio blocks around due video writes;
+- writer backlog/high-water diagnostics;
 - explicit source failure/status projection;
 - remove `UNSUPPORTED` only for actually implemented streams.
 

@@ -422,7 +422,188 @@ Add real/synthetic cases:
 
 ---
 
-## 12. Research-driven implementation rule
+## 12. Fixed program cadence — adopt the useful OBS idea, not its whole graph
+
+OBS/libobs runs one dedicated audio processing cadence at `AUDIO_OUTPUT_FRAMES
+= 1024`. At 48 kHz that is 21.333 ms per program block. Sources do not define
+the final output cadence; they feed timestamped media into the central audio
+timeline.
+
+Arssyut decision:
+
+- P7A program cadence is exactly 1024 frames at the canonical 48 kHz bus;
+- one `AudioProgramClock` derives block N from
+  `media_zero + N * 1024 / 48000` using exact rational/remainder math;
+- microphone/loopback packet arrival never advances the program clock;
+- the mixer renders the exact program interval from each source timeline;
+- no-packet loopback silence therefore needs no artificial render stream;
+- a late packet whose interval is already closed is stale media, counted and
+  discarded rather than shifted forward.
+
+This cadence also matches AAC-LC's 1024-sample frame granularity, minimizing
+reblocking and timestamp ambiguity at the encoder boundary.
+
+The mixer worker should be deadline/event driven against this program clock.
+Do not implement a 1 ms busy/poll loop merely because the video worker already
+has one. The concrete Windows wait primitive (high-resolution deadline wait,
+condition/event combination, or equivalent) is selected by measurement.
+
+### MMCSS policy
+
+Capture workers use MMCSS `Audio` because endpoint servicing is deadline
+sensitive.
+
+The program mixer may also use MMCSS `Audio` **only if timing stress tests
+show normal scheduling misses the 1024-frame deadline**. Do not cargo-cult
+`Pro Audio` or RTWQ merely because OBS uses sophisticated broadcast-oriented
+scheduling machinery.
+
+---
+
+## 13. Bounded fixed latency — deliberately simpler than OBS
+
+OBS supports configurable/fixed/dynamically increasing audio buffering because
+its source graph must tolerate plugins, media files, network sources and scene
+hierarchies.
+
+Arssyut P7A has only two local WASAPI sources.
+
+Decision:
+
+- derive each source alignment capacity at Prepare from endpoint period,
+  maximum observed packet size and a measured scheduler-stall allowance;
+- clamp to product min/max;
+- allocate all packet/pool capacity before Armed;
+- capacity never grows after Armed;
+- never increase latency mid-session to hide a bad source;
+- high-water is diagnostic evidence used to retune the next build/profile, not
+  a trigger for runtime heap growth.
+
+Healthy real recordings must operate well below capacity. If they do not, fix
+the scheduling/budget rather than silently accumulate latency.
+
+---
+
+## 14. Writer service and A/V ordering
+
+OBS explicitly interleaves encoded audio/video packets by timestamp before
+output. Arssyut uses Media Foundation rather than OBS's output graph, but the
+caller still needs a deterministic two-stream service policy.
+
+Decision:
+
+- the AV writer remains one authority and one caller;
+- audio source/mixer threads never call the sink writer;
+- video and audio samples each remain monotonic within their own stream;
+- RecorderSession drains ready 1024-frame audio blocks without allowing an
+  accumulated audio backlog to monopolize the video loop;
+- writer-service high-water / oldest-ready age are observable;
+- no unbounded interleave queue is introduced;
+- if measurement proves one-caller service cannot meet video + AAC deadlines,
+  architecture is revisited with evidence rather than protected by a giant
+  mutex or queue.
+
+The Microsoft MP4 sink supports a maximum of one video stream and one audio
+stream. That validates P7A's single mixed AAC program track. Independent
+mic/system tracks are not merely a missing UI checkbox; they require a
+different container/mux strategy and belong to a later milestone.
+
+---
+
+## 15. Metering is replaceable state, not media
+
+OBS exposes per-source meters because they are valuable operational feedback.
+Arssyut should adopt that product benefit without duplicating audio media.
+
+Decision:
+
+- mixer computes low-cost per-source peak and RMS from samples it is already
+  touching;
+- optional clip/over-range latch is derived from the same block;
+- UI receives one latest-wins atomic/snapshot state per source;
+- meters may be throttled to a visual cadence independent of the 1024-frame
+  media cadence;
+- no waveform history or audio-copy queue is created for UI;
+- meter lag/drop can never backpressure capture/mix/encode.
+
+P7A6 may expose Mic/System meter + mute/status. Live monitoring remains out of
+scope because it introduces feedback/double-capture/routing complexity.
+
+---
+
+## 16. Sample-rate policy after OBS + Windows comparison
+
+OBS supports 44.1/48 kHz globally and current practice defaults toward 48 kHz
+for video workflows. Microsoft's native AAC encoder supports 44.1 or 48 kHz
+PCM input and requires matching output rate.
+
+Arssyut P7A therefore keeps the already refined fixed **48 kHz program bus**.
+
+Reasons:
+
+- video-oriented standard;
+- one block duration for all sessions;
+- one AAC configuration;
+- simpler drift mathematics and diagnostics;
+- common Windows render/microphone engine rate;
+- avoids session behavior changing because one endpoint happens to enumerate
+  first.
+
+This does **not** mean lying about source format. 44.1/96/etc. remain explicit
+native source formats and are converted by the selected high-quality SRC.
+Any 96/192 -> 48 reduction is a deliberate codec/product boundary and must be
+reported in diagnostics, never hidden as metadata manipulation.
+
+---
+
+## 17. Resampler backend — no temporary DSP
+
+OBS's FFmpeg wrapper demonstrates two useful properties:
+
+- explicit resampler delay/timestamp offset;
+- mature rate conversion.
+
+FFmpeg libswresample additionally exposes soft compensation for gradual drift.
+
+Microsoft's Audio Resampler DSP supports PCM/float rate/channel conversion and
+configurable quality, with no extra redistribution dependency.
+
+Arssyut conclusion remains #72:
+
+- benchmark Windows Resampler DSP against libswresample/SoXR-equivalent;
+- include soft ppm compensation, group delay, CPU, allocation, package size and
+  maintenance cost;
+- do not write a temporary linear-interpolation/custom SRC to “unblock” Mic;
+- do not add FFmpeg solely because OBS uses it if Windows-native quality +
+  compensation architecture can meet the gates;
+- conversely, do not choose the zero-dependency Windows path if it forces a
+  second low-quality drift-correction stage.
+
+---
+
+## 18. Timestamp fallback should be automatic, not a user knob
+
+OBS exposes/uses different timestamp strategies because generic sources and old
+devices can behave differently.
+
+Arssyut has a narrower product and can make this context-aware.
+
+Per source:
+
+1. valid monotonic device QPC + device position -> `TrustedDeviceQpc`;
+2. timestamp-error packet but contiguous source frame position from a trusted
+   anchor -> `FrameCountExtrapolated`;
+3. no trustworthy anchor -> estimate packet start as host monotonic capture
+   time minus exact packet duration -> `ArrivalEstimated`;
+4. continuity broken -> `Discontinuous`.
+
+Only tier 1 directly updates clock-rate/drift estimation. Recovery to trusted
+timing is explicit and hysteretic. Users should not need an “Use Device
+Timestamps” checkbox.
+
+---
+
+## 19. Research-driven implementation rule
 
 OBS demonstrates that mature audio is not just “call WASAPI and write PCM”.
 The hard problems live in:
