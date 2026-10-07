@@ -3,9 +3,9 @@
 **Updated:** 2026-10-07  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6D deterministic implementation gates green through CI #322; real-video acceptance still pending**  
+**Current engineering milestone:** **P6UI.6D first real-video corrections green through CI #326; re-test visual acceptance on the new candidate**  
 **Current implementation head entering acceptance:**  
-`9bb8342bcd8ef631d4a1bbeb5e43d28878eb9642` (P6UI.6D-I Region + Spotlight performance regression gates)
+`8543be821883678362eb33128116cfd4f70e6d8f` (P6UI.6D-M Cursor-follow + larger Spotlight candidate)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -30,8 +30,12 @@ branch:
   CI #321 green;
 - P6UI.6D-I Region + 1080p/4K structural performance regression:
   canonical CI #322 green (13/13 native tests, Avalonia build and smoke tests);
-- P6UI.6D-J real-video acceptance documentation is the next lock;
-  real Windows video/GPU evidence remains pending.
+- P6UI.6D-J/L real-video acceptance documentation/candidate lock established;
+- first real 1080p60 recording exposed linked SmartFocus lock + too-small 100% aperture;
+- P6UI.6D-M corrects product parity to Cursor follow, pinned 55 ms visual smoothing,
+  ~140/170/200% size presets and ~40 px-reference softness;
+- canonical CI #326 green (13/13 native tests + packaged Avalonia acceptance);
+- real Windows re-test remains pending on artifact #11460251136.
 
 Do **not** switch the recorder to SceneViewportPlanner / SceneKinematicMotion.
 The accepted recorder path is still PresenterAwareSmartCamera with
@@ -43,8 +47,7 @@ same `project_content()` camera transform as click feedback. Region pointer
 normalization continues to use the native authoritative
 `presentation_screen_rect`.
 
-Product Spotlight defaults remain backward-compatible: Off, linked-to-Zoom On,
-Balanced size, 38% dim strength and Balanced motion.
+Product Spotlight defaults remain backward-compatible at master Off / linked-to-Zoom On, while enabled Spotlight now follows the pinned ArZoom product behavior: Cursor focus, Balanced ~170% working area, 38% dim strength, ~40 px-reference softness and Balanced motion.
 
 Real-video closure procedure:
 `docs/P6UI6D_REAL_VIDEO_ACCEPTANCE_LOCK.md`.
