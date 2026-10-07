@@ -2,6 +2,7 @@
 
 #include "core/audio/audio_format.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <span>
 
@@ -40,6 +41,35 @@ enum class AudioResampleStatus : std::uint8_t {
     Failed,
 };
 
+/*
+ * Observable rate state after the latest process() call.
+ *
+ * effective_output_per_input_ratio is the actual output-frame/input-frame
+ * ratio applied by the implementation, including the nominal sample-rate
+ * conversion and any quantized/clamped drift correction. The phase remainder
+ * is the exact fractional input-frame phase retained across calls.
+ *
+ * P7A5 diagnostics must use the applied/effective values rather than assuming
+ * the requested ppm was accepted unchanged by the selected backend.
+ */
+struct AudioResamplerRateState {
+    double requested_rate_adjustment_ppm = 0.0;
+    double applied_rate_adjustment_ppm = 0.0;
+    double effective_output_per_input_ratio = 0.0;
+    std::uint64_t phase_remainder_numerator = 0;
+    std::uint64_t phase_remainder_denominator = 0;
+
+    [[nodiscard]] bool observable() const noexcept
+    {
+        return std::isfinite(requested_rate_adjustment_ppm) &&
+               std::isfinite(applied_rate_adjustment_ppm) &&
+               std::isfinite(effective_output_per_input_ratio) &&
+               effective_output_per_input_ratio > 0.0 &&
+               phase_remainder_denominator != 0 &&
+               phase_remainder_numerator < phase_remainder_denominator;
+    }
+};
+
 struct AudioResampleResult {
     AudioResampleStatus status = AudioResampleStatus::NotConfigured;
     std::uint32_t input_frames_consumed = 0;
@@ -73,7 +103,11 @@ struct AudioResampleDrainResult {
  *
  * Resamplers are explicitly stateful. process() reports consumed/produced
  * frames and current algorithmic/group delay directly in the RecorderSession
- * 100 ns media-time domain. Output PTS accounting must include that delay.
+ * 100 ns media-time domain. current_rate_state() exposes requested versus
+ * actually applied drift correction, the resulting effective output/input
+ * ratio and the exact retained fractional phase. Output PTS accounting must
+ * include group delay and must never infer effective ratio from one call's
+ * integer consumed/produced counts.
  *
  * At logical end-of-stream, drain() releases retained filter state before
  * writer shutdown. maximum_drain_frames() is a conservative hard upper bound
@@ -100,6 +134,8 @@ public:
         double rate_adjustment_ppm) noexcept = 0;
 
     [[nodiscard]] virtual std::uint64_t current_delay_100ns() const noexcept = 0;
+
+    [[nodiscard]] virtual AudioResamplerRateState current_rate_state() const noexcept = 0;
 
     [[nodiscard]] virtual std::uint32_t maximum_drain_frames() const noexcept = 0;
 

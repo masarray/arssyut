@@ -38,13 +38,15 @@ public:
     {
         pending_drain_frames_ = 0;
         delay_100ns_ = 0;
+        phase_remainder_numerator_ = 0;
+        rate_state_ = {};
     }
 
     [[nodiscard]] arssyut::core::audio::AudioResampleResult process(
         std::span<const float> input_interleaved,
         std::uint32_t input_frames,
         std::span<float> output_interleaved,
-        double) noexcept override
+        double rate_adjustment_ppm) noexcept override
     {
         using namespace arssyut::core::audio;
         if (!configured_)
@@ -65,6 +67,27 @@ public:
             kTailFrames,
             AudioResamplerConfig::kOutputSampleRate);
 
+        // Contract probe deliberately models a backend that clamps and
+        // quantizes drift correction. This proves callers can observe the
+        // effective value instead of assuming requested ppm was applied.
+        const double clamped_ppm =
+            std::clamp(rate_adjustment_ppm, -250.0, 250.0);
+        const double applied_ppm =
+            std::round(clamped_ppm * 2.0) / 2.0;
+        phase_remainder_numerator_ =
+            (phase_remainder_numerator_ + 3u) % kPhaseDenominator;
+        rate_state_ = {
+            .requested_rate_adjustment_ppm = rate_adjustment_ppm,
+            .applied_rate_adjustment_ppm = applied_ppm,
+            .effective_output_per_input_ratio =
+                (static_cast<double>(
+                     AudioResamplerConfig::kOutputSampleRate) /
+                 static_cast<double>(config_.input_sample_rate)) *
+                (1.0 + applied_ppm / 1'000'000.0),
+            .phase_remainder_numerator = phase_remainder_numerator_,
+            .phase_remainder_denominator = kPhaseDenominator,
+        };
+
         return {
             .status = produced == input_frames
                 ? AudioResampleStatus::Ok
@@ -78,6 +101,12 @@ public:
     [[nodiscard]] std::uint64_t current_delay_100ns() const noexcept override
     {
         return delay_100ns_;
+    }
+
+    [[nodiscard]] arssyut::core::audio::AudioResamplerRateState
+    current_rate_state() const noexcept override
+    {
+        return rate_state_;
     }
 
     [[nodiscard]] std::uint32_t maximum_drain_frames() const noexcept override
@@ -125,10 +154,13 @@ public:
 
 private:
     static constexpr std::uint32_t kTailFrames = 3;
+    static constexpr std::uint64_t kPhaseDenominator = 8;
     arssyut::core::audio::AudioResamplerConfig config_{};
+    arssyut::core::audio::AudioResamplerRateState rate_state_{};
     bool configured_ = false;
     std::uint32_t pending_drain_frames_ = 0;
     std::uint64_t delay_100ns_ = 0;
+    std::uint64_t phase_remainder_numerator_ = 0;
 };
 
 struct TestContext {
@@ -519,7 +551,7 @@ void test_resampler_contract(TestContext &test)
 
     const std::array<float, 8> input{};
     std::array<float, 8> output{};
-    const auto processed = probe.process(input, 4, output, 0.0);
+    const auto processed = probe.process(input, 4, output, 87.24);
     test.expect(
         processed.ok() &&
         processed.input_frames_consumed == 4 &&
@@ -529,6 +561,26 @@ void test_resampler_contract(TestContext &test)
         processed.algorithmic_delay_100ns > 0 &&
         processed.algorithmic_delay_100ns == probe.current_delay_100ns(),
         "Resampler delay is observable in RecorderSession 100 ns time");
+
+    const auto rate_state = probe.current_rate_state();
+    test.expect(
+        rate_state.observable(),
+        "Resampler exposes observable effective ratio and exact phase state");
+    test.expect(
+        std::fabs(rate_state.requested_rate_adjustment_ppm - 87.24) < 0.0001 &&
+        std::fabs(rate_state.applied_rate_adjustment_ppm - 87.0) < 0.0001,
+        "Requested ppm remains distinct from backend-quantized applied ppm");
+    const double expected_ratio =
+        (48'000.0 / 44'100.0) * (1.0 + 87.0 / 1'000'000.0);
+    test.expect(
+        std::fabs(
+            rate_state.effective_output_per_input_ratio -
+            expected_ratio) < 1e-12,
+        "Effective output/input ratio is directly observable");
+    test.expect(
+        rate_state.phase_remainder_numerator == 3 &&
+        rate_state.phase_remainder_denominator == 8,
+        "Fractional phase remainder is explicit and exact");
     test.expect(
         probe.maximum_drain_frames() == 3,
         "Drain contract exposes a fixed tail-frame upper bound");
@@ -563,6 +615,9 @@ void test_resampler_contract(TestContext &test)
     test.expect(
         probe.current_delay_100ns() == 0,
         "Reset discards retained state without tail emission");
+    test.expect(
+        !probe.current_rate_state().observable(),
+        "Reset clears retained resampler ratio and phase telemetry");
 }
 
 } // namespace
