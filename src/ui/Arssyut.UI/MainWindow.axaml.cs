@@ -1435,10 +1435,10 @@ public sealed partial class MainWindow : Window
             }
         }
 
-        // The desktop returns to normal first; ACTION is presentation-only and
-        // capture-excluded. Native commit then defines media timestamp zero.
-        _countdown?.ShowAction();
-
+        // Keep the user-facing target dimmed while commit crosses into the
+        // native media-clock authority. The countdown HWND is capture-excluded,
+        // so WGC still sees the normal source behind it. This guarantees the
+        // user never sees a normal desktop while the recorder is still Armed.
         NativeBridgeStatus commit;
         try
         {
@@ -1473,8 +1473,9 @@ public sealed partial class MainWindow : Window
             _lastNativeSnapshot =
                 recording;
 
-            if (recording.State ==
-                NativeRecorderState.Recording)
+            if (RecordingStartCountdownPolicy.
+                    CanRevealAction(
+                        recording.State))
                 break;
 
             if (recording.State ==
@@ -1488,6 +1489,11 @@ public sealed partial class MainWindow : Window
                 return;
             }
         }
+
+        // Native media time is already live before the dim layer clears.
+        // ACTION therefore becomes a truthful recording-start cue rather than
+        // a promise that recording will begin shortly afterwards.
+        _countdown?.ShowAction();
 
         _controller =
             new RecordingControllerWindow(

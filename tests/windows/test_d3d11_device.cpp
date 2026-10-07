@@ -3456,6 +3456,23 @@ void test_keyboard_overlay_compositor(
     test.expect(
         compositor.resource_generation() == generation,
         "Keycap generation change creates no new compositor resources");
+
+    state.keyboard.scale_x = 1.08f;
+    state.keyboard.scale_y = 1.18f;
+    state.keyboard.lift_output_fraction = 0.012f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {640, 360},
+            &state).ok(),
+        "Animated keycap destination transform renders on retained path");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "Keycap bounce changes no steady-state compositor resources");
 }
 
 void test_compositor(

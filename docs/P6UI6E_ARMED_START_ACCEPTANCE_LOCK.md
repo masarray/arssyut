@@ -27,20 +27,22 @@ visible countdown           native Preparing
       +----------- BOTH ---------+
                   |
                   v
-               ACTION!
-          dim layer clears
-       recorder_commit_start()
+         recorder_commit_start()
                   |
                   v
               Recording
          reset_timeline(now)
          started_at = now
+                  |
+                  v
+               ACTION!
+          dim layer clears
          frame zero follows
 ```
 
 The countdown is not a guessed replacement for native readiness. It is a
 presentation timeline that begins immediately after native start is accepted.
-`ACTION!` is gated by both:
+`recorder_commit_start()` is gated by both:
 
 1. at least three seconds of monotonic visual countdown have elapsed; and
 2. native RecorderSession is actually `Armed`.
@@ -57,8 +59,8 @@ then commits immediately. There is never a speculative start.
 - large centered cardless movie-leader number;
 - subtle circular leader ring and center guides;
 - no dialog/card/chrome around the number;
-- `ACTION!` removes the dim layer before start commit and remains briefly as a
-  capture-excluded cue;
+- the dim layer remains visible to the user while native crosses the commit gate;
+- `ACTION!` is revealed only after native reports `Recording`, then remains briefly as a capture-excluded cue;
 - countdown uses canonical native target/Region geometry.
 
 ## Optimization / ownership lock
@@ -84,13 +86,13 @@ for WGC, encoder, readiness and media timestamp zero.
 3. Native does not publish Armed until a real WGC frame exists in the bounded
    latest-frame handoff.
 4. No frame is submitted to the encoder while Armed.
-5. `ACTION!` cannot appear before the three-second visual minimum and cannot
-   commit while native is still Preparing.
-6. Presenter input collected during pre-roll is discarded at commit.
-7. The media clock is created only after `recorder_commit_start()`.
-8. Stop/F9 during Preparing or Armed cancels before frame zero.
-9. Countdown/controller HWNDs stay capture-excluded.
-10. Recording duration excludes MP4 finalization time.
+5. Start commit cannot occur before the three-second visual minimum or while native is still Preparing.
+6. The dim layer cannot clear until native state is `Recording`; normal desktop visibility therefore never leads media start.
+7. Presenter input collected during pre-roll is discarded at commit.
+8. The media clock is created only after `recorder_commit_start()`.
+9. Stop/F9 during Preparing or Armed cancels before frame zero.
+10. Countdown/controller HWNDs stay capture-excluded.
+11. Recording duration excludes MP4 finalization time.
 
 ## Diagnostic evidence
 
@@ -113,7 +115,7 @@ visible countdown rather than before it.
 3. Normal preparation under three seconds should produce approximately one
    three-second start experience, not preparation time plus three seconds.
 4. Verify cardless `3 -> 2 -> 1 -> ACTION!`.
-5. Verify desktop returns visually normal at `ACTION!`.
+5. Verify desktop returns visually normal only when `ACTION!` appears, after native Recording is authoritative.
 6. Verify MP4 contains none of the countdown UI.
 7. Compare `prepare_latency_ms`, `armed_wait_ms` and
    `commit_to_first_frame_us` with the perceived start timing.

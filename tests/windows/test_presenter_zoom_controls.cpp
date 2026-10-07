@@ -99,6 +99,68 @@ step_frames_without_pointer_activity(
     return state;
 }
 
+void test_shortcut_keycap_cartoon_bounce(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.click_visual = false;
+    settings.shortcut_keys = true;
+    settings.presenter_controls = false;
+
+    controller.reset();
+    controller.set_settings(settings);
+
+    std::int64_t ticks = 0;
+    controller.on_shortcut(
+        {
+            arssyut::presentation::ShortcutKey::K,
+            arssyut::presentation::ShortcutCtrl
+        },
+        TimePoint{ticks});
+
+    auto state =
+        step_frames(controller, 1, ticks);
+
+    test.expect(
+        state.keyboard.generation != 0 &&
+            state.keyboard.opacity > 0.0f,
+        "shortcut keycap becomes visible immediately");
+
+    test.expect(
+        state.keyboard.scale_x < 1.0f &&
+            state.keyboard.scale_y < 1.0f,
+        "cartoon keycap begins with a noticeable squash");
+
+    state =
+        step_frames(controller, 3, ticks);
+
+    test.expect(
+        state.keyboard.scale_x > 1.03f &&
+            state.keyboard.scale_y > 1.08f &&
+            state.keyboard.lift_output_fraction > 0.006f,
+        "cartoon keycap overshoots upward after the squash");
+
+    state =
+        step_frames(controller, 5, ticks);
+
+    test.expect(
+        state.keyboard.scale_x < 1.0f &&
+            state.keyboard.scale_y < 1.0f,
+        "cartoon keycap rebounds through a compact settle phase");
+
+    state =
+        step_frames(controller, 12, ticks);
+
+    test.expect(
+        std::fabs(state.keyboard.scale_x - 1.0f) < 0.01f &&
+            std::fabs(state.keyboard.scale_y - 1.0f) < 0.01f &&
+            state.keyboard.lift_output_fraction < 0.001f,
+        "cartoon keycap settles exactly back to the canonical geometry");
+}
+
+
 void test_toggle_and_reset(TestContext &test)
 {
     PresentationController controller;
@@ -1359,6 +1421,7 @@ int main()
 {
     TestContext test;
 
+    test_shortcut_keycap_cartoon_bounce(test);
     test_toggle_and_reset(test);
     test_zoom_step_and_bounds(test);
     test_hold_zoom_press_release(test);

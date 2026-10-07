@@ -3,9 +3,9 @@
 **Updated:** 2026-10-07  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6E-E overlapped prepare/countdown is canonical-green; real Windows timing acceptance pending**  
+**Current engineering milestone:** **P6UI.6F truthful ACTION reveal + cartoon keycap bounce; canonical CI pending**  
 **Current implementation candidate:**  
-`1e17a26d679a3064d2cc29da78720a4e3c43415b` / CI #332 / Avalonia artifact #11465933250
+`feat/p6ui6f-keycap-cartoon-bounce`
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -84,6 +84,33 @@ Do not replace this with a UI-only countdown followed by `StartRecording()`, and
 
 Real-video acceptance procedure:
 `docs/P6UI6E_ARMED_START_ACCEPTANCE_LOCK.md`.
+
+### P6UI.6F — start cue truthfulness + keycap emphasis
+
+Real testing after P6UI.6E-E raised two UX points:
+
+- the user can perceive recording as starting after the dim layer disappears;
+- shortcut keycaps are readable but not visually noticeable enough.
+
+P6UI.6F corrects both without adding a new rendering/input authority:
+
+- countdown dim remains visible while `CommitStart()` crosses into native;
+- `ACTION!`/normal desktop are revealed only after bridge snapshot is
+  authoritatively `Recording`;
+- because countdown HWND is capture-excluded, WGC still sees the unobscured
+  source during this final commit handoff;
+- keycap overlay keeps the existing bounded texture/generation authority;
+- a 320 ms squash -> overshoot/lift -> rebound -> settle transform animates only
+  the compositor destination rect;
+- no per-frame texture regeneration, allocations, new GPU pass or second
+  shortcut renderer;
+- deterministic presenter tests lock the bounce phases;
+- D3D11 regression locks steady-state compositor resource generation while the
+  bounce transform changes.
+
+A new diagnostics file from the real P6UI.6F candidate remains required to
+measure `commit_to_first_frame_us`; subjective timing alone is not evidence of
+a native one-second delay.
 
 ---
 
