@@ -102,14 +102,23 @@ jobs:
             "src/platform/windows/input/presentation_input_worker.hpp"
           )
 
-          # Issue #32 intentionally extends the existing retained compositor for
-          # Spotlight and, after real UX acceptance, a bounded P6UI.6F keycap
-          # destination-rect bounce. Do not convert this into a broad path
-          # allowlist: lock the audited compositor implementation to its exact
-          # Git blob so any later native compositor edit fails closed until it
-          # is separately reproduced, tested and relocked.
+          # Keep reproduced native corrections fail-closed at exact Git blobs.
+          # These are not a broad allowlist: each path below has a documented
+          # acceptance reason and deterministic regression coverage.
           $lockedNativeCorrectionBlobs = @{
-            "src/platform/windows/graphics/d3d11_compositor.cpp" = "2bc46078347f85cc23467fd3e243ea8869ca9465"
+            # P6UI.6D/P6UI.6F retained Spotlight + keycap destination-rect path,
+            # plus final Region Smart Auto crop normalization.
+            "src/platform/windows/graphics/d3d11_compositor.cpp" = "97f7e203dc75620f9abd74901f4b88dac87f29b1"
+            "src/platform/windows/graphics/d3d11_compositor.hpp" = "6810588fd42e267c26528b2b17be2e93b74e9547"
+            # Final review gate: 64x36 async scene analyzer samples only the
+            # canonical encoded Region UV rectangle.
+            "src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp" = "fd8c16a4493dab3ee61a88e5c3a055a07786dcab"
+            "src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.hpp" = "a8d9e45f402df0ede482067390e612d97ad276af"
+            "src/platform/windows/video/native_video_pipeline.cpp" = "01a75b2715cc737af61aba71a431a5846ffb023d"
+            # Final review gate: protect the visible legacy/native workspace
+            # before WGC starts so recorder chrome cannot leak into Display/
+            # Region output.
+            "src/app/windows_main.cpp" = "f75b48c688023d9c154cf472a3ff7ef0fda28c30"
           }
 
           $changedNative = @(
