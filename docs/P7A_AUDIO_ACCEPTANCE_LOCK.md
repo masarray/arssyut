@@ -93,6 +93,28 @@ Expected:
 
 ---
 
+## 2A. Timestamp confidence / resampler-delay gate
+
+Inject degraded timing without changing sample content:
+
+- one packet with timestamp error;
+- short run of extrapolated timestamps;
+- return to trusted device timing;
+- delayed stale packet after its mix interval has closed;
+- resampler impulse with nonzero internal delay.
+
+Required:
+
+- audio remains monotonic;
+- no pitch step;
+- bad timestamp evidence does not perturb drift estimate;
+- timestamp-quality transition counters match the fixture;
+- stale media is discarded/counted, never shifted later;
+- resampler group delay is reflected in output PTS;
+- return to trusted timing does not create a discontinuous correction.
+
+---
+
 ## 3. Start / Armed / ACTION
 
 With audio enabled:
@@ -136,7 +158,8 @@ Test at minimum:
 
 - browser/video playback;
 - music;
-- silence/no active playback;
+- silence/no active playback for several minutes (program timeline remains
+  continuous without emitting artificial render sound);
 - endpoint at 44.1 kHz where available;
 - endpoint at 48 kHz;
 - playback endpoint invalidation;
@@ -244,6 +267,12 @@ the normal policy fails.
 
 At least 60 minutes with dual audio.
 
+Also record:
+- timestamp-quality transition count;
+- same-device recovery counters;
+- MMCSS registration/revert state;
+- resampler delay/flush frames;
+
 Required:
 
 - packet pool capacity constant;
@@ -274,9 +303,11 @@ After final cycle:
 
 Fault cases:
 
-- microphone unplug;
-- output device invalidated;
+- microphone unplug/replug of the same physical endpoint;
+- output device invalidated/reappears;
 - endpoint removed before start;
+- Windows default endpoint changes during an active session;
+- two endpoints share the same friendly name;
 - stale device token;
 - format negotiation failure;
 - AAC configuration failure.
@@ -284,7 +315,9 @@ Fault cases:
 Requirements:
 
 - no crash/deadlock;
-- no silent switch to unrelated endpoint;
+- no silent switch to unrelated endpoint or a newly changed default;
+- same selected endpoint may recover only through explicit identity resolution;
+- friendly-name collisions cannot select identity;
 - explicit diagnostic/source state;
 - timeline remains monotonic;
 - video remains recoverable;
