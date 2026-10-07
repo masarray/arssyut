@@ -17,7 +17,7 @@
 
   <Border
       Margin="1"
-      Background="#F20B0E12"
+      Background="{DynamicResource ArBrush.WindowChromeMain}"
       BorderBrush="{DynamicResource ArBrush.StrokeStrong}"
       BorderThickness="1"
       CornerRadius="12"
@@ -43,7 +43,7 @@
               Height="22"
               CornerRadius="7"
               Background="{DynamicResource ArBrush.Selection}"
-              BorderBrush="#78FF5864"
+              BorderBrush="{DynamicResource ArBrush.RecordStroke}"
               BorderThickness="1">
             <LucideIcon
                 Kind="Video"
@@ -440,7 +440,7 @@
         <Border
             Grid.Row="1"
             Padding="11,8"
-            Background="#7810141A"
+            Background="{DynamicResource ArBrush.Surface1Overlay}"
             BorderBrush="{DynamicResource ArBrush.Stroke}"
             BorderThickness="1"
             CornerRadius="10"

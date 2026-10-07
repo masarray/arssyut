@@ -12,6 +12,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Arssyut.UI.Design;
 using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 using Lucide.Avalonia;
@@ -29,6 +30,12 @@ public sealed partial class MainWindow : Window
     private readonly bool _stressLongNames;
     private readonly bool _allowInteractionPreview;
     private readonly DispatcherTimer _hotkeyTimer;
+    private readonly IBrush _recordBrush;
+    private readonly IBrush _recordHoverBrush;
+    private readonly IBrush _recordSoftBrush;
+    private readonly IBrush _recordTextBrightBrush;
+    private readonly IBrush _warningBrush;
+    private readonly IBrush _successBrush;
 
     private readonly List<PreviewSourceItem> _sources = [];
     private RecordingControllerWindow? _controller;
@@ -70,6 +77,31 @@ public sealed partial class MainWindow : Window
             allowInteractionPreview;
 
         InitializeComponent();
+
+        _recordBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.Record");
+        _recordHoverBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.RecordHover");
+        _recordSoftBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.RecordSoft");
+        _recordTextBrightBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.RecordTextBright");
+        _warningBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.Warning");
+        _successBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.Success");
 
         TransparencyLevelHint =
         [
@@ -486,8 +518,7 @@ public sealed partial class MainWindow : Window
                         CornerRadius =
                             new CornerRadius(99),
                         Background =
-                            Brush.Parse(
-                                "#1AFF5864"),
+                            _recordSoftBrush,
                         VerticalAlignment =
                             VerticalAlignment.Center,
                         Child =
@@ -496,8 +527,7 @@ public sealed partial class MainWindow : Window
                                 Text = "Primary",
                                 FontSize = 9.5,
                                 Foreground =
-                                    Brush.Parse(
-                                        "#FF7A84")
+                                    _recordTextBrightBrush
                             }
                     };
 
@@ -1588,9 +1618,9 @@ public sealed partial class MainWindow : Window
         string detail)
     {
         StatusDot.Fill =
-            Brush.Parse("#F1B85B");
+            _warningBrush;
         StatusText.Foreground =
-            Brush.Parse("#F1B85B");
+            _warningBrush;
         StatusText.Text =
             title;
         StatusDetail.Text =
@@ -1732,9 +1762,9 @@ public sealed partial class MainWindow : Window
         {
             case PreviewRecordingPhase.Recording:
                 StatusDot.Fill =
-                    Brush.Parse("#FF5360");
+                    _recordBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#FF6671");
+                    _recordHoverBrush;
                 StatusText.Text =
                     "Recording";
                 StatusDetail.Text =
@@ -1745,9 +1775,9 @@ public sealed partial class MainWindow : Window
 
             case PreviewRecordingPhase.Paused:
                 StatusDot.Fill =
-                    Brush.Parse("#F1B85B");
+                    _warningBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#F1B85B");
+                    _warningBrush;
                 StatusText.Text =
                     "Paused";
                 StatusDetail.Text =
@@ -1758,9 +1788,9 @@ public sealed partial class MainWindow : Window
 
             case PreviewRecordingPhase.Saved:
                 StatusDot.Fill =
-                    Brush.Parse("#49D49D");
+                    _successBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#49D49D");
+                    _successBrush;
                 StatusText.Text =
                     "Saved";
                 StatusDetail.Text =
@@ -1794,9 +1824,9 @@ public sealed partial class MainWindow : Window
         {
             case NativeRecorderState.Preparing:
                 StatusDot.Fill =
-                    Brush.Parse("#FF5360");
+                    _recordBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#FF6671");
+                    _recordHoverBrush;
                 StatusText.Text =
                     "Preparing";
                 StatusDetail.Text =
@@ -1807,9 +1837,9 @@ public sealed partial class MainWindow : Window
 
             case NativeRecorderState.Armed:
                 StatusDot.Fill =
-                    Brush.Parse("#F1B85B");
+                    _warningBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#F1B85B");
+                    _warningBrush;
                 StatusText.Text =
                     "Armed";
                 StatusDetail.Text =
@@ -1820,9 +1850,9 @@ public sealed partial class MainWindow : Window
 
             case NativeRecorderState.Recording:
                 StatusDot.Fill =
-                    Brush.Parse("#FF5360");
+                    _recordBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#FF6671");
+                    _recordHoverBrush;
                 StatusText.Text =
                     "Recording";
                 StatusDetail.Text =
@@ -1834,9 +1864,9 @@ public sealed partial class MainWindow : Window
             case NativeRecorderState.Stopping:
             case NativeRecorderState.Finalizing:
                 StatusDot.Fill =
-                    Brush.Parse("#F1B85B");
+                    _warningBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#F1B85B");
+                    _warningBrush;
                 StatusText.Text =
                     snapshot.State ==
                             NativeRecorderState.Stopping
@@ -1860,9 +1890,9 @@ public sealed partial class MainWindow : Window
                 }
 
                 StatusDot.Fill =
-                    Brush.Parse("#49D49D");
+                    _successBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#49D49D");
+                    _successBrush;
                 StatusText.Text =
                     "Saved";
                 StatusDetail.Text =
@@ -1896,9 +1926,9 @@ public sealed partial class MainWindow : Window
                 }
 
                 StatusDot.Fill =
-                    Brush.Parse("#FF5360");
+                    _recordBrush;
                 StatusText.Foreground =
-                    Brush.Parse("#FF6671");
+                    _recordHoverBrush;
                 StatusText.Text =
                     "Recording failed";
                 StatusDetail.Text =
@@ -1916,9 +1946,9 @@ public sealed partial class MainWindow : Window
     private void ApplyNativeReadyState()
     {
         StatusDot.Fill =
-            Brush.Parse("#49D49D");
+            _successBrush;
         StatusText.Foreground =
-            Brush.Parse("#49D49D");
+            _successBrush;
         StatusText.Text =
             "Ready";
         SavedActions.IsVisible =
@@ -1937,9 +1967,9 @@ public sealed partial class MainWindow : Window
     private void ApplyEngineUnavailableState()
     {
         StatusDot.Fill =
-            Brush.Parse("#F1B85B");
+            _warningBrush;
         StatusText.Foreground =
-            Brush.Parse("#F1B85B");
+            _warningBrush;
         StatusText.Text =
             "Engine unavailable";
         StatusDetail.Text =

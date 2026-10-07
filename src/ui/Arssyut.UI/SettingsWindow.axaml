@@ -16,7 +16,7 @@
 
   <Border
       Margin="1"
-      Background="#F00B0E12"
+      Background="{DynamicResource ArBrush.WindowChromeSettings}"
       BorderBrush="{DynamicResource ArBrush.StrokeStrong}"
       BorderThickness="1"
       CornerRadius="12"
@@ -68,7 +68,7 @@
         <!-- Navigation -->
         <Border
             Classes="subtle-panel"
-            Background="#76161B23"
+            Background="{DynamicResource ArBrush.Surface2Overlay}"
             Padding="8">
           <Grid RowDefinitions="Auto,*,Auto">
             <TextBlock
@@ -163,7 +163,7 @@
             Grid.Column="1"
             Margin="10,0,0,0"
             Padding="20,16,16,14"
-            Background="#5C10141A"
+            Background="{DynamicResource ArBrush.Surface1Subtle}"
             CornerRadius="10">
 
           <Grid RowDefinitions="Auto,*,Auto">

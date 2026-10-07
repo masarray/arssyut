@@ -9,6 +9,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Arssyut.UI.Design;
 using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 
@@ -36,6 +37,9 @@ public sealed partial class SettingsWindow : Window
     private readonly Button[] _cameraAnchorButtons;
     private readonly Button[] _hotkeyButtons;
     private readonly DispatcherTimer _audioPreviewTimer;
+    private readonly IBrush _warningBrush;
+    private readonly IBrush _successBrush;
+    private readonly IBrush _textSecondaryBrush;
 
     private string? _capturingHotkeyAction;
     private int _meterStep;
@@ -51,6 +55,19 @@ public sealed partial class SettingsWindow : Window
         _nativeBridge = nativeBridge;
         _stressLayout = stressLayout;
         InitializeComponent();
+
+        _warningBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.Warning");
+        _successBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.Success");
+        _textSecondaryBrush =
+            ArBrushResolver.Require(
+                this,
+                "ArBrush.TextSecondary");
 
         PresenterZoomCombo.ItemsSource =
             SettingsPreviewState.
@@ -190,7 +207,7 @@ public sealed partial class SettingsWindow : Window
                 HotkeyFeedbackText.Text =
                     "That key is not supported by the canonical Windows hotkey map.";
                 HotkeyFeedbackText.Foreground =
-                    Brush.Parse("#F1B85B");
+                    _warningBrush;
                 e.Handled = true;
                 return;
             }
@@ -222,7 +239,7 @@ public sealed partial class SettingsWindow : Window
                             ? $"{chord.DisplayText} is already reserved by Windows or another application."
                             : "Windows could not validate that shortcut.";
                     HotkeyFeedbackText.Foreground =
-                        Brush.Parse("#F1B85B");
+                        _warningBrush;
                     e.Handled = true;
                     return;
                 }
@@ -237,7 +254,7 @@ public sealed partial class SettingsWindow : Window
                 HotkeyFeedbackText.Text =
                     $"{chord.DisplayText} assigned.";
                 HotkeyFeedbackText.Foreground =
-                    Brush.Parse("#49D49D");
+                    _successBrush;
                 MarkPreviewChanged(
                     "Shortcut saved");
             }
@@ -246,7 +263,7 @@ public sealed partial class SettingsWindow : Window
                 HotkeyFeedbackText.Text =
                     error;
                 HotkeyFeedbackText.Foreground =
-                    Brush.Parse("#F1B85B");
+                    _warningBrush;
             }
 
             e.Handled = true;
@@ -785,7 +802,7 @@ public sealed partial class SettingsWindow : Window
         HotkeyFeedbackText.Text =
             "Press the new key combination. Esc cancels capture.";
         HotkeyFeedbackText.Foreground =
-            Brush.Parse("#A7B0BC");
+            _textSecondaryBrush;
 
         selected.Focus();
     }
@@ -797,7 +814,7 @@ public sealed partial class SettingsWindow : Window
         HotkeyFeedbackText.Text =
             message;
         HotkeyFeedbackText.Foreground =
-            Brush.Parse("#A7B0BC");
+            _textSecondaryBrush;
     }
 
     private void EndHotkeyCapture()
@@ -935,7 +952,7 @@ public sealed partial class SettingsWindow : Window
         HotkeyFeedbackText.Text =
             "Defaults restored. Hotkey defaults are persisted in product mode.";
         HotkeyFeedbackText.Foreground =
-            Brush.Parse("#49D49D");
+            _successBrush;
 
         MarkPreviewChanged(
             "Defaults restored");
