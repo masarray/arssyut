@@ -3,9 +3,9 @@
 **Updated:** 2026-10-07  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6E-E overlaps native preparation with the cardless 3-2-1 countdown while retaining the Armed commit barrier**  
+**Current engineering milestone:** **P6UI.6E-E overlapped prepare/countdown is canonical-green; real Windows timing acceptance pending**  
 **Current implementation candidate:**  
-`feat/p6ui6e-e-overlap-countdown-prepare` (pending canonical CI)
+`1e17a26d679a3064d2cc29da78720a4e3c43415b` / CI #332 / Avalonia artifact #11465933250
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -78,7 +78,7 @@ P6UI.6E corrects this without moving media-clock authority into Avalonia:
 - elapsed duration stops before MP4 finalization;
 - diagnostics now expose `prepare_latency_ms`, `armed_wait_ms`,
   `commit_to_first_frame_us` and `capture_preroll_received`;
-- CI #330 is the pre-overlap baseline for `c428b525...`; P6UI.6E-E must replace it only after canonical CI is green.
+- CI #332 is canonical green for P6UI.6E-E at `1e17a26d...`; exact Avalonia artifact is #11465933250.
 
 Do not replace this with a UI-only countdown followed by `StartRecording()`, and do not wait for Armed before showing `3`. The accepted contract is concurrent visual countdown + native preparation, with Armed retained only as the final commit barrier.
 
