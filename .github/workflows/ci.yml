@@ -103,11 +103,13 @@ jobs:
           )
 
           # Issue #32 intentionally extends the existing retained compositor for
-          # Spotlight. Do not convert this into a broad path allowlist: lock the
-          # approved P6UI.6D-D implementation to its exact Git blob so any later
-          # native compositor edit fails closed until it is separately audited.
+          # Spotlight and, after real UX acceptance, a bounded P6UI.6F keycap
+          # destination-rect bounce. Do not convert this into a broad path
+          # allowlist: lock the audited compositor implementation to its exact
+          # Git blob so any later native compositor edit fails closed until it
+          # is separately reproduced, tested and relocked.
           $lockedNativeCorrectionBlobs = @{
-            "src/platform/windows/graphics/d3d11_compositor.cpp" = "e369e88a77e8612ded45db1cb186cbddc2a35942"
+            "src/platform/windows/graphics/d3d11_compositor.cpp" = "2bc46078347f85cc23467fd3e243ea8869ca9465"
           }
 
           $changedNative = @(
@@ -139,7 +141,7 @@ jobs:
           if ($violations.Count -gt 0) {
             Write-Host "P6UI changed locked native implementation after ${baseline}:"
             $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
-            throw "Existing native engine implementation is frozen. Only documented corrections are allowed; P6UI.6D compositor changes must match the audited exact blob."
+            throw "Existing native engine implementation is frozen. Only documented corrections are allowed; retained compositor changes must match the audited exact blob."
           }
 
           Write-Host "Native baseline guard passed."

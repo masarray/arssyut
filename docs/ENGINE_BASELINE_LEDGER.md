@@ -61,7 +61,7 @@ the presentation layer aggressively while preserving native authorities.
 | CFR / media clock | native C++ | P1/P2 recorder session | UI observes state only |
 | H.264 / MF / MP4 | native C++ | PR #8, #12, P5D.7 | UI never owns encode/finalize |
 | ArZoom camera | native C++ | P3R `fb45166...` | no second camera/viewport solver |
-| Click/keycap | native C++ compositor | P4R/P4R.3 | Avalonia config only |
+| Click/keycap | native C++ compositor | P4R/P4R.3 + P6UI.6F bounded destination-rect emphasis | Avalonia config only; native compositor remains sole renderer |
 | Native cursor | WGC | P4R.3 `b366b1c...` | do not add custom cursor compositor |
 | ArVisual | native C++ | P5A-P5E, locked at `5c3684...` | do not retune during UI work |
 | Source catalog | native C++ | `src/app/source_catalog.*` | Avalonia source enumeration is temporary preview only |
@@ -121,6 +121,32 @@ reimplemented.
 did not prove custom Region move/resize sufficiently. Therefore Region is
 classified as **existing implementation requiring focused correction**, not as
 a missing subsystem to rewrite.
+
+### P6UI.6F — keycap emphasis correction
+
+Real UX acceptance found the existing native keycap overlay readable but too
+easy to miss. The correction stays inside the accepted single native
+click/keycap compositor authority:
+
+- `PresentationController` computes a bounded 320 ms
+  squash -> lifted overshoot -> rebound -> settle transform;
+- `D3D11Compositor` applies only scale/lift to the existing keyboard texture
+  destination rectangle;
+- keyboard texture generation, SRV ownership, shortcut coalescing and the one
+  retained render pass are unchanged;
+- no per-frame texture rebuild, history queue, second shortcut renderer or
+  extra GPU pass is introduced;
+- deterministic presenter tests lock the transform phases;
+- D3D11 regression verifies resource generation stays constant while the
+  transform changes.
+
+The audited retained compositor blob after this correction is:
+
+`2bc46078347f85cc23467fd3e243ea8869ca9465`
+
+CI keeps that exact blob fail-closed. Any later edit to
+`src/platform/windows/graphics/d3d11_compositor.cpp` requires a separately
+reproduced reason, regression coverage and an explicit relock.
 
 ## 4. Historical recovery lessons
 
