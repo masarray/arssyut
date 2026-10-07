@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <limits>
+#include <iterator>
 
 namespace arssyut::presentation {
 
