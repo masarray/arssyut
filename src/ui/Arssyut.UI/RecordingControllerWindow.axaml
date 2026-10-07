@@ -17,7 +17,7 @@
   <Border
       Margin="2"
       Padding="10,8"
-      Background="#E8161B23"
+      Background="{DynamicResource ArBrush.FloatingSurface}"
       BorderBrush="{DynamicResource ArBrush.StrokeStrong}"
       BorderThickness="1"
       CornerRadius="13"
