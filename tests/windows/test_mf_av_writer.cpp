@@ -158,7 +158,6 @@ private:
         .sample_rate = sample_rate,
         .channels = 2,
         .bitrate_bps = 192'000,
-        .allow_bitrate_fallback = false,
     };
 
     ComPtr<IMFMediaType> output_type;
@@ -330,7 +329,6 @@ void test_audio_media_contract(
         .sample_rate = 48'000,
         .channels = 2,
         .bitrate_bps = 192'000,
-        .allow_bitrate_fallback = true,
     };
 
     test.expect(
@@ -342,6 +340,18 @@ void test_audio_media_contract(
     test.expect(
         !invalid.valid(),
         "Writer rejects unsupported AAC sample rate instead of relabeling samples");
+
+    auto invalid_pool = config;
+    invalid_pool.sample_pool_count = 1;
+    test.expect(
+        !invalid_pool.valid(),
+        "Writer rejects an unbounded/undersized audio pool contract");
+
+    auto invalid_block = config;
+    invalid_block.max_frames_per_sample = 8'192;
+    test.expect(
+        !invalid_block.valid(),
+        "Writer rejects audio blocks larger than the retained slot contract");
 
     ComPtr<IMFMediaType> output_type;
     ComPtr<IMFMediaType> input_type;
