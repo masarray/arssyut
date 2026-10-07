@@ -105,6 +105,10 @@ private:
 
     [[nodiscard]] core::Status prepare_for_start() noexcept;
 
+    void retire_handoff() noexcept;
+
+    void reset_terminal_handoff_telemetry() noexcept;
+
     void set_terminal_error(
         HRESULT hr,
         bool device_invalidated) noexcept;
@@ -138,6 +142,13 @@ private:
     std::atomic<std::uint64_t> discontinuity_packets_{0};
     std::atomic<std::uint64_t> timestamp_error_packets_{0};
     std::atomic<std::uint64_t> dropped_packets_{0};
+
+    // Stop releases the fixed handoff/pool, but post-stop diagnostics still
+    // need the pressure evidence accumulated by that recording generation.
+    std::atomic<std::size_t> terminal_queue_high_water_{0};
+    std::atomic<std::size_t> terminal_pool_high_water_{0};
+    std::atomic<std::uint64_t> terminal_pool_exhaustions_{0};
+    std::atomic<std::uint64_t> terminal_ring_overflows_{0};
 };
 
 } // namespace arssyut::windows
