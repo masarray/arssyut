@@ -52,6 +52,15 @@ Expect(
         NativeRecorderState.Recording),
     "only Preparing and Armed are valid countdown pre-commit states");
 
+Expect(
+    !RecordingStartCountdownPolicy.CanRevealAction(
+        NativeRecorderState.Armed) &&
+    !RecordingStartCountdownPolicy.CanRevealAction(
+        NativeRecorderState.Preparing) &&
+    RecordingStartCountdownPolicy.CanRevealAction(
+        NativeRecorderState.Recording),
+    "ACTION may clear the dim layer only after native Recording is authoritative");
+
 
 // P6UI.6A.1 canonical Windows hotkey acceptance matrix. Persistence and
 // runtime registration consume the same (modifier mask, VK) identity.
