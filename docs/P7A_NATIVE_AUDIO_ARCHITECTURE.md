@@ -299,8 +299,33 @@ Mixer output:
 - one canonical 48 kHz stereo float32 program format;
 - one bounded SPSC handoff to the sole writer caller.
 
+### Canonical program clock
+
+The mixer does not run “whenever a source packet arrives”.
+
+Program block N is defined from RecorderSession media zero:
+
+`block_start = media_zero + N * 1024 / 48000`
+
+using exact rational/remainder math.
+
+At 48 kHz each block spans approximately 21.333 ms and directly matches the
+AAC-LC 1024-sample frame quantum.
+
+For each program interval the mixer asks each source timeline for the exact
+overlap:
+
+- available media -> consume/resample/mix;
+- source starts late -> synthesize silence before it;
+- real source gap -> synthesize silence for the missing interval;
+- packet arrives after its program interval is already closed -> count/discard
+  stale media; never move it later.
+
 The mixer is notification/deadline driven; it does not wake on a blind 1 ms
-poll.
+poll. The concrete Windows deadline primitive is selected from measurement.
+Its scheduling class is also evidence-driven: source capture workers are MMCSS
+`Audio`; mixer elevation is enabled only if normal scheduling misses the
+1024-frame program deadline.
 
 Overflow contract:
 
@@ -441,6 +466,23 @@ selected policy does not produce uncontrolled clipping.
 
 Microphone mute is gain=0 on the mix timeline. It does not stop/restart WASAPI.
 
+### Metering
+
+Per-source meter state is derived from the same float samples already processed
+by the mixer:
+
+- peak;
+- RMS;
+- clip/over-range latch;
+- source available/muted state.
+
+Meter output is **replaceable latest-wins state**, unlike audio media. It is
+published through atomics/immutable snapshot state and may be visually
+throttled. UI metering can never queue audio, own timestamps or backpressure the
+audio engine.
+
+Live audio monitoring/playback remains out of P7A scope.
+
 ---
 
 ## 11. Device-loss and endpoint-change policy
@@ -496,12 +538,24 @@ Rules:
 - video color/H.264 policy remains unchanged;
 - AAC configuration is fixed before `BeginWriting`;
 - writer errors map to explicit stage/status;
-- no audio source thread touches the sink writer.
+- no audio source thread touches the sink writer;
+- ready audio/video service is bounded and observable; neither stream may build
+  an unbounded backlog or monopolize writer service.
+
+The Microsoft MP4 sink supports one video stream + one audio stream. P7A's
+single mixed AAC program track is therefore both product-simpler and aligned
+with the native container authority. Independent mic/system tracks require a
+future mux/container strategy.
 
 The integration design may reuse the RecorderSession worker as sole writer
-caller because it already runs at 1 ms cadence. Moving video submission to a
-new mux thread is **not** required unless measurement proves the existing sole
-caller cannot meet audio/video service deadlines.
+caller because it already runs at 1 ms cadence. The worker should drain ready
+1024-frame audio blocks with bounded fairness around due video work. Diagnostics
+must expose audio writer-queue high-water and oldest-ready age.
+
+Moving video submission to a new mux thread is **not** required unless
+measurement proves the existing sole caller cannot meet audio/video service
+deadlines. If that gate fails, revisit ownership with evidence rather than
+adding a giant writer mutex or unbounded interleave queue.
 
 This minimizes blast radius while preserving one writer authority.
 
@@ -536,9 +590,11 @@ Per source:
 Mixer:
 
 - output rate;
+- program block index / missed-deadline count;
 - mixed frame count;
 - silence inserted frames;
 - clipping/over-range events;
+- source peak/RMS latest values;
 - mixer underrun count;
 - mix queue high-water;
 - muted frame count by source.
@@ -548,6 +604,8 @@ Writer:
 - AAC configured rate/channels/bitrate;
 - AAC samples submitted;
 - audio writer backpressure/failure stage;
+- audio writer-ready queue high-water;
+- oldest ready audio age;
 - first audio sample PTS;
 - last audio sample end PTS.
 
