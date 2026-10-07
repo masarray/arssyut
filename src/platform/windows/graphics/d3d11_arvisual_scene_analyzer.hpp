@@ -38,7 +38,11 @@ public:
     [[nodiscard]] arssyut::core::Status submit_if_due(
         ID3D11DeviceContext *context,
         ID3D11ShaderResourceView *source,
-        arssyut::core::TimePoint now) noexcept;
+        arssyut::core::TimePoint now,
+        float uv_left,
+        float uv_top,
+        float uv_right,
+        float uv_bottom) noexcept;
 
     void poll_nonblocking(
         ID3D11DeviceContext *context) noexcept;
@@ -104,6 +108,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11VertexShader> vertex_shader_;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> pixel_shader_;
     Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler_;
+    Microsoft::WRL::ComPtr<ID3D11Buffer> crop_constant_buffer_;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> analysis_texture_;
     Microsoft::WRL::ComPtr<ID3D11RenderTargetView> analysis_rtv_;
 
