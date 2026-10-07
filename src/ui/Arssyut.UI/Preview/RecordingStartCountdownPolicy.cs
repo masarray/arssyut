@@ -38,4 +38,10 @@ public static class RecordingStartCountdownPolicy
         state is
             NativeRecorderState.Preparing or
             NativeRecorderState.Armed;
+
+    // The dim layer may clear only after native media time is authoritative.
+    // This is intentionally stricter than CommitStart() returning Ok.
+    public static bool CanRevealAction(
+        NativeRecorderState state) =>
+        state == NativeRecorderState.Recording;
 }
