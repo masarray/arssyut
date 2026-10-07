@@ -1321,13 +1321,24 @@ public sealed partial class MainWindow : Window
         _countdown =
             new RecordingCountdownWindow(
                 countdownBounds);
+
+        // First visible countdown frame must already contain "3". Starting
+        // the monotonic visual clock before Show() overlaps native Preparing
+        // instead of exposing a dark, apparently stalled pre-roll.
+        var countdownClock =
+            Stopwatch.StartNew();
+        _countdown.ShowNumber(
+            RecordingStartCountdownPolicy.
+                NumberForElapsed(
+                    TimeSpan.Zero));
         _countdown.Show();
         Hide();
 
         try
         {
             await RunArmedCountdownAsync(
-                bridge);
+                bridge,
+                countdownClock);
         }
         finally
         {
@@ -1340,10 +1351,15 @@ public sealed partial class MainWindow : Window
 
     private async System.Threading.Tasks.Task
         RunArmedCountdownAsync(
-            NativeBridgeClient bridge)
+            NativeBridgeClient bridge,
+            Stopwatch countdownClock)
     {
-        // Native owns preparation readiness. UI must never start the visible
-        // 3-2-1 sequence from a guessed delay.
+        var visibleNumber = 3;
+
+        // Preparation and the three-second visual countdown intentionally run
+        // in parallel. Native Armed remains the hard readiness barrier:
+        // ACTION is impossible until BOTH the visual minimum and native
+        // readiness are satisfied.
         while (true)
         {
             await System.Threading.Tasks.Task.Delay(
@@ -1368,10 +1384,6 @@ public sealed partial class MainWindow : Window
                 snapshot;
 
             if (snapshot.State ==
-                NativeRecorderState.Armed)
-                break;
-
-            if (snapshot.State ==
                 NativeRecorderState.Failed)
             {
                 Show();
@@ -1389,20 +1401,37 @@ public sealed partial class MainWindow : Window
                 ApplyNativeReadyState();
                 return;
             }
-        }
 
-        for (var value = 3;
-             value >= 1;
-             --value)
-        {
-            _countdown?.ShowNumber(
-                value);
-
-            if (!await WaitWhileArmedAsync(
-                    bridge,
-                    TimeSpan.FromSeconds(1)))
+            if (!RecordingStartCountdownPolicy.
+                    IsPreCommitState(
+                        snapshot.State))
             {
+                Show();
+                ApplyNativeSessionState(
+                    snapshot);
                 return;
+            }
+
+            var nextNumber =
+                RecordingStartCountdownPolicy.
+                    NumberForElapsed(
+                        countdownClock.Elapsed);
+
+            if (nextNumber !=
+                visibleNumber)
+            {
+                visibleNumber =
+                    nextNumber;
+                _countdown?.ShowNumber(
+                    visibleNumber);
+            }
+
+            if (RecordingStartCountdownPolicy.
+                    CanCommit(
+                        countdownClock.Elapsed,
+                        snapshot.State))
+            {
+                break;
             }
         }
 
@@ -1476,63 +1505,6 @@ public sealed partial class MainWindow : Window
         // desktop. The countdown HWND is excluded from WGC throughout.
         await System.Threading.Tasks.Task.Delay(
             180);
-    }
-
-    private async System.Threading.Tasks.Task<bool>
-        WaitWhileArmedAsync(
-            NativeBridgeClient bridge,
-            TimeSpan duration)
-    {
-        var timer =
-            Stopwatch.StartNew();
-
-        while (timer.Elapsed <
-               duration)
-        {
-            await System.Threading.Tasks.Task.Delay(
-                25);
-
-            NativeRecorderSnapshot snapshot;
-            try
-            {
-                snapshot =
-                    bridge.Snapshot();
-            }
-            catch (Exception)
-            {
-                Show();
-                ShowCommandFeedback(
-                    "Native bridge error",
-                    "Countdown lost the recorder state.");
-                return false;
-            }
-
-            _lastNativeSnapshot =
-                snapshot;
-
-            if (snapshot.State ==
-                NativeRecorderState.Armed)
-                continue;
-
-            if (snapshot.State ==
-                NativeRecorderState.Failed)
-            {
-                Show();
-                ApplyNativeSessionState(
-                    snapshot);
-            }
-            else
-            {
-                Show();
-                _lastNativeSnapshot =
-                    null;
-                ApplyNativeReadyState();
-            }
-
-            return false;
-        }
-
-        return true;
     }
 
     private void StartInteractionPreview()

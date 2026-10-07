@@ -14,6 +14,45 @@ static void Expect(
 }
 
 
+// P6UI.6E-E: visible countdown overlaps native Preparing, but ACTION remains
+// gated by both the three-second visual minimum and native Armed readiness.
+Expect(
+    RecordingStartCountdownPolicy.NumberForElapsed(
+        TimeSpan.Zero) == 3 &&
+    RecordingStartCountdownPolicy.NumberForElapsed(
+        TimeSpan.FromMilliseconds(999)) == 3 &&
+    RecordingStartCountdownPolicy.NumberForElapsed(
+        TimeSpan.FromSeconds(1)) == 2 &&
+    RecordingStartCountdownPolicy.NumberForElapsed(
+        TimeSpan.FromMilliseconds(1999)) == 2 &&
+    RecordingStartCountdownPolicy.NumberForElapsed(
+        TimeSpan.FromSeconds(2)) == 1 &&
+    RecordingStartCountdownPolicy.NumberForElapsed(
+        TimeSpan.FromSeconds(8)) == 1,
+    "countdown uses one monotonic 3-2-1 visual timeline");
+
+Expect(
+    !RecordingStartCountdownPolicy.CanCommit(
+        TimeSpan.FromMilliseconds(2999),
+        NativeRecorderState.Armed) &&
+    !RecordingStartCountdownPolicy.CanCommit(
+        TimeSpan.FromSeconds(3),
+        NativeRecorderState.Preparing) &&
+    RecordingStartCountdownPolicy.CanCommit(
+        TimeSpan.FromSeconds(3),
+        NativeRecorderState.Armed),
+    "ACTION requires both countdown completion and native Armed readiness");
+
+Expect(
+    RecordingStartCountdownPolicy.IsPreCommitState(
+        NativeRecorderState.Preparing) &&
+    RecordingStartCountdownPolicy.IsPreCommitState(
+        NativeRecorderState.Armed) &&
+    !RecordingStartCountdownPolicy.IsPreCommitState(
+        NativeRecorderState.Recording),
+    "only Preparing and Armed are valid countdown pre-commit states");
+
+
 // P6UI.6A.1 canonical Windows hotkey acceptance matrix. Persistence and
 // runtime registration consume the same (modifier mask, VK) identity.
 var acceptedChords =

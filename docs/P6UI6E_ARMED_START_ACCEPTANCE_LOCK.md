@@ -1,121 +1,129 @@
 # P6UI.6E — Deterministic Armed Start Acceptance Lock
 
-**Runtime candidate:** `c428b525fb549866483b8b189e62cc1ba9435a76`  
-**Canonical CI:** #330 / run `37577851046` — Native + Avalonia green  
-**Product artifact:** `arssyut-p6ui-avalonia-windows-x64` / artifact `11463199673`
+**Baseline before E:** `c428b525fb549866483b8b189e62cc1ba9435a76` / CI #330  
+**P6UI.6E-E objective:** overlap native preparation with the visible three-second countdown without weakening the Armed barrier.
 
 ## Product contract
 
-The recording start sequence is deliberately split into preparation and media start:
+The recording start sequence deliberately overlaps visual countdown time with
+native preparation:
 
 ```text
 Start button / F9
       |
-      v
-Preparing
-  encoder open
-  WGC started
-  compositor ready
-  presentation input warm
-  first real WGC frame available
-      |
-      v
-Armed
-      |
-      +--> full-target dim layer (capture excluded)
-      |
-      +--> 3
-      +--> 2
-      +--> 1
-      |
-      v
-ACTION!
-  dim layer clears
-  recorder_commit_start()
-      |
-      v
-Recording
-  reset_timeline(now)
-  started_at = now
-  frame zero follows the commit
+      +--------------------------+
+      |                          |
+      v                          v
+visible countdown           native Preparing
+3 (0..1 s)                  encoder open
+2 (1..2 s)                  WGC started
+1 (2..3 s+)                 compositor/input warm
+      |                     first real WGC frame
+      |                          |
+      |                       Armed
+      |                          |
+      +----------- BOTH ---------+
+                  |
+                  v
+               ACTION!
+          dim layer clears
+       recorder_commit_start()
+                  |
+                  v
+              Recording
+         reset_timeline(now)
+         started_at = now
+         frame zero follows
 ```
 
-This is not a cosmetic delay in front of `RecorderSession::start()`.
-Native readiness owns the transition to Armed, and the UI countdown begins only
-after that state is observable.
+The countdown is not a guessed replacement for native readiness. It is a
+presentation timeline that begins immediately after native start is accepted.
+`ACTION!` is gated by both:
+
+1. at least three seconds of monotonic visual countdown have elapsed; and
+2. native RecorderSession is actually `Armed`.
+
+If native becomes Armed early, it waits for the countdown. If native preparation
+takes longer than three seconds, the UI holds the visible `1` until Armed and
+then commits immediately. There is never a speculative start.
 
 ## Visual lock
 
-The accepted visual direction is intentionally cardless:
-
+- first visible countdown frame already contains `3`; no blank/dark-only
+  pre-roll frame is intentional;
 - full selected capture target is dimmed during pre-roll;
-- large centered movie-leader number;
+- large centered cardless movie-leader number;
 - subtle circular leader ring and center guides;
 - no dialog/card/chrome around the number;
 - `ACTION!` removes the dim layer before start commit and remains briefly as a
   capture-excluded cue;
-- countdown window is topmost and uses the same target/Region geometry already
-  published by the native overlay authority.
+- countdown uses canonical native target/Region geometry.
 
-Do not replace this with a modal dialog, toast card or recorder-owned compositor
-effect.
+## Optimization / ownership lock
+
+This change must remain cheap:
+
+- no new native thread;
+- no second recorder state machine;
+- no new capture queue or pre-roll video buffer;
+- no compositor/GPU pass for countdown;
+- no readiness prediction/history model;
+- no extra camera/input authority.
+
+The existing UI snapshot cadence observes `Preparing/Armed`, while one
+`Stopwatch` supplies the visual countdown. Native remains the sole authority
+for WGC, encoder, readiness and media timestamp zero.
 
 ## Deterministic start guarantees
 
-1. Encoder, capture and presentation input are initialized before Armed.
-2. Armed is not published until at least one real WGC frame exists in the
-   bounded latest-frame handoff.
-3. No video frame is submitted to the encoder while the session is Armed.
-4. Presenter input collected during pre-roll is discarded at commit so a
-   Zoom/Reset/Freeze press during countdown cannot become the first recorded
-   semantic action.
-5. The native media clock is created only after `recorder_commit_start()`.
-6. User-visible elapsed recording duration ends when the render/write loop
-   ends; MP4 finalization time is not included.
-7. Stop/F9 while Preparing or Armed cancels pre-roll instead of creating a
-   misleading empty recording.
-8. Countdown/controller UI are capture-excluded HWNDs; no countdown graphics
-   are part of the encoded output.
+1. Native start enters `Preparing` and returns without blocking UI countdown.
+2. Encoder, capture and presentation input initialize concurrently with
+   `3 -> 2 -> 1`.
+3. Native does not publish Armed until a real WGC frame exists in the bounded
+   latest-frame handoff.
+4. No frame is submitted to the encoder while Armed.
+5. `ACTION!` cannot appear before the three-second visual minimum and cannot
+   commit while native is still Preparing.
+6. Presenter input collected during pre-roll is discarded at commit.
+7. The media clock is created only after `recorder_commit_start()`.
+8. Stop/F9 during Preparing or Armed cancels before frame zero.
+9. Countdown/controller HWNDs stay capture-excluded.
+10. Recording duration excludes MP4 finalization time.
 
 ## Diagnostic evidence
 
-New recordings expose:
+Recordings expose:
 
 - `prepare_latency_ms` — Start/F9 request to native Armed readiness;
-- `armed_wait_ms` — time intentionally spent in Armed/countdown before commit;
+- `armed_wait_ms` — time from Armed until commit;
 - `commit_to_first_frame_us` — media-clock start to first successful encoder
   submission;
-- `capture_preroll_received` — real WGC frames received before commit.
+- `capture_preroll_received` — WGC frames received before commit.
 
-These values are the primary evidence for deterministic start. Do not infer
-Start/F9 latency from total recording duration.
+With overlap enabled, `prepare_latency_ms` is expected to occur inside the
+visible countdown rather than before it.
 
 ## Real Windows acceptance matrix
 
-The exact CI #330 artifact must be tested before P6UI.6E is visually accepted.
-
-1. Display recording from main Start button.
-2. Display recording from global F9 while another app owns focus.
-3. Verify dim layer appears while native is Preparing, before `3`.
-4. Verify movie-style `3 -> 2 -> 1 -> ACTION!` has no card.
-5. Verify the desktop is visually normal at `ACTION!`.
-6. Verify resulting MP4 begins at the intended post-countdown moment and never
-   contains countdown UI.
-7. Compare visible `ACTION!` timing with
-   `commit_to_first_frame_us`; first encoded frame should follow commit without
-   a second preparation delay.
-8. Press F9 during Preparing and during `3/2/1`; cancellation must return to
-   Ready without a saved empty MP4.
-9. Repeat on Window capture.
-10. Repeat on Region; countdown bounds must use the canonical native Region.
-11. Repeat on a secondary/negative-origin monitor.
+1. Press Start: `3` must appear immediately with the dim layer; there must be
+   no multi-second dark-only pause.
+2. Repeat from global F9 while another app owns focus.
+3. Normal preparation under three seconds should produce approximately one
+   three-second start experience, not preparation time plus three seconds.
+4. Verify cardless `3 -> 2 -> 1 -> ACTION!`.
+5. Verify desktop returns visually normal at `ACTION!`.
+6. Verify MP4 contains none of the countdown UI.
+7. Compare `prepare_latency_ms`, `armed_wait_ms` and
+   `commit_to_first_frame_us` with the perceived start timing.
+8. Artificially/incidentally slow preparation beyond three seconds must hold
+   `1`, never commit early, then transition directly to ACTION when Armed.
+9. F9 during Preparing/countdown cancels cleanly without an empty MP4.
+10. Repeat on Window and Region.
+11. Repeat on secondary/negative-origin monitor.
 12. Repeat at 30 fps and 60 fps.
-13. With Spotlight/Zoom/Freeze hotkeys configured, press them during countdown
-    and confirm no pre-roll command leaks into frame zero.
-14. Confirm the floating recording controller appears only after native reaches
-    Recording and remains absent from MP4.
-15. Repeat several Start/Cancel/Start/Stop cycles and inspect memory/resource
-    counters for growth.
+13. Verify pre-roll Zoom/Reset/Freeze input cannot leak into frame zero.
+14. Repeat several Start/Cancel/Start/Stop cycles and inspect memory/resource
+    counters.
 
-CI success proves build/regression integrity, not real visual timing. Keep the
-milestone open until encoded-video evidence validates this matrix.
+CI success validates deterministic policy/build integrity. Real encoded-video
+evidence is still required for visual acceptance.
