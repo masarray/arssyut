@@ -27,6 +27,7 @@ namespace arssyut::app {
 enum class RecorderState : std::uint8_t {
     Idle = 0,
     Preparing,
+    Armed,
     Recording,
     Stopping,
     Finalizing,
@@ -74,6 +75,10 @@ struct RecorderConfig {
     // the compositor receives. This is especially important for custom Region.
     RECT presentation_screen_rect{};
     bool presentation_screen_rect_valid = false;
+
+    // When true the recorder fully warms the encoder/capture/input path and
+    // waits in Armed until request_start_commit() defines frame zero.
+    bool start_armed = false;
     std::uint32_t bitrate_bps = 18'000'000;
     arssyut::presentation::PresentationSettings presentation{};
     PresenterMomentaryBinding hold_zoom_hotkey{};
@@ -137,6 +142,11 @@ public:
         RecorderConfig config);
 
     void request_stop() noexcept;
+
+    // One-shot Armed -> Recording gate. Returns false outside Armed or after a
+    // prior commit. The worker owns the actual media-clock timestamp.
+    [[nodiscard]] bool request_start_commit() noexcept;
+
     void wait() noexcept;
 
     // Lock-free bounded presenter command mailbox. Commands are consumed by
@@ -192,7 +202,11 @@ private:
 
     std::atomic<RecorderState> state_{RecorderState::Idle};
     std::atomic<bool> stop_requested_{false};
+    std::atomic<bool> start_commit_requested_{false};
 
+    std::atomic<std::int64_t> start_requested_at_ticks_{0};
+    std::atomic<std::int64_t> armed_at_ticks_{0};
+    std::atomic<std::int64_t> first_frame_submitted_at_ticks_{0};
     std::atomic<std::int64_t> started_at_ticks_{0};
     std::atomic<std::int64_t> stopped_at_ticks_{0};
 
