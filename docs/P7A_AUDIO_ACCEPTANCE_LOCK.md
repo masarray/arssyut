@@ -32,7 +32,8 @@ Required decoded checks:
 - multi-tone;
 - 44.1 kHz source;
 - 48 kHz source;
-- mixed source rates.
+- mixed source rates;
+- 96 kHz source converted to the 48 kHz program bus.
 
 Decoded tone frequency error target: <= 0.1%.
 
@@ -70,6 +71,25 @@ Expected:
 - no periodic sample chunk drop/duplication;
 - final media duration remains tied to master clock;
 - pitch tolerance remains inside gate.
+
+### Timestamp-quality fallback
+
+Inject:
+
+- one WASAPI timestamp-error packet;
+- repeated timestamp errors;
+- backward device-frame position;
+- implausible QPC jump;
+- valid timing after fallback.
+
+Expected:
+
+- global media clock never resets;
+- one bad packet is reconstructed from continuity when possible;
+- repeated bad timing enters explicit fallback state;
+- bad timing does not enter drift estimation;
+- re-lock is bounded and diagnostic-visible;
+- no audible pitch jump.
 
 ---
 
@@ -119,7 +139,10 @@ Test at minimum:
 - silence/no active playback;
 - endpoint at 44.1 kHz where available;
 - endpoint at 48 kHz;
-- playback endpoint invalidation.
+- playback endpoint invalidation;
+- 5 minutes of system silence followed by immediate playback;
+- playback stop/resume after silence;
+- event/timestamp continuity during silence.
 
 ### Dual source
 
@@ -198,7 +221,24 @@ Exact product gain defaults are accepted only after matched real recordings.
 
 ---
 
-## 8. Memory / resource lifecycle
+## 8. Scheduling / deadline gate
+
+Under concurrent CPU/GPU stress, record:
+
+- endpoint event wake -> packet release p50/p95/p99;
+- source-worker CPU time;
+- mixer block service p95/p99;
+- source ring/pool high-water;
+- missed endpoint deadlines;
+- video skipped/backpressure deltas.
+
+Default shared-mode + MMCSS `Audio` must remain healthy. Do not promote the
+workers to `Pro Audio` or minimum-period scheduling unless this evidence shows
+the normal policy fails.
+
+---
+
+## 9. Memory / resource lifecycle
 
 ### Recording soak
 
@@ -230,7 +270,7 @@ After final cycle:
 
 ---
 
-## 9. Device failure gate
+## 10. Device failure gate
 
 Fault cases:
 
@@ -252,7 +292,7 @@ Requirements:
 
 ---
 
-## 10. MP4 validation
+## 11. MP4 validation
 
 Final file must verify:
 
@@ -268,7 +308,7 @@ Final file must verify:
 
 ---
 
-## 11. Diagnostics evidence required in issue closure
+## 12. Diagnostics evidence required in issue closure
 
 Attach or paste:
 
@@ -289,7 +329,7 @@ Attach or paste:
 
 ---
 
-## 12. Closure rule
+## 13. Closure rule
 
 P7A can close only after:
 

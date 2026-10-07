@@ -44,28 +44,34 @@ P7A0  Architecture lock (docs only)
   |
   v
 P7A1  Canonical audio core contracts
-  |  |   |  +-----------------------+
-  |                          |
-  v                          v
-P7A2 Microphone          P7A3 System loopback
-  |                          |
-  +------------+-------------+
-               |
-               |              P7A4 AV writer / AAC
-               |                    |
-               +---------+----------+
-                         |
-                         v
-                 P7A5 Mixer / drift / sync
-                         |
-                         v
-                 P7A6 RecorderSession + bridge
-                         |
-                         v
-                 P7A7 Hardening / soak / acceptance
+  |\
+  | +--------------------------+
+  | |                          |
+  | v                          v
+  | P7A1R Resampler spike      P7A4 AV writer / AAC
+  | |
+  | +-------------+
+  |               |
+  v               v
+P7A2 Microphone  P7A3 System loopback
+  \               /
+   +------+-------+
+          |
+          +---------- P7A1R selected resampler
+          |
+          v
+ P7A5 Mixer / drift / sync
+          |
+          v
+ P7A6 RecorderSession + bridge
+          |
+          v
+ P7A7 Hardening / soak / acceptance
 ```
 
-P7A4 can run in parallel with P7A2/P7A3 once P7A1 contracts are frozen.
+P7A2, P7A3, P7A4 and P7A1R can progress in parallel after P7A1 contracts are
+frozen. P7A5 is blocked on the selected resampler result plus the accepted source
+contracts it consumes.
 
 ---
 
@@ -77,6 +83,7 @@ named dependency merge commit.
 Suggested names:
 
 - `feat/p7a1-audio-core-contract`
+- `spike/p7a1r-audio-resampler`
 - `feat/p7a2-wasapi-microphone`
 - `feat/p7a3-wasapi-loopback`
 - `feat/p7a4-mf-av-writer`
@@ -128,6 +135,30 @@ Must not edit:
 - Media Foundation writer implementation.
 
 This lane should be portable and deterministic.
+
+### Lane P7A1R — resampler / drift-compensation benchmark
+
+**Owns conceptually**
+
+- benchmark fixtures/prototypes isolated from product integration;
+- dependency/license/size report;
+- no RecorderSession or bridge code.
+
+Responsibilities:
+
+- compare Media Foundation Audio Resampler against libswresample/SoXR or another
+  justified lightweight candidate;
+- 44.1 -> 48 and 96 -> 48 quality;
+- steady-state CPU and allocation;
+- startup latency;
+- impulse/sine/sweep fidelity;
+- ability to apply smooth ppm-scale rate compensation;
+- binary/deployment footprint and licensing;
+- deterministic selection recommendation for P7A5.
+
+This lane produces a decision and accepted implementation seam. It must not
+smuggle a new third-party dependency into the product merely because a spike
+worked.
 
 ### Lane P7A2 — WASAPI microphone source
 
@@ -346,11 +377,12 @@ Recommended:
 
 1. P7A0 documentation/ADR.
 2. P7A1 core contract.
-3. P7A2, P7A3 and P7A4 can progress in parallel.
-4. P7A5 after enough source/writer contracts are stable; synthetic work can
-   start earlier.
-5. P7A6 only after P7A2/P7A3/P7A4/P7A5 are independently green.
-6. P7A7 closes the milestone.
+3. P7A1R, P7A2, P7A3 and P7A4 can progress in parallel.
+4. Lock the resampler decision from P7A1R before P7A5 product integration.
+5. P7A5 after the resampler decision and enough source contracts are stable;
+   portable synthetic mixer work may start earlier.
+6. P7A6 only after P7A2/P7A3/P7A4/P7A5 are independently green.
+7. P7A7 closes the milestone.
 
 No child PR merges merely because another lane “needs the code”. It merges when
 its own ownership contract and tests are coherent.
