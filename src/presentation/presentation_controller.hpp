@@ -38,6 +38,14 @@ struct PresentationSettings {
     bool presenter_controls = false;
     float zoom = 2.0f;
     SpotlightSettings spotlight{};
+
+    // One existing recorder input/step authority also runs for Spotlight-only
+    // recordings; no managed or compositor-side input loop is created.
+    [[nodiscard]] bool needs_presentation_frames() const noexcept
+    {
+        return smart_zoom || click_visual || shortcut_keys ||
+               presenter_controls || spotlight.enabled;
+    }
 };
 
 class PresentationController final {
