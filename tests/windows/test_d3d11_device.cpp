@@ -2895,6 +2895,101 @@ void test_arvisual_async_scene_analyzer(
 
 
 
+void test_arvisual_region_crop_analysis(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t dark_neutral_bgra =
+        0xFF181818u;
+    constexpr std::uint32_t hot_vivid_bgra =
+        0xFFFF1408u;
+
+    auto source =
+        create_split_texture(
+            owner.device(),
+            64,
+            36,
+            dark_neutral_bgra,
+            hot_vivid_bgra);
+    test.expect(
+        source != nullptr,
+        "P6UI final Region analysis split fixture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "P6UI final Region analysis compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    test.expect(
+        compositor.update_source(
+            owner.immediate_context(),
+            source.Get()).ok(),
+        "P6UI final Region analysis retained source is ready");
+
+    arssyut::visual::ArVisualGradeSettings smart_grade;
+    smart_grade.enabled = true;
+    smart_grade.smart_auto = true;
+
+    auto now =
+        arssyut::core::MonotonicClock::now();
+
+    const arssyut::core::CropRect left_region{
+        0, 0, 32, 36
+    };
+
+    test.expect(
+        compositor.submit_scene_analysis(
+            owner.immediate_context(),
+            now,
+            &smart_grade,
+            left_region).ok(),
+        "P6UI final Region analysis submits the canonical crop");
+
+    bool completed = false;
+    for (int i = 0; i < 250; ++i) {
+        if (!compositor.render_retained(
+                owner.immediate_context(),
+                left_region,
+                {32, 36},
+                nullptr,
+                &smart_grade).ok()) {
+            break;
+        }
+
+        if (compositor.scene_analysis_completed() > 0) {
+            completed = true;
+            break;
+        }
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(1));
+    }
+
+    test.expect(
+        completed,
+        "P6UI final Region crop analysis completes asynchronously");
+
+    const auto stats =
+        compositor.scene_analysis_stats();
+
+    test.expect(
+        stats.mean_saturation < 0.10f &&
+            stats.hot_vivid_frac < 0.10f &&
+            stats.median_luma < 0.20f,
+        "P6UI final Region Smart Auto ignores vivid pixels outside the encoded crop");
+}
+
+
+
 struct SpotlightPerfSample {
     std::uint32_t cpu_p95_us = 0;
     std::uint32_t gpu_p95_us = 0;
@@ -3649,6 +3744,7 @@ int main()
     test_screen_native_surface_anchor(test, device);
     test_screen_text_legibility(test, device);
     test_arvisual_async_scene_analyzer(test, device);
+    test_arvisual_region_crop_analysis(test, device);
     test_spotlight_compositor(test, device);
     test_spotlight_resolution_performance_contract(
         test,

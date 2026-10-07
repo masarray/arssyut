@@ -39,7 +39,8 @@ public:
     [[nodiscard]] arssyut::core::Status submit_scene_analysis(
         ID3D11DeviceContext *context,
         arssyut::core::TimePoint now,
-        const arssyut::visual::ArVisualGradeSettings *visual) noexcept;
+        const arssyut::visual::ArVisualGradeSettings *visual,
+        arssyut::core::CropRect crop = {}) noexcept;
 
     [[nodiscard]] arssyut::core::Status render_retained(
         ID3D11DeviceContext *context,

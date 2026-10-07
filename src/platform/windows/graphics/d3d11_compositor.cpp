@@ -2004,7 +2004,8 @@ Status D3D11Compositor::ensure_output(FrameSize output_size) noexcept
 Status D3D11Compositor::submit_scene_analysis(
     ID3D11DeviceContext *context,
     TimePoint now,
-    const arssyut::visual::ArVisualGradeSettings *visual) noexcept
+    const arssyut::visual::ArVisualGradeSettings *visual,
+    CropRect crop) noexcept
 {
     if (!context) {
         return Status::failure(
@@ -2019,10 +2020,40 @@ Status D3D11Compositor::submit_scene_analysis(
         return Status::success();
     }
 
+    const FrameSize source_size{
+        input_desc_.Width,
+        input_desc_.Height
+    };
+    const CropRect analysis_crop =
+        arssyut::core::clamp_crop(
+            crop,
+            source_size);
+
+    const float inv_width =
+        1.0f /
+        static_cast<float>(
+            source_size.width);
+    const float inv_height =
+        1.0f /
+        static_cast<float>(
+            source_size.height);
+
     return scene_analyzer_->submit_if_due(
         context,
         input_srv_.Get(),
-        now);
+        now,
+        static_cast<float>(
+            analysis_crop.left) *
+            inv_width,
+        static_cast<float>(
+            analysis_crop.top) *
+            inv_height,
+        static_cast<float>(
+            analysis_crop.right) *
+            inv_width,
+        static_cast<float>(
+            analysis_crop.bottom) *
+            inv_height);
 }
 
 Status D3D11Compositor::update_source(

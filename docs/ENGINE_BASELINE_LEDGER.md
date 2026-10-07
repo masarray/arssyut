@@ -148,6 +148,35 @@ CI keeps that exact blob fail-closed. Any later edit to
 `src/platform/windows/graphics/d3d11_compositor.cpp` requires a separately
 reproduced reason, regression coverage and an explicit relock.
 
+### Final P6UI review gates — workspace exclusion + Region analysis parity
+
+Before integrating the long-lived P6UI branch into `main`, the original PR
+review was re-audited against the final head instead of being dismissed as
+historical noise. Two findings remained valid and were corrected in-place:
+
+1. **Visible native workspace capture exclusion**
+   - the legacy/native workspace now applies `WDA_EXCLUDEFROMCAPTURE` before
+     WGC starts, with `WDA_MONITOR` as the compatibility fallback;
+   - if the workspace is intentionally visible over Display/Region and Windows
+     cannot apply either protection mode, recording fails closed instead of
+     silently encoding Arssyut UI;
+   - affinity is restored after the recording completes.
+
+2. **Region Smart Auto crop parity**
+   - Smart Auto no longer downsamples the full retained monitor when the
+     encoded output is a Region;
+   - the existing 64x36 asynchronous analyzer receives the same canonical
+     `CropRect` used by the compositor, normalized to source UVs;
+   - one 16-byte retained constant buffer remaps analyzer sampling in the
+     existing GPU pass; there is no second analyzer, readback path or per-frame
+     allocation;
+   - a split dark/vivid D3D11 regression proves pixels outside the Region do
+     not drive Region adaptive statistics.
+
+Exact fail-closed blobs for these final corrections are recorded in the P6UI CI
+guard. They are intentionally path-specific rather than a widened native
+allowlist.
+
 ## 4. Historical recovery lessons
 
 The project history already documents the cost of replacement-by-assumption.

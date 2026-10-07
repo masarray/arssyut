@@ -12,6 +12,17 @@ namespace arssyut::windows {
 
 namespace {
 
+struct AnalysisConstants {
+    float uv_left = 0.0f;
+    float uv_top = 0.0f;
+    float uv_right = 1.0f;
+    float uv_bottom = 1.0f;
+};
+
+static_assert(
+    sizeof(AnalysisConstants) == 16,
+    "D3D11 constant buffer must stay 16-byte aligned");
+
 using arssyut::core::Result;
 using arssyut::core::Status;
 using arssyut::core::StatusCode;
@@ -20,6 +31,11 @@ using arssyut::core::TimePoint;
 constexpr char analysis_shader[] = R"(
 Texture2D source_texture : register(t0);
 SamplerState source_sampler : register(s0);
+
+cbuffer AnalysisConstants : register(b0)
+{
+    float4 source_uv_rect;
+};
 
 struct VertexOutput
 {
@@ -44,9 +60,14 @@ VertexOutput vs_main(uint vertex_id : SV_VertexID)
 
 float4 ps_main(VertexOutput input) : SV_Target
 {
+    float2 uv = lerp(
+        source_uv_rect.xy,
+        source_uv_rect.zw,
+        saturate(input.uv));
+
     return source_texture.Sample(
         source_sampler,
-        input.uv);
+        uv);
 }
 )";
 
@@ -201,6 +222,22 @@ Status D3D11ArVisualSceneAnalyzer::initialize(
     if (FAILED(hr))
         return d3d_failure(hr);
 
+    D3D11_BUFFER_DESC constant_desc{};
+    constant_desc.ByteWidth =
+        sizeof(AnalysisConstants);
+    constant_desc.Usage =
+        D3D11_USAGE_DEFAULT;
+    constant_desc.BindFlags =
+        D3D11_BIND_CONSTANT_BUFFER;
+
+    hr =
+        device_->CreateBuffer(
+            &constant_desc,
+            nullptr,
+            crop_constant_buffer_.GetAddressOf());
+    if (FAILED(hr))
+        return d3d_failure(hr);
+
     D3D11_TEXTURE2D_DESC analysis_desc{};
     analysis_desc.Width = analysis_width;
     analysis_desc.Height = analysis_height;
@@ -266,11 +303,29 @@ Status D3D11ArVisualSceneAnalyzer::initialize(
 Status D3D11ArVisualSceneAnalyzer::submit_if_due(
     ID3D11DeviceContext *context,
     ID3D11ShaderResourceView *source,
-    TimePoint now) noexcept
+    TimePoint now,
+    float uv_left,
+    float uv_top,
+    float uv_right,
+    float uv_bottom) noexcept
 {
-    if (!context || !source) {
+    if (!context || !source ||
+        !crop_constant_buffer_) {
         return Status::failure(
             StatusCode::InvalidArgument);
+    }
+
+    uv_left = std::clamp(uv_left, 0.0f, 1.0f);
+    uv_top = std::clamp(uv_top, 0.0f, 1.0f);
+    uv_right = std::clamp(uv_right, 0.0f, 1.0f);
+    uv_bottom = std::clamp(uv_bottom, 0.0f, 1.0f);
+
+    if (uv_right <= uv_left ||
+        uv_bottom <= uv_top) {
+        uv_left = 0.0f;
+        uv_top = 0.0f;
+        uv_right = 1.0f;
+        uv_bottom = 1.0f;
     }
 
     if (next_submit_.ticks_100ns != 0 &&
@@ -341,6 +396,27 @@ Status D3D11ArVisualSceneAnalyzer::submit_if_due(
         1,
         &sampler);
 
+    const AnalysisConstants constants{
+        uv_left,
+        uv_top,
+        uv_right,
+        uv_bottom
+    };
+    context->UpdateSubresource(
+        crop_constant_buffer_.Get(),
+        0,
+        nullptr,
+        &constants,
+        0,
+        0);
+
+    ID3D11Buffer *constant_buffer =
+        crop_constant_buffer_.Get();
+    context->PSSetConstantBuffers(
+        0,
+        1,
+        &constant_buffer);
+
     context->PSSetShaderResources(
         0,
         1,
@@ -354,6 +430,13 @@ Status D3D11ArVisualSceneAnalyzer::submit_if_due(
         0,
         1,
         &null_srv);
+
+    ID3D11Buffer *null_buffer =
+        nullptr;
+    context->PSSetConstantBuffers(
+        0,
+        1,
+        &null_buffer);
 
     ID3D11RenderTargetView *null_rtv =
         nullptr;
