@@ -298,7 +298,8 @@ public:
                 evidence.quality =
                     AudioTimestampQuality::HostQpcFallback;
                 evidence.packet_start_qpc_100ns =
-                    fallback_start;
+                    ordered_host_fallback_start(
+                        fallback_start);
                 evidence.device_frame_position =
                     have_expected_
                         ? expected_device_frame_
@@ -379,7 +380,8 @@ public:
             evidence.quality =
                 AudioTimestampQuality::HostQpcFallback;
             evidence.packet_start_qpc_100ns =
-                fallback_start;
+                ordered_host_fallback_start(
+                    fallback_start);
             evidence.device_frame_position =
                 have_expected_
                     ? expected_device_frame_
@@ -412,6 +414,23 @@ private:
         return std::max<std::int64_t>(
             0,
             host_observed_qpc_100ns - duration_i64);
+    }
+
+    [[nodiscard]] std::int64_t ordered_host_fallback_start(
+        std::int64_t arrival_estimate) const noexcept
+    {
+        // Event-driven WASAPI can expose several buffered packets in one wake.
+        // Their host observations may be nearly identical even though each
+        // packet spans a full media duration. Keep HostQpcFallback quality, but
+        // never move a packet before the end of the previously published
+        // interval. When arrival time advances beyond continuity, move forward
+        // to that newer estimate; never overlap or compress buffered media.
+        if (!have_expected_)
+            return arrival_estimate;
+
+        return std::max(
+            expected_qpc_100ns_,
+            arrival_estimate);
     }
 
     [[nodiscard]] bool candidate_matches_host_window(
