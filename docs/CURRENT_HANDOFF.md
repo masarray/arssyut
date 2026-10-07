@@ -1,17 +1,59 @@
-# Current Handoff — Arssyut P6UI
+# Current Handoff — Arssyut
 
 **Updated:** 2026-10-07  
-**Active PR:** #31  
-**Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6F truthful ACTION reveal + cartoon keycap bounce canonical-green; real Windows acceptance pending**  
-**Current implementation candidate:**  
-`cc9717f3a72a4cb3d416df6f3c80524aa4ed56cf` / CI #335 / Avalonia artifact #11469838435
+**Accepted product baseline:** `main@9dc6c49cf92b47932b0f2767cf90c7e8d6a94420`  
+**P6UI integration:** PR #31 merged; post-merge CI #339 green  
+**Current engineering milestone:** **P7A Native Audio Foundation & A/V Sync — architecture/planning lock; no native audio implementation started**
 
 This file is the first document a new ChatGPT thread or engineer must read
-before continuing P6UI work.
+before continuing Arssyut work.
 
 Do not reconstruct project state from old chat messages. The repository is the
 source of truth.
+
+---
+
+## P7A current lock — read before any audio implementation
+
+P6UI presenter/countdown/keycap work is accepted and integrated into `main`.
+The next engine-facing milestone is native System Audio + Microphone.
+
+Before writing audio code, read in order:
+
+1. `AGENTS.md` sections on canonicalization, bounded backpressure, workers,
+   Audio, Encoder/MP4 and memory/resource lifecycle;
+2. `docs/adr/ADR-009-native-audio-clock-mix-mux.md`;
+3. `docs/P7A_NATIVE_AUDIO_ARCHITECTURE.md`;
+4. `docs/P7A_MULTI_THREAD_EXECUTION_PLAN.md`;
+5. `docs/P7A_AUDIO_ACCEPTANCE_LOCK.md`.
+
+P7A non-negotiable decisions:
+
+- one RecorderSession media clock; audio never owns a second product timeline;
+- microphone and System Audio are separate event-driven WASAPI sources;
+- all source evidence maps to the project QPC/100 ns timebase;
+- no avoidable resampling; any required 44.1/48 kHz conversion is explicit and
+  quality-tested;
+- float32 internal mix domain; AAC encoder conversion happens only at the
+  writer boundary;
+- fixed-capacity audio pools/rings only; no session-length queues;
+- audio data is non-replaceable and cannot use latest-wins coalescing;
+- normal hardware-clock drift is corrected gradually through bounded resampling,
+  never arbitrary sleeps or coarse chunk drops;
+- mute preserves the source clock and is implemented in the mix domain;
+- native Armed/start zero remains authoritative and includes requested audio
+  readiness;
+- one native AV writer authority; source/mix workers never call the sink writer;
+- no automatic mid-record device switch in initial P7A;
+- 60-minute A/V drift, 100-cycle Start/Stop and resource/memory soak are release
+  gates;
+- video-only behavior must remain materially equivalent to the accepted main
+  baseline.
+
+Multi-thread work begins only after the P7A architecture/issue decomposition is
+accepted. Parallel implementation lanes may not independently edit
+RecorderSession/bridge/UI; those integration files have a single-owner P7A6
+lane.
 
 ---
 
