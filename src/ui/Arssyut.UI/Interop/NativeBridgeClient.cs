@@ -120,7 +120,8 @@ public enum NativeStartFlags : uint
     ShortcutKeys = 1U << 5,
     PresenterControls = 1U << 6,
     Spotlight = 1U << 7,
-    SpotlightLinkToZoom = 1U << 8
+    SpotlightLinkToZoom = 1U << 8,
+    ArmedStart = 1U << 9
 }
 
 public enum NativeSpotlightSize : uint

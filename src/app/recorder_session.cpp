@@ -278,6 +278,9 @@ Status RecorderSession::start(
     first_frame_submitted_at_ticks_.store(
         0,
         std::memory_order_release);
+    capture_preroll_received_.store(
+        0,
+        std::memory_order_release);
     started_at_ticks_.store(
         0,
         std::memory_order_release);
@@ -400,8 +403,11 @@ bool RecorderSession::request_presenter_command(
         state_.load(
             std::memory_order_acquire);
 
-    if (state != RecorderState::Preparing &&
-        state != RecorderState::Recording) {
+    // Armed product start must begin from a clean presenter state. Legacy
+    // direct-start callers keep the historical Preparing acceptance.
+    if (state != RecorderState::Recording &&
+        !(state == RecorderState::Preparing &&
+          !config_.start_armed)) {
         return false;
     }
 
@@ -957,6 +963,27 @@ void RecorderSession::worker_main() noexcept
 
         if (presentation_enabled)
             presentation_input.discard_pending_events();
+
+        // Do not let Zoom/Reset/Freeze intents pressed during pre-roll become
+        // the first semantic action in the recording.
+        presenter_toggle_zoom_requests_.store(
+            0,
+            std::memory_order_release);
+        presenter_zoom_steps_.store(
+            0,
+            std::memory_order_release);
+        presenter_reset_requests_.store(
+            0,
+            std::memory_order_release);
+        presenter_freeze_toggle_requests_.store(
+            0,
+            std::memory_order_release);
+
+        capture_preroll_received_.store(
+            diagnostics_.load(
+                DiagnosticMetric::
+                    CaptureFramesReceived),
+            std::memory_order_relaxed);
     }
 
     const TimePoint start =
@@ -1786,6 +1813,10 @@ void RecorderSession::write_diagnostics(
                        ? (first - started) / 10
                        : 0;
                })()
+            << ",\n"
+            << "  \"capture_preroll_received\": "
+            << capture_preroll_received_.load(
+                   std::memory_order_relaxed)
             << ",\n"
             << "  \"capture_received\": "
             << snapshot_value.capture_received << ",\n"

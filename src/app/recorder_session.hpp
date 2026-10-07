@@ -207,6 +207,7 @@ private:
     std::atomic<std::int64_t> start_requested_at_ticks_{0};
     std::atomic<std::int64_t> armed_at_ticks_{0};
     std::atomic<std::int64_t> first_frame_submitted_at_ticks_{0};
+    std::atomic<std::uint64_t> capture_preroll_received_{0};
     std::atomic<std::int64_t> started_at_ticks_{0};
     std::atomic<std::int64_t> stopped_at_ticks_{0};
 
