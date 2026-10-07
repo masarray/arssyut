@@ -8,7 +8,7 @@
     ShowActivated="False"
     Topmost="True"
     WindowDecorations="None"
-    Background="#A6000000"
+    Background="{DynamicResource ArBrush.CountdownScrim}"
     FontFamily="{DynamicResource ArFont.Inter}"
     TextOptions.TextRenderingMode="Antialias">
 
@@ -17,7 +17,7 @@
         x:Name="LeaderRing"
         Width="276"
         Height="276"
-        Stroke="#A8FFFFFF"
+        Stroke="{DynamicResource ArBrush.CountdownLeader}"
         StrokeThickness="2"
         IsVisible="False"
         HorizontalAlignment="Center"
@@ -27,7 +27,7 @@
         x:Name="HorizontalGuide"
         Width="348"
         Height="1"
-        Background="#42FFFFFF"
+        Background="{DynamicResource ArBrush.CountdownGuide}"
         IsVisible="False"
         HorizontalAlignment="Center"
         VerticalAlignment="Center" />
@@ -36,7 +36,7 @@
         x:Name="VerticalGuide"
         Width="1"
         Height="348"
-        Background="#42FFFFFF"
+        Background="{DynamicResource ArBrush.CountdownGuide}"
         IsVisible="False"
         HorizontalAlignment="Center"
         VerticalAlignment="Center" />
