@@ -23,14 +23,20 @@ Before writing audio code, read in order:
 1. `AGENTS.md` sections on canonicalization, bounded backpressure, workers,
    Audio, Encoder/MP4 and memory/resource lifecycle;
 2. `docs/adr/ADR-009-native-audio-clock-mix-mux.md`;
-3. `docs/P7A_NATIVE_AUDIO_ARCHITECTURE.md`;
-4. `docs/P7A_MULTI_THREAD_EXECUTION_PLAN.md`;
-5. `docs/P7A_AUDIO_ACCEPTANCE_LOCK.md`.
+3. `docs/P7A_AUDIO_REFERENCE_BENCHMARK.md`;
+4. `docs/P7A_NATIVE_AUDIO_ARCHITECTURE.md`;
+5. `docs/P7A_MULTI_THREAD_EXECUTION_PLAN.md`;
+6. `docs/P7A_AUDIO_ACCEPTANCE_LOCK.md`.
 
 P7A non-negotiable decisions:
 
 - one RecorderSession media clock; audio never owns a second product timeline;
+- one fixed 48 kHz stereo float32 program bus with 1024-frame canonical blocks;
 - microphone and System Audio are separate event-driven WASAPI sources;
+- shared-mode event workers use normal MMCSS `Audio` policy first; do not chase
+  minimum latency/`Pro Audio` without stress evidence;
+- device timing is validated automatically; bad QPC/device-position evidence
+  falls back/reconstructs without a user-facing “Use Device Timestamps” toggle;
 - all source evidence maps to the project QPC/100 ns timebase;
 - no avoidable resampling; any required 44.1/48 kHz conversion is explicit and
   quality-tested;
@@ -44,7 +50,9 @@ P7A non-negotiable decisions:
 - native Armed/start zero remains authoritative and includes requested audio
   readiness;
 - one native AV writer authority; source/mix workers never call the sink writer;
-- no automatic mid-record device switch in initial P7A;
+- no automatic switch to a different endpoint mid-record; bounded same-endpoint
+  recovery is allowed while the missing interval remains timeline-aligned
+  silence;
 - 60-minute A/V drift, 100-cycle Start/Stop and resource/memory soak are release
   gates;
 - video-only behavior must remain materially equivalent to the accepted main
@@ -54,6 +62,11 @@ Multi-thread work begins only after the P7A architecture/issue decomposition is
 accepted. Parallel implementation lanes may not independently edit
 RecorderSession/bridge/UI; those integration files have a single-owner P7A6
 lane.
+
+External benchmark decision: the resampler/drift implementation is **not**
+preselected. P7A1 freezes the interface; a separate benchmark lane must compare
+native Media Foundation resampling against a drift-capable alternative such as
+libswresample/SoXR before P7A5 commits to a dependency.
 
 ---
 
