@@ -19,6 +19,7 @@
         Height="276"
         Stroke="#A8FFFFFF"
         StrokeThickness="2"
+        IsVisible="False"
         HorizontalAlignment="Center"
         VerticalAlignment="Center" />
 
@@ -27,6 +28,7 @@
         Width="348"
         Height="1"
         Background="#42FFFFFF"
+        IsVisible="False"
         HorizontalAlignment="Center"
         VerticalAlignment="Center" />
 
@@ -35,6 +37,7 @@
         Width="1"
         Height="348"
         Background="#42FFFFFF"
+        IsVisible="False"
         HorizontalAlignment="Center"
         VerticalAlignment="Center" />
 
