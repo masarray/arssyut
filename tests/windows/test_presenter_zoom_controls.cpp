@@ -515,6 +515,181 @@ void test_spotlight_state_is_bounded_and_master_is_not_runtime(
         "Spotlight stores canonical content-space focus without output remapping");
 }
 
+
+void test_spotlight_standalone_runtime_and_cursor_authority(
+    TestContext &test)
+{
+    using arssyut::presentation::SpotlightMode;
+
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.click_visual = false;
+    settings.shortcut_keys = false;
+    settings.presenter_controls = false;
+    settings.spotlight.link_to_zoom = false;
+    settings.spotlight.mode = SpotlightMode::Cursor;
+
+    test.expect(
+        !settings.needs_presentation_frames(),
+        "disabled effects require no presentation input work");
+
+    settings.spotlight.enabled = true;
+    test.expect(
+        settings.needs_presentation_frames(),
+        "standalone Spotlight alone enables existing presentation input work");
+
+    PresentationController controller;
+    controller.reset();
+    controller.set_settings(settings);
+
+    std::int64_t ticks = 0;
+    auto frame =
+        step_frames_at(
+            controller,
+            4,
+            ticks,
+            0.74f,
+            0.31f,
+            false);
+
+    test.expect(
+        !frame.spotlight.focus_valid &&
+            !frame.spotlight.runtime_requested,
+        "standalone Spotlight refuses to invent an invalid cursor focus");
+
+    frame =
+        step_frames_at(
+            controller,
+            65,
+            ticks,
+            0.74f,
+            0.31f);
+
+    test.expect(
+        frame.spotlight.focus_valid &&
+            frame.spotlight.runtime_requested &&
+            frame.spotlight.focus_mix > 0.99f &&
+            frame.spotlight.dim_mix > 0.99f,
+        "standalone Spotlight closes the pinned cinematic aperture without Zoom");
+
+    test.expect(
+        std::fabs(frame.camera_zoom - 1.0f) < 0.0001f &&
+            std::fabs(frame.camera_center_x - 0.5f) < 0.0001f &&
+            std::fabs(frame.camera_center_y - 0.5f) < 0.0001f,
+        "standalone Spotlight never activates or replaces the camera");
+
+    frame =
+        step_frames_at(
+            controller,
+            2,
+            ticks,
+            0.21f,
+            0.83f);
+
+    test.expect(
+        std::fabs(frame.spotlight.content_x - 0.21f) < 0.00001f &&
+            std::fabs(frame.spotlight.content_y - 0.83f) < 0.00001f,
+        "standalone Spotlight uses existing canonical Cursor mode for focus");
+
+    frame =
+        step_frames_at(
+            controller,
+            2,
+            ticks,
+            0.90f,
+            0.10f,
+            false);
+
+    test.expect(
+        std::fabs(frame.spotlight.content_x - 0.21f) < 0.00001f &&
+            std::fabs(frame.spotlight.content_y - 0.83f) < 0.00001f,
+        "missing cursor mapping holds last proven standalone focus");
+
+    // Linked mode must retain the existing no-zoom => no-effect contract.
+    settings.spotlight.link_to_zoom = true;
+    settings.spotlight.mode = SpotlightMode::SmartFocus;
+    PresentationController linked;
+    linked.reset();
+    linked.set_settings(settings);
+    std::int64_t linked_ticks = 0;
+    const auto linked_frame =
+        step_frames_at(
+            linked,
+            65,
+            linked_ticks,
+            0.74f,
+            0.31f);
+
+    test.expect(
+        !linked_frame.spotlight.runtime_requested &&
+            linked_frame.spotlight.dim_mix == 0.0f,
+        "Zoom-linked Spotlight stays exact pass-through until Zoom is requested");
+}
+
+void test_spotlight_focus_size_controls_real_aperture(
+    TestContext &test)
+{
+    using arssyut::presentation::SpotlightMode;
+    using arssyut::presentation::SpotlightSize;
+
+    const auto run_size =
+        [](SpotlightSize size) {
+            PresentationSettings settings;
+            settings.smart_zoom = false;
+            settings.click_visual = false;
+            settings.shortcut_keys = false;
+            settings.presenter_controls = false;
+            settings.spotlight.enabled = true;
+            settings.spotlight.link_to_zoom = false;
+            settings.spotlight.mode = SpotlightMode::Cursor;
+            settings.spotlight.size = size;
+
+            PresentationController controller;
+            controller.reset();
+            controller.set_settings(settings);
+            std::int64_t ticks = 0;
+            return step_frames_at(
+                controller,
+                60,
+                ticks,
+                0.52f,
+                0.50f);
+        };
+
+    const auto compact =
+        run_size(SpotlightSize::Compact);
+    const auto balanced =
+        run_size(SpotlightSize::Balanced);
+    const auto wide =
+        run_size(SpotlightSize::Wide);
+
+    test.expect(
+        compact.spotlight.area_scale_percent <
+            balanced.spotlight.area_scale_percent &&
+            balanced.spotlight.area_scale_percent <
+                wide.spotlight.area_scale_percent &&
+            compact.spotlight.focus_mix > 0.99f &&
+            balanced.spotlight.focus_mix > 0.99f &&
+            wide.spotlight.focus_mix > 0.99f,
+        "Focus Size Compact/Balanced/Wide changes the real native aperture scale");
+
+    test.expect(
+        std::fabs(compact.spotlight.area_scale_percent - 82.0f) <
+                0.01f &&
+            std::fabs(balanced.spotlight.area_scale_percent - 100.0f) <
+                0.01f &&
+            std::fabs(wide.spotlight.area_scale_percent - 148.0f) <
+                0.01f,
+        "product size presets preserve pinned upstream proportional sizing");
+
+    test.expect(
+        compact.camera_zoom == balanced.camera_zoom &&
+            balanced.camera_zoom == wide.camera_zoom &&
+            compact.camera_center_x == wide.camera_center_x &&
+            compact.camera_center_y == wide.camera_center_y,
+        "Focus Size changes only Spotlight aperture, never camera geometry");
+}
+
 void test_spotlight_cannot_change_camera_authority(
     TestContext &test)
 {
@@ -1086,6 +1261,8 @@ int main()
     test_toggle_hold_overlap_matrix(test);
     test_hold_smart_zoom_overlap(test);
     test_spotlight_state_is_bounded_and_master_is_not_runtime(test);
+    test_spotlight_standalone_runtime_and_cursor_authority(test);
+    test_spotlight_focus_size_controls_real_aperture(test);
     test_spotlight_cannot_change_camera_authority(test);
     test_spotlight_focus_modes_share_canonical_content_space(test);
     test_click_spotlight_owns_one_anchor_not_history(test);
