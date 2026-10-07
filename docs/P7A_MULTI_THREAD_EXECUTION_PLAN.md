@@ -3,7 +3,8 @@
 **Purpose:** allow multiple implementation threads/agents to work in parallel
 without creating duplicate authorities or merge-conflict churn.
 
-**Rule zero:** architecture docs and ADR-009 are merged before any P7A native
+**Rule zero:** architecture docs, ADR-009 and
+`P7A_EXTERNAL_AUDIO_RESEARCH.md` are merged before any P7A native
 implementation branch starts.
 
 ---
@@ -121,8 +122,9 @@ Responsibilities:
 - fixed audio block representation;
 - bounded ring/pool primitives if a reusable project primitive does not already
   exist;
-- drift estimator contract;
-- resampler interface/contract;
+- drift estimator contract with trusted vs degraded timestamp evidence;
+- resampler interface/contract including internal/group delay accounting;
+- endpoint/timestamp-quality vocabulary shared by Windows lanes;
 - channel mapping/mix math;
 - synthetic fixtures.
 
@@ -172,7 +174,8 @@ Responsibilities:
 - endpoint activation;
 - native format discovery;
 - event-driven packet drain;
-- QPC/device-position capture;
+- COM MTA + MMCSS `Audio` worker lifetime;
+- QPC/device-position capture + timestamp-quality classification;
 - fixed pool/SPSC publishing;
 - silent/discontinuity/timestamp-error propagation;
 - device invalidation;
@@ -188,7 +191,9 @@ Must not edit RecorderSession, bridge, UI or MP4 writer.
 - loopback-source Windows tests
 
 Responsibilities mirror P7A2 but use the render endpoint in shared loopback
-mode.
+mode. The source must also prove no-playback silence behavior without depending
+on artificial render audio and must preserve pinned endpoint identity across
+default-device changes.
 
 Must not duplicate the microphone source's common lifetime/packet code.
 If shared code is required, it is introduced through an agreed common
@@ -226,7 +231,9 @@ Responsibilities:
 
 - align source packets to RecorderSession-compatible media time;
 - high-quality required SRC;
-- bounded clock-drift estimation/correction;
+- bounded clock-drift estimation/correction using trusted timing evidence;
+- resampler group-delay/phase accounting in output PTS;
+- timestamp fallback/re-lock policy and stale-packet handling;
 - mono/stereo mapping;
 - source gain/mute;
 - headroom/clipping policy;
@@ -271,7 +278,9 @@ Responsibilities:
 
 - 10/60 minute sync fixtures;
 - 100 Start/Stop cycle test;
-- device-loss scenarios;
+- device-loss + same-identity recovery/default-device-change scenarios;
+- timestamp-error/degraded-timing fixtures;
+- no-playback loopback silence fixture;
 - memory/resource high-water review;
 - pitch/frequency measurement;
 - MP4 stream/timestamp inspection;
