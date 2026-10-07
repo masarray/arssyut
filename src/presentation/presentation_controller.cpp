@@ -20,6 +20,8 @@ constexpr std::int64_t kKeyboardFadeInTicks =
     arssyut::core::MonotonicClock::ticks_per_second * 7 / 100;
 constexpr std::int64_t kKeyboardFadeOutTicks =
     arssyut::core::MonotonicClock::ticks_per_second * 22 / 100;
+constexpr std::int64_t kKeyboardBounceTicks =
+    arssyut::core::MonotonicClock::ticks_per_second * 32 / 100;
 constexpr std::int64_t kShortcutCoalesceTicks =
     arssyut::core::MonotonicClock::ticks_per_second * 8 / 100;
 
@@ -29,6 +31,70 @@ constexpr std::int64_t kShortcutCoalesceTicks =
     const float t2 = t * t;
     const float t3 = t2 * t;
     return t3 * (10.0f + t * (-15.0f + 6.0f * t));
+}
+
+struct KeyboardBounceTransform {
+    float scale_x = 1.0f;
+    float scale_y = 1.0f;
+    float lift = 0.0f;
+};
+
+[[nodiscard]] float mix_minimum_jerk(
+    float from,
+    float to,
+    float phase) noexcept
+{
+    const float eased = minimum_jerk(phase);
+    return from + (to - from) * eased;
+}
+
+[[nodiscard]] KeyboardBounceTransform keyboard_bounce(
+    std::int64_t elapsed_ticks) noexcept
+{
+    // One compact cartoon squash -> overshoot -> settle sequence. The whole
+    // existing keycap cluster moves as one texture so the effect is noticeable
+    // without per-key allocations or texture regeneration.
+    const float t = std::clamp(
+        static_cast<float>(elapsed_ticks) /
+            static_cast<float>(kKeyboardBounceTicks),
+        0.0f,
+        1.0f);
+
+    struct Keyframe {
+        float t;
+        float x;
+        float y;
+        float lift;
+    };
+
+    constexpr Keyframe frames[] = {
+        {0.00f, 0.90f, 0.76f, 0.000f},
+        {0.20f, 1.08f, 1.18f, 0.012f},
+        {0.46f, 0.96f, 0.92f, 0.005f},
+        {0.72f, 1.025f, 1.045f, 0.002f},
+        {1.00f, 1.00f, 1.00f, 0.000f},
+    };
+
+    for (std::size_t i = 1;
+         i < std::size(frames);
+         ++i) {
+        if (t <= frames[i].t) {
+            const auto &a = frames[i - 1];
+            const auto &b = frames[i];
+            const float span =
+                std::max(b.t - a.t, 0.0001f);
+            const float phase =
+                (t - a.t) / span;
+
+            return {
+                mix_minimum_jerk(a.x, b.x, phase),
+                mix_minimum_jerk(a.y, b.y, phase),
+                mix_minimum_jerk(a.lift, b.lift, phase),
+            };
+        }
+    }
+
+    return {};
 }
 
 // Pinned ArZoom Cursor Spotlight uses one bounded exponential visual smoother
@@ -807,6 +873,15 @@ PresentationFrameState PresentationController::step(
         result.keyboard = keyboard_;
         result.keyboard.opacity =
             std::min(fade_in, fade_out);
+
+        const auto bounce =
+            keyboard_bounce(elapsed);
+        result.keyboard.scale_x =
+            bounce.scale_x;
+        result.keyboard.scale_y =
+            bounce.scale_y;
+        result.keyboard.lift_output_fraction =
+            bounce.lift;
     }
 
     return result;
