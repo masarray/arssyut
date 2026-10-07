@@ -41,11 +41,12 @@ public enum NativeRecorderState : uint
 {
     Idle = 0,
     Preparing = 1,
-    Recording = 2,
-    Stopping = 3,
-    Finalizing = 4,
-    Ready = 5,
-    Failed = 6
+    Armed = 2,
+    Recording = 3,
+    Stopping = 4,
+    Finalizing = 5,
+    Ready = 6,
+    Failed = 7
 }
 
 public readonly record struct NativeHotkeyChord(
@@ -185,7 +186,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 9;
+    private const uint ExpectedAbi = 10;
 
     private static readonly object NativeLoadGate =
         new();
@@ -594,6 +595,50 @@ public sealed class NativeBridgeClient : IDisposable
                 _handle));
     }
 
+    public PixelRect CountdownBounds(
+        PreviewCaptureMode mode,
+        PixelRect fallback)
+    {
+        ThrowIfDisposed();
+
+        var snapshot =
+            new NativeOverlaySnapshotV1
+            {
+                StructSize =
+                    checked((uint)
+                        Marshal.SizeOf<
+                            NativeOverlaySnapshotV1>())
+            };
+
+        if (NativeMethods.OverlaySnapshot(
+                _handle,
+                ref snapshot) != 0)
+            return fallback;
+
+        var rect =
+            mode == PreviewCaptureMode.Region &&
+            snapshot.RegionValid != 0
+                ? snapshot.RegionRect
+                : snapshot.BoundaryRect;
+
+        var width =
+            Math.Max(
+                0,
+                rect.Right - rect.Left);
+        var height =
+            Math.Max(
+                0,
+                rect.Bottom - rect.Top);
+
+        return width > 0 && height > 0
+            ? new PixelRect(
+                rect.Left,
+                rect.Top,
+                width,
+                height)
+            : fallback;
+    }
+
     public NativeBridgeStatus RegisterHotkey(
         NativeHotkeyAction action,
         NativeHotkeyModifiers modifiers,
@@ -809,6 +854,15 @@ public sealed class NativeBridgeClient : IDisposable
                 (uint)command);
     }
 
+    public NativeBridgeStatus CommitStart()
+    {
+        ThrowIfDisposed();
+
+        return (NativeBridgeStatus)
+            NativeMethods.RecorderCommitStart(
+                _handle);
+    }
+
     public NativeBridgeStatus StopRecording()
     {
         ThrowIfDisposed();
@@ -891,6 +945,20 @@ public sealed class NativeBridgeClient : IDisposable
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeOverlaySnapshotV1
+    {
+        public uint StructSize;
+        public uint CaptureMode;
+        public ulong SourceToken;
+        public NativeRectV1 BoundaryRect;
+        public NativeRectV1 RegionRect;
+        public byte Visible;
+        public byte Editable;
+        public byte RegionValid;
+        public byte Reserved0;
     }
 
     [StructLayout(
@@ -1061,6 +1129,14 @@ public sealed class NativeBridgeClient : IDisposable
 
         [DllImport(
             LibraryName,
+            EntryPoint = "arssyut_bridge_overlay_snapshot",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int OverlaySnapshot(
+            IntPtr handle,
+            ref NativeOverlaySnapshotV1 snapshot);
+
+        [DllImport(
+            LibraryName,
             EntryPoint = "arssyut_bridge_hotkey_register",
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int HotkeyRegister(
@@ -1137,6 +1213,13 @@ public sealed class NativeBridgeClient : IDisposable
         public static extern int RecorderPresenterCommand(
             IntPtr handle,
             uint command);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_commit_start",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderCommitStart(
+            IntPtr handle);
 
         [DllImport(
             LibraryName,
