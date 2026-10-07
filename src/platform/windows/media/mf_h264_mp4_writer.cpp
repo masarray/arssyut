@@ -1626,9 +1626,7 @@ Status MfH264Mp4Writer::write_audio_pcm16(
         interleaved.size() /
         static_cast<std::size_t>(audio_config_.channels);
     if (frame_count == 0 ||
-        frame_count >
-            static_cast<std::uint64_t>(
-                std::numeric_limits<std::uint32_t>::max())) {
+        frame_count > audio_config_.max_frames_per_sample) {
         return Status::failure(StatusCode::InvalidArgument);
     }
 
@@ -1671,44 +1669,50 @@ Status MfH264Mp4Writer::write_audio_pcm16(
         return Status::failure(StatusCode::InvalidArgument);
     }
 
-    Microsoft::WRL::ComPtr<IMFSample> sample;
-    HRESULT hr =
-        MFCreateSample(
-            sample.GetAddressOf());
-    if (FAILED(hr)) {
-        failure_stage_.store(
-            MfWriterStage::CreateAudioSample,
-            std::memory_order_release);
-        return mf_failure(hr);
+    const std::size_t slot =
+        acquire_audio_slot();
+    if (slot >= max_audio_slot_count) {
+        audio_backpressure_events_.fetch_add(
+            1,
+            std::memory_order_relaxed);
+        return Status::failure(
+            StatusCode::EncoderBackpressure);
     }
 
-    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
-    hr = MFCreateMemoryBuffer(
-        static_cast<DWORD>(byte_count),
-        buffer.GetAddressOf());
-    if (FAILED(hr)) {
-        failure_stage_.store(
+    auto fail_slot =
+        [this, slot](
+            MfWriterStage stage,
+            HRESULT hr) noexcept -> Status {
+            failure_stage_.store(
+                stage,
+                std::memory_order_release);
+            release_audio_slot(slot);
+            return mf_failure(hr);
+        };
+
+    auto &buffer =
+        audio_slots_[slot].buffer;
+    if (!buffer) {
+        return fail_slot(
             MfWriterStage::CreateAudioSample,
-            std::memory_order_release);
-        return mf_failure(hr);
+            E_UNEXPECTED);
     }
 
     BYTE *destination = nullptr;
     DWORD max_length = 0;
     DWORD current_length = 0;
-    hr = buffer->Lock(
-        &destination,
-        &max_length,
-        &current_length);
+    HRESULT hr =
+        buffer->Lock(
+            &destination,
+            &max_length,
+            &current_length);
     if (FAILED(hr) ||
         !destination ||
         max_length < byte_count) {
         if (SUCCEEDED(hr))
-            buffer->Unlock();
-        failure_stage_.store(
+            (void)buffer->Unlock();
+        return fail_slot(
             MfWriterStage::CreateAudioSample,
-            std::memory_order_release);
-        return mf_failure(
             FAILED(hr) ? hr : E_UNEXPECTED);
     }
 
@@ -1716,54 +1720,88 @@ Status MfH264Mp4Writer::write_audio_pcm16(
         destination,
         interleaved.data(),
         byte_count);
-    const HRESULT unlock_hr =
-        buffer->Unlock();
-    if (FAILED(unlock_hr)) {
-        failure_stage_.store(
+
+    hr = buffer->Unlock();
+    if (FAILED(hr)) {
+        return fail_slot(
             MfWriterStage::CreateAudioSample,
-            std::memory_order_release);
-        return mf_failure(unlock_hr);
+            hr);
     }
 
     hr = buffer->SetCurrentLength(
         static_cast<DWORD>(byte_count));
     if (FAILED(hr)) {
-        failure_stage_.store(
+        return fail_slot(
             MfWriterStage::CreateAudioSample,
-            std::memory_order_release);
-        return mf_failure(hr);
+            hr);
     }
 
-    hr = sample->AddBuffer(buffer.Get());
+    Microsoft::WRL::ComPtr<IMFTrackedSample> tracked;
+    hr = MFCreateTrackedSample(
+        tracked.GetAddressOf());
     if (FAILED(hr)) {
-        failure_stage_.store(
+        return fail_slot(
             MfWriterStage::CreateAudioSample,
-            std::memory_order_release);
-        return mf_failure(hr);
+            hr);
+    }
+
+    Microsoft::WRL::ComPtr<IMFSample> sample;
+    hr = tracked.As(&sample);
+    if (FAILED(hr) || !sample) {
+        return fail_slot(
+            MfWriterStage::CreateAudioSample,
+            FAILED(hr) ? hr : E_NOINTERFACE);
+    }
+
+    hr = sample->AddBuffer(
+        buffer.Get());
+    if (FAILED(hr)) {
+        return fail_slot(
+            MfWriterStage::CreateAudioSample,
+            hr);
+    }
+
+    hr = sample->SetUINT32(
+        kArssyutAudioSlot,
+        static_cast<UINT32>(slot));
+    if (FAILED(hr)) {
+        return fail_slot(
+            MfWriterStage::CreateAudioSample,
+            hr);
     }
 
     hr = sample->SetSampleTime(
         relative_pts.ticks_100ns);
     if (FAILED(hr)) {
-        failure_stage_.store(
+        return fail_slot(
             MfWriterStage::CreateAudioSample,
-            std::memory_order_release);
-        return mf_failure(hr);
+            hr);
     }
 
     hr = sample->SetSampleDuration(
         duration_ticks);
     if (FAILED(hr)) {
-        failure_stage_.store(
+        return fail_slot(
             MfWriterStage::CreateAudioSample,
-            std::memory_order_release);
-        return mf_failure(hr);
+            hr);
+    }
+
+    hr = tracked->SetAllocator(
+        release_callback_.Get(),
+        nullptr);
+    if (FAILED(hr)) {
+        return fail_slot(
+            MfWriterStage::CreateAudioSample,
+            hr);
     }
 
     hr = writer_->WriteSample(
         audio_stream_index_,
         sample.Get());
     if (FAILED(hr)) {
+        // SetAllocator already transferred release authority to the tracked
+        // sample callback. Do not clear the slot here: a late callback after
+        // slot reuse could otherwise free a newer sample generation.
         failure_stage_.store(
             MfWriterStage::WriteAudioSample,
             std::memory_order_release);
@@ -1804,7 +1842,8 @@ Status MfH264Mp4Writer::finalize() noexcept
         std::chrono::steady_clock::now() +
         std::chrono::seconds(3);
 
-    while (in_flight_surfaces() != 0 &&
+    while ((in_flight_surfaces() != 0 ||
+            in_flight_audio_samples() != 0) &&
            std::chrono::steady_clock::now() <
                deadline) {
         std::this_thread::sleep_for(
@@ -1848,6 +1887,13 @@ void MfH264Mp4Writer::teardown() noexcept
     for (auto &slot : surfaces_) {
         slot.output_view.Reset();
         slot.texture.Reset();
+        slot.in_use.store(
+            false,
+            std::memory_order_release);
+    }
+
+    for (auto &slot : audio_slots_) {
+        slot.buffer.Reset();
         slot.in_use.store(
             false,
             std::memory_order_release);
