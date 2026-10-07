@@ -1354,10 +1354,7 @@ public sealed partial class MainWindow : Window
             NativeBridgeClient bridge,
             Stopwatch countdownClock)
     {
-        var visibleNumber =
-            RecordingStartCountdownPolicy.
-                NumberForElapsed(
-                    countdownClock.Elapsed);
+        var visibleNumber = 3;
 
         // Preparation and the three-second visual countdown intentionally run
         // in parallel. Native Armed remains the hard readiness barrier:
