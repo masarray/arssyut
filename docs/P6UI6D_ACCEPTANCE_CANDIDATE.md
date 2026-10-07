@@ -2,8 +2,8 @@
 
 **Issue:** #32  
 **Active product branch:** `feat/p6ui-avalonia-shell`  
-**Candidate commit:** `fb3eeb99dbb1040946394da5fa35ec5fa90aaf1d`  
-**Canonical CI:** #324 / run `37552892062`  
+**Candidate commit:** `8543be821883678362eb33128116cfd4f70e6d8f`  
+**Canonical CI:** #326 / run `37568930178`  
 **CI result:** both `Native Windows x64 Release` and `P6UI Avalonia Windows x64` green
 
 This file freezes the exact package that must be used for P6UI.6D real-video acceptance. Do not test an older artifact and transfer the result to this candidate.
@@ -13,26 +13,26 @@ This file freezes the exact package that must be used for P6UI.6D real-video acc
 ### Avalonia product artifact
 
 - Name: `arssyut-p6ui-avalonia-windows-x64`
-- Artifact ID: `11454310007`
-- Size: `45,801,932` bytes
-- SHA-256: `ee39fe7387bce3b72ab55667a24b63d04981afc8b993a282a1d2f5858ddad76e`
-- Workflow run: `37552892062`
-- Head SHA: `fb3eeb99dbb1040946394da5fa35ec5fa90aaf1d`
+- Artifact ID: `11460251136`
+- Size: `45,802,014` bytes
+- SHA-256: `32b9983badfbc0e8b4ba0918575a6d9c1e3b274f9067fcbb8c9c34157e925c33`
+- Workflow run: `37568930178`
+- Head SHA: `8543be821883678362eb33128116cfd4f70e6d8f`
 
 ### Native recorder artifact
 
 - Name: `arssyut-recorder-windows-x64`
-- Artifact ID: `11454125863`
-- Size: `285,724` bytes
-- SHA-256: `ad3d3a9343669446c8d7afd67b1d1fd7d3d301a70e033d1208c06d7a7df4ff78`
+- Artifact ID: `11460485285`
+- Size: `285,783` bytes
+- SHA-256: `f10d5df7b3ae5bb5fc560bd0745c08f8891c7945c76b3c4d7c84d738a5cb34e7`
 - Workflow run: `37552892062`
-- Head SHA: `fb3eeb99dbb1040946394da5fa35ec5fa90aaf1d`
+- Head SHA: `8543be821883678362eb33128116cfd4f70e6d8f`
 
 The Avalonia artifact is the primary product-acceptance package. The native artifact is retained for engine-level reproduction only.
 
 ## 2. What changed before this candidate
 
-This candidate includes the accepted P6UI.6D progression and the final deterministic corrections from PR #47:
+This candidate includes the accepted P6UI.6D progression, PR #47 deterministic corrections, and the first real-video correction from PR #49:
 
 - Zoom-first cinematic Spotlight choreography;
 - minimum-jerk Spotlight close/open;
@@ -42,7 +42,10 @@ This candidate includes the accepted P6UI.6D progression and the final determini
 - Freeze Camera exact-shot hold and resume;
 - beginner-facing Spotlight settings and persistence;
 - standalone Spotlight when `Spotlight with Zoom` is Off;
-- standalone mode uses the existing canonical Cursor focus path;
+- linked and standalone Spotlight both use the existing canonical Cursor focus path;
+- Cursor focus follows the mapped pointer with the pinned 55 ms bounded visual smoother;
+- Compact / Balanced / Wide working areas are approximately 140% / 170% / 200%;
+- edge softness starts near the pinned ArZoom 40 px reference at 1080p;
 - Compact / Balanced / Wide now change the actual retained-renderer aperture scale;
 - Region / negative-origin deterministic gates;
 - Spotlight OFF/ON retained-path tests at 1080p and 4K;
@@ -123,6 +126,6 @@ A passing result should show:
 
 ## 7. Closure rule
 
-CI #324 makes `fb3eeb99...` the deterministic implementation candidate, not the final visual-acceptance result.
+CI #326 makes `8543be82...` the deterministic implementation candidate, not the final visual-acceptance result.
 
 Issue #32 may be called **accepted / locked** only after the applicable real-video rows are reviewed against this exact artifact. If a defect is found, preserve this candidate as the reproduction baseline and fix only the smallest owning layer.
