@@ -828,6 +828,137 @@ void RecorderSession::worker_main() noexcept
             std::memory_order_relaxed);
     }
 
+    // Product countdown uses an explicit Armed gate. All expensive startup
+    // work is already complete here: encoder open, WGC running, compositor
+    // created and presentation input warm. Require one real WGC source frame
+    // before publishing Armed so ACTION can deterministically define frame 0.
+    if (config_.start_armed) {
+        const auto first_frame_deadline =
+            MonotonicClock::now().ticks_100ns +
+            MonotonicClock::ticks_per_second * 5;
+
+        while (!frame_slot.has_in_flight() &&
+               !stop_requested_.load(
+                   std::memory_order_acquire) &&
+               !capture.source_closed() &&
+               MonotonicClock::now().ticks_100ns <
+                   first_frame_deadline) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(1));
+        }
+
+        const auto cancel_before_start =
+            [&]() noexcept {
+                presentation_input.stop();
+                capture.stop();
+                (void)writer.finalize();
+
+                std::error_code remove_ec;
+                std::filesystem::remove(
+                    config_.output_path,
+                    remove_ec);
+                remove_ec.clear();
+                std::filesystem::remove(
+                    diagnostics_path(),
+                    remove_ec);
+
+                state_.store(
+                    RecorderState::Idle,
+                    std::memory_order_release);
+            };
+
+        if (stop_requested_.load(
+                std::memory_order_acquire)) {
+            cancel_before_start();
+            return;
+        }
+
+        if (!frame_slot.has_in_flight() ||
+            capture.source_closed()) {
+            fail(Status::failure(
+                StatusCode::PlatformFailure,
+                capture.source_closed()
+                    ? 0U
+                    : static_cast<std::uint32_t>(
+                          WAIT_TIMEOUT)));
+
+            presentation_input.stop();
+            capture.stop();
+            (void)writer.finalize();
+
+            const std::uint64_t memory_end =
+                private_bytes();
+            memory_private_bytes_.store(
+                memory_end,
+                std::memory_order_relaxed);
+            observe_memory_peak(
+                memory_private_max_bytes_,
+                memory_end);
+
+            write_diagnostics(
+                0,
+                memory_start,
+                memory_end,
+                writer.submitted_frames(),
+                writer.backpressure_events(),
+                pipeline->compositor().
+                    resource_generation(),
+                false,
+                {},
+                {},
+                writer.active_profile(),
+                writer.active_rate_control(),
+                writer.quality_vs_speed_applied(),
+                writer.requested_quality_vs_speed(),
+                writer.active_color_pipeline(),
+                writer.color_pipeline_authoritative());
+
+            state_.store(
+                RecorderState::Failed,
+                std::memory_order_release);
+            return;
+        }
+
+        const auto armed =
+            MonotonicClock::now();
+        armed_at_ticks_.store(
+            armed.ticks_100ns,
+            std::memory_order_release);
+        state_.store(
+            RecorderState::Armed,
+            std::memory_order_release);
+
+        while (!start_commit_requested_.load(
+                   std::memory_order_acquire) &&
+               !stop_requested_.load(
+                   std::memory_order_acquire) &&
+               !capture.source_closed()) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(1));
+        }
+
+        if (stop_requested_.load(
+                std::memory_order_acquire)) {
+            cancel_before_start();
+            return;
+        }
+
+        if (capture.source_closed()) {
+            fail(Status::failure(
+                StatusCode::PlatformFailure));
+            presentation_input.stop();
+            capture.stop();
+            (void)writer.finalize();
+            state_.store(
+                RecorderState::Failed,
+                std::memory_order_release);
+            return;
+        }
+
+        if (presentation_enabled)
+            presentation_input.discard_pending_events();
+    }
+
     const TimePoint start =
         MonotonicClock::now();
 
