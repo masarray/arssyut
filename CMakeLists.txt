@@ -392,6 +392,30 @@ if(ARSSYUT_BUILD_TESTS)
         endif()
         add_test(NAME arssyut_windows_tests COMMAND arssyut_windows_tests)
 
+        add_executable(arssyut_mf_av_writer_tests
+            tests/windows/test_mf_av_writer.cpp
+        )
+        target_link_libraries(
+            arssyut_mf_av_writer_tests
+            PRIVATE
+                arssyut_windows
+                ole32
+        )
+        if(MSVC)
+            target_compile_options(
+                arssyut_mf_av_writer_tests
+                PRIVATE
+                    /W4
+                    /permissive-
+                    /utf-8
+                    /Zc:__cplusplus
+            )
+        endif()
+        add_test(
+            NAME arssyut_mf_av_writer_tests
+            COMMAND arssyut_mf_av_writer_tests
+        )
+
         add_executable(arssyut_region_geometry_tests
             tests/windows/test_region_geometry.cpp
             src/app/region_geometry.cpp
