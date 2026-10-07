@@ -185,6 +185,29 @@ Fallback behavior must be explicit and diagnostic-visible.
 
 ---
 
+## 5A. Timestamp trust and endpoint identity
+
+External OBS/WASAPI review reinforces that endpoint timing and identity must be
+explicit state, not assumptions.
+
+Timestamp evidence tiers:
+
+- `TrustedDeviceQpc`: WASAPI timing valid + monotonic/plausible;
+- `FrameCountExtrapolated`: continuity derived from last trusted anchor and
+  exact source frame count;
+- `ArrivalEstimated`: monotonic read time minus packet duration, used only as
+  a degraded continuity estimate;
+- `Discontinuous`: continuity cannot be proven.
+
+Only trusted device-QPC observations feed the drift estimator directly.
+
+Friendly name is display-only. Runtime/persisted identity uses ordinary endpoint
+ID and, on supported Windows, `PKEY_AudioEndpoint_StableId` when available.
+Stable IDs are opaque; mutable format/name properties are always re-queried
+after resolving a persisted identity.
+
+---
+
 ## 6. Capture-worker contract
 
 Each active source owns one event-driven worker.
@@ -206,6 +229,20 @@ Owns:
 
 Owns the same contract but opens a render endpoint in WASAPI shared loopback
 mode.
+
+### Worker scheduling
+
+Each Windows source worker:
+
+- initializes COM MTA on its own thread;
+- registers MMCSS task `Audio`;
+- blocks on stop + WASAPI event (+ explicit recovery signal if required);
+- never runs an active periodic sleep/poll loop;
+- drains all available packets when signaled;
+- reverts MMCSS and uninitializes COM during teardown.
+
+`Pro Audio` is not the default task. Raise scheduling class only if measured
+evidence shows ordinary Audio scheduling misses endpoint service deadlines.
 
 ### Worker hot path
 
@@ -333,7 +370,12 @@ For every source, track:
 - accumulated source frame count;
 - resampler consumed/produced frame count.
 
-A bounded estimator computes source clock-rate error relative to QPC.
+A bounded estimator computes source clock-rate error relative to QPC. It
+accepts only trusted timestamp evidence as direct rate observations.
+
+The resampler is stateful: its consumed input frames, produced output frames and
+internal/group delay are part of timestamp accounting. Output PTS must not
+blindly reuse input packet PTS after sample-rate conversion.
 
 Normal drift correction:
 
@@ -417,6 +459,15 @@ Initial P7A is deterministic rather than silently switching sources:
 
 Following a different default endpoint mid-record is future opt-in behavior.
 
+No-playback loopback intervals are represented by the master timeline/mixer as
+silence. P7A must not inject artificial audio into the user's render endpoint
+merely to force loopback packets unless a reproducible supported-Windows defect
+proves such a workaround necessary.
+
+On supported Windows versions, persisted user preference should prefer
+`PKEY_AudioEndpoint_StableId` where available, while retaining explicit
+fallback behavior when only ordinary endpoint ID is available.
+
 ---
 
 ## 12. Writer / mux evolution
@@ -463,7 +514,13 @@ P7A diagnostics must make audio failures measurable.
 Per source:
 
 - negotiated sample rate / sample type / channels / channel mask;
+- endpoint identity kind (stable/runtime/default-role) and endpoint period;
 - timestamp-quality state and timing fallback transitions;
+- trusted/extrapolated/arrival-estimated packet counts;
+- late/stale packets discarded and timeline-gap frames;
+- MMCSS registration state;
+- same-device recovery attempts/successes/unavailable duration;
+- resampler delay/flush frames;
 - packet count;
 - frame count;
 - silent frame count;
@@ -545,6 +602,11 @@ Long soak is mandatory.
 
 No Windows device required:
 
+- timestamp-quality Trusted -> Extrapolated -> Trusted transition;
+- invalid timestamp samples do not perturb drift estimation;
+- resampler impulse/group-delay PTS accounting;
+- stale packet past a closed mix interval is discarded/counted without shifting
+  later media;
 - frame-count -> 100 ns rational conversion;
 - channel mapping;
 - mono -> stereo mapping;
@@ -579,8 +641,10 @@ Use controlled fixtures:
 6. mixed source rates;
 7. silence;
 8. loud dual-source clipping fixture;
-9. device disconnect;
-10. mute/unmute;
+9. device disconnect + same-identity recovery;
+10. Windows default endpoint changes mid-session without silent retarget;
+11. no-playback loopback silence interval;
+12. mute/unmute;
 11. 30 fps video + audio;
 12. 60 fps video + audio;
 13. repeated Start/Stop;
