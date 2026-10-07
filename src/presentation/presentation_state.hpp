@@ -59,12 +59,12 @@ struct SpotlightFrameState {
     float content_y = 0.5f;
     float focus_mix = 0.0f;
     float dim_mix = 0.0f;
-    float area_scale_percent = 100.0f;
+    float area_scale_percent = 170.0f;
     float zoom_resize_scale = 1.0f;
-    float feather_short_edge_fraction = 0.12f;
+    float feather_short_edge_fraction = 40.0f / 1080.0f;
     float dim_strength = 0.38f;
 
-    SpotlightMode mode = SpotlightMode::SmartFocus;
+    SpotlightMode mode = SpotlightMode::Cursor;
     SpotlightSize size = SpotlightSize::Balanced;
     SpotlightShape shape = SpotlightShape::Circle;
     SpotlightCinematicSpeed cinematic_speed =
