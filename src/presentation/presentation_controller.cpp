@@ -31,6 +31,19 @@ constexpr std::int64_t kShortcutCoalesceTicks =
     return t3 * (10.0f + t * (-15.0f + 6.0f * t));
 }
 
+// Pinned ArZoom Cursor Spotlight uses one bounded exponential visual smoother
+// (55 ms). This is presentation-only O(1) state: it never feeds camera intent
+// and therefore cannot become a second camera/focus planner.
+[[nodiscard]] float spotlight_visual_alpha(float dt) noexcept
+{
+    constexpr float kCursorVisualTauSeconds = 0.055f;
+    const float safe_dt = std::clamp(dt, 0.0f, 0.10f);
+    return 1.0f -
+        std::exp(
+            -safe_dt /
+            kCursorVisualTauSeconds);
+}
+
 
 } // namespace
 
@@ -86,14 +99,14 @@ void PresentationController::set_settings(
         std::clamp(
             std::isfinite(settings.spotlight.area_scale_percent)
                 ? settings.spotlight.area_scale_percent
-                : 100.0f,
+                : 170.0f,
             50.0f,
             200.0f);
     settings.spotlight.feather_short_edge_fraction =
         std::clamp(
             std::isfinite(settings.spotlight.feather_short_edge_fraction)
                 ? settings.spotlight.feather_short_edge_fraction
-                : 0.12f,
+                : 40.0f / 1080.0f,
             0.0f,
             0.50f);
     settings.spotlight.dim_strength =
@@ -453,12 +466,28 @@ PresentationFrameState PresentationController::step(
     if (settings_.spotlight.enabled) {
         switch (settings_.spotlight.mode) {
         case SpotlightMode::Cursor:
-            // Cursor mode follows only the canonical mapped pointer. Missing
-            // mapping holds the last proven coordinate; it never guesses.
+            // Port the pinned ArZoom Cursor Spotlight policy: follow the same
+            // canonical mapped pointer continuously with one 55 ms visual-only
+            // exponential smoother. Missing mapping holds the last proven
+            // coordinate; it never guesses and never writes camera intent.
             if (intent.cursor_valid) {
-                spotlight_focus_x_ = intent.cursor.x;
-                spotlight_focus_y_ = intent.cursor.y;
-                spotlight_focus_valid_ = true;
+                if (!spotlight_focus_valid_) {
+                    spotlight_focus_x_ = intent.cursor.x;
+                    spotlight_focus_y_ = intent.cursor.y;
+                    spotlight_focus_valid_ = true;
+                } else {
+                    const float alpha =
+                        spotlight_visual_alpha(
+                            intent.dt);
+                    spotlight_focus_x_ +=
+                        (intent.cursor.x -
+                         spotlight_focus_x_) *
+                        alpha;
+                    spotlight_focus_y_ +=
+                        (intent.cursor.y -
+                         spotlight_focus_y_) *
+                        alpha;
+                }
             }
             break;
 
@@ -679,16 +708,19 @@ PresentationFrameState PresentationController::step(
         settings_.spotlight.shape;
     result.spotlight.cinematic_speed =
         settings_.spotlight.cinematic_speed;
-    // Product Focus Size modifies only the existing analytic aperture scale.
-    // Ratios match the pinned upstream Compact/Balanced/Wide size proportions
-    // (0.22/0.27 and 0.40/0.27 approximately); no second geometry solver.
+    // Recorded-output acceptance showed the earlier 100% Balanced aperture
+    // was too narrow. Keep one renderer geometry authority and scale the pinned
+    // ArZoom v23 170% working area into simple product presets:
+    // Compact ~140%, Balanced 170%, Wide 200% (the existing safe maximum).
     float focus_size_scale = 1.0f;
     switch (settings_.spotlight.size) {
     case SpotlightSize::Compact:
-        focus_size_scale = 0.82f;
+        focus_size_scale =
+            140.0f / 170.0f;
         break;
     case SpotlightSize::Wide:
-        focus_size_scale = 1.48f;
+        focus_size_scale =
+            200.0f / 170.0f;
         break;
     case SpotlightSize::Balanced:
     default:

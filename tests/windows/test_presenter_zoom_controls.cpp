@@ -578,18 +578,43 @@ void test_spotlight_standalone_runtime_and_cursor_authority(
             std::fabs(frame.camera_center_y - 0.5f) < 0.0001f,
         "standalone Spotlight never activates or replaces the camera");
 
+    const float before_move_x =
+        frame.spotlight.content_x;
+    const float before_move_y =
+        frame.spotlight.content_y;
+
     frame =
         step_frames_at(
             controller,
-            2,
+            1,
             ticks,
             0.21f,
             0.83f);
 
     test.expect(
-        std::fabs(frame.spotlight.content_x - 0.21f) < 0.00001f &&
-            std::fabs(frame.spotlight.content_y - 0.83f) < 0.00001f,
-        "standalone Spotlight uses existing canonical Cursor mode for focus");
+        frame.spotlight.content_x < before_move_x &&
+            frame.spotlight.content_x > 0.21f &&
+            frame.spotlight.content_y > before_move_y &&
+            frame.spotlight.content_y < 0.83f,
+        "Cursor Spotlight follows pointer immediately without snapping");
+
+    frame =
+        step_frames_at(
+            controller,
+            30,
+            ticks,
+            0.21f,
+            0.83f);
+
+    test.expect(
+        std::fabs(frame.spotlight.content_x - 0.21f) < 0.0002f &&
+            std::fabs(frame.spotlight.content_y - 0.83f) < 0.0002f,
+        "Cursor Spotlight converges through the pinned 55 ms visual smoother");
+
+    const float held_x =
+        frame.spotlight.content_x;
+    const float held_y =
+        frame.spotlight.content_y;
 
     frame =
         step_frames_at(
@@ -601,13 +626,13 @@ void test_spotlight_standalone_runtime_and_cursor_authority(
             false);
 
     test.expect(
-        std::fabs(frame.spotlight.content_x - 0.21f) < 0.00001f &&
-            std::fabs(frame.spotlight.content_y - 0.83f) < 0.00001f,
+        std::fabs(frame.spotlight.content_x - held_x) < 1.0e-7f &&
+            std::fabs(frame.spotlight.content_y - held_y) < 1.0e-7f,
         "missing cursor mapping holds last proven standalone focus");
 
     // Linked mode must retain the existing no-zoom => no-effect contract.
     settings.spotlight.link_to_zoom = true;
-    settings.spotlight.mode = SpotlightMode::SmartFocus;
+    settings.spotlight.mode = SpotlightMode::Cursor;
     PresentationController linked;
     linked.reset();
     linked.set_settings(settings);
@@ -674,13 +699,13 @@ void test_spotlight_focus_size_controls_real_aperture(
         "Focus Size Compact/Balanced/Wide changes the real native aperture scale");
 
     test.expect(
-        std::fabs(compact.spotlight.area_scale_percent - 82.0f) <
+        std::fabs(compact.spotlight.area_scale_percent - 140.0f) <
                 0.01f &&
-            std::fabs(balanced.spotlight.area_scale_percent - 100.0f) <
+            std::fabs(balanced.spotlight.area_scale_percent - 170.0f) <
                 0.01f &&
-            std::fabs(wide.spotlight.area_scale_percent - 148.0f) <
+            std::fabs(wide.spotlight.area_scale_percent - 200.0f) <
                 0.01f,
-        "product size presets preserve pinned upstream proportional sizing");
+        "product size presets provide larger tutorial-friendly working areas");
 
     test.expect(
         compact.camera_zoom == balanced.camera_zoom &&
@@ -779,13 +804,28 @@ void test_spotlight_focus_modes_share_canonical_content_space(
     std::int64_t cursor_ticks = 0;
     auto cursor_state = step_frames_at(
         cursor, 1, cursor_ticks, 0.68f, 0.31f);
+    const float cursor_start_x =
+        cursor_state.spotlight.content_x;
+    const float cursor_start_y =
+        cursor_state.spotlight.content_y;
+
     cursor_state = step_frames_at(
         cursor, 1, cursor_ticks, 0.21f, 0.82f);
 
     test.expect(
-        std::fabs(cursor_state.spotlight.content_x - 0.21f) < 1.0e-6f &&
-        std::fabs(cursor_state.spotlight.content_y - 0.82f) < 1.0e-6f,
-        "Cursor Spotlight consumes canonical mapped pointer coordinates directly");
+        cursor_state.spotlight.content_x < cursor_start_x &&
+            cursor_state.spotlight.content_x > 0.21f &&
+            cursor_state.spotlight.content_y > cursor_start_y &&
+            cursor_state.spotlight.content_y < 0.82f,
+        "Cursor Spotlight follows canonical pointer with bounded visual smoothing");
+
+    cursor_state = step_frames_at(
+        cursor, 30, cursor_ticks, 0.21f, 0.82f);
+
+    test.expect(
+        std::fabs(cursor_state.spotlight.content_x - 0.21f) < 0.0002f &&
+            std::fabs(cursor_state.spotlight.content_y - 0.82f) < 0.0002f,
+        "Cursor Spotlight settles to the mapped pointer without drift");
 
     PresentationController invalid;
     invalid.reset();
@@ -808,6 +848,71 @@ void test_spotlight_focus_modes_share_canonical_content_space(
         std::fabs(invalid_state.spotlight.content_x - 0.62f) < 1.0e-6f,
         "Spotlight activates only after valid canonical focus is acquired");
 }
+
+
+void test_linked_cursor_spotlight_follows_while_camera_frozen(
+    TestContext &test)
+{
+    PresentationController controller;
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.zoom = 2.25f;
+    settings.spotlight.enabled = true;
+    settings.spotlight.link_to_zoom = true;
+    settings.spotlight.mode =
+        arssyut::presentation::SpotlightMode::Cursor;
+
+    controller.reset();
+    controller.set_settings(settings);
+    controller.toggle_manual_zoom();
+
+    std::int64_t ticks = 0;
+    auto state =
+        step_frames_at(
+            controller,
+            90,
+            ticks,
+            0.76f,
+            0.34f);
+
+    test.expect(
+        state.spotlight.runtime_requested &&
+            state.spotlight.focus_mix > 0.99f,
+        "linked Cursor Spotlight reaches focused state");
+
+    controller.toggle_freeze_camera();
+    const float frozen_camera_x =
+        state.camera_center_x;
+    const float frozen_camera_y =
+        state.camera_center_y;
+    const float frozen_camera_zoom =
+        state.camera_zoom;
+    const float old_spotlight_x =
+        state.spotlight.content_x;
+
+    state =
+        step_frames_at(
+            controller,
+            24,
+            ticks,
+            0.22f,
+            0.80f);
+
+    test.expect(
+        controller.camera_frozen() &&
+            std::fabs(state.camera_center_x - frozen_camera_x) < 1.0e-7f &&
+            std::fabs(state.camera_center_y - frozen_camera_y) < 1.0e-7f &&
+            std::fabs(state.camera_zoom - frozen_camera_zoom) < 1.0e-7f,
+        "Freeze still holds the exact authoritative camera shot");
+
+    test.expect(
+        state.spotlight.content_x < old_spotlight_x &&
+            std::fabs(state.spotlight.content_x - 0.22f) < 0.001f &&
+            std::fabs(state.spotlight.content_y - 0.80f) < 0.001f,
+        "linked Spotlight keeps following the mouse while camera is frozen");
+}
+
 
 void test_click_spotlight_owns_one_anchor_not_history(
     TestContext &test)
@@ -1265,6 +1370,7 @@ int main()
     test_spotlight_focus_size_controls_real_aperture(test);
     test_spotlight_cannot_change_camera_authority(test);
     test_spotlight_focus_modes_share_canonical_content_space(test);
+    test_linked_cursor_spotlight_follows_while_camera_frozen(test);
     test_click_spotlight_owns_one_anchor_not_history(test);
     test_spotlight_reset_clears_transient_focus(test);
     test_freeze_camera_exact_hold_and_resume(test);

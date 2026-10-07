@@ -3256,7 +3256,7 @@ void test_spotlight_compositor(
         arssyut::presentation::SpotlightShape::Circle;
     state.spotlight.content_x = 0.5f;
     state.spotlight.content_y = 0.5f;
-    state.spotlight.area_scale_percent = 82.0f;
+    state.spotlight.area_scale_percent = 140.0f;
     std::uint32_t compact_edge_pixel = 0;
     const bool compact_ok =
         compositor.render(
@@ -3269,11 +3269,11 @@ void test_spotlight_compositor(
             owner.device(),
             owner.immediate_context(),
             compositor.output_texture(),
-            430,
+            460,
             180,
             compact_edge_pixel);
 
-    state.spotlight.area_scale_percent = 148.0f;
+    state.spotlight.area_scale_percent = 200.0f;
     std::uint32_t wide_edge_pixel = 0;
     const bool wide_ok =
         compositor.render(
@@ -3286,7 +3286,7 @@ void test_spotlight_compositor(
             owner.device(),
             owner.immediate_context(),
             compositor.output_texture(),
-            430,
+            460,
             180,
             wide_edge_pixel);
 
@@ -3295,7 +3295,7 @@ void test_spotlight_compositor(
             wide_ok &&
             channel(compact_edge_pixel) <= 72 &&
             std::abs(channel(wide_edge_pixel) - 128) <= 1,
-        "P6UI.6D-K compact aperture dims the edge while wide preserves it");
+        "P6UI.6D-M larger Compact/Wide presets remain visually distinct");
 
     // Restore the original 50% fixture for exact camera projection checks.
     state.spotlight.area_scale_percent = 50.0f;

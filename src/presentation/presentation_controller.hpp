@@ -18,16 +18,18 @@ struct SpotlightSettings {
     // product-facing controls are wired in P6UI.6D-H.
     bool enabled = false;
     bool link_to_zoom = true;
-    SpotlightMode mode = SpotlightMode::SmartFocus;
+    SpotlightMode mode = SpotlightMode::Cursor;
     SpotlightSize size = SpotlightSize::Balanced;
     SpotlightShape shape = SpotlightShape::Circle;
     SpotlightCinematicSpeed cinematic_speed =
         SpotlightCinematicSpeed::Balanced;
 
-    // Upstream P5 starting contract. The compositor resolves actual output
-    // pixels later; the presentation authority never owns render geometry.
-    float area_scale_percent = 100.0f;
-    float feather_short_edge_fraction = 0.12f;
+    // Pinned ArZoom v23 beginner contract: Cursor focus, 170% working area
+    // and about 40 px edge softness at 1080p. The current Arssyut compositor
+    // stores softness as a short-edge fraction, so 40/1080 preserves that
+    // visual starting point while scaling naturally with output resolution.
+    float area_scale_percent = 170.0f;
+    float feather_short_edge_fraction = 40.0f / 1080.0f;
     float dim_strength = 0.38f;
 };
 

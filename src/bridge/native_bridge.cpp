@@ -1742,12 +1742,12 @@ arssyut_bridge_recorder_start(
         config.presentation.spotlight.link_to_zoom =
             (request->flags &
              ARSSYUT_BRIDGE_START_SPOTLIGHT_LINK_TO_ZOOM) != 0;
-        // Unlinked product Spotlight uses the pinned Cursor focus mode.
-        // Linked mode retains the stable SmartFocus anchor used by Zoom.
+        // Pinned ArZoom v23 product default is Cursor focus whether the
+        // cinematic aperture is linked to Zoom or used standalone. Linking
+        // controls only activation choreography; it must not silently change
+        // the focus policy into a latched SmartFocus anchor.
         config.presentation.spotlight.mode =
-            config.presentation.spotlight.link_to_zoom
-                ? arssyut::presentation::SpotlightMode::SmartFocus
-                : arssyut::presentation::SpotlightMode::Cursor;
+            arssyut::presentation::SpotlightMode::Cursor;
         config.presentation.spotlight.size =
             static_cast<
                 arssyut::presentation::SpotlightSize>(
