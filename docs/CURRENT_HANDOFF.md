@@ -3,9 +3,9 @@
 **Updated:** 2026-10-07  
 **Active PR:** #31  
 **Active branch:** `feat/p6ui-avalonia-shell`  
-**Current engineering milestone:** **P6UI.6E deterministic Armed Start + cardless movie countdown green through CI #330; real-video timing acceptance pending**  
-**Current implementation head entering acceptance:**  
-`c428b525fb549866483b8b189e62cc1ba9435a76` (P6UI.6E-C Armed pre-roll + movie-leader countdown visual)
+**Current engineering milestone:** **P6UI.6E-E overlaps native preparation with the cardless 3-2-1 countdown while retaining the Armed commit barrier**  
+**Current implementation candidate:**  
+`feat/p6ui6e-e-overlap-countdown-prepare` (pending canonical CI)
 
 This file is the first document a new ChatGPT thread or engineer must read
 before continuing P6UI work.
@@ -66,10 +66,11 @@ P6UI.6E corrects this without moving media-clock authority into Avalonia:
 - product start requests use `ArmedStart`, while native still owns capture,
   encoder and CFR setup;
 - native waits for a real WGC source frame before publishing Armed;
-- the UI countdown starts only after Armed is observed;
+- the UI countdown starts immediately after native Start is accepted and runs in parallel with Preparing;
 - visual direction is full-target dim + large cardless movie-leader
   `3 -> 2 -> 1 -> ACTION!`;
 - countdown HWND is capture-excluded;
+- `ACTION!` requires both the three-second monotonic countdown and native `Armed`; if preparation is slower, `1` holds until Armed;
 - ACTION clears dimming first, then bridge `recorder_commit_start` releases the
   native media-clock gate;
 - pre-roll presentation events/command mailboxes are discarded at commit;
@@ -77,11 +78,9 @@ P6UI.6E corrects this without moving media-clock authority into Avalonia:
 - elapsed duration stops before MP4 finalization;
 - diagnostics now expose `prepare_latency_ms`, `armed_wait_ms`,
   `commit_to_first_frame_us` and `capture_preroll_received`;
-- CI #330 is green for commit `c428b525...`; exact Avalonia artifact is
-  #11463199673.
+- CI #330 is the pre-overlap baseline for `c428b525...`; P6UI.6E-E must replace it only after canonical CI is green.
 
-Do not replace this with a UI-only countdown followed by `StartRecording()`.
-That would reintroduce the original nondeterministic delay after ACTION.
+Do not replace this with a UI-only countdown followed by `StartRecording()`, and do not wait for Armed before showing `3`. The accepted contract is concurrent visual countdown + native preparation, with Armed retained only as the final commit barrier.
 
 Real-video acceptance procedure:
 `docs/P6UI6E_ARMED_START_ACCEPTANCE_LOCK.md`.
