@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include "core/result/status.hpp"
+#include "core/audio/audio_time.hpp"
 
 #include <codecapi.h>
 #include <mfapi.h>
@@ -12,6 +13,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
+#include <limits>
 #include <new>
 #include <thread>
 
@@ -130,6 +133,130 @@ inline constexpr GUID kArssyutSurfaceSlot = {
 
 } // namespace
 
+Status configure_mf_aac_output_type(
+    IMFMediaType *type,
+    MfAudioWriterConfig config) noexcept
+{
+    if (!type || !config.enabled || !config.valid())
+        return Status::failure(StatusCode::InvalidArgument);
+
+    HRESULT hr =
+        type->SetGUID(
+            MF_MT_MAJOR_TYPE,
+            MFMediaType_Audio);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetGUID(
+        MF_MT_SUBTYPE,
+        MFAudioFormat_AAC);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_NUM_CHANNELS,
+        config.channels);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_SAMPLES_PER_SECOND,
+        config.sample_rate);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_BITS_PER_SAMPLE,
+        16);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_AVG_BYTES_PER_SECOND,
+        config.bitrate_bps / 8U);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AAC_PAYLOAD_TYPE,
+        0);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    return Status::success();
+}
+
+Status configure_mf_pcm16_input_type(
+    IMFMediaType *type,
+    MfAudioWriterConfig config) noexcept
+{
+    if (!type || !config.enabled || !config.valid())
+        return Status::failure(StatusCode::InvalidArgument);
+
+    const std::uint32_t block_align =
+        static_cast<std::uint32_t>(config.channels) *
+        static_cast<std::uint32_t>(sizeof(std::int16_t));
+    const std::uint64_t avg_bytes =
+        static_cast<std::uint64_t>(config.sample_rate) *
+        block_align;
+    if (avg_bytes >
+        static_cast<std::uint64_t>(
+            std::numeric_limits<UINT32>::max())) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    HRESULT hr =
+        type->SetGUID(
+            MF_MT_MAJOR_TYPE,
+            MFMediaType_Audio);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetGUID(
+        MF_MT_SUBTYPE,
+        MFAudioFormat_PCM);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_NUM_CHANNELS,
+        config.channels);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_SAMPLES_PER_SECOND,
+        config.sample_rate);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_BITS_PER_SAMPLE,
+        16);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_BLOCK_ALIGNMENT,
+        block_align);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_AUDIO_AVG_BYTES_PER_SECOND,
+        static_cast<UINT32>(avg_bytes));
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    hr = type->SetUINT32(
+        MF_MT_ALL_SAMPLES_INDEPENDENT,
+        TRUE);
+    if (FAILED(hr))
+        return mf_failure(hr);
+
+    return Status::success();
+}
+
 const char *mf_h264_profile_name(
     MfH264Profile profile) noexcept
 {
@@ -190,6 +317,18 @@ const char *mf_writer_stage_name(
         return "configure_nv12_input";
     case MfWriterStage::SetInputMediaType:
         return "set_input_media_type";
+    case MfWriterStage::ConfigureAudioOutputType:
+        return "configure_aac_output";
+    case MfWriterStage::AddAudioOutputStream:
+        return "add_aac_output_stream";
+    case MfWriterStage::ConfigureAudioInputType:
+        return "configure_pcm16_audio_input";
+    case MfWriterStage::SetAudioInputMediaType:
+        return "set_pcm16_audio_input";
+    case MfWriterStage::CreateAudioSample:
+        return "create_audio_sample";
+    case MfWriterStage::WriteAudioSample:
+        return "write_audio_sample";
     case MfWriterStage::CreateSurfacePool:
         return "create_surface_pool";
     case MfWriterStage::BeginWriting:
@@ -321,7 +460,8 @@ MfH264Mp4Writer::~MfH264Mp4Writer()
 Status MfH264Mp4Writer::open(
     ID3D11Device *device,
     const std::filesystem::path &path,
-    MfVideoWriterConfig config) noexcept
+    MfVideoWriterConfig config,
+    MfAudioWriterConfig audio_config) noexcept
 {
     failure_stage_.store(
         MfWriterStage::None,
@@ -333,6 +473,12 @@ Status MfH264Mp4Writer::open(
     active_color_pipeline_ =
         MfColorPipelineMode::LegacyExplicit;
     color_pipeline_authoritative_ = false;
+    audio_config_ = {};
+    audio_enabled_ = false;
+    active_audio_bitrate_bps_ = 0;
+    audio_stream_index_ = invalid_stream_index;
+    have_audio_timeline_ = false;
+    last_audio_end_100ns_ = 0;
 
     if (open_ ||
         !device ||
@@ -341,7 +487,8 @@ Status MfH264Mp4Writer::open(
         (config.size.width & 1U) != 0 ||
         (config.size.height & 1U) != 0 ||
         !config.frame_rate.valid() ||
-        config.bitrate_bps == 0) {
+        config.bitrate_bps == 0 ||
+        !audio_config.valid()) {
         return Status::failure(StatusCode::InvalidArgument);
     }
 
@@ -372,6 +519,7 @@ Status MfH264Mp4Writer::open(
             100U);
 
     config_ = config;
+    audio_config_ = audio_config;
     path_ = path;
 
     Status status = create_video_processor(device);
@@ -513,7 +661,7 @@ Status MfH264Mp4Writer::open(
 
     hr = writer_->AddStream(
         output_type.Get(),
-        &stream_index_);
+        &video_stream_index_);
 
     if (FAILED(hr) &&
         active_profile_ == MfH264Profile::High) {
@@ -531,7 +679,7 @@ Status MfH264Mp4Writer::open(
 
         hr = writer_->AddStream(
             output_type.Get(),
-            &stream_index_);
+            &video_stream_index_);
     }
 
     if (FAILED(hr))
@@ -633,7 +781,7 @@ Status MfH264Mp4Writer::open(
 
         if (encoding_parameters) {
             hr = writer_->SetInputMediaType(
-                stream_index_,
+                video_stream_index_,
                 input_type.Get(),
                 encoding_parameters.Get());
 
@@ -650,7 +798,7 @@ Status MfH264Mp4Writer::open(
 
             if (encoding_parameters) {
                 hr = writer_->SetInputMediaType(
-                    stream_index_,
+                    video_stream_index_,
                     input_type.Get(),
                     encoding_parameters.Get());
 
@@ -669,7 +817,7 @@ Status MfH264Mp4Writer::open(
         quality_vs_speed_applied_ = false;
 
         hr = writer_->SetInputMediaType(
-            stream_index_,
+            video_stream_index_,
             input_type.Get(),
             nullptr);
     }
@@ -678,6 +826,12 @@ Status MfH264Mp4Writer::open(
         return fail_hr(
             MfWriterStage::SetInputMediaType,
             hr);
+
+    status = configure_audio_stream();
+    if (!status.ok()) {
+        teardown();
+        return status;
+    }
 
     status = create_surface_pool(device);
     if (!status.ok())
@@ -700,13 +854,136 @@ Status MfH264Mp4Writer::open(
             hr);
 
     submitted_frames_.store(0, std::memory_order_release);
+    submitted_audio_samples_.store(0, std::memory_order_release);
+    submitted_audio_frames_.store(0, std::memory_order_release);
     backpressure_events_.store(0, std::memory_order_release);
     sample_buffer_length_.store(0, std::memory_order_release);
     sample_buffer_max_length_.store(0, std::memory_order_release);
     failure_stage_.store(
         MfWriterStage::None,
         std::memory_order_release);
+    audio_enabled_ = audio_config_.enabled;
     open_ = true;
+    return Status::success();
+}
+
+Status MfH264Mp4Writer::configure_audio_stream() noexcept
+{
+    if (!audio_config_.enabled)
+        return Status::success();
+
+    if (!writer_ || !audio_config_.valid()) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureAudioOutputType,
+            std::memory_order_release);
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    const std::array<std::uint32_t, 3> bitrate_candidates{
+        audio_config_.bitrate_bps,
+        160'000U,
+        128'000U,
+    };
+
+    HRESULT last_hr = E_FAIL;
+    bool stream_added = false;
+
+    for (const auto bitrate : bitrate_candidates) {
+        if (bitrate > audio_config_.bitrate_bps)
+            continue;
+        if (!audio_config_.allow_bitrate_fallback &&
+            bitrate != audio_config_.bitrate_bps)
+            continue;
+        if (bitrate < 96'000U)
+            continue;
+        if (stream_added)
+            break;
+
+        MfAudioWriterConfig candidate =
+            audio_config_;
+        candidate.bitrate_bps = bitrate;
+
+        Microsoft::WRL::ComPtr<IMFMediaType> output_type;
+        HRESULT hr =
+            MFCreateMediaType(
+                output_type.GetAddressOf());
+        if (FAILED(hr)) {
+            failure_stage_.store(
+                MfWriterStage::ConfigureAudioOutputType,
+                std::memory_order_release);
+            return mf_failure(hr);
+        }
+
+        const auto status =
+            configure_mf_aac_output_type(
+                output_type.Get(),
+                candidate);
+        if (!status.ok()) {
+            failure_stage_.store(
+                MfWriterStage::ConfigureAudioOutputType,
+                std::memory_order_release);
+            return status;
+        }
+
+        DWORD stream = invalid_stream_index;
+        hr = writer_->AddStream(
+            output_type.Get(),
+            &stream);
+        if (SUCCEEDED(hr)) {
+            audio_stream_index_ = stream;
+            active_audio_bitrate_bps_ = bitrate;
+            stream_added = true;
+            break;
+        }
+
+        last_hr = hr;
+    }
+
+    if (!stream_added) {
+        failure_stage_.store(
+            MfWriterStage::AddAudioOutputStream,
+            std::memory_order_release);
+        return mf_failure(last_hr);
+    }
+
+    Microsoft::WRL::ComPtr<IMFMediaType> input_type;
+    HRESULT hr =
+        MFCreateMediaType(
+            input_type.GetAddressOf());
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureAudioInputType,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
+    MfAudioWriterConfig active_config =
+        audio_config_;
+    active_config.bitrate_bps =
+        active_audio_bitrate_bps_;
+
+    const auto input_status =
+        configure_mf_pcm16_input_type(
+            input_type.Get(),
+            active_config);
+    if (!input_status.ok()) {
+        failure_stage_.store(
+            MfWriterStage::ConfigureAudioInputType,
+            std::memory_order_release);
+        return input_status;
+    }
+
+    hr = writer_->SetInputMediaType(
+        audio_stream_index_,
+        input_type.Get(),
+        nullptr);
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::SetAudioInputMediaType,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
     return Status::success();
 }
 
@@ -1236,7 +1513,7 @@ Status MfH264Mp4Writer::write_frame(
     }
 
     hr = writer_->WriteSample(
-        stream_index_,
+        video_stream_index_,
         sample.Get());
     if (FAILED(hr)) {
         failure_stage_.store(
@@ -1249,6 +1526,186 @@ Status MfH264Mp4Writer::write_frame(
     submitted_frames_.fetch_add(
         1,
         std::memory_order_relaxed);
+
+    return Status::success();
+}
+
+Status MfH264Mp4Writer::write_audio_pcm16(
+    std::span<const std::int16_t> interleaved,
+    arssyut::core::TimePoint relative_pts,
+    std::int64_t duration_ticks) noexcept
+{
+    if (!open_ ||
+        !audio_enabled_ ||
+        !writer_ ||
+        audio_stream_index_ == invalid_stream_index ||
+        relative_pts.ticks_100ns < 0 ||
+        duration_ticks <= 0 ||
+        interleaved.empty() ||
+        audio_config_.channels == 0 ||
+        (interleaved.size() % audio_config_.channels) != 0) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    const std::uint64_t frame_count =
+        interleaved.size() /
+        static_cast<std::size_t>(audio_config_.channels);
+    if (frame_count == 0 ||
+        frame_count >
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::uint32_t>::max())) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    const auto floor_duration =
+        core::audio::frames_to_ticks_floor(
+            frame_count,
+            audio_config_.sample_rate);
+    if (floor_duration >
+        static_cast<std::uint64_t>(
+            std::numeric_limits<std::int64_t>::max())) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    const auto floor_i64 =
+        static_cast<std::int64_t>(floor_duration);
+    if (duration_ticks < floor_i64 ||
+        duration_ticks > floor_i64 + 1) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    if (have_audio_timeline_ &&
+        relative_pts.ticks_100ns <
+            last_audio_end_100ns_) {
+        return Status::failure(
+            StatusCode::InvalidStateTransition);
+    }
+
+    if (relative_pts.ticks_100ns >
+        std::numeric_limits<std::int64_t>::max() -
+            duration_ticks) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    const std::size_t byte_count =
+        interleaved.size_bytes();
+    if (byte_count == 0 ||
+        byte_count >
+            static_cast<std::size_t>(
+                std::numeric_limits<DWORD>::max())) {
+        return Status::failure(StatusCode::InvalidArgument);
+    }
+
+    Microsoft::WRL::ComPtr<IMFSample> sample;
+    HRESULT hr =
+        MFCreateSample(
+            sample.GetAddressOf());
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateAudioSample,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+    hr = MFCreateMemoryBuffer(
+        static_cast<DWORD>(byte_count),
+        buffer.GetAddressOf());
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateAudioSample,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
+    BYTE *destination = nullptr;
+    DWORD max_length = 0;
+    DWORD current_length = 0;
+    hr = buffer->Lock(
+        &destination,
+        &max_length,
+        &current_length);
+    if (FAILED(hr) ||
+        !destination ||
+        max_length < byte_count) {
+        if (SUCCEEDED(hr))
+            buffer->Unlock();
+        failure_stage_.store(
+            MfWriterStage::CreateAudioSample,
+            std::memory_order_release);
+        return mf_failure(
+            FAILED(hr) ? hr : E_UNEXPECTED);
+    }
+
+    std::memcpy(
+        destination,
+        interleaved.data(),
+        byte_count);
+    const HRESULT unlock_hr =
+        buffer->Unlock();
+    if (FAILED(unlock_hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateAudioSample,
+            std::memory_order_release);
+        return mf_failure(unlock_hr);
+    }
+
+    hr = buffer->SetCurrentLength(
+        static_cast<DWORD>(byte_count));
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateAudioSample,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
+    hr = sample->AddBuffer(buffer.Get());
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateAudioSample,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
+    hr = sample->SetSampleTime(
+        relative_pts.ticks_100ns);
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateAudioSample,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
+    hr = sample->SetSampleDuration(
+        duration_ticks);
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::CreateAudioSample,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
+    hr = writer_->WriteSample(
+        audio_stream_index_,
+        sample.Get());
+    if (FAILED(hr)) {
+        failure_stage_.store(
+            MfWriterStage::WriteAudioSample,
+            std::memory_order_release);
+        return mf_failure(hr);
+    }
+
+    submitted_audio_samples_.fetch_add(
+        1,
+        std::memory_order_relaxed);
+    submitted_audio_frames_.fetch_add(
+        frame_count,
+        std::memory_order_relaxed);
+
+    last_audio_end_100ns_ =
+        relative_pts.ticks_100ns +
+        duration_ticks;
+    have_audio_timeline_ = true;
 
     return Status::success();
 }
@@ -1328,6 +1785,11 @@ void MfH264Mp4Writer::teardown() noexcept
     video_device_.Reset();
 
     dxgi_manager_.Reset();
+
+    video_stream_index_ = 0;
+    audio_stream_index_ = invalid_stream_index;
+    have_audio_timeline_ = false;
+    last_audio_end_100ns_ = 0;
 
     if (mf_started_) {
         MFShutdown();
