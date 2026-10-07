@@ -1,5 +1,10 @@
 # P6UI.6E — Deterministic Armed Start Acceptance Lock
 
+**P6UI.6F canonical UX candidate:** `cc9717f3a72a4cb3d416df6f3c80524aa4ed56cf`  
+**Canonical CI:** #335 / run `37595527889` — Native + Avalonia green  
+**Product artifact:** `arssyut-p6ui-avalonia-windows-x64` / artifact `11469838435`  
+**SHA-256:** `a787793215f2ecdfb002c695d1ab800b160fa77215981dd5abd12f8c38044700`
+
 **Canonical E candidate:** `1e17a26d679a3064d2cc29da78720a4e3c43415b`  
 **Canonical CI:** #332 / run `37585130506` — Native + Avalonia green  
 **Product artifact:** `arssyut-p6ui-avalonia-windows-x64` / artifact `11465933250`  
