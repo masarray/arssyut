@@ -169,15 +169,56 @@ WasapiMicrophoneSource::~WasapiMicrophoneSource()
     stop();
 }
 
+void WasapiMicrophoneSource::retire_handoff() noexcept
+{
+    auto retired =
+        handoff_view_.exchange(
+            std::shared_ptr<WasapiPacketHandoff>{},
+            std::memory_order_acq_rel);
+    if (!retired)
+        retired = handoff_;
+
+    if (retired) {
+        terminal_queue_high_water_.store(
+            retired->queue_high_water(),
+            std::memory_order_release);
+        terminal_pool_high_water_.store(
+            retired->pool_high_water(),
+            std::memory_order_release);
+        terminal_pool_exhaustions_.store(
+            retired->pool_exhaustions(),
+            std::memory_order_release);
+        terminal_ring_overflows_.store(
+            retired->ring_overflows(),
+            std::memory_order_release);
+    }
+
+    handoff_.reset();
+}
+
+void WasapiMicrophoneSource::reset_terminal_handoff_telemetry() noexcept
+{
+    terminal_queue_high_water_.store(
+        0,
+        std::memory_order_release);
+    terminal_pool_high_water_.store(
+        0,
+        std::memory_order_release);
+    terminal_pool_exhaustions_.store(
+        0,
+        std::memory_order_release);
+    terminal_ring_overflows_.store(
+        0,
+        std::memory_order_release);
+}
+
 Status WasapiMicrophoneSource::prepare_for_start() noexcept
 {
     // Retire the previous generation atomically. Existing consumer leases keep
     // that exact handoff/pool alive until they release; no control-plane drain
     // races the SPSC consumer and no packet can be released into a new pool.
-    handoff_view_.store(
-        std::shared_ptr<WasapiPacketHandoff>{},
-        std::memory_order_release);
-    handoff_.reset();
+    retire_handoff();
+    reset_terminal_handoff_telemetry();
 
     {
         std::lock_guard metadata_lock(
@@ -336,10 +377,7 @@ Status WasapiMicrophoneSource::start(
             stop_event_ = nullptr;
         }
 
-        handoff_view_.store(
-            std::shared_ptr<WasapiPacketHandoff>{},
-            std::memory_order_release);
-        handoff_.reset();
+        retire_handoff();
     }
 
     start_in_progress_ = false;
@@ -368,10 +406,7 @@ void WasapiMicrophoneSource::stop() noexcept
             stop_event_ = nullptr;
         }
 
-        handoff_view_.store(
-            std::shared_ptr<WasapiPacketHandoff>{},
-            std::memory_order_release);
-        handoff_.reset();
+        retire_handoff();
         return;
     }
 
@@ -411,10 +446,7 @@ void WasapiMicrophoneSource::stop() noexcept
     // Stop completes producer shutdown before retiring the published
     // generation. Already-popped packet leases keep their exact old pool alive,
     // while queued stale media and the source-owned pool are released now.
-    handoff_view_.store(
-        std::shared_ptr<WasapiPacketHandoff>{},
-        std::memory_order_release);
-    handoff_.reset();
+    retire_handoff();
 }
 
 void WasapiMicrophoneSource::request_stop() noexcept
@@ -569,6 +601,20 @@ WasapiMicrophoneSource::snapshot() const noexcept
             handoff->pool_exhaustions();
         result.ring_overflows =
             handoff->ring_overflows();
+    } else {
+        result.queue_depth = 0;
+        result.queue_high_water =
+            terminal_queue_high_water_.load(
+                std::memory_order_acquire);
+        result.pool_high_water =
+            terminal_pool_high_water_.load(
+                std::memory_order_acquire);
+        result.pool_exhaustions =
+            terminal_pool_exhaustions_.load(
+                std::memory_order_acquire);
+        result.ring_overflows =
+            terminal_ring_overflows_.load(
+                std::memory_order_acquire);
     }
 
     return result;
