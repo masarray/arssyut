@@ -1286,6 +1286,13 @@ void RecorderSession::worker_main() noexcept
                 diagnostics_.increment(
                     DiagnosticMetric::
                         EncoderFramesSubmitted);
+
+                if (first_frame_submitted_at_ticks_.load(
+                        std::memory_order_relaxed) == 0) {
+                    first_frame_submitted_at_ticks_.store(
+                        MonotonicClock::now().ticks_100ns,
+                        std::memory_order_relaxed);
+                }
             }
         }
 
@@ -1366,6 +1373,14 @@ void RecorderSession::worker_main() noexcept
             std::chrono::milliseconds(1));
     }
 
+    // Recording duration ends with the render/write loop, not after MP4
+    // finalization. This keeps the user-visible duration aligned with media.
+    const TimePoint recording_stopped =
+        MonotonicClock::now();
+    stopped_at_ticks_.store(
+        recording_stopped.ticks_100ns,
+        std::memory_order_release);
+
     state_.store(
         RecorderState::Stopping,
         std::memory_order_release);
@@ -1429,12 +1444,6 @@ void RecorderSession::worker_main() noexcept
         fail(finalize_status);
         failed = true;
     }
-
-    const TimePoint stopped =
-        MonotonicClock::now();
-    stopped_at_ticks_.store(
-        stopped.ticks_100ns,
-        std::memory_order_release);
 
     const std::uint64_t memory_end =
         private_bytes();
@@ -1734,6 +1743,50 @@ void RecorderSession::write_diagnostics(
             << snapshot_value.visual_analysis_map_failures << ",\n"
             << "  \"elapsed_ticks_100ns\": "
             << snapshot_value.elapsed_ticks << ",\n"
+            << "  \"prepare_latency_ms\": "
+            << ([&]() -> std::int64_t {
+                   const auto requested =
+                       start_requested_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto armed =
+                       armed_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto ready =
+                       armed > 0 ? armed : started;
+                   return requested > 0 && ready >= requested
+                       ? (ready - requested) / 10'000
+                       : 0;
+               })()
+            << ",\n"
+            << "  \"armed_wait_ms\": "
+            << ([&]() -> std::int64_t {
+                   const auto armed =
+                       armed_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   return armed > 0 && started >= armed
+                       ? (started - armed) / 10'000
+                       : 0;
+               })()
+            << ",\n"
+            << "  \"commit_to_first_frame_us\": "
+            << ([&]() -> std::int64_t {
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto first =
+                       first_frame_submitted_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   return started > 0 && first >= started
+                       ? (first - started) / 10
+                       : 0;
+               })()
+            << ",\n"
             << "  \"capture_received\": "
             << snapshot_value.capture_received << ",\n"
             << "  \"capture_replaced\": "
