@@ -119,6 +119,17 @@ jobs:
             # before WGC starts so recorder chrome cannot leak into Display/
             # Region output.
             "src/app/windows_main.cpp" = "f75b48c688023d9c154cf472a3ff7ef0fda28c30"
+
+            # P7A1 canonical portable audio contracts. These exact blobs are
+            # intentionally admitted after the P7A architecture/acceptance lock;
+            # later audio lanes must not silently mutate the shared contract.
+            "src/core/audio/audio_buffer.hpp" = "f7f8bb04d25f439a727280a93061e9add2dcd513"
+            "src/core/audio/audio_drift.hpp" = "c59ddca3e76a6c825615311bcde6592d2db39022"
+            "src/core/audio/audio_format.hpp" = "e1d597197ac14cd4bbe69f67f07442641f6941ae"
+            "src/core/audio/audio_mix.hpp" = "4b773669f3213bd0308e7c37774a02f0366ee639"
+            "src/core/audio/audio_packet.hpp" = "41fa11eac1b9f35bb96cd37619f545be71d47193"
+            "src/core/audio/audio_resampler.hpp" = "e50d5b23cd1a702549bc94b0254dbee695e6630a"
+            "src/core/audio/audio_time.hpp" = "c80c0f60ca6d73fe8f2f305c5a76ed3eca1260fb"
           }
 
           $changedNative = @(
