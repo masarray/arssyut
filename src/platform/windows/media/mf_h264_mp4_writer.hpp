@@ -99,7 +99,8 @@ struct MfAudioWriterConfig {
     std::uint32_t sample_rate = 48'000;
     std::uint16_t channels = 2;
     std::uint32_t bitrate_bps = 192'000;
-    bool allow_bitrate_fallback = true;
+    std::uint32_t sample_pool_count = 8;
+    std::uint32_t max_frames_per_sample = 1'024;
 
     [[nodiscard]] constexpr bool valid() const noexcept
     {
@@ -110,7 +111,11 @@ struct MfAudioWriterConfig {
             (sample_rate == 44'100 || sample_rate == 48'000) &&
             (channels == 1 || channels == 2) &&
             bitrate_bps >= 96'000 &&
-            bitrate_bps <= 320'000;
+            bitrate_bps <= 320'000 &&
+            sample_pool_count >= 2 &&
+            sample_pool_count <= 16 &&
+            max_frames_per_sample >= 1 &&
+            max_frames_per_sample <= 4'096;
     }
 };
 
@@ -127,6 +132,7 @@ configure_mf_pcm16_input_type(
 class MfH264Mp4Writer final {
 public:
     static constexpr std::size_t max_surface_count = 8;
+    static constexpr std::size_t max_audio_slot_count = 16;
 
     MfH264Mp4Writer() = default;
     ~MfH264Mp4Writer();
@@ -188,6 +194,13 @@ public:
         return submitted_audio_frames_.load(std::memory_order_relaxed);
     }
 
+    [[nodiscard]] std::uint64_t audio_backpressure_events() const noexcept
+    {
+        return audio_backpressure_events_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] std::uint32_t in_flight_audio_samples() const noexcept;
+
     [[nodiscard]] std::uint32_t in_flight_surfaces() const noexcept;
 
     [[nodiscard]] std::uint32_t last_sample_buffer_length() const noexcept
@@ -248,6 +261,8 @@ public:
 
     void on_sample_released(std::uint32_t slot) noexcept;
 
+    void on_audio_sample_released(std::uint32_t slot) noexcept;
+
 private:
     class ReleaseCallback;
 
@@ -257,10 +272,17 @@ private:
         std::atomic<bool> in_use{false};
     };
 
+    struct AudioSlot {
+        Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+        std::atomic<bool> in_use{false};
+    };
+
     [[nodiscard]] arssyut::core::Status create_video_processor(
         ID3D11Device *device) noexcept;
 
     [[nodiscard]] arssyut::core::Status configure_audio_stream() noexcept;
+
+    [[nodiscard]] arssyut::core::Status create_audio_pool() noexcept;
 
     [[nodiscard]] arssyut::core::Status create_surface_pool(
         ID3D11Device *device) noexcept;
@@ -272,7 +294,11 @@ private:
 
     [[nodiscard]] std::size_t acquire_surface() noexcept;
 
+    [[nodiscard]] std::size_t acquire_audio_slot() noexcept;
+
     void release_surface(std::size_t index) noexcept;
+
+    void release_audio_slot(std::size_t index) noexcept;
 
     void teardown() noexcept;
 
@@ -294,6 +320,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D11VideoProcessorInputView> input_view_;
 
     std::array<SurfaceSlot, max_surface_count> surfaces_{};
+    std::array<AudioSlot, max_audio_slot_count> audio_slots_{};
 
     static constexpr DWORD invalid_stream_index = 0xFFFFFFFFu;
 
@@ -317,6 +344,7 @@ private:
     std::atomic<std::uint64_t> submitted_frames_{0};
     std::atomic<std::uint64_t> submitted_audio_samples_{0};
     std::atomic<std::uint64_t> submitted_audio_frames_{0};
+    std::atomic<std::uint64_t> audio_backpressure_events_{0};
     std::atomic<std::uint64_t> backpressure_events_{0};
     std::atomic<std::uint32_t> sample_buffer_length_{0};
     std::atomic<std::uint32_t> sample_buffer_max_length_{0};
