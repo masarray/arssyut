@@ -134,8 +134,8 @@ jobs:
             # P7A4 evolves the accepted single Media Foundation writer into one
             # optional AV authority. Exact blobs keep the video path fail-closed
             # while allowing only the audited AAC/PCM16 extension.
-            "src/platform/windows/media/mf_h264_mp4_writer.hpp" = "d6b3ebc9c541dae01ea06470b407bf1e6b1b04a2"
-            "src/platform/windows/media/mf_h264_mp4_writer.cpp" = "762ffbdca89b39ab9a941487b7cb0f74eeb11d0a"
+            "src/platform/windows/media/mf_h264_mp4_writer.hpp" = "e26fc192af7f84a9b2392406598d54686463dbcd"
+            "src/platform/windows/media/mf_h264_mp4_writer.cpp" = "1b9249d1d437aade0f88f29755464e5bbae8c640"
           }
 
           $changedNative = @(
