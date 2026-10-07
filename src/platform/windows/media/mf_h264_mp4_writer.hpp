@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 
 namespace arssyut::windows {
 
@@ -32,6 +33,12 @@ enum class MfWriterStage : std::uint16_t {
     AddOutputStream,
     ConfigureInputType,
     SetInputMediaType,
+    ConfigureAudioOutputType,
+    AddAudioOutputStream,
+    ConfigureAudioInputType,
+    SetAudioInputMediaType,
+    CreateAudioSample,
+    WriteAudioSample,
     CreateSurfacePool,
     BeginWriting,
     ConvertToNv12,
@@ -87,9 +94,45 @@ struct MfVideoWriterConfig {
     std::uint32_t quality_vs_speed = 85;
 };
 
+struct MfAudioWriterConfig {
+    bool enabled = false;
+    std::uint32_t sample_rate = 48'000;
+    std::uint16_t channels = 2;
+    std::uint32_t bitrate_bps = 192'000;
+    std::uint32_t sample_pool_count = 8;
+    std::uint32_t max_frames_per_sample = 1'024;
+
+    [[nodiscard]] constexpr bool valid() const noexcept
+    {
+        if (!enabled)
+            return true;
+
+        return
+            (sample_rate == 44'100 || sample_rate == 48'000) &&
+            (channels == 1 || channels == 2) &&
+            bitrate_bps >= 96'000 &&
+            bitrate_bps <= 320'000 &&
+            sample_pool_count >= 2 &&
+            sample_pool_count <= 16 &&
+            max_frames_per_sample >= 1 &&
+            max_frames_per_sample <= 4'096;
+    }
+};
+
+[[nodiscard]] arssyut::core::Status
+configure_mf_aac_output_type(
+    IMFMediaType *type,
+    MfAudioWriterConfig config) noexcept;
+
+[[nodiscard]] arssyut::core::Status
+configure_mf_pcm16_input_type(
+    IMFMediaType *type,
+    MfAudioWriterConfig config) noexcept;
+
 class MfH264Mp4Writer final {
 public:
     static constexpr std::size_t max_surface_count = 8;
+    static constexpr std::size_t max_audio_slot_count = 16;
 
     MfH264Mp4Writer() = default;
     ~MfH264Mp4Writer();
@@ -100,11 +143,17 @@ public:
     [[nodiscard]] arssyut::core::Status open(
         ID3D11Device *device,
         const std::filesystem::path &path,
-        MfVideoWriterConfig config) noexcept;
+        MfVideoWriterConfig config,
+        MfAudioWriterConfig audio_config = {}) noexcept;
 
     [[nodiscard]] arssyut::core::Status write_frame(
         ID3D11DeviceContext *context,
         ID3D11Texture2D *source,
+        arssyut::core::TimePoint relative_pts,
+        std::int64_t duration_ticks) noexcept;
+
+    [[nodiscard]] arssyut::core::Status write_audio_pcm16(
+        std::span<const std::int16_t> interleaved,
         arssyut::core::TimePoint relative_pts,
         std::int64_t duration_ticks) noexcept;
 
@@ -124,6 +173,33 @@ public:
     {
         return backpressure_events_.load(std::memory_order_relaxed);
     }
+
+    [[nodiscard]] bool audio_enabled() const noexcept
+    {
+        return audio_enabled_;
+    }
+
+    [[nodiscard]] std::uint32_t active_audio_bitrate_bps() const noexcept
+    {
+        return active_audio_bitrate_bps_;
+    }
+
+    [[nodiscard]] std::uint64_t submitted_audio_samples() const noexcept
+    {
+        return submitted_audio_samples_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] std::uint64_t submitted_audio_frames() const noexcept
+    {
+        return submitted_audio_frames_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] std::uint64_t audio_backpressure_events() const noexcept
+    {
+        return audio_backpressure_events_.load(std::memory_order_relaxed);
+    }
+
+    [[nodiscard]] std::uint32_t in_flight_audio_samples() const noexcept;
 
     [[nodiscard]] std::uint32_t in_flight_surfaces() const noexcept;
 
@@ -185,6 +261,8 @@ public:
 
     void on_sample_released(std::uint32_t slot) noexcept;
 
+    void on_audio_sample_released(std::uint32_t slot) noexcept;
+
 private:
     class ReleaseCallback;
 
@@ -194,8 +272,17 @@ private:
         std::atomic<bool> in_use{false};
     };
 
+    struct AudioSlot {
+        Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+        std::atomic<bool> in_use{false};
+    };
+
     [[nodiscard]] arssyut::core::Status create_video_processor(
         ID3D11Device *device) noexcept;
+
+    [[nodiscard]] arssyut::core::Status configure_audio_stream() noexcept;
+
+    [[nodiscard]] arssyut::core::Status create_audio_pool() noexcept;
 
     [[nodiscard]] arssyut::core::Status create_surface_pool(
         ID3D11Device *device) noexcept;
@@ -207,11 +294,16 @@ private:
 
     [[nodiscard]] std::size_t acquire_surface() noexcept;
 
+    [[nodiscard]] std::size_t acquire_audio_slot() noexcept;
+
     void release_surface(std::size_t index) noexcept;
+
+    void release_audio_slot(std::size_t index) noexcept;
 
     void teardown() noexcept;
 
     MfVideoWriterConfig config_{};
+    MfAudioWriterConfig audio_config_{};
     std::filesystem::path path_;
 
     Microsoft::WRL::ComPtr<IMFDXGIDeviceManager> dxgi_manager_;
@@ -228,8 +320,12 @@ private:
     Microsoft::WRL::ComPtr<ID3D11VideoProcessorInputView> input_view_;
 
     std::array<SurfaceSlot, max_surface_count> surfaces_{};
+    std::array<AudioSlot, max_audio_slot_count> audio_slots_{};
 
-    DWORD stream_index_ = 0;
+    static constexpr DWORD invalid_stream_index = 0xFFFFFFFFu;
+
+    DWORD video_stream_index_ = 0;
+    DWORD audio_stream_index_ = invalid_stream_index;
     UINT dxgi_reset_token_ = 0;
     bool mf_started_ = false;
     bool open_ = false;
@@ -240,8 +336,15 @@ private:
     MfColorPipelineMode active_color_pipeline_ =
         MfColorPipelineMode::LegacyExplicit;
     bool color_pipeline_authoritative_ = false;
+    bool audio_enabled_ = false;
+    std::uint32_t active_audio_bitrate_bps_ = 0;
+    bool have_audio_timeline_ = false;
+    std::int64_t last_audio_end_100ns_ = 0;
 
     std::atomic<std::uint64_t> submitted_frames_{0};
+    std::atomic<std::uint64_t> submitted_audio_samples_{0};
+    std::atomic<std::uint64_t> submitted_audio_frames_{0};
+    std::atomic<std::uint64_t> audio_backpressure_events_{0};
     std::atomic<std::uint64_t> backpressure_events_{0};
     std::atomic<std::uint32_t> sample_buffer_length_{0};
     std::atomic<std::uint32_t> sample_buffer_max_length_{0};
