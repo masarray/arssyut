@@ -2,6 +2,7 @@
 #include "app/region_geometry.hpp"
 #include "presentation/momentary_presenter_gate.hpp"
 
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <type_traits>
@@ -1048,6 +1049,183 @@ void test_zoom_off_clears_freeze(
 }
 
 
+
+struct CinematicFrameRateTrace {
+    bool framing_first = false;
+    float focused_mix = 0.0f;
+    float focused_dim = 0.0f;
+    float plus_scale = 0.0f;
+    float minus_scale = 0.0f;
+    float after_off_mix = 0.0f;
+    float opening_mix = 0.0f;
+    float opening_dim = 0.0f;
+    float final_mix = 0.0f;
+    float final_dim = 0.0f;
+    bool final_pass_through = false;
+};
+
+CinematicFrameRateTrace sample_cinematic_frame_rate(int fps)
+{
+    PresentationSettings settings;
+    settings.smart_zoom = false;
+    settings.presenter_controls = true;
+    settings.zoom = 2.0f;
+    settings.spotlight.enabled = true;
+    settings.spotlight.link_to_zoom = true;
+
+    PresentationController controller;
+    controller.reset();
+    controller.set_settings(settings);
+
+    std::int64_t ticks = 0;
+    const auto next = [&]() {
+        ticks += MonotonicClock::ticks_per_second / fps;
+        const TimePoint now{ticks};
+        return controller.step(
+            1.0f / static_cast<float>(fps),
+            0.74f,
+            0.36f,
+            true,
+            now,
+            now);
+    };
+
+    const auto advance = [&](int frames) {
+        arssyut::presentation::PresentationFrameState frame{};
+        for (int i = 0; i < frames; ++i)
+            frame = next();
+        return frame;
+    };
+
+    CinematicFrameRateTrace trace{};
+
+    controller.toggle_manual_zoom();
+    const auto first = next();
+    trace.framing_first =
+        first.spotlight.runtime_requested &&
+        first.spotlight.focus_valid &&
+        first.spotlight.focus_mix == 0.0f &&
+        first.spotlight.dim_mix == 0.0f;
+
+    const auto focused = advance(fps * 2);
+    trace.focused_mix = focused.spotlight.focus_mix;
+    trace.focused_dim = focused.spotlight.dim_mix;
+
+    // ArZoom contract: Zoom +/- resizes the aperture only. It must not
+    // re-trigger the full-screen closing animation or alter camera ownership.
+    controller.adjust_manual_zoom(0.50f);
+    const auto zoomed_in = advance(fps * 2);
+    trace.plus_scale = zoomed_in.spotlight.zoom_resize_scale;
+
+    controller.adjust_manual_zoom(-0.25f);
+    const auto zoomed_out_step = advance(fps * 2);
+    trace.minus_scale = zoomed_out_step.spotlight.zoom_resize_scale;
+
+    controller.toggle_manual_zoom();
+    const auto just_off = next();
+    trace.after_off_mix = just_off.spotlight.focus_mix;
+    const auto opening = advance(fps / 6);
+    trace.opening_mix = opening.spotlight.focus_mix;
+    trace.opening_dim = opening.spotlight.dim_mix;
+
+    const auto cleared = advance(fps * 2);
+    trace.final_mix = cleared.spotlight.focus_mix;
+    trace.final_dim = cleared.spotlight.dim_mix;
+    trace.final_pass_through =
+        !cleared.spotlight.runtime_requested &&
+        cleared.spotlight.focus_mix == 0.0f &&
+        cleared.spotlight.dim_mix == 0.0f;
+
+    return trace;
+}
+
+void test_spotlight_cinematic_frame_rate_acceptance(
+    TestContext &test)
+{
+    // Exercise the actual PresenterController camera/Spotlight handoff at
+    // wall-clock equivalent intervals, not only the vendored state helper.
+    const std::array<int, 4> rates{30, 60, 120, 144};
+    const auto baseline = sample_cinematic_frame_rate(60);
+
+    bool framing_first = true;
+    bool reaches_focus = true;
+    bool resize_only = true;
+    bool reverse_opens = true;
+    bool returns_to_pass_through = true;
+    bool frame_rate_equivalent = true;
+
+    for (const int fps : rates) {
+        const auto trace = sample_cinematic_frame_rate(fps);
+
+        framing_first =
+            framing_first && trace.framing_first;
+        reaches_focus =
+            reaches_focus &&
+            std::fabs(trace.focused_mix - 1.0f) < 1.0e-5f &&
+            std::fabs(trace.focused_dim - 1.0f) < 1.0e-5f;
+        resize_only =
+            resize_only &&
+            trace.plus_scale > 1.15f &&
+            trace.minus_scale < trace.plus_scale &&
+            trace.minus_scale > 1.02f;
+        reverse_opens =
+            reverse_opens &&
+            trace.after_off_mix > 0.0f &&
+            trace.after_off_mix <= 1.0f &&
+            trace.opening_mix > 0.0f &&
+            trace.opening_mix < trace.after_off_mix &&
+            trace.opening_dim <= trace.opening_mix;
+        returns_to_pass_through =
+            returns_to_pass_through &&
+            trace.final_pass_through;
+        frame_rate_equivalent =
+            frame_rate_equivalent &&
+            std::fabs(
+                trace.focused_mix -
+                baseline.focused_mix) < 0.01f &&
+            std::fabs(
+                trace.plus_scale -
+                baseline.plus_scale) < 0.08f &&
+            std::fabs(
+                trace.minus_scale -
+                baseline.minus_scale) < 0.08f &&
+            std::fabs(
+                trace.opening_mix -
+                baseline.opening_mix) < 0.16f &&
+            std::fabs(
+                trace.final_mix -
+                baseline.final_mix) < 1.0e-5f;
+
+        std::cout
+            << "P6UI.6D-J1 cinematic rate " << fps
+            << " focused=" << trace.focused_mix
+            << " zoom_plus_scale=" << trace.plus_scale
+            << " zoom_minus_scale=" << trace.minus_scale
+            << " opening=" << trace.opening_mix
+            << " final=" << trace.final_mix
+            << '\n';
+    }
+
+    test.expect(
+        framing_first,
+        "30/60/120/144 fps: Zoom begins with Spotlight full-frame and undimmed");
+    test.expect(
+        reaches_focus,
+        "30/60/120/144 fps: cinematic close reaches exact focus and dim endpoints");
+    test.expect(
+        resize_only,
+        "30/60/120/144 fps: Zoom plus/minus resizes focus in-session");
+    test.expect(
+        reverse_opens,
+        "30/60/120/144 fps: Toggle Zoom off expands focus smoothly before pass-through");
+    test.expect(
+        returns_to_pass_through,
+        "30/60/120/144 fps: Zoom off settles to exact Spotlight pass-through");
+    test.expect(
+        frame_rate_equivalent,
+        "30/60/120/144 fps: cinematic outcomes stay wall-time equivalent");
+}
+
 void test_spotlight_cinematic_choreography_and_resize(
     TestContext &test)
 {
@@ -1271,6 +1449,7 @@ int main()
     test_freeze_mid_activation_and_reset_priority(test);
     test_zoom_off_clears_freeze(test);
     test_spotlight_cinematic_choreography_and_resize(test);
+    test_spotlight_cinematic_frame_rate_acceptance(test);
     test_overview_peek_saved_shot(test);
     test_overview_cancel_when_zoom_intent_ends(test);
     test_region_boundary_tracks_hold_and_overview(test);
