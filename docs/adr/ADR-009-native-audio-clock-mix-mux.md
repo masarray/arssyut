@@ -39,6 +39,12 @@ All audio source timestamps are converted to the existing monotonic/QPC
 WASAPI packet QPC timestamps are source evidence, not a second clock. They are
 mapped into the RecorderSession timeline and used to estimate per-device drift.
 
+Device timing is not assumed perfect. Packets with timestamp errors or failed
+monotonic/plausibility checks are classified with lower timestamp confidence.
+Normal drift estimation uses only trusted device-QPC evidence; continuity may
+fall back to frame-count extrapolation or packet-arrival estimation without
+turning scheduler jitter into a new clock.
+
 ### 2. Two explicit capture sources
 
 P7A has two independent Windows sources:
@@ -55,6 +61,11 @@ Do not alias System Audio to Stereo Mix or to the selected microphone.
 
 Audio capture workers are event-driven. They drain every available WASAPI
 packet after wake-up and release endpoint buffers promptly.
+
+Windows capture workers register with MMCSS task `Audio` and deterministically
+revert that registration during teardown. `Pro Audio` is not the default:
+higher priority requires measured evidence that ordinary Audio scheduling misses
+the endpoint service deadline.
 
 Capture workers do not encode, mux, format diagnostics, touch UI state or
 perform expensive mixing.
@@ -134,6 +145,10 @@ Normal drift is corrected gradually through the source resampling ratio. P7A
 must not periodically sleep, duplicate/drop large chunks, or reset timestamps
 to “fix” drift.
 
+The resampler is stateful and its internal/group delay is part of media-time
+accounting. Its contract exposes consumed frames, produced frames and delay (or
+equivalent phase state); output PTS may not blindly reuse input packet PTS.
+
 Actual device discontinuities are represented as missing timeline intervals.
 The mixer preserves global A/V time by inserting deterministic silence where
 audio is unavailable rather than shifting later audio.
@@ -185,9 +200,15 @@ mid-recording.
 
 A recording pins the resolved endpoint identity. Device invalidation is an
 explicit source state. Arssyut may make bounded, stop-aware attempts to reopen
-the **same pinned endpoint ID**; missing time contributes silence and a
-successful reopen explicitly re-anchors source timing. Switching to a different
-new default endpoint is a separate future capability.
+the **same pinned endpoint identity**; missing time contributes silence and a
+successful reopen re-queries mutable format properties and explicitly
+re-anchors source timing. Switching to a different new default endpoint is a
+separate future capability.
+
+Friendly name is never identity. When available on supported Windows,
+`PKEY_AudioEndpoint_StableId` is the preferred durable persisted identity;
+ordinary endpoint ID remains the runtime/fallback identity and stale resolution
+must be explicit.
 
 ### 11. Bounded memory and ownership
 
