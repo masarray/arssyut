@@ -3249,6 +3249,57 @@ void test_spotlight_compositor(
         shapes_ok,
         "P6UI.6D-D Circle/Ellipse/RoundedRectangle share one analytic pass");
 
+    // P6UI.6D-K: product size presets must change visible aperture pixels,
+    // not just the serialized Settings selection. Same shader, same retained
+    // compositor, same dim/feather and output geometry.
+    state.spotlight.shape =
+        arssyut::presentation::SpotlightShape::Circle;
+    state.spotlight.content_x = 0.5f;
+    state.spotlight.content_y = 0.5f;
+    state.spotlight.area_scale_percent = 82.0f;
+    std::uint32_t compact_edge_pixel = 0;
+    const bool compact_ok =
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            output_size,
+            &state).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            430,
+            180,
+            compact_edge_pixel);
+
+    state.spotlight.area_scale_percent = 148.0f;
+    std::uint32_t wide_edge_pixel = 0;
+    const bool wide_ok =
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            output_size,
+            &state).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            430,
+            180,
+            wide_edge_pixel);
+
+    test.expect(
+        compact_ok &&
+            wide_ok &&
+            channel(compact_edge_pixel) <= 72 &&
+            std::abs(channel(wide_edge_pixel) - 128) <= 1,
+        "P6UI.6D-K compact aperture dims the edge while wide preserves it");
+
+    // Restore the original 50% fixture for exact camera projection checks.
+    state.spotlight.area_scale_percent = 50.0f;
+
     // Reuse the exact project_content camera transform: content focus 0.80,
     // 0.45 under center 0.75,0.40 at 2x maps to output 0.60,0.60.
     state.spotlight.shape =

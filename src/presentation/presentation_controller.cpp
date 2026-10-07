@@ -588,10 +588,9 @@ PresentationFrameState PresentationController::step(
     // second timing authority while preserving the requested framing-first cue.
     const bool spotlight_requested =
         settings_.spotlight.enabled &&
-        settings_.spotlight.link_to_zoom &&
-        wants_zoom &&
         spotlight_focus_valid_ &&
-        !overview_.active();
+        !overview_.active() &&
+        (!settings_.spotlight.link_to_zoom || wants_zoom);
 
     arzoom::CinematicFocusSpeed spotlight_speed =
         arzoom::CinematicFocusSpeed::Balanced;
@@ -615,6 +614,12 @@ PresentationFrameState PresentationController::step(
             spotlight_close_armed_ = false;
 
         if (spotlight_close_armed_) {
+            spotlight_cinematic_.set_target(true, spotlight_speed);
+        } else if (!settings_.spotlight.link_to_zoom) {
+            // Standalone Spotlight has no camera-zoom departure to wait for.
+            // Begin the upstream aperture transition immediately, using the
+            // same canonical focus and the same cinematic state.
+            spotlight_close_armed_ = true;
             spotlight_cinematic_.set_target(true, spotlight_speed);
         } else if (camera_zoom > 1.0005f) {
             // Arm only after this already-renderable frame proves that the
@@ -674,8 +679,27 @@ PresentationFrameState PresentationController::step(
         settings_.spotlight.shape;
     result.spotlight.cinematic_speed =
         settings_.spotlight.cinematic_speed;
+    // Product Focus Size modifies only the existing analytic aperture scale.
+    // Ratios match the pinned upstream Compact/Balanced/Wide size proportions
+    // (0.22/0.27 and 0.40/0.27 approximately); no second geometry solver.
+    float focus_size_scale = 1.0f;
+    switch (settings_.spotlight.size) {
+    case SpotlightSize::Compact:
+        focus_size_scale = 0.82f;
+        break;
+    case SpotlightSize::Wide:
+        focus_size_scale = 1.48f;
+        break;
+    case SpotlightSize::Balanced:
+    default:
+        break;
+    }
     result.spotlight.area_scale_percent =
-        settings_.spotlight.area_scale_percent;
+        std::clamp(
+            settings_.spotlight.area_scale_percent *
+                focus_size_scale,
+            50.0f,
+            200.0f);
     result.spotlight.feather_short_edge_fraction =
         settings_.spotlight.feather_short_edge_fraction;
     result.spotlight.dim_strength =

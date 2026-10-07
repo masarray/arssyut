@@ -669,10 +669,7 @@ void RecorderSession::worker_main() noexcept
     }
 
     const bool presentation_enabled =
-        config_.presentation.presenter_controls ||
-        config_.presentation.smart_zoom ||
-        config_.presentation.click_visual ||
-        config_.presentation.shortcut_keys;
+        config_.presentation.needs_presentation_frames();
 
     arssyut::windows::WgcCaptureOptions capture_options;
     // P4R.3A: keep the Windows/WGC cursor as the single cursor authority.
