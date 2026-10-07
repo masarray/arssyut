@@ -329,6 +329,46 @@ void test_timestamp_quality(
             AudioTimestampQuality::DeviceQpcTrusted,
         "Fresh anchor guard relocks after two host-plausible monotonic packets");
 
+    windows::WasapiTimestampClassifier buffered_fallback{
+        48'000};
+
+    const auto buffered_one =
+        buffered_fallback.observe(
+            480,
+            0,
+            0,
+            9'000'000,
+            AudioPacketFlag::TimestampError);
+    const auto buffered_two =
+        buffered_fallback.observe(
+            480,
+            480,
+            0,
+            9'001'000,
+            AudioPacketFlag::TimestampError);
+    const auto buffered_three =
+        buffered_fallback.observe(
+            480,
+            960,
+            0,
+            9'002'000,
+            AudioPacketFlag::TimestampError);
+
+    test.expect(
+        buffered_one.quality ==
+                AudioTimestampQuality::HostQpcFallback &&
+        buffered_two.quality ==
+                AudioTimestampQuality::HostQpcFallback &&
+        buffered_three.quality ==
+                AudioTimestampQuality::HostQpcFallback,
+        "Buffered timestamp errors remain explicit host-QPC fallback");
+
+    test.expect(
+        buffered_one.packet_start_qpc_100ns == 8'900'000 &&
+        buffered_two.packet_start_qpc_100ns == 9'000'000 &&
+        buffered_three.packet_start_qpc_100ns == 9'100'000,
+        "Host fallback packets stay ordered and nonoverlapping during one buffered drain");
+
     windows::WasapiTimestampClassifier reset_clock{
         48'000};
 
