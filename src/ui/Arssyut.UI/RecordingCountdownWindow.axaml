@@ -1,0 +1,54 @@
+<Window
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="Arssyut.UI.RecordingCountdownWindow"
+    Title="Recording countdown"
+    CanResize="False"
+    ShowInTaskbar="False"
+    ShowActivated="False"
+    Topmost="True"
+    WindowDecorations="None"
+    Background="{DynamicResource ArBrush.CountdownScrim}"
+    FontFamily="{DynamicResource ArFont.Inter}"
+    TextOptions.TextRenderingMode="Antialias">
+
+  <Grid IsHitTestVisible="False">
+    <Ellipse
+        x:Name="LeaderRing"
+        Width="276"
+        Height="276"
+        Stroke="{DynamicResource ArBrush.CountdownLeader}"
+        StrokeThickness="2"
+        IsVisible="False"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Center" />
+
+    <Border
+        x:Name="HorizontalGuide"
+        Width="348"
+        Height="1"
+        Background="{DynamicResource ArBrush.CountdownGuide}"
+        IsVisible="False"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Center" />
+
+    <Border
+        x:Name="VerticalGuide"
+        Width="1"
+        Height="348"
+        Background="{DynamicResource ArBrush.CountdownGuide}"
+        IsVisible="False"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Center" />
+
+    <TextBlock
+        x:Name="CountdownText"
+        Text=""
+        FontSize="150"
+        FontWeight="SemiBold"
+        Foreground="White"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Center"
+        TextAlignment="Center" />
+  </Grid>
+</Window>

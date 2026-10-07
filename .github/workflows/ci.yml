@@ -11,9 +11,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   windows-release:
-    name: Windows x64 Release
+    name: Native Windows x64 Release
     runs-on: windows-latest
     timeout-minutes: 20
 
@@ -50,11 +54,309 @@ jobs:
           New-Item -ItemType Directory -Force -Path $package | Out-Null
           Copy-Item "build/windows-x64/Release/arssyut.exe" $package
           Copy-Item "tools/app_package/README.txt" $package
+          Copy-Item "third_party/lucide/LICENSE" (Join-Path $package "LUCIDE_LICENSE.txt")
 
-      - name: Upload Arssyut GUI recorder
+      - name: Upload native recorder
         uses: actions/upload-artifact@v4
         with:
           name: arssyut-recorder-windows-x64
           path: dist/arssyut/*
+          if-no-files-found: error
+          retention-days: 90
+
+  p6ui-windows:
+    name: P6UI Avalonia Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Guard locked native baseline during P6UI
+        shell: pwsh
+        run: |
+          $baseline = "b11451bd640a072d81dbd1024b4c641a76c9daac"
+
+          # checkout@v4 uses a shallow PR merge checkout. Fetch exactly the
+          # historical P6R baseline tree before comparing protected engine paths.
+          git fetch origin $baseline --depth=1
+
+          $allowedNativeCorrections = @(
+            # P6UI.4C-B reproduced Region layered-window repaint correction.
+            "src/app/recorder_overlay.cpp",
+            # P6UI.6A-6C bounded presenter command / momentary release plumbing
+            # only. Capture, timing, compositor, encoder and RecorderSession
+            # lifecycle remain unchanged.
+            "src/app/recorder_session.cpp",
+            "src/app/recorder_session.hpp",
+            # P6UI.6B/6C reads the already-authoritative Raw Input pressed-state
+            # table for momentary presenter chords. P6UI.6C adds only a
+            # GetAsyncKeyState stale-release fuse; it cannot activate a chord
+            # and does not add a second keyboard hook.
+            "src/platform/windows/input/presentation_input_worker.hpp"
+          )
+
+          # Keep reproduced native corrections fail-closed at exact Git blobs.
+          # These are not a broad allowlist: each path below has a documented
+          # acceptance reason and deterministic regression coverage.
+          $lockedNativeCorrectionBlobs = @{
+            # P6UI.6D/P6UI.6F retained Spotlight + keycap destination-rect path,
+            # plus final Region Smart Auto crop normalization.
+            "src/platform/windows/graphics/d3d11_compositor.cpp" = "97f7e203dc75620f9abd74901f4b88dac87f29b1"
+            "src/platform/windows/graphics/d3d11_compositor.hpp" = "6810588fd42e267c26528b2b17be2e93b74e9547"
+            # Final review gate: 64x36 async scene analyzer samples only the
+            # canonical encoded Region UV rectangle.
+            "src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp" = "fd8c16a4493dab3ee61a88e5c3a055a07786dcab"
+            "src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.hpp" = "a8d9e45f402df0ede482067390e612d97ad276af"
+            "src/platform/windows/video/native_video_pipeline.cpp" = "01a75b2715cc737af61aba71a431a5846ffb023d"
+            # Final review gate: protect the visible legacy/native workspace
+            # before WGC starts so recorder chrome cannot leak into Display/
+            # Region output.
+            "src/app/windows_main.cpp" = "f75b48c688023d9c154cf472a3ff7ef0fda28c30"
+          }
+
+          $changedNative = @(
+            git diff --name-only $baseline HEAD -- src/app src/core src/platform
+          )
+          $violations = @()
+
+          foreach ($path in $changedNative) {
+            if ($allowedNativeCorrections -contains $path) {
+              continue
+            }
+
+            if ($lockedNativeCorrectionBlobs.ContainsKey($path)) {
+              $actualBlob = (git rev-parse "HEAD:$path").Trim()
+              $expectedBlob = $lockedNativeCorrectionBlobs[$path]
+              if ($actualBlob -eq $expectedBlob) {
+                Write-Host "Locked native correction verified: $path @ $actualBlob"
+                continue
+              }
+
+              Write-Host "Locked native correction drifted: $path"
+              Write-Host "  expected blob: $expectedBlob"
+              Write-Host "  actual blob:   $actualBlob"
+            }
+
+            $violations += $path
+          }
+
+          if ($violations.Count -gt 0) {
+            Write-Host "P6UI changed locked native implementation after ${baseline}:"
+            $violations | Sort-Object -Unique | ForEach-Object { Write-Host "  $_" }
+            throw "Existing native engine implementation is frozen. Only documented corrections are allowed; retained compositor changes must match the audited exact blob."
+          }
+
+          Write-Host "Native baseline guard passed."
+
+      - name: Build P6UI native bridge
+        shell: pwsh
+        run: |
+          cmake --preset windows-x64
+          cmake --build --preset windows-release --target arssyut_native_bridge --parallel
+
+      - name: Stage native bridge for single-file UI
+        shell: pwsh
+        run: |
+          $native = Join-Path $PWD "src/ui/Arssyut.UI/Native"
+          New-Item -ItemType Directory -Force -Path $native | Out-Null
+          Copy-Item "build/windows-x64/Release/arssyut_native_bridge.dll" `
+            (Join-Path $native "arssyut_native_bridge.dll") -Force
+
+      - name: Restore
+        run: dotnet restore src/ui/Arssyut.UI/Arssyut.UI.csproj
+
+      - name: Build
+        run: dotnet build src/ui/Arssyut.UI/Arssyut.UI.csproj -c Release --no-restore
+
+      - name: Interaction-state regression
+        run: dotnet run --project tests/ui/Arssyut.UI.InteractionTests/Arssyut.UI.InteractionTests.csproj -c Release
+
+      - name: Publish Windows x64 preview
+        shell: pwsh
+        run: |
+          dotnet publish src/ui/Arssyut.UI/Arssyut.UI.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -o dist/arssyut-p6ui
+
+          Get-ChildItem "dist/arssyut-p6ui" -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force
+          Copy-Item "docs/P6UI_THIRD_PARTY_NOTICES.md" (Join-Path "dist/arssyut-p6ui" "THIRD_PARTY_NOTICES.md")
+
+      - name: Verify single-file native-engine package
+        shell: pwsh
+        run: |
+          $package = Join-Path $PWD "dist/arssyut-p6ui"
+          $exe = Join-Path $package "Arssyut.UI.exe"
+          $externalBridge = Join-Path $package "arssyut_native_bridge.dll"
+
+          if (-not (Test-Path $exe)) {
+            throw "Single-file UI executable is missing."
+          }
+
+          if (Test-Path $externalBridge) {
+            throw "Native bridge escaped the single-file bundle; product artifact can still be detached from its engine."
+          }
+
+          $unexpected = @(
+            Get-ChildItem $package -File |
+              Where-Object { $_.Extension -eq ".pdb" }
+          )
+
+          if ($unexpected.Count -gt 0) {
+            throw "Debug symbols leaked into the product preview artifact."
+          }
+
+          Write-Host "Single-file native-engine package verified."
+
+      - name: Launch smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
+          Start-Sleep -Seconds 3
+
+          if ($process.HasExited) {
+            throw "Arssyut.UI.exe exited during launch smoke with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
+      - name: Interaction stress smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--stress-long-names","--controller-preview" -PassThru
+          Start-Sleep -Seconds 4
+
+          if ($process.HasExited) {
+            throw "P6UI interaction stress scenario exited with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
+      - name: Controller capture-exclusion smoke
+        shell: pwsh
+        run: |
+          Add-Type @"
+          using System;
+          using System.Runtime.InteropServices;
+          using System.Text;
+
+          public static class ArssyutCaptureAffinityProbe
+          {
+              private static uint targetProcessId;
+              private static string targetTitle = "";
+              private static IntPtr foundWindow = IntPtr.Zero;
+
+              private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+              [DllImport("user32.dll")]
+              private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+              [DllImport("user32.dll", SetLastError = true)]
+              private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+              private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int maxCount);
+
+              [DllImport("user32.dll", SetLastError = true)]
+              [return: MarshalAs(UnmanagedType.Bool)]
+              private static extern bool GetWindowDisplayAffinity(IntPtr hWnd, out uint affinity);
+
+              private static bool Visit(IntPtr hWnd, IntPtr lParam)
+              {
+                  uint processId;
+                  GetWindowThreadProcessId(hWnd, out processId);
+                  if (processId != targetProcessId)
+                      return true;
+
+                  var title = new StringBuilder(256);
+                  GetWindowText(hWnd, title, title.Capacity);
+                  if (String.Equals(title.ToString(), targetTitle, StringComparison.Ordinal))
+                  {
+                      foundWindow = hWnd;
+                      return false;
+                  }
+
+                  return true;
+              }
+
+              public static uint Read(uint processId, string title)
+              {
+                  targetProcessId = processId;
+                  targetTitle = title;
+                  foundWindow = IntPtr.Zero;
+                  EnumWindows(Visit, IntPtr.Zero);
+
+                  if (foundWindow == IntPtr.Zero)
+                      throw new InvalidOperationException("Recording controller HWND was not found.");
+
+                  uint affinity;
+                  if (!GetWindowDisplayAffinity(foundWindow, out affinity))
+                      throw new InvalidOperationException("GetWindowDisplayAffinity failed.");
+
+                  return affinity;
+              }
+          }
+          "@
+
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--controller-preview" -PassThru
+
+          try {
+            Start-Sleep -Seconds 3
+
+            if ($process.HasExited) {
+              throw "Controller affinity smoke exited early with code $($process.ExitCode)"
+            }
+
+            $affinity = [ArssyutCaptureAffinityProbe]::Read(
+              [uint32]$process.Id,
+              "Arssyut Recording Controller")
+
+            # 0x11 = WDA_EXCLUDEFROMCAPTURE. 0x1 = compatibility WDA_MONITOR fallback.
+            if ($affinity -ne 0x11 -and $affinity -ne 0x1) {
+              throw ("Recording controller is not capture-protected; affinity=0x{0:X}" -f $affinity)
+            }
+
+            Write-Host ("Recording controller capture affinity verified: 0x{0:X}" -f $affinity)
+          }
+          finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
+
+
+      - name: Settings acceptance smoke
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist/arssyut-p6ui/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--settings-preview","--settings-stress" -PassThru
+          Start-Sleep -Seconds 4
+
+          if ($process.HasExited) {
+            throw "P6UI Settings acceptance scenario exited with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+
+      - name: Upload Avalonia preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-p6ui-avalonia-windows-x64
+          path: dist/arssyut-p6ui/*
           if-no-files-found: error
           retention-days: 90

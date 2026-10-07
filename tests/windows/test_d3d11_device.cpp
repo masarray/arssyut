@@ -2893,6 +2893,582 @@ void test_arvisual_async_scene_analyzer(
         "P5B analysis cadence creates no compositor frame resources");
 }
 
+
+
+void test_arvisual_region_crop_analysis(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t dark_neutral_bgra =
+        0xFF181818u;
+    constexpr std::uint32_t hot_vivid_bgra =
+        0xFFFF1408u;
+
+    auto source =
+        create_split_texture(
+            owner.device(),
+            64,
+            36,
+            dark_neutral_bgra,
+            hot_vivid_bgra);
+    test.expect(
+        source != nullptr,
+        "P6UI final Region analysis split fixture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "P6UI final Region analysis compositor initializes");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    test.expect(
+        compositor.update_source(
+            owner.immediate_context(),
+            source.Get()).ok(),
+        "P6UI final Region analysis retained source is ready");
+
+    arssyut::visual::ArVisualGradeSettings smart_grade;
+    smart_grade.enabled = true;
+    smart_grade.smart_auto = true;
+
+    auto now =
+        arssyut::core::MonotonicClock::now();
+
+    const arssyut::core::CropRect left_region{
+        0, 0, 32, 36
+    };
+
+    test.expect(
+        compositor.submit_scene_analysis(
+            owner.immediate_context(),
+            now,
+            &smart_grade,
+            left_region).ok(),
+        "P6UI final Region analysis submits the canonical crop");
+
+    bool completed = false;
+    for (int i = 0; i < 250; ++i) {
+        if (!compositor.render_retained(
+                owner.immediate_context(),
+                left_region,
+                {32, 36},
+                nullptr,
+                &smart_grade).ok()) {
+            break;
+        }
+
+        if (compositor.scene_analysis_completed() > 0) {
+            completed = true;
+            break;
+        }
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(1));
+    }
+
+    test.expect(
+        completed,
+        "P6UI final Region crop analysis completes asynchronously");
+
+    const auto stats =
+        compositor.scene_analysis_stats();
+
+    test.expect(
+        stats.mean_saturation < 0.10f &&
+            stats.hot_vivid_frac < 0.10f &&
+            stats.median_luma < 0.20f,
+        "P6UI final Region Smart Auto ignores vivid pixels outside the encoded crop");
+}
+
+
+
+struct SpotlightPerfSample {
+    std::uint32_t cpu_p95_us = 0;
+    std::uint32_t gpu_p95_us = 0;
+    std::uint64_t cpu_samples = 0;
+    std::uint64_t gpu_samples = 0;
+    std::uint64_t stable_generation = 0;
+    bool renders_ok = false;
+};
+
+SpotlightPerfSample run_spotlight_perf_sample(
+    arssyut::windows::D3D11Device &owner,
+    arssyut::core::FrameSize output_size,
+    bool enabled)
+{
+    SpotlightPerfSample sample;
+
+    auto source =
+        create_solid_texture(
+            owner.device(),
+            8,
+            8,
+            0xFF707070u);
+    if (!source)
+        return sample;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    if (!compositor_result)
+        return sample;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    arssyut::presentation::PresentationFrameState state{};
+    state.camera_center_x = 0.58f;
+    state.camera_center_y = 0.46f;
+    state.camera_zoom = 2.0f;
+    state.spotlight.enabled = true;
+    state.spotlight.runtime_requested = enabled;
+    state.spotlight.focus_valid = true;
+    state.spotlight.content_x = 0.62f;
+    state.spotlight.content_y = 0.48f;
+    state.spotlight.focus_mix = 1.0f;
+    state.spotlight.dim_mix = enabled ? 1.0f : 0.0f;
+    state.spotlight.area_scale_percent = 100.0f;
+    state.spotlight.feather_short_edge_fraction = 0.12f;
+    state.spotlight.dim_strength = 0.38f;
+
+    if (!compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 8, 8},
+            output_size,
+            &state).ok()) {
+        return sample;
+    }
+
+    sample.stable_generation =
+        compositor.resource_generation();
+
+    const int frames =
+        output_size.width >= 3840
+            ? 6
+            : 12;
+
+    sample.renders_ok = true;
+    for (int frame = 0; frame < frames; ++frame) {
+        if (!compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 8, 8},
+                output_size,
+                &state).ok() ||
+            compositor.resource_generation() !=
+                sample.stable_generation) {
+            sample.renders_ok = false;
+            break;
+        }
+    }
+
+    owner.immediate_context()->Flush();
+
+    // One more retained render gives pending timestamp queries an opportunity
+    // to resolve without adding a synchronization/readback path to production.
+    if (sample.renders_ok) {
+        sample.renders_ok =
+            compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 8, 8},
+                output_size,
+                &state).ok() &&
+            compositor.resource_generation() ==
+                sample.stable_generation;
+    }
+
+    const auto cpu =
+        compositor.cpu_submit_latency();
+    const auto gpu =
+        compositor.gpu_execution_latency();
+
+    sample.cpu_samples =
+        cpu.total;
+    sample.gpu_samples =
+        gpu.total;
+    sample.cpu_p95_us =
+        cpu.quantile_upper_bound(
+            95,
+            100);
+    sample.gpu_p95_us =
+        gpu.quantile_upper_bound(
+            95,
+            100);
+
+    return sample;
+}
+
+void test_spotlight_resolution_performance_contract(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    const std::array<
+        arssyut::core::FrameSize,
+        2> outputs{
+            arssyut::core::FrameSize{
+                1920,
+                1080},
+            arssyut::core::FrameSize{
+                3840,
+                2160}
+        };
+
+    for (const auto output : outputs) {
+        const auto off =
+            run_spotlight_perf_sample(
+                owner,
+                output,
+                false);
+        const auto on =
+            run_spotlight_perf_sample(
+                owner,
+                output,
+                true);
+
+        test.expect(
+            off.renders_ok &&
+                on.renders_ok,
+            output.width >= 3840
+                ? "P6UI.6D-I 4K Spotlight OFF/ON retained renders succeed"
+                : "P6UI.6D-I 1080p Spotlight OFF/ON retained renders succeed");
+
+        test.expect(
+            off.cpu_samples > 0 &&
+                on.cpu_samples > 0,
+            output.width >= 3840
+                ? "P6UI.6D-I 4K OFF/ON CPU latency diagnostics are populated"
+                : "P6UI.6D-I 1080p OFF/ON CPU latency diagnostics are populated");
+
+        test.expect(
+            off.stable_generation ==
+                on.stable_generation,
+            output.width >= 3840
+                ? "P6UI.6D-I 4K Spotlight toggle requires no extra retained GPU resource generation"
+                : "P6UI.6D-I 1080p Spotlight toggle requires no extra retained GPU resource generation");
+
+        std::cout
+            << "P6UI.6D-I Spotlight WARP diagnostic "
+            << output.width << "x" << output.height
+            << " OFF cpu_p95_us=" << off.cpu_p95_us
+            << " gpu_p95_us=" << off.gpu_p95_us
+            << " gpu_samples=" << off.gpu_samples
+            << " | ON cpu_p95_us=" << on.cpu_p95_us
+            << " gpu_p95_us=" << on.gpu_p95_us
+            << " gpu_samples=" << on.gpu_samples
+            << '\n';
+    }
+}
+
+void test_spotlight_compositor(
+    TestContext &test,
+    arssyut::windows::D3D11Device &owner)
+{
+    constexpr std::uint32_t solid_bgra =
+        0xFF808080u;
+    constexpr arssyut::core::FrameSize output_size{
+        640,
+        360
+    };
+
+    const auto channel =
+        [](std::uint32_t bgra) {
+            return static_cast<int>(
+                bgra & 0xFFu);
+        };
+
+    auto source =
+        create_solid_texture(
+            owner.device(),
+            4,
+            4,
+            solid_bgra);
+    test.expect(
+        source != nullptr,
+        "P6UI.6D-D Spotlight source texture created");
+    if (!source)
+        return;
+
+    auto compositor_result =
+        arssyut::windows::D3D11Compositor::create(
+            owner.device());
+    test.expect(
+        static_cast<bool>(compositor_result),
+        "P6UI.6D-D Spotlight reuses the retained compositor");
+    if (!compositor_result)
+        return;
+
+    auto &compositor =
+        *compositor_result.value();
+
+    arssyut::presentation::PresentationFrameState state{};
+    state.spotlight.enabled = true;
+    state.spotlight.focus_valid = true;
+    state.spotlight.content_x = 0.5f;
+    state.spotlight.content_y = 0.5f;
+    state.spotlight.focus_mix = 1.0f;
+    state.spotlight.dim_mix = 1.0f;
+    state.spotlight.area_scale_percent = 50.0f;
+    state.spotlight.feather_short_edge_fraction = 0.04f;
+    state.spotlight.dim_strength = 0.50f;
+
+    // Master/style state without runtime intent must remain exact pass-through.
+    state.spotlight.runtime_requested = false;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            output_size,
+            &state).ok() &&
+        verify_solid_texture(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            solid_bgra),
+        "P6UI.6D-D disabled runtime is exact pixel pass-through");
+
+    const auto stable_generation =
+        compositor.resource_generation();
+
+    // Runtime focus: source stays bright inside; outside dims analytically.
+    state.spotlight.runtime_requested = true;
+
+    std::uint32_t center_pixel = 0;
+    std::uint32_t corner_pixel = 0;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            output_size,
+            &state).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            320,
+            180,
+            center_pixel) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            8,
+            8,
+            corner_pixel),
+        "P6UI.6D-D focused Spotlight output is inspectable");
+
+    test.expect(
+        std::abs(channel(center_pixel) - 128) <= 1,
+        "P6UI.6D-D focus aperture preserves source brightness");
+    test.expect(
+        channel(corner_pixel) <= 72,
+        "P6UI.6D-D outside scene is dimmed without blur/readback");
+
+    // focus_mix=0 is the full-aperture endpoint. Even for an edge focus and
+    // dim_mix=1 it must cover the complete output exactly.
+    state.spotlight.content_x = 0.02f;
+    state.spotlight.content_y = 0.02f;
+    state.spotlight.focus_mix = 0.0f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            output_size,
+            &state).ok() &&
+        verify_solid_texture(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            solid_bgra),
+        "P6UI.6D-D full aperture covers edge-focus frame exactly");
+
+    // Every supported shape stays bounded in the same single shader path.
+    state.spotlight.content_x = 0.5f;
+    state.spotlight.content_y = 0.5f;
+    state.spotlight.focus_mix = 1.0f;
+
+    const std::array<
+        arssyut::presentation::SpotlightShape,
+        3> shapes{
+            arssyut::presentation::SpotlightShape::Circle,
+            arssyut::presentation::SpotlightShape::Ellipse,
+            arssyut::presentation::SpotlightShape::RoundedRectangle
+        };
+
+    bool shapes_ok = true;
+    for (const auto shape : shapes) {
+        state.spotlight.shape = shape;
+
+        std::uint32_t focus = 0;
+        std::uint32_t outside = 0;
+        if (!compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 4, 4},
+                output_size,
+                &state).ok() ||
+            !read_texture_pixel(
+                owner.device(),
+                owner.immediate_context(),
+                compositor.output_texture(),
+                320,
+                180,
+                focus) ||
+            !read_texture_pixel(
+                owner.device(),
+                owner.immediate_context(),
+                compositor.output_texture(),
+                8,
+                8,
+                outside) ||
+            std::abs(channel(focus) - 128) > 1 ||
+            channel(outside) > 72) {
+            shapes_ok = false;
+            break;
+        }
+    }
+    test.expect(
+        shapes_ok,
+        "P6UI.6D-D Circle/Ellipse/RoundedRectangle share one analytic pass");
+
+    // P6UI.6D-K: product size presets must change visible aperture pixels,
+    // not just the serialized Settings selection. Same shader, same retained
+    // compositor, same dim/feather and output geometry.
+    state.spotlight.shape =
+        arssyut::presentation::SpotlightShape::Circle;
+    state.spotlight.content_x = 0.5f;
+    state.spotlight.content_y = 0.5f;
+    state.spotlight.area_scale_percent = 140.0f;
+    std::uint32_t compact_edge_pixel = 0;
+    const bool compact_ok =
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            output_size,
+            &state).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            460,
+            180,
+            compact_edge_pixel);
+
+    state.spotlight.area_scale_percent = 200.0f;
+    std::uint32_t wide_edge_pixel = 0;
+    const bool wide_ok =
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            output_size,
+            &state).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            460,
+            180,
+            wide_edge_pixel);
+
+    test.expect(
+        compact_ok &&
+            wide_ok &&
+            channel(compact_edge_pixel) <= 72 &&
+            std::abs(channel(wide_edge_pixel) - 128) <= 1,
+        "P6UI.6D-M larger Compact/Wide presets remain visually distinct");
+
+    // Restore the original 50% fixture for exact camera projection checks.
+    state.spotlight.area_scale_percent = 50.0f;
+
+    // Reuse the exact project_content camera transform: content focus 0.80,
+    // 0.45 under center 0.75,0.40 at 2x maps to output 0.60,0.60.
+    state.spotlight.shape =
+        arssyut::presentation::SpotlightShape::Circle;
+    state.camera_center_x = 0.75f;
+    state.camera_center_y = 0.40f;
+    state.camera_zoom = 2.0f;
+    state.spotlight.content_x = 0.80f;
+    state.spotlight.content_y = 0.45f;
+
+    std::uint32_t projected_focus = 0;
+    std::uint32_t unprojected_location = 0;
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            output_size,
+            &state).ok() &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            384,
+            216,
+            projected_focus) &&
+        read_texture_pixel(
+            owner.device(),
+            owner.immediate_context(),
+            compositor.output_texture(),
+            512,
+            162,
+            unprojected_location),
+        "P6UI.6D-D camera-projected Spotlight coordinates are inspectable");
+
+    test.expect(
+        std::abs(channel(projected_focus) - 128) <= 1 &&
+        channel(unprojected_location) <= 72,
+        "P6UI.6D-D Spotlight reuses camera content-to-output projection exactly once");
+
+    // Presentation state changes are constant-buffer updates only.
+    bool steady_ok = true;
+    for (int i = 0; i < 256; ++i) {
+        state.spotlight.content_x =
+            0.20f +
+            static_cast<float>(i % 41) / 100.0f;
+        state.spotlight.content_y =
+            0.25f +
+            static_cast<float>(i % 31) / 100.0f;
+        state.spotlight.focus_mix =
+            static_cast<float>(i % 101) / 100.0f;
+        state.spotlight.dim_mix =
+            static_cast<float>((i * 7) % 101) / 100.0f;
+
+        if (!compositor.render(
+                owner.immediate_context(),
+                source.Get(),
+                {0, 0, 4, 4},
+                output_size,
+                &state).ok()) {
+            steady_ok = false;
+            break;
+        }
+    }
+
+    test.expect(
+        steady_ok,
+        "P6UI.6D-D Spotlight survives high-churn state updates");
+    test.expect(
+        compositor.resource_generation() ==
+            stable_generation,
+        "P6UI.6D-D Spotlight allocates no steady-state GPU resources");
+}
+
 void test_keyboard_overlay_compositor(
     TestContext &test,
     arssyut::windows::D3D11Device &owner)
@@ -2975,6 +3551,23 @@ void test_keyboard_overlay_compositor(
     test.expect(
         compositor.resource_generation() == generation,
         "Keycap generation change creates no new compositor resources");
+
+    state.keyboard.scale_x = 1.08f;
+    state.keyboard.scale_y = 1.18f;
+    state.keyboard.lift_output_fraction = 0.012f;
+
+    test.expect(
+        compositor.render(
+            owner.immediate_context(),
+            source.Get(),
+            {0, 0, 4, 4},
+            {640, 360},
+            &state).ok(),
+        "Animated keycap destination transform renders on retained path");
+
+    test.expect(
+        compositor.resource_generation() == generation,
+        "Keycap bounce changes no steady-state compositor resources");
 }
 
 void test_compositor(
@@ -3151,6 +3744,11 @@ int main()
     test_screen_native_surface_anchor(test, device);
     test_screen_text_legibility(test, device);
     test_arvisual_async_scene_analyzer(test, device);
+    test_arvisual_region_crop_analysis(test, device);
+    test_spotlight_compositor(test, device);
+    test_spotlight_resolution_performance_contract(
+        test,
+        device);
     test_keyboard_overlay_compositor(test, device);
     test_compositor(test, device);
 

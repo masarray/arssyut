@@ -184,6 +184,56 @@ enumerate_recorder_targets(HWND own_window)
     return targets;
 }
 
+bool recorder_target_screen_rect(
+    const RecorderTarget &target,
+    RECT &rect) noexcept
+{
+    rect = {};
+
+    if (target.kind ==
+        arssyut::windows::
+            CaptureTargetKind::Monitor) {
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
+
+        if (!target.monitor ||
+            !GetMonitorInfoW(
+                target.monitor,
+                &info)) {
+            return false;
+        }
+
+        rect = info.rcMonitor;
+        return rect.right > rect.left &&
+               rect.bottom > rect.top;
+    }
+
+    if (!target.window ||
+        !IsWindow(target.window)) {
+        return false;
+    }
+
+    if (SUCCEEDED(
+            DwmGetWindowAttribute(
+                target.window,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                &rect,
+                sizeof(rect))) &&
+        rect.right > rect.left &&
+        rect.bottom > rect.top) {
+        return true;
+    }
+
+    if (!GetWindowRect(
+            target.window,
+            &rect)) {
+        return false;
+    }
+
+    return rect.right > rect.left &&
+           rect.bottom > rect.top;
+}
+
 } // namespace arssyut::app
 
 #endif

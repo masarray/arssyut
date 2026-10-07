@@ -1,0 +1,508 @@
+<Window
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="Arssyut.UI.MainWindow"
+    Title="Arssyut"
+    Width="1000"
+    Height="334"
+    MinWidth="920"
+    MinHeight="318"
+    CanResize="False"
+    WindowStartupLocation="CenterScreen"
+    WindowDecorations="None"
+    Background="Transparent"
+    FontFamily="{DynamicResource ArFont.Inter}"
+    TextOptions.TextRenderingMode="SubpixelAntialias"
+    KeyDown="Window_OnKeyDown">
+
+  <Border
+      Margin="1"
+      Background="{DynamicResource ArBrush.WindowChromeMain}"
+      BorderBrush="{DynamicResource ArBrush.StrokeStrong}"
+      BorderThickness="1"
+      CornerRadius="12"
+      ClipToBounds="True">
+
+    <Grid RowDefinitions="46,*">
+
+      <!-- Entire empty title-bar surface must remain draggable. -->
+      <Grid
+          x:Name="TitleBar"
+          Grid.Row="0"
+          ColumnDefinitions="*,Auto"
+          Margin="14,0,8,0"
+          Background="Transparent"
+          PointerPressed="TitleBar_OnPointerPressed">
+
+        <StackPanel
+            Orientation="Horizontal"
+            VerticalAlignment="Center"
+            Spacing="9">
+          <Border
+              Width="22"
+              Height="22"
+              CornerRadius="7"
+              Background="{DynamicResource ArBrush.Selection}"
+              BorderBrush="{DynamicResource ArBrush.RecordStroke}"
+              BorderThickness="1">
+            <LucideIcon
+                Kind="Video"
+                Size="13"
+                StrokeWidth="1.9"
+                Foreground="{DynamicResource ArBrush.Record}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center" />
+          </Border>
+
+          <StackPanel Spacing="0" VerticalAlignment="Center">
+            <TextBlock
+                Text="Arssyut"
+                FontSize="13"
+                FontWeight="SemiBold" />
+            <TextBlock
+                Classes="micro"
+                Text="Screen · game · camera recorder" />
+          </StackPanel>
+        </StackPanel>
+
+        <StackPanel
+            Grid.Column="1"
+            Orientation="Horizontal"
+            VerticalAlignment="Center"
+            Spacing="3">
+          <Button
+              Classes="ar"
+              Height="30"
+              Padding="10,0"
+              Click="Settings_OnClick"
+              AutomationProperties.Name="Open Settings"
+              ToolTip.Tip="Settings">
+            <StackPanel
+                Orientation="Horizontal"
+                Spacing="7"
+                VerticalAlignment="Center">
+              <LucideIcon
+                  Kind="Settings2"
+                  Size="15"
+                  StrokeWidth="1.8"
+                  VerticalAlignment="Center"
+                  Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+              <TextBlock
+                  Text="Settings"
+                  FontSize="11.5"
+                  VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button
+              Classes="window-control"
+              Click="Minimize_OnClick"
+              AutomationProperties.Name="Minimize Arssyut"
+              ToolTip.Tip="Minimize">
+            <LucideIcon
+                Kind="Minus"
+                Size="15"
+                StrokeWidth="1.8"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+          </Button>
+
+          <Button
+              Classes="window-control danger"
+              Click="Close_OnClick"
+              AutomationProperties.Name="Close Arssyut"
+              ToolTip.Tip="Close">
+            <LucideIcon
+                Kind="X"
+                Size="15"
+                StrokeWidth="1.8"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+          </Button>
+        </StackPanel>
+      </Grid>
+
+      <Grid
+          Grid.Row="1"
+          RowDefinitions="*,Auto"
+          RowSpacing="10"
+          Margin="18,8,18,14">
+
+        <!-- Context workspace -->
+        <Grid Grid.Row="0"
+              ColumnDefinitions="2.15*,1.35*,1.05*,0.95*"
+              ColumnSpacing="10">
+
+          <Border Classes="context-card">
+            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <LucideIcon Kind="ScanLine" Size="14" StrokeWidth="1.8"
+                              Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                  <TextBlock Text="Capture" Classes="context-title" VerticalAlignment="Center" />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="icon"
+                        Click="RefreshSources_OnClick"
+                        AutomationProperties.Name="Refresh capture sources"
+                        ToolTip.Tip="Refresh sources">
+                  <LucideIcon Kind="RefreshCw" Size="14" StrokeWidth="1.8"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                </Button>
+              </Grid>
+
+              <Grid Grid.Row="1"
+                    ColumnDefinitions="*,*,*,*"
+                    ColumnSpacing="6">
+                <ToggleButton x:Name="ModeDisplay"
+                              Grid.Column="0"
+                              Classes="capture-mode"
+                              Tag="Display"
+                              IsChecked="True"
+                              Click="CaptureMode_OnClick"
+                              AutomationProperties.Name="Capture Display">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <LucideIcon Kind="Monitor" Size="14" StrokeWidth="1.8"
+                                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
+                    <TextBlock Text="Display" FontSize="10.5" />
+                  </StackPanel>
+                </ToggleButton>
+
+                <ToggleButton x:Name="ModeWindow"
+                              Grid.Column="1"
+                              Classes="capture-mode"
+                              Tag="Window"
+                              Click="CaptureMode_OnClick"
+                              AutomationProperties.Name="Capture Window">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <LucideIcon Kind="Video" Size="14" StrokeWidth="1.8"
+                                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
+                    <TextBlock Text="Window" FontSize="10.5" />
+                  </StackPanel>
+                </ToggleButton>
+
+                <ToggleButton x:Name="ModeRegion"
+                              Grid.Column="2"
+                              Classes="capture-mode"
+                              Tag="Region"
+                              Click="CaptureMode_OnClick"
+                              AutomationProperties.Name="Capture Region">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <LucideIcon Kind="ScanLine" Size="14" StrokeWidth="1.8"
+                                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
+                    <TextBlock Text="Region" FontSize="10.5" />
+                  </StackPanel>
+                </ToggleButton>
+
+                <ToggleButton x:Name="ModeGame"
+                              Grid.Column="3"
+                              Classes="capture-mode"
+                              Tag="Game"
+                              IsEnabled="False"
+                              ToolTip.Tip="Game capture backend is pending."
+                              AutomationProperties.Name="Game capture pending">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <LucideIcon Kind="Circle" Size="14" StrokeWidth="1.8"
+                                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
+                    <TextBlock Text="Game" FontSize="10.5" />
+                  </StackPanel>
+                </ToggleButton>
+              </Grid>
+
+              <Button x:Name="SourcePickerButton"
+                      Grid.Row="2"
+                      Classes="source-picker"
+                      AutomationProperties.Name="Choose capture source"
+                      AutomationProperties.HelpText="Opens native sources for the selected capture mode.">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                  <Border Width="30" Height="30" CornerRadius="8"
+                          Background="{DynamicResource ArBrush.Surface3}">
+                    <LucideIcon x:Name="SourceIcon" Kind="Monitor"
+                                Size="15" StrokeWidth="1.8"
+                                Foreground="{DynamicResource ArBrush.TextSecondary}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                  </Border>
+                  <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                    <TextBlock x:Name="SourceTitle"
+                               Text="Display 1"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="SourceSubtitle"
+                               Text="1920 × 1080 · Primary"
+                               Classes="micro"
+                               TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                  <LucideIcon Grid.Column="2"
+                              Kind="ChevronDown"
+                              Size="15"
+                              StrokeWidth="1.8"
+                              Foreground="{DynamicResource ArBrush.TextDim}"
+                              VerticalAlignment="Center" />
+                </Grid>
+                <Button.Flyout>
+                  <Flyout Placement="BottomEdgeAlignedLeft"
+                          FlyoutPresenterClasses="device-flyout">
+                    <StackPanel Width="430" Spacing="5">
+                      <Grid Margin="8,5,8,4" ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="2">
+                          <TextBlock x:Name="SourceFlyoutTitle"
+                                     Text="Displays"
+                                     FontWeight="SemiBold" />
+                          <TextBlock x:Name="SourceFlyoutSubtitle"
+                                     Text="Choose the capture target"
+                                     Classes="micro" />
+                        </StackPanel>
+                        <Border Grid.Column="1"
+                                Padding="8,4"
+                                CornerRadius="99"
+                                Background="{DynamicResource ArBrush.Surface3}">
+                          <TextBlock x:Name="SourceCountText"
+                                     Text="0 sources"
+                                     FontSize="9.5"
+                                     Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                        </Border>
+                      </Grid>
+                      <StackPanel x:Name="SourceListPanel" Spacing="3" />
+                    </StackPanel>
+                  </Flyout>
+                </Button.Flyout>
+              </Button>
+            </Grid>
+          </Border>
+
+          <Border Grid.Column="1" Classes="context-card">
+            <Grid RowDefinitions="Auto,*,*" RowSpacing="8">
+              <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                <LucideIcon Kind="Volume2" Size="14" StrokeWidth="1.8"
+                            Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                <TextBlock Text="Audio" Classes="context-title" />
+              </StackPanel>
+
+              <Grid Grid.Row="1" RowDefinitions="Auto,Auto" RowSpacing="5">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
+                  <Border Width="28" Height="28" CornerRadius="8"
+                          Background="{DynamicResource ArBrush.Surface3}">
+                    <LucideIcon Kind="Volume2" Size="14" StrokeWidth="1.8"
+                                Foreground="{DynamicResource ArBrush.TextSecondary}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                  </Border>
+                  <StackPanel Grid.Column="1" Spacing="0" VerticalAlignment="Center">
+                    <TextBlock Text="System audio" FontWeight="SemiBold" FontSize="10.8" />
+                    <TextBlock Text="Desktop playback" Classes="micro" />
+                  </StackPanel>
+                  <ToggleSwitch x:Name="SystemAudioToggle"
+                                Grid.Column="2"
+                                Classes="context-toggle ar-toggle"
+                                IsChecked="False"
+                                IsEnabled="False"
+                                OnContent="" OffContent=""
+                                ToolTip.Tip="System audio backend is pending." />
+                </Grid>
+                <ComboBox x:Name="SystemAudioDeviceComboMain"
+                          Grid.Row="1"
+                          Classes="context-device"
+                          SelectedIndex="0"
+                          IsEnabled="False"
+                          ToolTip.Tip="Playback device selection activates with the native audio backend.">
+                  <ComboBoxItem Content="Default playback device" />
+                </ComboBox>
+              </Grid>
+
+              <Grid Grid.Row="2" RowDefinitions="Auto,Auto" RowSpacing="5">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
+                  <Border Width="28" Height="28" CornerRadius="8"
+                          Background="{DynamicResource ArBrush.Surface3}">
+                    <LucideIcon Kind="Mic" Size="14" StrokeWidth="1.8"
+                                Foreground="{DynamicResource ArBrush.TextSecondary}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                  </Border>
+                  <StackPanel Grid.Column="1" Spacing="0" VerticalAlignment="Center">
+                    <TextBlock Text="Microphone" FontWeight="SemiBold" FontSize="10.8" />
+                    <TextBlock Text="Narration input" Classes="micro" />
+                  </StackPanel>
+                  <ToggleSwitch x:Name="MicToggle"
+                                Grid.Column="2"
+                                Classes="context-toggle ar-toggle"
+                                IsChecked="False"
+                                IsEnabled="False"
+                                OnContent="" OffContent=""
+                                ToolTip.Tip="Microphone recording backend is pending." />
+                </Grid>
+                <ComboBox x:Name="MicrophoneDeviceComboMain"
+                          Grid.Row="1"
+                          Classes="context-device"
+                          SelectedIndex="0"
+                          IsEnabled="False"
+                          ToolTip.Tip="Detected device; recording selection activates with the microphone backend.">
+                  <ComboBoxItem Content="No microphone detected" />
+                </ComboBox>
+              </Grid>
+            </Grid>
+          </Border>
+
+          <Border Grid.Column="2" Classes="context-card">
+            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="9">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                  <LucideIcon Kind="Video" Size="14" StrokeWidth="1.8"
+                              Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                  <TextBlock Text="Webcam" Classes="context-title" />
+                </StackPanel>
+                <ToggleSwitch x:Name="CameraToggle"
+                              Grid.Column="1"
+                              Classes="context-toggle ar-toggle"
+                              IsChecked="False"
+                              IsEnabled="False"
+                              OnContent="" OffContent=""
+                              ToolTip.Tip="Picture-in-picture camera backend is pending." />
+              </Grid>
+
+              <Border Grid.Row="1"
+                      Width="38"
+                      Height="38"
+                      CornerRadius="10"
+                      Background="{DynamicResource ArBrush.Surface3}">
+                <LucideIcon Kind="Camera" Size="18" StrokeWidth="1.8"
+                            Foreground="{DynamicResource ArBrush.TextSecondary}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+              </Border>
+
+              <StackPanel Grid.Row="2" Spacing="5" VerticalAlignment="Bottom">
+                <TextBlock Text="Camera" FontWeight="SemiBold" FontSize="10.8" />
+                <ComboBox x:Name="CameraDeviceComboMain"
+                          Classes="context-device"
+                          SelectedIndex="0"
+                          IsEnabled="False"
+                          ToolTip.Tip="Detected camera; selection activates with the camera compositor backend.">
+                  <ComboBoxItem Content="No camera detected" />
+                </ComboBox>
+                <TextBlock Text="PiP backend pending" Classes="micro" />
+              </StackPanel>
+            </Grid>
+          </Border>
+
+          <Border Grid.Column="3" Classes="context-card">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="5">
+              <TextBlock Text="Record" Classes="context-title"
+                         HorizontalAlignment="Center" />
+              <Button x:Name="RecordButton"
+                      Classes="record-circle"
+                      Click="Record_OnClick"
+                      AutomationProperties.Name="Start recording">
+                <LucideIcon x:Name="RecordIcon"
+                            Kind="Circle"
+                            Size="24"
+                            StrokeWidth="2.2"
+                            Foreground="White"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center" />
+              </Button>
+              <TextBlock x:Name="RecordText"
+                         Text="Start"
+                         FontSize="11.5"
+                         FontWeight="SemiBold"
+                         HorizontalAlignment="Center" />
+              <Border Classes="hotkey-chip" HorizontalAlignment="Center">
+                <TextBlock x:Name="RecordHotkeyText"
+                           Text="F9"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           FontFeatures="+tnum"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextAlignment="Center" />
+              </Border>
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <Grid IsVisible="False">
+          <Button x:Name="MicDeviceButton"><TextBlock x:Name="MicDeviceText" /></Button>
+          <LucideIcon x:Name="MicDeviceChevron" Kind="ChevronDown" />
+          <Button x:Name="MicOptionCable" />
+          <Button x:Name="MicOptionArray" />
+          <Button x:Name="MicOptionLong" />
+          <Button x:Name="CameraDeviceButton"><TextBlock x:Name="CameraDeviceText" /></Button>
+          <LucideIcon x:Name="CameraDeviceChevron" Kind="ChevronDown" />
+          <Button x:Name="CameraOptionUsb" />
+          <Button x:Name="CameraOptionObs" />
+          <Button x:Name="CameraOptionLong" />
+        </Grid>
+
+        <!-- Status + primary transport -->
+        <Border
+            Grid.Row="1"
+            Padding="11,8"
+            Background="{DynamicResource ArBrush.Surface1Overlay}"
+            BorderBrush="{DynamicResource ArBrush.Stroke}"
+            BorderThickness="1"
+            CornerRadius="10"
+            VerticalAlignment="Bottom">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+
+            <StackPanel
+                Orientation="Horizontal"
+                Spacing="8"
+                VerticalAlignment="Center">
+              <Ellipse
+                  x:Name="StatusDot"
+                  Width="7"
+                  Height="7"
+                  Fill="{DynamicResource ArBrush.Success}" />
+              <TextBlock
+                  x:Name="StatusText"
+                  Text="Ready"
+                  FontWeight="SemiBold"
+                  Foreground="{DynamicResource ArBrush.Success}"
+                  VerticalAlignment="Center" />
+            </StackPanel>
+
+            <TextBlock
+                x:Name="StatusDetail"
+                Grid.Column="1"
+                Text="Display · 60 fps · Smart Zoom on"
+                Classes="micro"
+                VerticalAlignment="Center"
+                TextTrimming="CharacterEllipsis" />
+
+            <StackPanel
+                x:Name="SavedActions"
+                Grid.Column="2"
+                Orientation="Horizontal"
+                Spacing="6"
+                IsVisible="False"
+                VerticalAlignment="Center">
+              <Button Classes="saved-action" Click="OpenSaved_OnClick"
+                      AutomationProperties.Name="Open saved recording">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <LucideIcon Kind="ExternalLink" Size="13" StrokeWidth="1.8"
+                              VerticalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Text="Open" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="saved-action" Click="ShowFolder_OnClick"
+                      AutomationProperties.Name="Show saved recording in folder">
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                  <LucideIcon Kind="FolderOpen" Size="13" StrokeWidth="1.8"
+                              VerticalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Text="Folder" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+
+
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

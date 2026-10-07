@@ -9,6 +9,7 @@
 #include "platform/windows/input/presentation_input_worker.hpp"
 #include "platform/windows/video/native_video_pipeline.hpp"
 #include "presentation/presentation_controller.hpp"
+#include "presentation/momentary_presenter_gate.hpp"
 
 #include <Psapi.h>
 #include <dwmapi.h>
@@ -263,6 +264,29 @@ Status RecorderSession::start(
     stop_requested_.store(
         false,
         std::memory_order_release);
+    start_commit_requested_.store(
+        false,
+        std::memory_order_release);
+    const auto requested_at =
+        MonotonicClock::now();
+    start_requested_at_ticks_.store(
+        requested_at.ticks_100ns,
+        std::memory_order_release);
+    armed_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    first_frame_submitted_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    capture_preroll_received_.store(
+        0,
+        std::memory_order_release);
+    started_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    stopped_at_ticks_.store(
+        0,
+        std::memory_order_release);
     error_code_.store(
         static_cast<std::uint32_t>(
             StatusCode::Ok),
@@ -300,6 +324,31 @@ Status RecorderSession::start(
     visual_analysis_map_failures_.store(
         0,
         std::memory_order_release);
+    presentation_camera_center_x_.store(
+        0.5f,
+        std::memory_order_release);
+    presentation_camera_center_y_.store(
+        0.5f,
+        std::memory_order_release);
+    presentation_camera_zoom_.store(
+        1.0f,
+        std::memory_order_release);
+    presenter_toggle_zoom_requests_.store(
+        0,
+        std::memory_order_release);
+    presenter_zoom_steps_.store(
+        0,
+        std::memory_order_release);
+    presenter_reset_requests_.store(
+        0,
+        std::memory_order_release);
+    presenter_freeze_toggle_requests_.store(
+        0,
+        std::memory_order_release);
+    worker_finished_.store(
+        false,
+        std::memory_order_release);
+
     state_.store(
         RecorderState::Preparing,
         std::memory_order_release);
@@ -310,6 +359,9 @@ Status RecorderSession::start(
                 worker_main();
             });
     } catch (...) {
+        worker_finished_.store(
+            true,
+            std::memory_order_release);
         state_.store(
             RecorderState::Failed,
             std::memory_order_release);
@@ -325,6 +377,69 @@ void RecorderSession::request_stop() noexcept
     stop_requested_.store(
         true,
         std::memory_order_release);
+}
+
+bool RecorderSession::request_start_commit() noexcept
+{
+    if (state_.load(
+            std::memory_order_acquire) !=
+        RecorderState::Armed) {
+        return false;
+    }
+
+    bool expected = false;
+    return start_commit_requested_.
+        compare_exchange_strong(
+            expected,
+            true,
+            std::memory_order_acq_rel,
+            std::memory_order_relaxed);
+}
+
+bool RecorderSession::request_presenter_command(
+    PresenterCommand command) noexcept
+{
+    const auto state =
+        state_.load(
+            std::memory_order_acquire);
+
+    // Armed product start must begin from a clean presenter state. Legacy
+    // direct-start callers keep the historical Preparing acceptance.
+    if (state != RecorderState::Recording &&
+        !(state == RecorderState::Preparing &&
+          !config_.start_armed)) {
+        return false;
+    }
+
+    switch (command) {
+    case PresenterCommand::ToggleZoom:
+        presenter_toggle_zoom_requests_.fetch_add(
+            1,
+            std::memory_order_release);
+        return true;
+    case PresenterCommand::ZoomIn:
+        presenter_zoom_steps_.fetch_add(
+            1,
+            std::memory_order_release);
+        return true;
+    case PresenterCommand::ZoomOut:
+        presenter_zoom_steps_.fetch_sub(
+            1,
+            std::memory_order_release);
+        return true;
+    case PresenterCommand::ResetFullFrame:
+        presenter_reset_requests_.fetch_add(
+            1,
+            std::memory_order_release);
+        return true;
+    case PresenterCommand::ToggleFreezeCamera:
+        presenter_freeze_toggle_requests_.fetch_add(
+            1,
+            std::memory_order_release);
+        return true;
+    default:
+        return false;
+    }
 }
 
 void RecorderSession::wait() noexcept
@@ -421,6 +536,19 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
         compositor_gpu_p95_us_.load(
             std::memory_order_relaxed);
 
+    result.presentation_camera_center_x =
+        presentation_camera_center_x_.load(
+            std::memory_order_relaxed);
+    result.presentation_camera_center_y =
+        presentation_camera_center_y_.load(
+            std::memory_order_relaxed);
+    result.presentation_camera_zoom =
+        presentation_camera_zoom_.load(
+            std::memory_order_relaxed);
+    result.worker_finished =
+        worker_finished_.load(
+            std::memory_order_acquire);
+
     result.memory_private_bytes =
         memory_private_bytes_.load(
             std::memory_order_relaxed);
@@ -453,6 +581,16 @@ void RecorderSession::fail(Status status) noexcept
 
 void RecorderSession::worker_main() noexcept
 {
+    struct WorkerFinishGuard {
+        std::atomic<bool> &flag;
+        ~WorkerFinishGuard() noexcept
+        {
+            flag.store(
+                true,
+                std::memory_order_release);
+        }
+    } finish_guard{worker_finished_};
+
     std::error_code file_ec;
     std::filesystem::create_directories(
         config_.output_path.parent_path(),
@@ -574,9 +712,7 @@ void RecorderSession::worker_main() noexcept
     }
 
     const bool presentation_enabled =
-        config_.presentation.smart_zoom ||
-        config_.presentation.click_visual ||
-        config_.presentation.shortcut_keys;
+        config_.presentation.needs_presentation_frames();
 
     arssyut::windows::WgcCaptureOptions capture_options;
     // P4R.3A: keep the Windows/WGC cursor as the single cursor authority.
@@ -698,6 +834,158 @@ void RecorderSession::worker_main() noexcept
             std::memory_order_relaxed);
     }
 
+    // Product countdown uses an explicit Armed gate. All expensive startup
+    // work is already complete here: encoder open, WGC running, compositor
+    // created and presentation input warm. Require one real WGC source frame
+    // before publishing Armed so ACTION can deterministically define frame 0.
+    if (config_.start_armed) {
+        const auto first_frame_deadline =
+            MonotonicClock::now().ticks_100ns +
+            MonotonicClock::ticks_per_second * 5;
+
+        while (!frame_slot.has_in_flight() &&
+               !stop_requested_.load(
+                   std::memory_order_acquire) &&
+               !capture.source_closed() &&
+               MonotonicClock::now().ticks_100ns <
+                   first_frame_deadline) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(1));
+        }
+
+        const auto cancel_before_start =
+            [&]() noexcept {
+                presentation_input.stop();
+                capture.stop();
+                (void)writer.finalize();
+
+                std::error_code remove_ec;
+                std::filesystem::remove(
+                    config_.output_path,
+                    remove_ec);
+                remove_ec.clear();
+                std::filesystem::remove(
+                    diagnostics_path(),
+                    remove_ec);
+
+                state_.store(
+                    RecorderState::Idle,
+                    std::memory_order_release);
+            };
+
+        if (stop_requested_.load(
+                std::memory_order_acquire)) {
+            cancel_before_start();
+            return;
+        }
+
+        if (!frame_slot.has_in_flight() ||
+            capture.source_closed()) {
+            fail(Status::failure(
+                StatusCode::PlatformFailure,
+                capture.source_closed()
+                    ? 0U
+                    : static_cast<std::uint32_t>(
+                          WAIT_TIMEOUT)));
+
+            presentation_input.stop();
+            capture.stop();
+            (void)writer.finalize();
+
+            const std::uint64_t memory_end =
+                private_bytes();
+            memory_private_bytes_.store(
+                memory_end,
+                std::memory_order_relaxed);
+            observe_memory_peak(
+                memory_private_max_bytes_,
+                memory_end);
+
+            write_diagnostics(
+                0,
+                memory_start,
+                memory_end,
+                writer.submitted_frames(),
+                writer.backpressure_events(),
+                pipeline->compositor().
+                    resource_generation(),
+                false,
+                {},
+                {},
+                writer.active_profile(),
+                writer.active_rate_control(),
+                writer.quality_vs_speed_applied(),
+                writer.requested_quality_vs_speed(),
+                writer.active_color_pipeline(),
+                writer.color_pipeline_authoritative());
+
+            state_.store(
+                RecorderState::Failed,
+                std::memory_order_release);
+            return;
+        }
+
+        const auto armed =
+            MonotonicClock::now();
+        armed_at_ticks_.store(
+            armed.ticks_100ns,
+            std::memory_order_release);
+        state_.store(
+            RecorderState::Armed,
+            std::memory_order_release);
+
+        while (!start_commit_requested_.load(
+                   std::memory_order_acquire) &&
+               !stop_requested_.load(
+                   std::memory_order_acquire) &&
+               !capture.source_closed()) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(1));
+        }
+
+        if (stop_requested_.load(
+                std::memory_order_acquire)) {
+            cancel_before_start();
+            return;
+        }
+
+        if (capture.source_closed()) {
+            fail(Status::failure(
+                StatusCode::PlatformFailure));
+            presentation_input.stop();
+            capture.stop();
+            (void)writer.finalize();
+            state_.store(
+                RecorderState::Failed,
+                std::memory_order_release);
+            return;
+        }
+
+        if (presentation_enabled)
+            presentation_input.discard_pending_events();
+
+        // Do not let Zoom/Reset/Freeze intents pressed during pre-roll become
+        // the first semantic action in the recording.
+        presenter_toggle_zoom_requests_.store(
+            0,
+            std::memory_order_release);
+        presenter_zoom_steps_.store(
+            0,
+            std::memory_order_release);
+        presenter_reset_requests_.store(
+            0,
+            std::memory_order_release);
+        presenter_freeze_toggle_requests_.store(
+            0,
+            std::memory_order_release);
+
+        capture_preroll_received_.store(
+            diagnostics_.load(
+                DiagnosticMetric::
+                    CaptureFramesReceived),
+            std::memory_order_relaxed);
+    }
+
     const TimePoint start =
         MonotonicClock::now();
 
@@ -773,12 +1061,34 @@ void RecorderSession::worker_main() noexcept
     TimePoint next_target_rect_refresh = start;
 
     RECT presentation_target_rect{};
-    bool presentation_target_valid =
-        target_screen_rect(
-            config_.target,
-            presentation_target_rect);
+    bool presentation_target_valid = false;
+
+    if (config_.
+            presentation_screen_rect_valid) {
+        presentation_target_rect =
+            config_.
+                presentation_screen_rect;
+        presentation_target_valid =
+            presentation_target_rect.right >
+                presentation_target_rect.left &&
+            presentation_target_rect.bottom >
+                presentation_target_rect.top;
+    } else {
+        presentation_target_valid =
+            target_screen_rect(
+                config_.target,
+                presentation_target_rect);
+    }
 
     PresentationFrameState presentation_state{};
+
+    // Reset / Full Frame in upstream ArZoom clears momentary state even when
+    // the user is still physically holding the chord. These deterministic
+    // interlocks prevent re-arm until each chord is actually released once.
+    arssyut::presentation::MomentaryReleaseGate
+        hold_zoom_gate;
+    arssyut::presentation::MomentaryReleaseGate
+        overview_gate;
 
     bool failed = false;
 
@@ -789,10 +1099,13 @@ void RecorderSession::worker_main() noexcept
 
         if (presentation_enabled &&
             !(now < next_target_rect_refresh)) {
-            presentation_target_valid =
-                target_screen_rect(
-                    config_.target,
-                    presentation_target_rect);
+            if (!config_.
+                    presentation_screen_rect_valid) {
+                presentation_target_valid =
+                    target_screen_rect(
+                        config_.target,
+                        presentation_target_rect);
+            }
 
             next_target_rect_refresh = {
                 now.ticks_100ns +
@@ -802,6 +1115,61 @@ void RecorderSession::worker_main() noexcept
 
         if (presentation_enabled &&
             !(now < next_presentation)) {
+            // Consume bridge presenter intent at the same cadence as the
+            // existing ArZoom camera. Reset is applied last so Full Frame wins
+            // a same-tick race without changing the configured zoom amount.
+            const auto toggle_requests =
+                presenter_toggle_zoom_requests_.exchange(
+                    0,
+                    std::memory_order_acq_rel);
+            if ((toggle_requests & 1U) != 0)
+                presentation_controller.toggle_manual_zoom();
+
+            const auto zoom_steps =
+                presenter_zoom_steps_.exchange(
+                    0,
+                    std::memory_order_acq_rel);
+            if (zoom_steps != 0) {
+                presentation_controller.adjust_manual_zoom(
+                    0.25f *
+                    static_cast<float>(
+                        zoom_steps));
+            }
+
+            const auto freeze_toggle_requests =
+                presenter_freeze_toggle_requests_.exchange(
+                    0,
+                    std::memory_order_acq_rel);
+            if ((freeze_toggle_requests & 1U) != 0)
+                presentation_controller.toggle_freeze_camera();
+
+            if (presenter_reset_requests_.exchange(
+                    0,
+                    std::memory_order_acq_rel) != 0) {
+                presentation_controller.reset_full_frame();
+                hold_zoom_gate.block_until_release();
+                overview_gate.block_until_release();
+            }
+
+            const bool hold_zoom_pressed =
+                config_.hold_zoom_hotkey.configured() &&
+                presentation_input.chord_pressed(
+                    config_.hold_zoom_hotkey.virtual_key,
+                    config_.hold_zoom_hotkey.modifiers);
+
+            const bool overview_pressed =
+                config_.overview_peek_hotkey.configured() &&
+                presentation_input.chord_pressed(
+                    config_.overview_peek_hotkey.virtual_key,
+                    config_.overview_peek_hotkey.modifiers);
+
+            presentation_controller.set_hold_zoom(
+                hold_zoom_gate.accept(
+                    hold_zoom_pressed));
+            presentation_controller.set_overview_peek(
+                overview_gate.accept(
+                    overview_pressed));
+
             arssyut::windows::MouseClickEvent click_event;
             while (presentation_input.try_pop_click(
                 click_event)) {
@@ -867,6 +1235,16 @@ void RecorderSession::worker_main() noexcept
                     now,
                     pointer.last_activity);
 
+            presentation_camera_center_x_.store(
+                presentation_state.camera_center_x,
+                std::memory_order_relaxed);
+            presentation_camera_center_y_.store(
+                presentation_state.camera_center_y,
+                std::memory_order_relaxed);
+            presentation_camera_zoom_.store(
+                presentation_state.camera_zoom,
+                std::memory_order_relaxed);
+
             previous_presentation = now;
             next_presentation = {
                 now.ticks_100ns + frame_duration
@@ -877,7 +1255,7 @@ void RecorderSession::worker_main() noexcept
             pipeline->process_due(
                 device->immediate_context(),
                 now,
-                {},
+                config_.crop,
                 config_.output_size,
                 presentation_enabled
                     ? &presentation_state
@@ -935,6 +1313,13 @@ void RecorderSession::worker_main() noexcept
                 diagnostics_.increment(
                     DiagnosticMetric::
                         EncoderFramesSubmitted);
+
+                if (first_frame_submitted_at_ticks_.load(
+                        std::memory_order_relaxed) == 0) {
+                    first_frame_submitted_at_ticks_.store(
+                        MonotonicClock::now().ticks_100ns,
+                        std::memory_order_relaxed);
+                }
             }
         }
 
@@ -1015,6 +1400,14 @@ void RecorderSession::worker_main() noexcept
             std::chrono::milliseconds(1));
     }
 
+    // Recording duration ends with the render/write loop, not after MP4
+    // finalization. This keeps the user-visible duration aligned with media.
+    const TimePoint recording_stopped =
+        MonotonicClock::now();
+    stopped_at_ticks_.store(
+        recording_stopped.ticks_100ns,
+        std::memory_order_release);
+
     state_.store(
         RecorderState::Stopping,
         std::memory_order_release);
@@ -1078,12 +1471,6 @@ void RecorderSession::worker_main() noexcept
         fail(finalize_status);
         failed = true;
     }
-
-    const TimePoint stopped =
-        MonotonicClock::now();
-    stopped_at_ticks_.store(
-        stopped.ticks_100ns,
-        std::memory_order_release);
 
     const std::uint64_t memory_end =
         private_bytes();
@@ -1194,6 +1581,19 @@ void RecorderSession::write_diagnostics(
             << "  \"output_bytes\": " << output_bytes << ",\n"
             << "  \"width\": " << config_.output_size.width << ",\n"
             << "  \"height\": " << config_.output_size.height << ",\n"
+            << "  \"source_crop_active\": "
+            << (config_.crop.valid()
+                    ? "true"
+                    : "false")
+            << ",\n"
+            << "  \"source_crop_left\": "
+            << config_.crop.left << ",\n"
+            << "  \"source_crop_top\": "
+            << config_.crop.top << ",\n"
+            << "  \"source_crop_right\": "
+            << config_.crop.right << ",\n"
+            << "  \"source_crop_bottom\": "
+            << config_.crop.bottom << ",\n"
             << "  \"fps_num\": " << config_.frame_rate.numerator << ",\n"
             << "  \"fps_den\": " << config_.frame_rate.denominator << ",\n"
             << "  \"bitrate_bps\": " << config_.bitrate_bps << ",\n"
@@ -1370,6 +1770,54 @@ void RecorderSession::write_diagnostics(
             << snapshot_value.visual_analysis_map_failures << ",\n"
             << "  \"elapsed_ticks_100ns\": "
             << snapshot_value.elapsed_ticks << ",\n"
+            << "  \"prepare_latency_ms\": "
+            << ([&]() -> std::int64_t {
+                   const auto requested =
+                       start_requested_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto armed =
+                       armed_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto ready =
+                       armed > 0 ? armed : started;
+                   return requested > 0 && ready >= requested
+                       ? (ready - requested) / 10'000
+                       : 0;
+               })()
+            << ",\n"
+            << "  \"armed_wait_ms\": "
+            << ([&]() -> std::int64_t {
+                   const auto armed =
+                       armed_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   return armed > 0 && started >= armed
+                       ? (started - armed) / 10'000
+                       : 0;
+               })()
+            << ",\n"
+            << "  \"commit_to_first_frame_us\": "
+            << ([&]() -> std::int64_t {
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto first =
+                       first_frame_submitted_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   return started > 0 && first >= started
+                       ? (first - started) / 10
+                       : 0;
+               })()
+            << ",\n"
+            << "  \"capture_preroll_received\": "
+            << capture_preroll_received_.load(
+                   std::memory_order_relaxed)
+            << ",\n"
             << "  \"capture_received\": "
             << snapshot_value.capture_received << ",\n"
             << "  \"capture_replaced\": "

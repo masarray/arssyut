@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <limits>
+#include <iterator>
 
 namespace arssyut::presentation {
 
@@ -20,6 +21,8 @@ constexpr std::int64_t kKeyboardFadeInTicks =
     arssyut::core::MonotonicClock::ticks_per_second * 7 / 100;
 constexpr std::int64_t kKeyboardFadeOutTicks =
     arssyut::core::MonotonicClock::ticks_per_second * 22 / 100;
+constexpr std::int64_t kKeyboardBounceTicks =
+    arssyut::core::MonotonicClock::ticks_per_second * 32 / 100;
 constexpr std::int64_t kShortcutCoalesceTicks =
     arssyut::core::MonotonicClock::ticks_per_second * 8 / 100;
 
@@ -29,6 +32,83 @@ constexpr std::int64_t kShortcutCoalesceTicks =
     const float t2 = t * t;
     const float t3 = t2 * t;
     return t3 * (10.0f + t * (-15.0f + 6.0f * t));
+}
+
+struct KeyboardBounceTransform {
+    float scale_x = 1.0f;
+    float scale_y = 1.0f;
+    float lift = 0.0f;
+};
+
+[[nodiscard]] float mix_minimum_jerk(
+    float from,
+    float to,
+    float phase) noexcept
+{
+    const float eased = minimum_jerk(phase);
+    return from + (to - from) * eased;
+}
+
+[[nodiscard]] KeyboardBounceTransform keyboard_bounce(
+    std::int64_t elapsed_ticks) noexcept
+{
+    // One compact cartoon squash -> overshoot -> settle sequence. The whole
+    // existing keycap cluster moves as one texture so the effect is noticeable
+    // without per-key allocations or texture regeneration.
+    const float t = std::clamp(
+        static_cast<float>(elapsed_ticks) /
+            static_cast<float>(kKeyboardBounceTicks),
+        0.0f,
+        1.0f);
+
+    struct Keyframe {
+        float t;
+        float x;
+        float y;
+        float lift;
+    };
+
+    constexpr Keyframe frames[] = {
+        {0.00f, 0.90f, 0.76f, 0.000f},
+        {0.20f, 1.08f, 1.18f, 0.012f},
+        {0.46f, 0.96f, 0.92f, 0.005f},
+        {0.72f, 1.025f, 1.045f, 0.002f},
+        {1.00f, 1.00f, 1.00f, 0.000f},
+    };
+
+    for (std::size_t i = 1;
+         i < std::size(frames);
+         ++i) {
+        if (t <= frames[i].t) {
+            const auto &a = frames[i - 1];
+            const auto &b = frames[i];
+            const float span =
+                std::max(b.t - a.t, 0.0001f);
+            const float phase =
+                (t - a.t) / span;
+
+            return {
+                mix_minimum_jerk(a.x, b.x, phase),
+                mix_minimum_jerk(a.y, b.y, phase),
+                mix_minimum_jerk(a.lift, b.lift, phase),
+            };
+        }
+    }
+
+    return {};
+}
+
+// Pinned ArZoom Cursor Spotlight uses one bounded exponential visual smoother
+// (55 ms). This is presentation-only O(1) state: it never feeds camera intent
+// and therefore cannot become a second camera/focus planner.
+[[nodiscard]] float spotlight_visual_alpha(float dt) noexcept
+{
+    constexpr float kCursorVisualTauSeconds = 0.055f;
+    const float safe_dt = std::clamp(dt, 0.0f, 0.10f);
+    return 1.0f -
+        std::exp(
+            -safe_dt /
+            kCursorVisualTauSeconds);
 }
 
 
@@ -49,13 +129,85 @@ void PresentationController::reset() noexcept
     keyboard_generation_ = 0;
     have_last_shortcut_ = false;
     emphasis_pending_ = false;
+    manual_zoom_latched_ = false;
+    hold_zoom_active_ = false;
+    overview_requested_ = false;
+    camera_frozen_ = false;
+    overview_.reset();
+    spotlight_focus_valid_ = false;
+    spotlight_focus_x_ = 0.5f;
+    spotlight_focus_y_ = 0.5f;
+    spotlight_click_anchor_valid_ = false;
+    spotlight_click_anchor_x_ = 0.5f;
+    spotlight_click_anchor_y_ = 0.5f;
+    spotlight_zoom_was_requested_ = false;
+    spotlight_cinematic_.reset();
+    spotlight_zoom_resize_.reset();
+    spotlight_runtime_was_requested_ = false;
+    spotlight_close_armed_ = false;
+    last_camera_center_x_ = 0.5f;
+    last_camera_center_y_ = 0.5f;
+    last_camera_zoom_ = 1.0f;
+    runtime_zoom_ =
+        std::clamp(
+            settings_.zoom,
+            1.10f,
+            4.00f);
 }
 
 void PresentationController::set_settings(
     PresentationSettings settings) noexcept
 {
     settings.zoom = std::clamp(settings.zoom, 1.10f, 4.00f);
+
+    // Normalize only safety ranges here. Visual tuning stays owned by the
+    // pinned upstream contract and later recorded-output acceptance.
+    settings.spotlight.area_scale_percent =
+        std::clamp(
+            std::isfinite(settings.spotlight.area_scale_percent)
+                ? settings.spotlight.area_scale_percent
+                : 170.0f,
+            50.0f,
+            200.0f);
+    settings.spotlight.feather_short_edge_fraction =
+        std::clamp(
+            std::isfinite(settings.spotlight.feather_short_edge_fraction)
+                ? settings.spotlight.feather_short_edge_fraction
+                : 40.0f / 1080.0f,
+            0.0f,
+            0.50f);
+    settings.spotlight.dim_strength =
+        std::clamp(
+            std::isfinite(settings.spotlight.dim_strength)
+                ? settings.spotlight.dim_strength
+                : 0.38f,
+            0.0f,
+            0.75f);
+
+    const bool reset_spotlight_focus =
+        !settings.spotlight.enabled ||
+        settings.spotlight.mode != settings_.spotlight.mode;
+
     settings_ = settings;
+    runtime_zoom_ = settings.zoom;
+
+    if (!settings_.presenter_controls) {
+        manual_zoom_latched_ = false;
+        hold_zoom_active_ = false;
+        overview_requested_ = false;
+        camera_frozen_ = false;
+        overview_.reset();
+    }
+
+    if (reset_spotlight_focus) {
+        spotlight_focus_valid_ = false;
+        spotlight_click_anchor_valid_ = false;
+        spotlight_zoom_was_requested_ = false;
+        spotlight_cinematic_.reset();
+        spotlight_zoom_resize_.reset();
+        spotlight_runtime_was_requested_ = false;
+        spotlight_close_armed_ = false;
+    }
 }
 
 void PresentationController::push_click(
@@ -149,6 +301,21 @@ void PresentationController::on_click(
             content_y);
     }
 
+    // Click Spotlight consumes the same validated content-space event as click
+    // feedback. One anchor replaces one anchor: bounded O(1), no history.
+    if (kind != ClickKind::None &&
+        settings_.spotlight.enabled &&
+        settings_.spotlight.mode == SpotlightMode::Click) {
+        spotlight_click_anchor_x_ =
+            std::clamp(content_x, 0.0f, 1.0f);
+        spotlight_click_anchor_y_ =
+            std::clamp(content_y, 0.0f, 1.0f);
+        spotlight_click_anchor_valid_ = true;
+        spotlight_focus_x_ = spotlight_click_anchor_x_;
+        spotlight_focus_y_ = spotlight_click_anchor_y_;
+        spotlight_focus_valid_ = true;
+    }
+
     if (settings_.smart_zoom) {
         zoom_until_.ticks_100ns =
             std::max(
@@ -194,6 +361,113 @@ void PresentationController::on_shortcut(
         time.ticks_100ns + kKeyboardHoldTicks;
 }
 
+void PresentationController::toggle_manual_zoom() noexcept
+{
+    if (!settings_.presenter_controls)
+        return;
+
+    manual_zoom_latched_ =
+        !manual_zoom_latched_;
+
+    // Match ArZoom Toggle Zoom intent: activation uses the same accepted
+    // camera and current pointer focus. Turning it OFF owns the close action,
+    // so any still-running Smart Zoom tail is cancelled for this activation.
+    if (manual_zoom_latched_) {
+        emphasis_pending_ = true;
+    } else {
+        // Zoom-off wins over Freeze so the accepted camera can return to
+        // full-frame instead of leaving a stale frozen zoomed viewport.
+        camera_frozen_ = false;
+        zoom_until_ = {};
+        emphasis_pending_ = false;
+    }
+}
+
+void PresentationController::adjust_manual_zoom(
+    float delta) noexcept
+{
+    if (!settings_.presenter_controls)
+        return;
+
+    // ArZoom Presenter Controls use 0.25x steps and clamp the configured
+    // framing range to 1.10x..4.00x. The caller supplies the step so this
+    // controller stays reusable and deterministic.
+    runtime_zoom_ =
+        std::clamp(
+            runtime_zoom_ + delta,
+            1.10f,
+            4.00f);
+}
+
+void PresentationController::reset_full_frame() noexcept
+{
+    if (!settings_.presenter_controls)
+        return;
+
+    // ArZoom Reset / Full Frame clears every active presenter zoom intent but
+    // deliberately preserves the configured zoom amount for the next
+    // activation. If Overview Peek is in flight, step() uses its upstream
+    // cancel-to-overview path instead of snapping the render transform.
+    manual_zoom_latched_ = false;
+    hold_zoom_active_ = false;
+    overview_requested_ = false;
+    camera_frozen_ = false;
+    zoom_until_ = {};
+    emphasis_pending_ = false;
+
+    // Reset / Full Frame also clears transient Spotlight focus. This does not
+    // add render/camera authority; it only invalidates the bounded read-only
+    // focus snapshot so the next activation must prove a fresh target.
+    spotlight_focus_valid_ = false;
+    spotlight_click_anchor_valid_ = false;
+    spotlight_zoom_was_requested_ = false;
+    spotlight_cinematic_.set_target(
+        false,
+        arzoom::CinematicFocusSpeed::Balanced);
+    spotlight_zoom_resize_.reset();
+    spotlight_runtime_was_requested_ = false;
+    spotlight_close_armed_ = false;
+}
+
+void PresentationController::set_hold_zoom(
+    bool active) noexcept
+{
+    if (!settings_.presenter_controls) {
+        hold_zoom_active_ = false;
+        return;
+    }
+
+    if (active && !hold_zoom_active_)
+        emphasis_pending_ = true;
+
+    hold_zoom_active_ = active;
+}
+
+void PresentationController::set_overview_peek(
+    bool active) noexcept
+{
+    if (!settings_.presenter_controls) {
+        overview_requested_ = false;
+        return;
+    }
+
+    overview_requested_ = active;
+}
+
+
+void PresentationController::toggle_freeze_camera() noexcept
+{
+    if (!settings_.presenter_controls) {
+        camera_frozen_ = false;
+        return;
+    }
+
+    // Freeze is intent inside the existing PresentationController. The camera
+    // object is neither copied nor replaced; step() simply pauses the one
+    // authoritative camera/overview state at the exact rendered transform.
+    camera_frozen_ = !camera_frozen_;
+}
+
 void PresentationController::update_keyboard(
     ShortcutChord chord) noexcept
 {
@@ -225,6 +499,25 @@ PresentationFrameState PresentationController::step(
                 now.ticks_100ns + kZoomMotionTailTicks);
     }
 
+    const bool smart_zoom_requested =
+        settings_.smart_zoom &&
+        now.ticks_100ns <
+            zoom_until_.ticks_100ns;
+    const bool wants_zoom =
+        manual_zoom_latched_ ||
+        hold_zoom_active_ ||
+        smart_zoom_requested;
+
+    // Freeze is only meaningful while a zoom owner exists. Natural Smart Zoom
+    // expiry / Hold release / Toggle off therefore wins and cannot strand a
+    // stale frozen zoomed viewport.
+    if (!wants_zoom)
+        camera_frozen_ = false;
+
+    const bool spotlight_zoom_rising =
+        wants_zoom &&
+        !spotlight_zoom_was_requested_;
+
     ArZoomCameraIntent intent;
     intent.dt = std::clamp(dt, 0.0f, 0.10f);
     intent.cursor = {
@@ -232,14 +525,217 @@ PresentationFrameState PresentationController::step(
         std::clamp(cursor_y, 0.0f, 1.0f)
     };
     intent.cursor_valid = cursor_valid;
-    intent.zoom_requested =
-        settings_.smart_zoom &&
-        now.ticks_100ns < zoom_until_.ticks_100ns;
-    intent.configured_zoom = settings_.zoom;
+    intent.zoom_requested = wants_zoom;
+    intent.configured_zoom = runtime_zoom_;
     intent.emphasis_event = emphasis_pending_;
     emphasis_pending_ = false;
 
-    const auto camera = camera_.step(intent);
+    if (settings_.spotlight.enabled) {
+        switch (settings_.spotlight.mode) {
+        case SpotlightMode::Cursor:
+            // Port the pinned ArZoom Cursor Spotlight policy: follow the same
+            // canonical mapped pointer continuously with one 55 ms visual-only
+            // exponential smoother. Missing mapping holds the last proven
+            // coordinate; it never guesses and never writes camera intent.
+            if (intent.cursor_valid) {
+                if (!spotlight_focus_valid_) {
+                    spotlight_focus_x_ = intent.cursor.x;
+                    spotlight_focus_y_ = intent.cursor.y;
+                    spotlight_focus_valid_ = true;
+                } else {
+                    const float alpha =
+                        spotlight_visual_alpha(
+                            intent.dt);
+                    spotlight_focus_x_ +=
+                        (intent.cursor.x -
+                         spotlight_focus_x_) *
+                        alpha;
+                    spotlight_focus_y_ +=
+                        (intent.cursor.y -
+                         spotlight_focus_y_) *
+                        alpha;
+                }
+            }
+            break;
+
+        case SpotlightMode::Click:
+            if (spotlight_click_anchor_valid_) {
+                spotlight_focus_x_ = spotlight_click_anchor_x_;
+                spotlight_focus_y_ = spotlight_click_anchor_y_;
+                spotlight_focus_valid_ = true;
+            }
+            break;
+
+        case SpotlightMode::SmartFocus:
+        default:
+            // Until P6UI.6D-F proves a read-only semantic-focus seam, capture
+            // the same canonical pointer used to activate SmartCamera once per
+            // zoom session. Local pointer motion cannot become a second planner.
+            if (intent.cursor_valid &&
+                (spotlight_zoom_rising ||
+                 !spotlight_focus_valid_)) {
+                spotlight_focus_x_ = intent.cursor.x;
+                spotlight_focus_y_ = intent.cursor.y;
+                spotlight_focus_valid_ = true;
+            }
+            break;
+        }
+    }
+
+    const arzoom::Vec2 visible_center{
+        last_camera_center_x_,
+        last_camera_center_y_
+    };
+    const float visible_zoom =
+        last_camera_zoom_;
+
+    if (overview_requested_ &&
+        !overview_.active() &&
+        wants_zoom &&
+        visible_zoom > 1.0005f) {
+        (void)overview_.begin(
+            visible_center,
+            visible_zoom);
+    }
+
+    float camera_center_x = 0.5f;
+    float camera_center_y = 0.5f;
+    float camera_zoom = 1.0f;
+
+    if (camera_frozen_) {
+        // Exact rendered shot hold. Do not step either the accepted SmartCamera
+        // or Overview controller, so their internal state is paused rather than
+        // reconciled against a second snapshot/transform authority.
+        camera_center_x = visible_center.x;
+        camera_center_y = visible_center.y;
+        camera_zoom = visible_zoom;
+    } else if (overview_.active()) {
+        const auto phase =
+            overview_.phase();
+
+        if (!wants_zoom &&
+            phase !=
+                arzoom::OverviewPhase::CancelToOverview) {
+            overview_.cancel_to_overview(
+                visible_center,
+                visible_zoom);
+        } else if (!overview_requested_ &&
+                   phase !=
+                       arzoom::OverviewPhase::ToShot) {
+            overview_.release(
+                visible_center,
+                visible_zoom);
+        }
+
+        const auto profile =
+            arzoom::camera_profile(
+                arzoom::CameraMotionStyle::Cinematic);
+        const float out_seconds =
+            std::clamp(
+                profile.zoom_out_seconds * 0.62f,
+                0.24f,
+                0.42f);
+        const float back_seconds =
+            std::clamp(
+                profile.zoom_in_seconds * 0.72f,
+                0.24f,
+                0.40f);
+
+        const auto overview_output =
+            overview_.step(
+                intent.dt,
+                out_seconds,
+                back_seconds);
+
+        camera_center_x =
+            overview_output.center.x;
+        camera_center_y =
+            overview_output.center.y;
+        camera_zoom =
+            overview_output.zoom;
+
+        if (overview_output.cancelled) {
+            camera_.reset();
+            camera_center_x = 0.5f;
+            camera_center_y = 0.5f;
+            camera_zoom = 1.0f;
+        }
+    } else {
+        const auto camera =
+            camera_.step(intent);
+        camera_center_x =
+            camera.center.x;
+        camera_center_y =
+            camera.center.y;
+        camera_zoom =
+            camera.zoom;
+    }
+
+    last_camera_center_x_ =
+        camera_center_x;
+    last_camera_center_y_ =
+        camera_center_y;
+    last_camera_zoom_ =
+        camera_zoom;
+
+    // P6UI.6D-C: Spotlight choreography observes the one authoritative camera.
+    // Zoom starts first. The aperture is not allowed to close until a rendered
+    // camera frame has actually departed full-frame; this avoids inventing a
+    // second timing authority while preserving the requested framing-first cue.
+    const bool spotlight_requested =
+        settings_.spotlight.enabled &&
+        spotlight_focus_valid_ &&
+        !overview_.active() &&
+        (!settings_.spotlight.link_to_zoom || wants_zoom);
+
+    arzoom::CinematicFocusSpeed spotlight_speed =
+        arzoom::CinematicFocusSpeed::Balanced;
+    switch (settings_.spotlight.cinematic_speed) {
+    case SpotlightCinematicSpeed::Smooth:
+        spotlight_speed = arzoom::CinematicFocusSpeed::Smooth;
+        break;
+    case SpotlightCinematicSpeed::Snappy:
+        spotlight_speed = arzoom::CinematicFocusSpeed::Snappy;
+        break;
+    case SpotlightCinematicSpeed::Balanced:
+    default:
+        break;
+    }
+
+    if (!spotlight_requested) {
+        spotlight_close_armed_ = false;
+        spotlight_cinematic_.set_target(false, spotlight_speed);
+    } else {
+        if (!spotlight_runtime_was_requested_)
+            spotlight_close_armed_ = false;
+
+        if (spotlight_close_armed_) {
+            spotlight_cinematic_.set_target(true, spotlight_speed);
+        } else if (!settings_.spotlight.link_to_zoom) {
+            // Standalone Spotlight has no camera-zoom departure to wait for.
+            // Begin the upstream aperture transition immediately, using the
+            // same canonical focus and the same cinematic state.
+            spotlight_close_armed_ = true;
+            spotlight_cinematic_.set_target(true, spotlight_speed);
+        } else if (camera_zoom > 1.0005f) {
+            // Arm only after this already-renderable frame proves that the
+            // camera has begun framing. Closing begins on the following tick.
+            spotlight_close_armed_ = true;
+        }
+    }
+
+    spotlight_cinematic_.step(intent.dt);
+
+    // Zoom +/- is resize-only. It follows live camera zoom from the same
+    // session and cannot replay or alter the cinematic activation state.
+    spotlight_zoom_resize_.observe(
+        spotlight_requested,
+        runtime_zoom_,
+        camera_zoom);
+    spotlight_zoom_resize_.step(camera_zoom);
+
+    spotlight_runtime_was_requested_ =
+        spotlight_requested;
 
     constexpr float kLeftClickLifetime = 0.88f;
     constexpr float kRightClickLifetime = 0.90f;
@@ -263,9 +759,77 @@ PresentationFrameState PresentationController::step(
     }
 
     PresentationFrameState result;
-    result.camera_center_x = camera.center.x;
-    result.camera_center_y = camera.center.y;
-    result.camera_zoom = camera.zoom;
+    result.camera_center_x = camera_center_x;
+    result.camera_center_y = camera_center_y;
+    result.camera_zoom = camera_zoom;
+
+    result.spotlight.enabled =
+        settings_.spotlight.enabled;
+    result.spotlight.link_to_zoom =
+        settings_.spotlight.link_to_zoom;
+    result.spotlight.mode =
+        settings_.spotlight.mode;
+    result.spotlight.size =
+        settings_.spotlight.size;
+    result.spotlight.shape =
+        settings_.spotlight.shape;
+    result.spotlight.cinematic_speed =
+        settings_.spotlight.cinematic_speed;
+    // Recorded-output acceptance showed the earlier 100% Balanced aperture
+    // was too narrow. Keep one renderer geometry authority and scale the pinned
+    // ArZoom v23 170% working area into simple product presets:
+    // Compact ~140%, Balanced 170%, Wide 200% (the existing safe maximum).
+    float focus_size_scale = 1.0f;
+    switch (settings_.spotlight.size) {
+    case SpotlightSize::Compact:
+        focus_size_scale =
+            140.0f / 170.0f;
+        break;
+    case SpotlightSize::Wide:
+        focus_size_scale =
+            200.0f / 170.0f;
+        break;
+    case SpotlightSize::Balanced:
+    default:
+        break;
+    }
+    result.spotlight.area_scale_percent =
+        std::clamp(
+            settings_.spotlight.area_scale_percent *
+                focus_size_scale,
+            50.0f,
+            200.0f);
+    result.spotlight.feather_short_edge_fraction =
+        settings_.spotlight.feather_short_edge_fraction;
+    result.spotlight.dim_strength =
+        settings_.spotlight.dim_strength;
+    result.spotlight.focus_valid =
+        spotlight_focus_valid_;
+    result.spotlight.content_x =
+        spotlight_focus_x_;
+    result.spotlight.content_y =
+        spotlight_focus_y_;
+
+    result.spotlight.focus_mix =
+        spotlight_cinematic_.value;
+    result.spotlight.dim_mix =
+        arzoom::cinematic_dim_mix(
+            spotlight_cinematic_.value);
+    result.spotlight.zoom_resize_scale =
+        spotlight_zoom_resize_.scale;
+
+    // Keep the existing compositor alive while an opening transition is still
+    // visually non-zero. This prevents Zoom-off/reversal from becoming a hard
+    // cut while still returning exact pass-through at the endpoint.
+    result.spotlight.runtime_requested =
+        settings_.spotlight.enabled &&
+        spotlight_focus_valid_ &&
+        (spotlight_requested ||
+         spotlight_cinematic_.visually_active());
+
+    spotlight_zoom_was_requested_ =
+        wants_zoom;
+
     for (std::size_t i = 0;
          i < clicks_.size();
          ++i) {
@@ -310,6 +874,15 @@ PresentationFrameState PresentationController::step(
         result.keyboard = keyboard_;
         result.keyboard.opacity =
             std::min(fade_in, fade_out);
+
+        const auto bounce =
+            keyboard_bounce(elapsed);
+        result.keyboard.scale_x =
+            bounce.scale_x;
+        result.keyboard.scale_y =
+            bounce.scale_y;
+        result.keyboard.lift_output_fraction =
+            bounce.lift;
     }
 
     return result;

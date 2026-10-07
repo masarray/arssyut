@@ -1,0 +1,823 @@
+<Window
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="Arssyut.UI.SettingsWindow"
+    Title="Arssyut Settings"
+    Width="800"
+    Height="560"
+    MinWidth="760"
+    MinHeight="520"
+    CanResize="False"
+    WindowDecorations="None"
+    Background="Transparent"
+    FontFamily="{DynamicResource ArFont.Inter}"
+    TextOptions.TextRenderingMode="SubpixelAntialias"
+    KeyDown="Window_OnKeyDown">
+
+  <Border
+      Margin="1"
+      Background="{DynamicResource ArBrush.WindowChromeSettings}"
+      BorderBrush="{DynamicResource ArBrush.StrokeStrong}"
+      BorderThickness="1"
+      CornerRadius="12"
+      ClipToBounds="True">
+
+    <Grid RowDefinitions="44,*">
+
+      <!-- Custom product chrome -->
+      <Grid
+          Grid.Row="0"
+          Margin="14,0,10,0"
+          ColumnDefinitions="*,Auto"
+          Background="Transparent"
+          PointerPressed="TitleBar_OnPointerPressed">
+
+        <StackPanel
+            Orientation="Horizontal"
+            Spacing="8"
+            VerticalAlignment="Center">
+          <LucideIcon
+              Kind="Settings2"
+              Size="15"
+              StrokeWidth="1.8"
+              Foreground="{DynamicResource ArBrush.TextSecondary}" />
+          <TextBlock
+              Text="Settings"
+              FontSize="12.5"
+              FontWeight="SemiBold" />
+        </StackPanel>
+
+        <Button
+            Grid.Column="1"
+            Classes="window-control danger"
+            Click="Close_OnClick"
+            AutomationProperties.Name="Close Settings">
+          <LucideIcon
+              Kind="X"
+              Size="15"
+              StrokeWidth="1.8"
+              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+        </Button>
+      </Grid>
+
+      <Grid
+          Grid.Row="1"
+          ColumnDefinitions="174,*"
+          Margin="10,4,10,10">
+
+        <!-- Navigation -->
+        <Border
+            Classes="subtle-panel"
+            Background="{DynamicResource ArBrush.Surface2Overlay}"
+            Padding="8">
+          <Grid RowDefinitions="Auto,*,Auto">
+            <TextBlock
+                Text="Preferences"
+                Classes="micro"
+                FontWeight="SemiBold"
+                Margin="16,6,0,9" />
+
+            <StackPanel Grid.Row="1" Margin="4,0" Spacing="3">
+              <Button x:Name="NavGeneral" AutomationProperties.Name="General settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="General">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <LucideIcon Grid.Column="0" Kind="Settings2" Size="15" StrokeWidth="1.8"
+                              HorizontalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="General" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
+              <Button x:Name="NavRecording" AutomationProperties.Name="Recording settings" Classes="nav settings-nav selected" Click="Nav_OnClick" Tag="Recording">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <LucideIcon Grid.Column="0" Kind="Video" Size="15" StrokeWidth="1.8"
+                              HorizontalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="Recording" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
+              <Button x:Name="NavOutput" AutomationProperties.Name="Output settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Output">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <LucideIcon Grid.Column="0" Kind="FolderOpen" Size="15" StrokeWidth="1.8"
+                              HorizontalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="Output" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
+              <Button x:Name="NavAudio" AutomationProperties.Name="Audio settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Audio">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <LucideIcon Grid.Column="0" Kind="Volume2" Size="15" StrokeWidth="1.8"
+                              HorizontalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="Audio" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
+              <Button x:Name="NavCamera" AutomationProperties.Name="Camera settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Camera">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <LucideIcon Grid.Column="0" Kind="Camera" Size="15" StrokeWidth="1.8"
+                              HorizontalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="Camera" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
+              <Button x:Name="NavMouse" AutomationProperties.Name="Mouse and keystroke settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Mouse">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <LucideIcon Grid.Column="0" Kind="MousePointer2" Size="15" StrokeWidth="1.8"
+                              HorizontalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="Mouse &amp; Keys" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
+              <Button x:Name="NavHotkeys" AutomationProperties.Name="Hotkey settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Hotkeys">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <LucideIcon Grid.Column="0" Kind="Keyboard" Size="15" StrokeWidth="1.8"
+                              HorizontalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="Hotkeys" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
+              <Button x:Name="NavAdvanced" AutomationProperties.Name="Advanced settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Advanced">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <LucideIcon Grid.Column="0" Kind="Wrench" Size="15" StrokeWidth="1.8"
+                              HorizontalAlignment="Center"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="Advanced" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Margin="16,10,8,4" Spacing="2">
+              <TextBlock Text="Native product shell" Classes="micro" />
+              <TextBlock Text="Unavailable features stay locked" FontSize="9.5" Foreground="{DynamicResource ArBrush.TextDim}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- Content -->
+        <Border
+            Grid.Column="1"
+            Margin="10,0,0,0"
+            Padding="20,16,16,14"
+            Background="{DynamicResource ArBrush.Surface1Subtle}"
+            CornerRadius="10">
+
+          <Grid RowDefinitions="Auto,*,Auto">
+
+            <StackPanel Spacing="3">
+              <TextBlock
+                  x:Name="PageTitle"
+                  Text="Recording"
+                  Classes="title" />
+              <TextBlock
+                  x:Name="PageSubtitle"
+                  Text="Quality, presentation, and recording behavior."
+                  Classes="micro" />
+            </StackPanel>
+
+            <ScrollViewer
+                Grid.Row="1"
+                Margin="0,13,0,0"
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+
+              <Grid Margin="0,0,18,0">
+
+                <!-- General -->
+                <StackPanel x:Name="PageGeneral" IsVisible="False">
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Recording countdown" FontWeight="Medium" />
+                        <TextBlock Text="Starts only after encoder, capture and the first source frame are armed." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="3 seconds" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Hide main window while recording" FontWeight="Medium" />
+                        <TextBlock Text="Currently locked on while native recording is active." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="On" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Show recording boundary" FontWeight="Medium" />
+                        <TextBlock Text="Native RecorderOverlay follows the selected source and Smart Zoom viewport." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="On" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="After recording" FontWeight="Medium" />
+                        <TextBlock Text="Saved result actions are fixed during native recording acceptance." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Result actions" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+                </StackPanel>
+
+                <!-- Recording -->
+                <StackPanel x:Name="PageRecording">
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Frame rate" FontWeight="Medium" />
+                        <TextBlock Text="Output cadence used by the native recorder." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="FrameRateCombo" Grid.Column="1" Classes="ar-select" SelectedIndex="1"
+                                SelectionChanged="FrameRate_OnSelectionChanged"
+                                AutomationProperties.Name="Frame rate">
+                        <ComboBoxItem Content="30 fps" />
+                        <ComboBoxItem Content="60 fps" />
+                      </ComboBox>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Visual style" FontWeight="Medium" />
+                        <TextBlock Text="Presentation processing without changing capture geometry." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="VisualStyleCombo" Grid.Column="1" Classes="ar-select" SelectedIndex="0"
+                                SelectionChanged="VisualStyle_OnSelectionChanged"
+                                AutomationProperties.Name="Visual style">
+                        <ComboBoxItem Content="Pixel Accurate" />
+                        <ComboBoxItem Content="Clean Screen" />
+                        <ComboBoxItem Content="Vivid Presentation" />
+                      </ComboBox>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Smart Zoom" FontWeight="Medium" />
+                        <TextBlock Text="Let ArZoom follow pointer intent with a stable viewport." Classes="micro" />
+                      </StackPanel>
+                      <ToggleSwitch x:Name="SmartZoomToggle" Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                                    Click="SmartZoom_OnClick"
+                                    AutomationProperties.Name="Smart Zoom" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Recording controller" FontWeight="Medium" />
+                        <TextBlock Text="Floating bar is the locked transport surface for this milestone." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Floating bar" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Quality target" FontWeight="Medium" />
+                        <TextBlock Text="Native encoder policy is locked by the accepted engine baseline." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Engine default" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+                </StackPanel>
+
+                <!-- Output -->
+                <StackPanel x:Name="PageOutput" IsVisible="False">
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="14">
+                      <StackPanel Spacing="4">
+                        <TextBlock Text="Output folder" FontWeight="Medium" />
+                        <TextBlock
+                            x:Name="OutputFolderText"
+                            Classes="micro path-preview"
+                            Text="Videos\Arssyut" />
+                      </StackPanel>
+                      <Button
+                          x:Name="OutputFolderButton"
+                          Grid.Column="1"
+                          Classes="ar"
+                          Click="OutputFolder_OnClick"
+                          AutomationProperties.Name="Choose output folder">
+                        <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                          <LucideIcon Kind="FolderOpen" Size="15" StrokeWidth="1.8"
+                                      Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                          <TextBlock Text="Browse" />
+                        </StackPanel>
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="File naming" FontWeight="Medium" />
+                        <TextBlock Text="Native bridge currently uses timestamped names with the visual-mode suffix." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Date + time" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Container" FontWeight="Medium" />
+                        <TextBlock Text="Final media container exposed by the current product baseline." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="MP4 · H.264" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Open folder after recording" FontWeight="Medium" />
+                        <TextBlock Text="Use the Saved Open / Folder actions; automatic reveal is not active yet." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Manual" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+                </StackPanel>
+
+                <!-- Audio -->
+                <StackPanel x:Name="PageAudio" IsVisible="False">
+                  <Border Classes="capability-lock">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                      <Border Width="34" Height="34" CornerRadius="9"
+                              Background="{DynamicResource ArBrush.Surface3}">
+                        <LucideIcon Kind="Volume2" Size="17" StrokeWidth="1.8"
+                                    Foreground="{DynamicResource ArBrush.TextSecondary}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                      <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Text="Native audio recording is not connected yet" FontWeight="SemiBold" />
+                        <TextBlock Text="Arssyut will not show simulated meters or selectable fake devices in product mode. System audio and microphone stay unavailable until the real WASAPI/AAC path is bound." Classes="micro" TextWrapping="Wrap" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+
+                  <Grid IsVisible="False">
+                    <ComboBox x:Name="SystemAudioDeviceCombo" />
+                    <ProgressBar x:Name="SystemMeter" />
+                    <TextBlock x:Name="SystemDbText" />
+                    <ComboBox x:Name="MicrophoneDeviceCombo" SelectionChanged="MicrophoneDevice_OnSelectionChanged" />
+                    <ProgressBar x:Name="MicMeter" />
+                    <TextBlock x:Name="MicDbText" />
+                  </Grid>
+                </StackPanel>
+
+                <!-- Camera -->
+                <StackPanel x:Name="PageCamera" IsVisible="False">
+                  <Border Classes="capability-lock">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                      <Border Width="34" Height="34" CornerRadius="9"
+                              Background="{DynamicResource ArBrush.Surface3}">
+                        <LucideIcon Kind="Camera" Size="17" StrokeWidth="1.8"
+                                    Foreground="{DynamicResource ArBrush.TextSecondary}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                      <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Text="Camera compositor backend is not connected yet" FontWeight="SemiBold" />
+                        <TextBlock Text="Device selection, placement and size controls return only when the real Media Foundation camera path can change the encoded recording." Classes="micro" TextWrapping="Wrap" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+
+                  <Grid IsVisible="False">
+                    <ComboBox x:Name="CameraDeviceCombo" SelectionChanged="CameraDevice_OnSelectionChanged" />
+                    <Button x:Name="AnchorTopLeft" Tag="TopLeft" Click="CameraPlacement_OnClick" />
+                    <Button x:Name="AnchorTopRight" Tag="TopRight" Click="CameraPlacement_OnClick" />
+                    <Button x:Name="AnchorBottomLeft" Tag="BottomLeft" Click="CameraPlacement_OnClick" />
+                    <Button x:Name="AnchorBottomRight" Tag="BottomRight" Click="CameraPlacement_OnClick" />
+                    <Border x:Name="CameraPreviewBadge" />
+                  </Grid>
+                </StackPanel>
+
+                <!-- Mouse and keystroke -->
+                <StackPanel x:Name="PageMouse" IsVisible="False">
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Click highlight" FontWeight="Medium" />
+                        <TextBlock Text="Render the compact analytic click ring." Classes="micro" />
+                      </StackPanel>
+                      <ToggleSwitch x:Name="ClickHighlightToggle" Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                                    Click="ClickHighlight_OnClick"
+                                    AutomationProperties.Name="Click highlight" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Shortcut keys" FontWeight="Medium" />
+                        <TextBlock Text="Show canonical keycaps for selected shortcut chords." Classes="micro" />
+                      </StackPanel>
+                      <ToggleSwitch x:Name="ShortcutKeysToggle" Grid.Column="1" Classes="ar-toggle" IsChecked="True" OnContent="" OffContent=""
+                                    Click="ShortcutKeys_OnClick"
+                                    AutomationProperties.Name="Shortcut key visualization" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Pointer visibility" FontWeight="Medium" />
+                        <TextBlock Text="Native Windows cursor is locked as the authoritative captured cursor." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Native cursor" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+                </StackPanel>
+
+                <!-- Hotkeys -->
+                <StackPanel x:Name="PageHotkeys" IsVisible="False">
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Start / Stop recording" FontWeight="Medium" />
+                        <TextBlock Text="Global Windows shortcut. One chord starts while idle and stops while recording." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="RecordHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="Record"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="RecordHotkeyText" Text="F9" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Grid Margin="0,14,0,2" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                    <LucideIcon Kind="ScanLine" Size="14" StrokeWidth="1.8"
+                                Foreground="{DynamicResource ArBrush.Record}" />
+                    <StackPanel Grid.Column="1" Spacing="1">
+                      <TextBlock Text="Presenter" FontSize="11" FontWeight="SemiBold" />
+                      <TextBlock Text="Camera framing and focus controls for presentations." Classes="micro" />
+                    </StackPanel>
+                  </Grid>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Zoom amount" FontWeight="Medium" />
+                        <TextBlock Text="Base shot used by Toggle Zoom and Hold Zoom; Zoom In/Out continues in 0.25× steps." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="PresenterZoomCombo"
+                                Grid.Column="1"
+                                Classes="ar-select"
+                                SelectionChanged="PresenterZoom_OnSelectionChanged"
+                                AutomationProperties.Name="Presenter zoom amount" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Spotlight" FontWeight="Medium" />
+                        <TextBlock Text="Gently dim outside the focus area so attention stays on what you are showing." Classes="micro" />
+                      </StackPanel>
+                      <ToggleSwitch x:Name="SpotlightToggle"
+                                    Grid.Column="1"
+                                    Classes="ar-toggle"
+                                    IsChecked="False"
+                                    OnContent=""
+                                    OffContent=""
+                                    Click="Spotlight_OnClick"
+                                    AutomationProperties.Name="Spotlight" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Spotlight with Zoom" FontWeight="Medium" />
+                        <TextBlock Text="Frame the area first, then bring the Spotlight in smoothly." Classes="micro" />
+                      </StackPanel>
+                      <ToggleSwitch x:Name="SpotlightWithZoomToggle"
+                                    Grid.Column="1"
+                                    Classes="ar-toggle"
+                                    IsChecked="True"
+                                    OnContent=""
+                                    OffContent=""
+                                    Click="SpotlightWithZoom_OnClick"
+                                    AutomationProperties.Name="Spotlight with Zoom" />
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Focus size" FontWeight="Medium" />
+                        <TextBlock Text="Choose how tightly the Spotlight frames the focus area." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="SpotlightSizeCombo"
+                                Grid.Column="1"
+                                Classes="ar-select"
+                                SelectionChanged="SpotlightSize_OnSelectionChanged"
+                                AutomationProperties.Name="Spotlight focus size">
+                        <ComboBoxItem Content="Compact" />
+                        <ComboBoxItem Content="Balanced" />
+                        <ComboBoxItem Content="Wide" />
+                      </ComboBox>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Focus strength" FontWeight="Medium" />
+                        <TextBlock Text="Outside-area dimming only; the focus area remains at natural brightness." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="SpotlightStrengthCombo"
+                                Grid.Column="1"
+                                Classes="ar-select"
+                                SelectionChanged="SpotlightStrength_OnSelectionChanged"
+                                AutomationProperties.Name="Spotlight focus strength">
+                        <ComboBoxItem Content="Gentle · 30%" />
+                        <ComboBoxItem Content="Balanced · 38%" />
+                        <ComboBoxItem Content="Strong · 46%" />
+                      </ComboBox>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Motion" FontWeight="Medium" />
+                        <TextBlock Text="Choose how calmly the Spotlight opens and closes." Classes="micro" />
+                      </StackPanel>
+                      <ComboBox x:Name="SpotlightMotionCombo"
+                                Grid.Column="1"
+                                Classes="ar-select"
+                                SelectionChanged="SpotlightMotion_OnSelectionChanged"
+                                AutomationProperties.Name="Spotlight motion">
+                        <ComboBoxItem Content="Smooth" />
+                        <ComboBoxItem Content="Balanced" />
+                        <ComboBoxItem Content="Snappy" />
+                      </ComboBox>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Toggle Zoom" FontWeight="Medium" />
+                        <TextBlock Text="Latch or release the existing ArZoom camera without changing Smart Zoom automation." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="ToggleZoomHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="ToggleZoom"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="ToggleZoomHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Hold Zoom" FontWeight="Medium" />
+                        <TextBlock Text="Hold to momentarily request the configured ArZoom shot; release to return when no other zoom intent remains." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="HoldZoomHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="HoldZoom"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="HoldZoomHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Zoom In" FontWeight="Medium" />
+                        <TextBlock Text="Increase presenter framing by 0.25×; bounded to the ArZoom 1.10×–4.00× range." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="ZoomInHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="ZoomIn"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="ZoomInHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Zoom Out" FontWeight="Medium" />
+                        <TextBlock Text="Decrease presenter framing by 0.25× without replaying zoom activation." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="ZoomOutHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="ZoomOut"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="ZoomOutHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Reset / Full Frame" FontWeight="Medium" />
+                        <TextBlock Text="Return smoothly to 1× while preserving the configured zoom amount for the next activation." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="ResetZoomHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="ResetZoom"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="ResetZoomHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Freeze Camera" FontWeight="Medium" />
+                        <TextBlock Text="Lock the exact current camera framing; press again to resume smoothly from the same shot." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="FreezeCameraHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="FreezeCamera"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="FreezeCameraHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Overview Peek" FontWeight="Medium" />
+                        <TextBlock Text="Hold while zoomed to glide to full frame; release restores the saved shot without cursor retargeting." Classes="micro" />
+                      </StackPanel>
+                      <Button x:Name="OverviewPeekHotkeyButton" Grid.Column="1"
+                              Classes="hotkey" Tag="OverviewPeek"
+                              Click="Hotkey_OnClick">
+                        <TextBlock x:Name="OverviewPeekHotkeyText" Text="Set key" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                      </Button>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Pause / Resume" FontWeight="Medium" />
+                        <TextBlock Text="Reserved for the native paused-state milestone." Classes="micro" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3">
+                        <Button x:Name="PauseHotkeyButton" Classes="hotkey" Tag="Pause" IsEnabled="False">
+                          <TextBlock x:Name="PauseHotkeyText" Text="F10" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                        </Button>
+                        <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Mute / Unmute microphone" FontWeight="Medium" />
+                        <TextBlock Text="Reserved until the native microphone backend is bound." Classes="micro" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3">
+                        <Button x:Name="MicrophoneHotkeyButton" Classes="hotkey" Tag="Microphone" IsEnabled="False">
+                          <TextBlock x:Name="MicrophoneHotkeyText" Text="Ctrl+F9" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                        </Button>
+                        <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,190" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Show / Hide webcam" FontWeight="Medium" />
+                        <TextBlock Text="Reserved for picture-in-picture when the camera backend is available." Classes="micro" />
+                      </StackPanel>
+                      <StackPanel Grid.Column="1" Spacing="3">
+                        <Button x:Name="CameraHotkeyButton" Classes="hotkey" Tag="Camera" IsEnabled="False">
+                          <TextBlock x:Name="CameraHotkeyText" Text="Ctrl+F10" FontFeatures="+tnum"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center" />
+                        </Button>
+                        <TextBlock Text="Backend pending" Classes="micro" HorizontalAlignment="Right" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                  <Border Margin="0,12,0,0" Classes="capability-lock">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                      <LucideIcon Kind="Keyboard" Size="15" StrokeWidth="1.8"
+                                  Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                      <TextBlock x:Name="HotkeyFeedbackText" Grid.Column="1"
+                                 Text="Click a shortcut and press one chord. OEM symbols, Numpad, navigation keys, F1–F24, and Ctrl/Shift/Alt/Win combinations are supported."
+                                 Classes="micro" TextWrapping="Wrap" />
+                    </Grid>
+                  </Border>
+                </StackPanel>
+
+                <!-- Advanced -->
+                <StackPanel x:Name="PageAdvanced" IsVisible="False">
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Diagnostics" FontWeight="Medium" />
+                        <TextBlock Text="Native recorder diagnostics remain enabled while product acceptance is being hardened." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Always on" FontSize="11" />
+                      </Border>
+                    </Grid>
+                  </Border>
+
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Engine authority" FontWeight="Medium" />
+                        <TextBlock Text="Capture, Region, compositor, timing and encoder remain in the native C++ engine." Classes="micro" />
+                      </StackPanel>
+                      <Border Grid.Column="1" Classes="value-pill">
+                        <TextBlock Text="Native" FontSize="11" Foreground="{DynamicResource ArBrush.Success}" />
+                      </Border>
+                    </Grid>
+                  </Border>
+                </StackPanel>
+
+              </Grid>
+            </ScrollViewer>
+
+            <Grid
+                Grid.Row="2"
+                Margin="0,10,0,0"
+                ColumnDefinitions="*,Auto">
+              <TextBlock
+                  Text="Changes apply to the next recording. Unavailable capabilities remain visibly locked."
+                  Classes="micro"
+                  VerticalAlignment="Center" />
+              <TextBlock
+                  x:Name="PreviewStatusText"
+                  Grid.Column="1"
+                  IsVisible="False"
+                  Text=""
+                  FontSize="9.5"
+                  Foreground="{DynamicResource ArBrush.TextDim}"
+                  VerticalAlignment="Center" />
+            </Grid>
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+  </Border>
+</Window>

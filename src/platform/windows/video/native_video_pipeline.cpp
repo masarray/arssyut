@@ -106,7 +106,8 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
         (void)compositor_->submit_scene_analysis(
             context,
             now,
-            visual);
+            visual,
+            crop);
     }
 
     VideoSlotResult result;

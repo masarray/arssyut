@@ -27,11 +27,20 @@ namespace arssyut::app {
 enum class RecorderState : std::uint8_t {
     Idle = 0,
     Preparing,
+    Armed,
     Recording,
     Stopping,
     Finalizing,
     Ready,
     Failed,
+};
+
+enum class PresenterCommand : std::uint8_t {
+    ToggleZoom = 0,
+    ZoomIn,
+    ZoomOut,
+    ResetFullFrame,
+    ToggleFreezeCamera,
 };
 
 struct RecorderTarget {
@@ -42,13 +51,38 @@ struct RecorderTarget {
     std::wstring label;
 };
 
+struct PresenterMomentaryBinding {
+    std::uint16_t virtual_key = 0;
+    std::uint8_t modifiers = 0;
+
+    [[nodiscard]] bool configured() const noexcept
+    {
+        return virtual_key != 0;
+    }
+};
+
 struct RecorderConfig {
     RecorderTarget target;
     std::filesystem::path output_path;
     arssyut::core::FrameSize output_size{1920, 1080};
     arssyut::core::FrameRate frame_rate{60, 1};
+
+    // Empty crop means full source. Region mode maps its virtual-screen
+    // selection into source pixels before the worker starts.
+    arssyut::core::CropRect crop{};
+
+    // Presentation input must normalize against the same spatial region that
+    // the compositor receives. This is especially important for custom Region.
+    RECT presentation_screen_rect{};
+    bool presentation_screen_rect_valid = false;
+
+    // When true the recorder fully warms the encoder/capture/input path and
+    // waits in Armed until request_start_commit() defines frame zero.
+    bool start_armed = false;
     std::uint32_t bitrate_bps = 18'000'000;
     arssyut::presentation::PresentationSettings presentation{};
+    PresenterMomentaryBinding hold_zoom_hotkey{};
+    PresenterMomentaryBinding overview_peek_hotkey{};
     arssyut::visual::ArVisualProductMode visual_mode =
         arssyut::visual::ArVisualProductMode::PixelAccurate;
     arssyut::visual::ArVisualGradeSettings visual =
@@ -83,6 +117,11 @@ struct RecorderSnapshot {
     std::uint32_t compositor_cpu_p95_us = 0;
     std::uint32_t compositor_gpu_p95_us = 0;
 
+    float presentation_camera_center_x = 0.5f;
+    float presentation_camera_center_y = 0.5f;
+    float presentation_camera_zoom = 1.0f;
+    bool worker_finished = true;
+
     std::uint64_t memory_private_bytes = 0;
     std::uint64_t memory_private_max_bytes = 0;
 
@@ -103,7 +142,17 @@ public:
         RecorderConfig config);
 
     void request_stop() noexcept;
+
+    // One-shot Armed -> Recording gate. Returns false outside Armed or after a
+    // prior commit. The worker owns the actual media-clock timestamp.
+    [[nodiscard]] bool request_start_commit() noexcept;
+
     void wait() noexcept;
+
+    // Lock-free bounded presenter command mailbox. Commands are consumed by
+    // the recorder's existing presentation controller on its worker cadence.
+    [[nodiscard]] bool request_presenter_command(
+        PresenterCommand command) noexcept;
 
     [[nodiscard]] RecorderSnapshot snapshot() const noexcept;
 
@@ -153,7 +202,12 @@ private:
 
     std::atomic<RecorderState> state_{RecorderState::Idle};
     std::atomic<bool> stop_requested_{false};
+    std::atomic<bool> start_commit_requested_{false};
 
+    std::atomic<std::int64_t> start_requested_at_ticks_{0};
+    std::atomic<std::int64_t> armed_at_ticks_{0};
+    std::atomic<std::int64_t> first_frame_submitted_at_ticks_{0};
+    std::atomic<std::uint64_t> capture_preroll_received_{0};
     std::atomic<std::int64_t> started_at_ticks_{0};
     std::atomic<std::int64_t> stopped_at_ticks_{0};
 
@@ -177,6 +231,19 @@ private:
     std::atomic<std::uint32_t> capture_p95_us_{0};
     std::atomic<std::uint32_t> compositor_cpu_p95_us_{0};
     std::atomic<std::uint32_t> compositor_gpu_p95_us_{0};
+
+    std::atomic<float> presentation_camera_center_x_{0.5f};
+    std::atomic<float> presentation_camera_center_y_{0.5f};
+    std::atomic<float> presentation_camera_zoom_{1.0f};
+
+    // Bounded O(1) presenter intent mailbox; no command queue/history grows
+    // with recording duration or hotkey activity.
+    std::atomic<std::uint32_t> presenter_toggle_zoom_requests_{0};
+    std::atomic<std::int32_t> presenter_zoom_steps_{0};
+    std::atomic<std::uint32_t> presenter_reset_requests_{0};
+    std::atomic<std::uint32_t> presenter_freeze_toggle_requests_{0};
+
+    std::atomic<bool> worker_finished_{true};
 
     std::atomic<std::uint64_t> memory_private_bytes_{0};
     std::atomic<std::uint64_t> memory_private_max_bytes_{0};

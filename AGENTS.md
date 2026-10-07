@@ -618,6 +618,57 @@ experiment. The authoritative rules are now:
   stability, keycap proportions and click energy.
 
 
+### P6R recorder workspace contract
+
+The recorder UI is a projection of authoritative engine/configuration state,
+not a second recorder implementation.
+
+Rules:
+- Capture Mode is a first-class product concept. Display, Window, Region and
+  Game must remain distinguishable user intents even when their capture
+  backends differ;
+- never silently record a different source/backend than the mode selected by
+  the user;
+- the capture boundary is a real product surface. Display/Window boundary
+  geometry comes from the selected target; Smart Zoom viewport geometry comes
+  from the same PresentationFrameState camera values consumed by the
+  compositor;
+- the boundary/toolbar must not become a second camera, capture or timeline
+  authority;
+- do not restyle/morph the main HWND into the recording toolbar. Active controls
+  are separate overlay windows so window-style changes cannot stall or corrupt
+  the main UI;
+- the UI message pump must never block on RecorderSession::wait() during normal
+  Record/Stop/finalize transitions. Joining is allowed only after a published
+  worker-finished state or during explicit application shutdown;
+- recording toolbar actions route to canonical session/input authorities;
+- Pause remains disabled until an explicit Paused engine state and timestamp
+  continuity contract exist;
+- microphone/camera selectors must enumerate real OS devices; until their
+  capture backends are connected, the product must block or clearly reject the
+  unsupported recording request rather than pretend the stream was recorded;
+- Settings is a separate categorized configuration window. Opening or closing
+  it does not mutate recorder session truth;
+- Region is no longer decorative UX: its editable virtual-screen rectangle is
+  mapped once into a canonical source CropRect before session start. The
+  compositor receives that crop directly, while presentation input normalizes
+  against the same region. Never create a second Region capture/compositor path;
+- Region editing is event-driven. The idle UI timer must not continuously
+  overwrite an in-progress native move/resize loop. Boundary changes publish
+  back to the UI model only after the native interaction completes;
+- Game may remain represented as an explicit future backend, but Record must
+  reject it until the dedicated backend milestone is complete;
+- recording overlays must avoid capture-cadence repaint work. Cache unchanged
+  toolbar state, use buffered painting for the toolbar surface, and invalidate
+  only on actual state/timer/icon changes;
+- interactive controls use one compact visual system. Do not mix default gray
+  Win32 pushbuttons into the product recorder shell; vector icon geometry and
+  button chrome must remain centered, DPI-scaled and tactile;
+- UI work must not alter the locked P5D.7/P5E visual/color/encoder baseline;
+- P6R cannot merge until Windows CI passes and real GUI testing confirms the
+  previous Record/Stop freeze is gone, capture boundary/toolbar behavior is
+  correct, and device/settings UX is understandable.
+
 ---
 
 ## 12. Audio contract
@@ -798,6 +849,395 @@ Do not:
 The recording overlay must be low-overhead, capture-safe, and excluded from capture when required by the selected backend.
 
 ---
+
+### Current project handoff
+
+Before any substantial Arssyut continuation work, read
+`docs/CURRENT_HANDOFF.md` first.
+
+That file is the canonical current-state pointer for:
+- active branch/PR and milestone;
+- latest known-good checkpoint;
+- real-acceptance work still pending;
+- the exact next engineering milestone;
+- temporary scaffolding that must not become a new authority.
+
+If repository state has advanced beyond the handoff, update the handoff before
+continuing implementation. Do not derive project state from an older chat
+thread when repository evidence is newer.
+
+### History-derived subsystem baseline
+
+Before changing an existing recorder subsystem, consult
+`docs/ENGINE_BASELINE_LEDGER.md` and the commits it references.
+
+Mandatory rules:
+- do not reimplement an accepted native subsystem merely because the Avalonia
+  shell cannot call it yet; add or plan a bridge instead;
+- `milestone/p6r-native-functional` at
+  `b11451bd640a072d81dbd1024b4c641a76c9daac` is the P6R native functional
+  reference for source geometry, capture boundary, Smart Zoom boundary
+  synchronization and Region crop ownership;
+- P6UI.1-P6UI.3 presentation work must not modify native implementation under
+  `src/app`, `src/core` or `src/platform`;
+- `SourcePreviewCatalog.cs` and `CaptureBoundaryWindow.*` are temporary UI
+  acceptance scaffolding only. Do not grow them into source/crop/camera
+  authorities. P6UI.4 replaces their authority with the native bridge;
+- Region work must fix the existing native Region editor/geometry/crop path in
+  place. Never create a second Region capture pipeline;
+- if a proposed UI change requires a second source catalog, camera solver,
+  capture boundary, media clock, compositor or recorder session, stop and
+  redesign around the existing authority.
+
+### P6UI.4 native bridge command contract
+
+- `src/bridge` is the only migration layer allowed to adapt Avalonia commands
+  to existing native recorder authorities; it must not duplicate capture,
+  Region, camera, compositor, encoder or media-clock algorithms;
+- exactly one bridge context owns the Avalonia product's native
+  `RecorderSession`;
+- source/device identities cross the ABI only as opaque generation-scoped
+  tokens and are resolved inside the native bridge; managed code must never
+  reconstruct HWND/HMONITOR/device IDs from labels or geometry;
+- the normal product Record/Stop path uses the native bridge. Preview session
+  state is permitted only in explicit deterministic design/stress scenarios;
+- Stop must never block the UI on an active recorder worker. Publish
+  `request_stop()` and observe native snapshots until worker completion;
+- joining/replacing a session is allowed only after `worker_finished=true`;
+- unsupported Region/Game/audio/microphone/camera commands must return a
+  structured unsupported/error status. Never silently fall back to a
+  different source or claim a stream was recorded;
+- Settings may provide presentation/config intent, but native
+  `RecorderConfig` remains the canonical recording configuration;
+- P6UI.4B must not modify the locked engine implementation under `src/app`,
+  `src/core` or `src/platform`; only explicit later baseline-preserving
+  engine fixes with reproduced evidence may cross that boundary.
+
+### P6UI.4B-A acceptance-lock contract
+
+- every visible recorder/controller top-level HWND during Display/Region capture
+  must be capture-protected with `WDA_EXCLUDEFROMCAPTURE`, with
+  `WDA_MONITOR` permitted only as an older-Windows compatibility fallback;
+- CI must verify the floating controller's real HWND display affinity. A visual
+  smoke alone is not sufficient evidence;
+- a Settings control that has no current product authority must not look live:
+  disable it or label it explicitly as staged/preview-only until its backend is
+  bound;
+- do not implement countdown, audio, camera, Region, pause, Game, naming, or
+  encoder policy merely to make a Settings control functional during this
+  acceptance-lock milestone;
+- real Display 1/2 and Window MP4 recording remains a human acceptance gate;
+  CI green does not substitute for real multi-monitor recording evidence.
+
+### P6UI.4C native overlay / Region bridge contract
+
+- reuse the existing P6R `RecorderOverlay` and `region_geometry` implementation;
+  do not create an Avalonia boundary window or C# Region rectangle math;
+- Display/Window boundaries are click-through. Their native HWND must preserve
+  `WS_EX_TRANSPARENT` and return `HTTRANSPARENT` from hit testing;
+- idle Region may accept input only on its existing resize edges/corners and
+  move pill; the Region interior remains click-through;
+- Region move/resize publishes back to the bridge-owned canonical virtual-screen
+  rectangle and maps once through `map_region_to_crop()`;
+- the recording boundary follows `RecorderSnapshot` camera center/zoom through
+  the existing `camera_viewport_rect()`; there is no second camera authority;
+- the hidden bridge HWND is a message owner only. It must not become a recorder
+  UI, capture pipeline, timing authority or polling-based Region model;
+- Region recording must use the same monitor WGC source plus canonical crop as
+  P6R. Never add a second Region capture backend.
+
+### P6UI.4C-A product-reality / visual-lock contract
+
+- the normal product shell must never fall back to `PreviewRecorderSession`
+  when the native bridge is unavailable. Simulation is allowed only behind
+  explicit preview/stress command-line flags used for deterministic UI tests;
+- a product control may look interactive only when its advertised action changes
+  real application/native state. Unbound audio, microphone, camera, Game, Pause,
+  encoder-policy, naming-policy, countdown and similar staged capabilities must
+  render as unavailable/status surfaces rather than fake live controls;
+- real device names and live meters must come from a real backend. Do not ship
+  hard-coded demonstration devices or deterministic fake meters in normal
+  product mode;
+- the Windows product artifact must be self-contained enough that moving the
+  executable does not detach the Avalonia shell from the native engine. CI must
+  launch the packaged executable with `--bridge-required`;
+- Settings rows use one aligned right-side control column. Enabled ComboBoxes
+  stretch to that column, fixed values use non-interactive value pills, and
+  descriptive text must wrap before entering the control column;
+- internal milestone labels such as `UI PREVIEW`, `P6UI.x preview`, or
+  `Visual acceptance` must not appear in normal product presentation;
+- product-reality/visual corrections must not alter the accepted implementation
+  under `src/app`, `src/core` or `src/platform`.
+
+### P6UI.4C-B Region raster correction contract
+
+- the reproduced Region resize-tail defect belongs only to the existing native
+  `RecorderOverlay` layered-window repaint path;
+- fixing it may change `src/app/recorder_overlay.cpp` only as a narrow
+  baseline-preserving exception. Do not change Region geometry, crop mapping,
+  RecorderSession, WGC, compositor, encoder or media timing to hide a repaint
+  artifact;
+- editable Region resize must not preserve old layered-window client bits;
+  resize invalidation must clear/repaint the complete color-key client area;
+- Display/Window and Region interior hit-testing must remain click-through.
+
+### P6UI.5 global transport / context-workspace contract
+
+- global recorder hotkeys are owned by the existing bridge hidden HWND using
+  Windows `RegisterHotKey` + `MOD_NOREPEAT`; focused Avalonia KeyDown is not
+  the product authority;
+- one Start/Stop chord is context-aware: idle/ready starts, preparing/recording
+  stops, stopping/finalizing ignores repeats;
+- multi-key chords support Ctrl/Shift/Alt/Win modifiers and conflicts are
+  surfaced instead of silently falling back;
+- Pause/Resume, microphone mute/unmute and webcam show/hide may be visible as
+  reserved shortcut grammar but remain capability-gated until native actions
+  exist;
+- main recorder composition is Capture | Audio | Webcam | Record. Capture mode
+  is one dropdown plus the existing native source picker; media blocks must not
+  become fake backends.
+
+### P6UI.5C visual polish / tactile-control contract
+
+- Capture mode is one four-way tactile single-selection surface:
+  Display / Window / Region / Game. Display, Window and Region are live native
+  intents; Game stays visibly capability-gated until its native backend exists;
+- use Lucide icons directly for capture mode and media context identity;
+- hotkey presentation uses one keycap grammar across main and Settings:
+  centered content, compact fixed height, stronger bottom edge, and tabular
+  digits. A shortcut must never look like left-aligned text inside a generic
+  form field;
+- Audio, Microphone and Webcam context blocks may show their final toggle/device
+  layout before backends are ready, but those controls remain disabled and
+  explicitly pending until they can change real encoded output;
+- detected microphone/camera names may be projected read-only from the native
+  device snapshot. Do not fabricate devices, meters, or a system-playback
+  catalog that the bridge does not expose;
+- system audio may show only the truthful current product authority
+  ("Default playback device") until a real output-device catalog is added;
+- tactile/visual polish must not alter capture, Region, recorder transport,
+  media timing, compositor, encoder or device-discovery authority;
+- assemble visual-polish changes as one Git tree/commit and move the PR branch
+  once so one final CI validates the milestone.
+
+### P6UI.6A ArZoom presenter-hotkey contract
+
+- presenter zoom behavior is transplanted from the pinned ArZoom authority
+  `masarray/arzoom-follow-obs@ada8f5269246c64429d7aceb6cc72f81e72120ba`;
+- Arssyut reuses presenter intent only. OBS hotkey/property plumbing does not
+  enter the recorder;
+- Toggle Zoom, Zoom In, Zoom Out and Reset / Full Frame must feed the existing
+  `PresentationController -> ArZoomCameraAdapter` authority. Never create a
+  UI camera or second zoom planner;
+- Zoom In / Zoom Out use ArZoom's 0.25x step and clamp configured framing to
+  1.10x..4.00x. Adjusting framing while zoom is active must not replay the
+  cinematic activation;
+- Reset / Full Frame clears manual/automatic active zoom intent and returns
+  smoothly to 1x while preserving configured zoom amount for the next
+  activation;
+- presenter commands cross into RecorderSession through bounded O(1) atomic
+  intent state. Do not add an unbounded command queue or blocking worker lock;
+- presenter input capture is enabled only when at least one presenter zoom
+  hotkey is assigned. No hotkey assignment means no extra presentation-input
+  worker solely for this feature;
+- Windows global bindings remain owned by the existing bridge HWND with
+  `RegisterHotKey + MOD_NOREPEAT`;
+- Hold Zoom and Overview Peek require press/release semantics and belong in
+  P6UI.6B by extending the existing PresentationInputWorker key-state path.
+  Never add a second global keyboard hook for them.
+
+### P6UI.6B Hold Zoom / Overview Peek contract
+
+- behavior remains pinned to
+  `masarray/arzoom-follow-obs@ada8f5269246c64429d7aceb6cc72f81e72120ba`;
+- Hold Zoom and Overview Peek are **momentary** controls. They must observe
+  physical key-down/key-up state through the existing
+  `PresentationInputWorker` Raw Input pressed-state table;
+- do not register Hold Zoom / Overview Peek with `RegisterHotKey`: that API is
+  appropriate for latch/step triggers but does not provide the release
+  semantics required here;
+- do not add another keyboard hook, worker, polling thread or UI-side held-key
+  state. RecorderSession reads the existing atomic key-state table only on the
+  established presentation cadence;
+- momentary chord matching requires exact Ctrl/Shift/Alt/Win modifier state so
+  a broader chord cannot accidentally activate a narrower one;
+- Hold Zoom composes with Toggle Zoom and Smart Zoom as
+  `latched || held || smart`. Releasing Hold returns only when no other zoom
+  intent remains;
+- Overview Peek must save the current zoomed shot, transition to centered 1x
+  with the upstream minimum-jerk transform, pause camera retargeting while
+  visible, and restore the saved shot on release;
+- if underlying zoom intent disappears while Overview Peek is held, follow the
+  upstream cancel-to-overview path and end at full frame;
+- Reset / Full Frame clears momentary intent and blocks re-arming until each
+  still-held chord is physically released once;
+- bridge ABI v6 transports momentary chord bindings as recording-start config.
+  Managed code must not reconstruct raw-input state or own camera behavior;
+- the only P6UI.6B protected-platform exception is the bounded read-only
+  `PresentationInputWorker::chord_pressed()` accessor.
+
+### P6UI.6C Presenter Controls Acceptance Lock contract
+
+- Raw Input remains the sole activation authority for Hold Zoom / Overview Peek.
+  `GetAsyncKeyState` may only be used as a conservative stale-release fuse
+  after the Raw Input chord already matches; it must never activate a chord;
+- focus changes, alt-tab and modifier-release order must prefer a safe release
+  over sticky zoom. No second keyboard hook, worker or UI-held-key state;
+- Toggle Zoom, Hold Zoom and Smart Zoom are independent intents into the same
+  `PresentationController -> ArZoomCameraAdapter` camera. Releasing one intent
+  must never clear another active intent;
+- Reset / Full Frame owns the close action. A still-held momentary chord is
+  blocked until physical release, then may activate on a fresh press;
+- the Reset release interlock is deterministic presenter plumbing only. It does
+  not observe keys or become another input authority;
+- Overview Peek must preserve its P6UI.6B saved-shot behavior under pointer
+  movement and all overlap cases;
+- Region boundary acceptance uses the same
+  `PresentationFrameState / RecorderSnapshot` camera values passed through
+  existing `camera_viewport_rect()`. Do not add Region-specific presenter
+  geometry;
+- deterministic tests must cover Toggle/Hold overlap, Hold/Smart overlap,
+  Reset-while-held release gating, Overview saved-shot return and Region
+  boundary contraction/full-frame/restore;
+- real Windows acceptance still includes focus/alt-tab and release-order tests;
+  CI geometry/state tests do not substitute for those physical input checks.
+
+### P6UI.6A.1 Hotkey Product Hardening contract
+
+- hotkey runtime identity is canonical `(modifier mask, Windows virtual key)`.
+  Display strings are labels only and must never become a second runtime
+  authority;
+- all Settings capture, duplicate detection, persistence, RegisterHotKey,
+  momentary Raw Input configuration and focused-preview matching must consume
+  the same `HotkeyChord` model;
+- Windows OEM punctuation must be mapped comprehensively, including
+  VK_OEM_1..VK_OEM_8 family keys. Do not fix individual symbols with
+  screen-local string special cases;
+- Numpad arithmetic/digits, F1-F24 and navigation/editing keys belong to the
+  same canonical map;
+- hotkey display text is derived from the canonical chord. Equivalent spellings
+  such as `Control + \`` and `Ctrl+\`` must compare as one identity;
+- Windows conflict validation uses the bridge hidden HWND through a temporary
+  reserve/release probe. The probe never becomes runtime ownership and must be
+  used before committing a new native-facing shortcut;
+- Hold Zoom / Overview Peek remain Raw Input runtime controls. The Windows probe
+  validates conflicts only; it must not replace their key-up authority;
+- persisted hotkeys live in
+  `%LOCALAPPDATA%\Arssyut\settings.json` as a versioned canonical snapshot;
+- persistence writes only on `PersistentSettingsChanged`, uses same-volume
+  temp + write-through flush + replace, and never writes after a rejected
+  assignment;
+- settings load is all-or-nothing. Wrong schema, unsupported VK/modifiers,
+  missing actions, duplicate chords or malformed JSON restore safe defaults;
+- malformed persisted files may be quarantined as `.corrupt`, but a
+  quarantine failure must never prevent startup;
+- preview/stress command-line modes must not read or mutate the user's
+  persistent hotkey file;
+- the Settings ScrollViewer reserves one content gutter for its vertical
+  scrollbar. Never repair CTA collisions with per-button right margins;
+- regression tests must include at minimum:
+  `Ctrl+\``, `Ctrl+Shift+\``, `Ctrl+=`, `Ctrl+-`, `Alt+[`,
+  `Ctrl+Shift+F9`, `Win+Alt+F12`, and `Numpad+`;
+- P6UI.6C presenter-camera/input authority remains frozen while closing this
+  earlier hotkey-product debt.
+
+### P6UI.6A.2 Presenter Zoom Configuration contract
+
+- presenter zoom configuration is product configuration only. The native
+  `PresentationController -> ArZoomCameraAdapter` remains the sole camera
+  authority;
+- Settings owns a compact preset selector for the configured presenter zoom.
+  The canonical preset set is owned once by `SettingsPreviewState`; XAML and
+  code-behind must not duplicate a second list;
+- product presets are 1.10x, 1.25x, 1.50x, 1.75x, 2.00x, 2.50x, 3.00x and
+  4.00x. Default remains 2.00x;
+- Toggle Zoom and Hold Zoom start from the configured presenter zoom. Zoom In
+  and Zoom Out continue to mutate the same native runtime zoom in accepted
+  0.25x steps and remain clamped by the existing 1.10x..4.00x native contract;
+- bridge ABI v8 carries `presenter_zoom` as recording-start configuration.
+  The bridge must reject non-finite/out-of-range values before source/session
+  work and must not substitute a hardcoded 2.0x;
+- no `src/app`, `src/core`, `src/platform` or `src/presentation`
+  behavior rewrite is permitted for this milestone. Existing native clamping
+  remains defense-in-depth;
+- `%LOCALAPPDATA%\Arssyut\settings.json` remains the one persistence file
+  and one writer. P6UI.6A.2 evolves it to product schema v2 containing
+  canonical hotkeys plus presenter zoom;
+- schema v1 hotkey-only files must migrate losslessly in memory, preserving all
+  hotkeys and assigning the historical/default 2.00x presenter zoom. The next
+  persistent change writes schema v2;
+- invalid schema v2 presenter zoom is rejected as a whole snapshot and follows
+  the same safe-default/quarantine behavior as malformed hotkeys;
+- preview/stress CLI modes must continue to avoid reading or mutating the
+  user's persistent settings;
+- Settings Preferences navigation uses one settings-specific fixed left rail:
+  icon starts align, label starts align, and no per-item padding hacks are
+  allowed;
+- deterministic tests must cover default/set/reset zoom, schema v2 round-trip,
+  schema v1 migration, invalid zoom rejection, ABI bounds validation and
+  unchanged hotkey persistence.
+
+### P6UI Avalonia presentation contract
+
+The final desktop presentation shell is Avalonia. The Win32/GDI shell is a
+frozen functional prototype and fallback during migration.
+
+Rules:
+- do not add new visual/product features to `windows_main.cpp` or the legacy
+  Win32 Settings window; only baseline-preserving bug fixes are allowed;
+- C++ remains authoritative for capture, Region, timing, ArZoom, ArVisual,
+  encoder/mux, diagnostics and recovery;
+- no recorder/capture/media logic may move into Avalonia code-behind or
+  view-models;
+- UI-to-native integration must use one narrow, versioned ownership boundary;
+- use semantic resources from `Design/ArColors.axaml`,
+  `ArTokens.axaml`, and `ArTypography.axaml`; screen-local magic colors,
+  arbitrary radius scales and one-off button metrics are prohibited;
+- Inter is provided through `Avalonia.Fonts.Inter`; do not add loose font
+  files to the repository;
+- product icons use `Lucide.Avalonia` directly; do not redraw or approximate
+  Lucide geometry;
+- default product palette is graphite + white + recording red; green is
+  reserved for success/ready semantics;
+- Mica/Acrylic are progressive enhancements and must have an opaque readable
+  fallback;
+- main recorder UI remains capture-first. Deep configuration belongs in
+  Settings;
+- Pause/Resume and result actions are contextual; do not expose disabled
+  mystery controls merely to fill space;
+- P6UI.1-3 may use deterministic UI simulation before native binding so visual
+  architecture can be accepted without distorting the recorder engine;
+- every Avalonia release preview must pass Windows build + launch smoke and
+  real DPI screenshot review before the next binding milestone.
+
+- device selection belongs to compact flyout/popover surfaces; do not restore
+  permanently wide device ComboBoxes to the recorder main window;
+- Saved/Open/Folder actions are contextual output-state actions and stay hidden
+  before an output exists;
+- the P6UI.2 floating controller is a presentation prototype only. It must not
+  become a second media clock, capture authority or pause implementation;
+- preview timer/state code stays under `Arssyut.UI.Preview` and is removed or
+  bypassed when the native bridge becomes authoritative;
+- long-name stress scenarios must use truncation/layout resilience rather than
+  widening the whole recorder UI;
+- keyboard focus must remain visible for keyboard users, while pointer hover
+  and focus feedback share the same restrained tokenized visual language.
+
+- Settings uses one row grammar across all categories; avoid page-specific
+  mini design systems, giant cards or native-white control fallbacks;
+- P6UI.3 SettingsPreviewState remains preview-only for folder/camera/device/
+  meter surfaces that have not been promoted. P6UI.6A.1 is the explicit
+  exception for hotkeys: its internal hotkey map is canonical product state,
+  persisted through ProductSettingsStore and projected into native bridge/
+  Raw-Input contracts;
+- hotkey preview capture must reject duplicate assignments and never register
+  global OS hotkeys during visual acceptance;
+- audio meters in Settings are deterministic presentation fixtures, not live
+  device capture and not a second audio engine;
+- camera placement preview owns only visual alignment state and must never
+  calculate compositor geometry that belongs to the native camera pipeline;
+- folder picker interaction may select a path for preview, but must not create,
+  delete or write files during P6UI.3 acceptance.
 
 ## 19. Testing gates
 

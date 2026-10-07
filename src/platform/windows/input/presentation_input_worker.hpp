@@ -73,6 +73,53 @@ public:
             std::memory_order_acquire);
     }
 
+    // Armed Start runs the input authority before frame zero so pointer state is
+    // warm. Discard transient click/shortcut events captured during countdown
+    // immediately before committing the media clock.
+    void discard_pending_events() noexcept
+    {
+        MouseClickEvent click;
+        while (click_events_.try_pop(click)) {
+        }
+
+        ShortcutEvent shortcut;
+        while (shortcut_events_.try_pop(shortcut)) {
+        }
+    }
+
+    // Momentary presenter controls use the existing Raw Input key-state
+    // authority. Exact modifier matching prevents Ctrl+F9 from also matching
+    // Ctrl+Shift+F9, and polling state means release order cannot leave a
+    // sticky Hold Zoom / Overview Peek.
+    [[nodiscard]] bool chord_pressed(
+        std::uint16_t virtual_key,
+        std::uint8_t modifiers) const noexcept
+    {
+        if (virtual_key == 0 ||
+            virtual_key >= pressed_.size() ||
+            !pressed_[virtual_key].load(
+                std::memory_order_relaxed)) {
+            return false;
+        }
+
+        if (modifier_mask() != modifiers)
+            return false;
+
+        // P6UI.6C stale-state release fuse. Raw Input remains the only
+        // activation authority. GetAsyncKeyState is consulted only after the
+        // tracked Raw Input chord already matches, and therefore can only turn
+        // an apparent held chord OFF if Windows reports the physical key or
+        // modifier is no longer down (e.g. focus/desktop transition or a
+        // missed release). It can never activate a chord on its own.
+        if (!physical_key_down(
+                virtual_key)) {
+            return false;
+        }
+
+        return physical_modifier_mask() ==
+            modifiers;
+    }
+
 private:
     static LRESULT CALLBACK window_proc(
         HWND window,
@@ -92,6 +139,45 @@ private:
     void handle_windows_key_hook(
         WPARAM message,
         const KBDLLHOOKSTRUCT &keyboard) noexcept;
+
+    [[nodiscard]] static bool physical_key_down(
+        std::uint16_t virtual_key) noexcept
+    {
+        return (GetAsyncKeyState(
+                    static_cast<int>(
+                        virtual_key)) &
+                0x8000) != 0;
+    }
+
+    [[nodiscard]] static std::uint8_t
+    physical_modifier_mask() noexcept
+    {
+        std::uint8_t result = 0;
+
+        const bool ctrl =
+            physical_key_down(VK_LCONTROL) ||
+            physical_key_down(VK_RCONTROL);
+        const bool shift =
+            physical_key_down(VK_LSHIFT) ||
+            physical_key_down(VK_RSHIFT);
+        const bool alt =
+            physical_key_down(VK_LMENU) ||
+            physical_key_down(VK_RMENU);
+        const bool win =
+            physical_key_down(VK_LWIN) ||
+            physical_key_down(VK_RWIN);
+
+        if (ctrl)
+            result |= arssyut::presentation::ShortcutCtrl;
+        if (shift)
+            result |= arssyut::presentation::ShortcutShift;
+        if (alt)
+            result |= arssyut::presentation::ShortcutAlt;
+        if (win)
+            result |= arssyut::presentation::ShortcutWin;
+
+        return result;
+    }
 
     [[nodiscard]] std::uint8_t modifier_mask() const noexcept;
     void publish_shortcut(
