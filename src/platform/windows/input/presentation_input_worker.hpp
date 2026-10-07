@@ -73,6 +73,20 @@ public:
             std::memory_order_acquire);
     }
 
+    // Armed Start runs the input authority before frame zero so pointer state is
+    // warm. Discard transient click/shortcut events captured during countdown
+    // immediately before committing the media clock.
+    void discard_pending_events() noexcept
+    {
+        MouseClickEvent click;
+        while (click_events_.try_pop(click)) {
+        }
+
+        ShortcutEvent shortcut;
+        while (shortcut_events_.try_pop(shortcut)) {
+        }
+    }
+
     // Momentary presenter controls use the existing Raw Input key-state
     // authority. Exact modifier matching prevents Ctrl+F9 from also matching
     // Ctrl+Shift+F9, and polling state means release order cannot leave a

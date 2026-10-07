@@ -32,6 +32,8 @@ public sealed partial class MainWindow : Window
 
     private readonly List<PreviewSourceItem> _sources = [];
     private RecordingControllerWindow? _controller;
+    private RecordingCountdownWindow? _countdown;
+    private bool _startSequenceActive;
     private PreviewSourceItem? _selectedSource;
     private PreviewCaptureMode _captureMode =
         PreviewCaptureMode.Display;
@@ -961,6 +963,7 @@ public sealed partial class MainWindow : Window
 
         if (snapshot.State is
             NativeRecorderState.Preparing or
+            NativeRecorderState.Armed or
             NativeRecorderState.Recording)
         {
             _nativeBridge.StopRecording();
@@ -1185,8 +1188,11 @@ public sealed partial class MainWindow : Window
             BridgeUnavailableMessage());
     }
 
-    private void StartNativeRecording()
+    private async void StartNativeRecording()
     {
+        if (_startSequenceActive)
+            return;
+
         var bridge =
             _nativeBridge;
 
@@ -1215,7 +1221,7 @@ public sealed partial class MainWindow : Window
         }
 
         var flags =
-            NativeStartFlags.None;
+            NativeStartFlags.ArmedStart;
 
         if (_settings.SmartZoom)
             flags |=
@@ -1303,6 +1309,155 @@ public sealed partial class MainWindow : Window
         ApplyNativeSessionState(
             _lastNativeSnapshot);
 
+        var countdownBounds =
+            bridge.CountdownBounds(
+                _captureMode,
+                _selectedSource.Bounds);
+
+        _startSequenceActive =
+            true;
+        _countdown =
+            new RecordingCountdownWindow(
+                countdownBounds);
+        _countdown.Show();
+        Hide();
+
+        try
+        {
+            await RunArmedCountdownAsync(
+                bridge);
+        }
+        finally
+        {
+            _countdown?.Close();
+            _countdown = null;
+            _startSequenceActive =
+                false;
+        }
+    }
+
+    private async System.Threading.Tasks.Task
+        RunArmedCountdownAsync(
+            NativeBridgeClient bridge)
+    {
+        // Native owns preparation readiness. UI must never start the visible
+        // 3-2-1 sequence from a guessed delay.
+        while (true)
+        {
+            await System.Threading.Tasks.Task.Delay(
+                25);
+
+            NativeRecorderSnapshot snapshot;
+            try
+            {
+                snapshot =
+                    bridge.Snapshot();
+            }
+            catch (Exception)
+            {
+                Show();
+                ShowCommandFeedback(
+                    "Native bridge error",
+                    "Could not observe recorder preparation.");
+                return;
+            }
+
+            _lastNativeSnapshot =
+                snapshot;
+
+            if (snapshot.State ==
+                NativeRecorderState.Armed)
+                break;
+
+            if (snapshot.State ==
+                NativeRecorderState.Failed)
+            {
+                Show();
+                ApplyNativeSessionState(
+                    snapshot);
+                return;
+            }
+
+            if (snapshot.State ==
+                NativeRecorderState.Idle)
+            {
+                Show();
+                _lastNativeSnapshot =
+                    null;
+                ApplyNativeReadyState();
+                return;
+            }
+        }
+
+        for (var value = 3;
+             value >= 1;
+             --value)
+        {
+            _countdown?.ShowNumber(
+                value);
+
+            if (!await WaitWhileArmedAsync(
+                    bridge,
+                    TimeSpan.FromSeconds(1)))
+            {
+                return;
+            }
+        }
+
+        // The desktop returns to normal first; ACTION is presentation-only and
+        // capture-excluded. Native commit then defines media timestamp zero.
+        _countdown?.ShowAction();
+
+        NativeBridgeStatus commit;
+        try
+        {
+            commit =
+                bridge.CommitStart();
+        }
+        catch (Exception)
+        {
+            Show();
+            ShowCommandFeedback(
+                "Native bridge error",
+                "Could not commit the armed recording start.");
+            return;
+        }
+
+        if (commit !=
+            NativeBridgeStatus.Ok)
+        {
+            Show();
+            ApplyNativeReadyState();
+            return;
+        }
+
+        NativeRecorderSnapshot recording;
+        while (true)
+        {
+            await System.Threading.Tasks.Task.Delay(
+                10);
+
+            recording =
+                bridge.Snapshot();
+            _lastNativeSnapshot =
+                recording;
+
+            if (recording.State ==
+                NativeRecorderState.Recording)
+                break;
+
+            if (recording.State ==
+                    NativeRecorderState.Failed ||
+                recording.State ==
+                    NativeRecorderState.Idle)
+            {
+                Show();
+                ApplyNativeSessionState(
+                    recording);
+                return;
+            }
+        }
+
         _controller =
             new RecordingControllerWindow(
                 bridge,
@@ -1314,7 +1469,68 @@ public sealed partial class MainWindow : Window
             Controller_OnStopRequested;
 
         _controller.Show();
-        Hide();
+
+        // Let ACTION read as an intentional cue without dimming the captured
+        // desktop. The countdown HWND is excluded from WGC throughout.
+        await System.Threading.Tasks.Task.Delay(
+            180);
+    }
+
+    private async System.Threading.Tasks.Task<bool>
+        WaitWhileArmedAsync(
+            NativeBridgeClient bridge,
+            TimeSpan duration)
+    {
+        var timer =
+            Stopwatch.StartNew();
+
+        while (timer.Elapsed <
+               duration)
+        {
+            await System.Threading.Tasks.Task.Delay(
+                25);
+
+            NativeRecorderSnapshot snapshot;
+            try
+            {
+                snapshot =
+                    bridge.Snapshot();
+            }
+            catch (Exception)
+            {
+                Show();
+                ShowCommandFeedback(
+                    "Native bridge error",
+                    "Countdown lost the recorder state.");
+                return false;
+            }
+
+            _lastNativeSnapshot =
+                snapshot;
+
+            if (snapshot.State ==
+                NativeRecorderState.Armed)
+                continue;
+
+            if (snapshot.State ==
+                NativeRecorderState.Failed)
+            {
+                Show();
+                ApplyNativeSessionState(
+                    snapshot);
+            }
+            else
+            {
+                Show();
+                _lastNativeSnapshot =
+                    null;
+                ApplyNativeReadyState();
+            }
+
+            return false;
+        }
+
+        return true;
     }
 
     private void StartInteractionPreview()
@@ -1609,6 +1825,19 @@ public sealed partial class MainWindow : Window
                     false;
                 break;
 
+            case NativeRecorderState.Armed:
+                StatusDot.Fill =
+                    Brush.Parse("#F1B85B");
+                StatusText.Foreground =
+                    Brush.Parse("#F1B85B");
+                StatusText.Text =
+                    "Armed";
+                StatusDetail.Text =
+                    "Capture pipeline is warm; recording starts on ACTION.";
+                SavedActions.IsVisible =
+                    false;
+                break;
+
             case NativeRecorderState.Recording:
                 StatusDot.Fill =
                     Brush.Parse("#FF5360");
@@ -1825,6 +2054,7 @@ public sealed partial class MainWindow : Window
         {
             if (_lastNativeSnapshot?.State is
                 NativeRecorderState.Preparing or
+                NativeRecorderState.Armed or
                 NativeRecorderState.Recording or
                 NativeRecorderState.Stopping or
                 NativeRecorderState.Finalizing or

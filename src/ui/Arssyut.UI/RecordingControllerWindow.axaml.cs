@@ -369,6 +369,8 @@ public sealed partial class RecordingControllerWindow : Window
             {
                 NativeRecorderState.Preparing =>
                     "PREP",
+                NativeRecorderState.Armed =>
+                    "ARMED",
                 NativeRecorderState.Recording =>
                     "REC",
                 NativeRecorderState.Stopping =>
@@ -496,6 +498,7 @@ public sealed partial class RecordingControllerWindow : Window
         NativeRecorderState state) =>
         state is
             NativeRecorderState.Preparing or
+            NativeRecorderState.Armed or
             NativeRecorderState.Recording or
             NativeRecorderState.Stopping or
             NativeRecorderState.Finalizing;

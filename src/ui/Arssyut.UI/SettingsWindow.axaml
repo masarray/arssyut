@@ -192,11 +192,11 @@
                   <Border Classes="setting-row">
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="3">
-                        <TextBlock Text="Show countdown" FontWeight="Medium" />
-                        <TextBlock Text="Not active in the current native transport; recording starts immediately." Classes="micro" />
+                        <TextBlock Text="Recording countdown" FontWeight="Medium" />
+                        <TextBlock Text="Starts only after encoder, capture and the first source frame are armed." Classes="micro" />
                       </StackPanel>
                       <Border Grid.Column="1" Classes="value-pill">
-                        <TextBlock Text="Off" FontSize="11" />
+                        <TextBlock Text="3 seconds" FontSize="11" />
                       </Border>
                     </Grid>
                   </Border>

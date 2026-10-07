@@ -92,6 +92,7 @@ as_context(
 {
     return
         state == RecorderState::Preparing ||
+        state == RecorderState::Armed ||
         state == RecorderState::Recording ||
         state == RecorderState::Stopping ||
         state == RecorderState::Finalizing;
@@ -216,6 +217,8 @@ to_bridge_state(
     switch (state) {
     case RecorderState::Preparing:
         return ARSSYUT_BRIDGE_RECORDER_PREPARING;
+    case RecorderState::Armed:
+        return ARSSYUT_BRIDGE_RECORDER_ARMED;
     case RecorderState::Recording:
         return ARSSYUT_BRIDGE_RECORDER_RECORDING;
     case RecorderState::Stopping:
@@ -1711,6 +1714,9 @@ arssyut_bridge_recorder_start(
 
         config.frame_rate =
             {request->frame_rate, 1};
+        config.start_armed =
+            (request->flags &
+             ARSSYUT_BRIDGE_START_ARMED) != 0;
         config.bitrate_bps =
             request->frame_rate == 60
                 ? 18'000'000U
@@ -1847,6 +1853,27 @@ arssyut_bridge_recorder_presenter_command(
     return context->recorder->
                request_presenter_command(
                    native_command)
+        ? ARSSYUT_BRIDGE_OK
+        : ARSSYUT_BRIDGE_INVALID_STATE;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_commit_start(
+    ArssyutBridgeHandle handle) noexcept
+{
+    auto *context =
+        as_context(handle);
+    if (!context)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    std::scoped_lock lock(
+        context->mutex);
+
+    if (!context->recorder)
+        return ARSSYUT_BRIDGE_INVALID_STATE;
+
+    return context->recorder->
+               request_start_commit()
         ? ARSSYUT_BRIDGE_OK
         : ARSSYUT_BRIDGE_INVALID_STATE;
 }

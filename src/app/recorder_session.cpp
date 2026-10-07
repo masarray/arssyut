@@ -264,6 +264,26 @@ Status RecorderSession::start(
     stop_requested_.store(
         false,
         std::memory_order_release);
+    start_commit_requested_.store(
+        false,
+        std::memory_order_release);
+    const auto requested_at =
+        MonotonicClock::now();
+    start_requested_at_ticks_.store(
+        requested_at.ticks_100ns,
+        std::memory_order_release);
+    armed_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    first_frame_submitted_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    started_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    stopped_at_ticks_.store(
+        0,
+        std::memory_order_release);
     error_code_.store(
         static_cast<std::uint32_t>(
             StatusCode::Ok),
@@ -354,6 +374,23 @@ void RecorderSession::request_stop() noexcept
     stop_requested_.store(
         true,
         std::memory_order_release);
+}
+
+bool RecorderSession::request_start_commit() noexcept
+{
+    if (state_.load(
+            std::memory_order_acquire) !=
+        RecorderState::Armed) {
+        return false;
+    }
+
+    bool expected = false;
+    return start_commit_requested_.
+        compare_exchange_strong(
+            expected,
+            true,
+            std::memory_order_acq_rel,
+            std::memory_order_relaxed);
 }
 
 bool RecorderSession::request_presenter_command(
@@ -791,6 +828,137 @@ void RecorderSession::worker_main() noexcept
             std::memory_order_relaxed);
     }
 
+    // Product countdown uses an explicit Armed gate. All expensive startup
+    // work is already complete here: encoder open, WGC running, compositor
+    // created and presentation input warm. Require one real WGC source frame
+    // before publishing Armed so ACTION can deterministically define frame 0.
+    if (config_.start_armed) {
+        const auto first_frame_deadline =
+            MonotonicClock::now().ticks_100ns +
+            MonotonicClock::ticks_per_second * 5;
+
+        while (!frame_slot.has_in_flight() &&
+               !stop_requested_.load(
+                   std::memory_order_acquire) &&
+               !capture.source_closed() &&
+               MonotonicClock::now().ticks_100ns <
+                   first_frame_deadline) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(1));
+        }
+
+        const auto cancel_before_start =
+            [&]() noexcept {
+                presentation_input.stop();
+                capture.stop();
+                (void)writer.finalize();
+
+                std::error_code remove_ec;
+                std::filesystem::remove(
+                    config_.output_path,
+                    remove_ec);
+                remove_ec.clear();
+                std::filesystem::remove(
+                    diagnostics_path(),
+                    remove_ec);
+
+                state_.store(
+                    RecorderState::Idle,
+                    std::memory_order_release);
+            };
+
+        if (stop_requested_.load(
+                std::memory_order_acquire)) {
+            cancel_before_start();
+            return;
+        }
+
+        if (!frame_slot.has_in_flight() ||
+            capture.source_closed()) {
+            fail(Status::failure(
+                StatusCode::PlatformFailure,
+                capture.source_closed()
+                    ? 0U
+                    : static_cast<std::uint32_t>(
+                          WAIT_TIMEOUT)));
+
+            presentation_input.stop();
+            capture.stop();
+            (void)writer.finalize();
+
+            const std::uint64_t memory_end =
+                private_bytes();
+            memory_private_bytes_.store(
+                memory_end,
+                std::memory_order_relaxed);
+            observe_memory_peak(
+                memory_private_max_bytes_,
+                memory_end);
+
+            write_diagnostics(
+                0,
+                memory_start,
+                memory_end,
+                writer.submitted_frames(),
+                writer.backpressure_events(),
+                pipeline->compositor().
+                    resource_generation(),
+                false,
+                {},
+                {},
+                writer.active_profile(),
+                writer.active_rate_control(),
+                writer.quality_vs_speed_applied(),
+                writer.requested_quality_vs_speed(),
+                writer.active_color_pipeline(),
+                writer.color_pipeline_authoritative());
+
+            state_.store(
+                RecorderState::Failed,
+                std::memory_order_release);
+            return;
+        }
+
+        const auto armed =
+            MonotonicClock::now();
+        armed_at_ticks_.store(
+            armed.ticks_100ns,
+            std::memory_order_release);
+        state_.store(
+            RecorderState::Armed,
+            std::memory_order_release);
+
+        while (!start_commit_requested_.load(
+                   std::memory_order_acquire) &&
+               !stop_requested_.load(
+                   std::memory_order_acquire) &&
+               !capture.source_closed()) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(1));
+        }
+
+        if (stop_requested_.load(
+                std::memory_order_acquire)) {
+            cancel_before_start();
+            return;
+        }
+
+        if (capture.source_closed()) {
+            fail(Status::failure(
+                StatusCode::PlatformFailure));
+            presentation_input.stop();
+            capture.stop();
+            (void)writer.finalize();
+            state_.store(
+                RecorderState::Failed,
+                std::memory_order_release);
+            return;
+        }
+
+        if (presentation_enabled)
+            presentation_input.discard_pending_events();
+    }
+
     const TimePoint start =
         MonotonicClock::now();
 
@@ -1118,6 +1286,13 @@ void RecorderSession::worker_main() noexcept
                 diagnostics_.increment(
                     DiagnosticMetric::
                         EncoderFramesSubmitted);
+
+                if (first_frame_submitted_at_ticks_.load(
+                        std::memory_order_relaxed) == 0) {
+                    first_frame_submitted_at_ticks_.store(
+                        MonotonicClock::now().ticks_100ns,
+                        std::memory_order_relaxed);
+                }
             }
         }
 
@@ -1198,6 +1373,14 @@ void RecorderSession::worker_main() noexcept
             std::chrono::milliseconds(1));
     }
 
+    // Recording duration ends with the render/write loop, not after MP4
+    // finalization. This keeps the user-visible duration aligned with media.
+    const TimePoint recording_stopped =
+        MonotonicClock::now();
+    stopped_at_ticks_.store(
+        recording_stopped.ticks_100ns,
+        std::memory_order_release);
+
     state_.store(
         RecorderState::Stopping,
         std::memory_order_release);
@@ -1261,12 +1444,6 @@ void RecorderSession::worker_main() noexcept
         fail(finalize_status);
         failed = true;
     }
-
-    const TimePoint stopped =
-        MonotonicClock::now();
-    stopped_at_ticks_.store(
-        stopped.ticks_100ns,
-        std::memory_order_release);
 
     const std::uint64_t memory_end =
         private_bytes();
@@ -1566,6 +1743,50 @@ void RecorderSession::write_diagnostics(
             << snapshot_value.visual_analysis_map_failures << ",\n"
             << "  \"elapsed_ticks_100ns\": "
             << snapshot_value.elapsed_ticks << ",\n"
+            << "  \"prepare_latency_ms\": "
+            << ([&]() -> std::int64_t {
+                   const auto requested =
+                       start_requested_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto armed =
+                       armed_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto ready =
+                       armed > 0 ? armed : started;
+                   return requested > 0 && ready >= requested
+                       ? (ready - requested) / 10'000
+                       : 0;
+               })()
+            << ",\n"
+            << "  \"armed_wait_ms\": "
+            << ([&]() -> std::int64_t {
+                   const auto armed =
+                       armed_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   return armed > 0 && started >= armed
+                       ? (started - armed) / 10'000
+                       : 0;
+               })()
+            << ",\n"
+            << "  \"commit_to_first_frame_us\": "
+            << ([&]() -> std::int64_t {
+                   const auto started =
+                       started_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   const auto first =
+                       first_frame_submitted_at_ticks_.load(
+                           std::memory_order_relaxed);
+                   return started > 0 && first >= started
+                       ? (first - started) / 10
+                       : 0;
+               })()
+            << ",\n"
             << "  \"capture_received\": "
             << snapshot_value.capture_received << ",\n"
             << "  \"capture_replaced\": "

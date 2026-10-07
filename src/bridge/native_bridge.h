@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 9;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 10;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -98,6 +98,7 @@ enum ArssyutBridgeStartFlags : std::uint32_t {
     ARSSYUT_BRIDGE_START_PRESENTER_CONTROLS = 1U << 6U,
     ARSSYUT_BRIDGE_START_SPOTLIGHT = 1U << 7U,
     ARSSYUT_BRIDGE_START_SPOTLIGHT_LINK_TO_ZOOM = 1U << 8U,
+    ARSSYUT_BRIDGE_START_ARMED = 1U << 9U,
 };
 
 enum ArssyutBridgeSpotlightSize : std::uint32_t {
@@ -115,11 +116,12 @@ enum ArssyutBridgeSpotlightMotion : std::uint32_t {
 enum ArssyutBridgeRecorderState : std::uint32_t {
     ARSSYUT_BRIDGE_RECORDER_IDLE = 0,
     ARSSYUT_BRIDGE_RECORDER_PREPARING = 1,
-    ARSSYUT_BRIDGE_RECORDER_RECORDING = 2,
-    ARSSYUT_BRIDGE_RECORDER_STOPPING = 3,
-    ARSSYUT_BRIDGE_RECORDER_FINALIZING = 4,
-    ARSSYUT_BRIDGE_RECORDER_READY = 5,
-    ARSSYUT_BRIDGE_RECORDER_FAILED = 6,
+    ARSSYUT_BRIDGE_RECORDER_ARMED = 2,
+    ARSSYUT_BRIDGE_RECORDER_RECORDING = 3,
+    ARSSYUT_BRIDGE_RECORDER_STOPPING = 4,
+    ARSSYUT_BRIDGE_RECORDER_FINALIZING = 5,
+    ARSSYUT_BRIDGE_RECORDER_READY = 6,
+    ARSSYUT_BRIDGE_RECORDER_FAILED = 7,
 };
 
 struct ArssyutBridgeRectV1 {
@@ -315,6 +317,11 @@ std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_presenter_command(
     ArssyutBridgeHandle handle,
     std::uint32_t command) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_commit_start(
+    ArssyutBridgeHandle handle) noexcept;
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
