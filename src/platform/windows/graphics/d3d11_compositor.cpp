@@ -2163,10 +2163,36 @@ Status D3D11Compositor::render_retained(
         display_height_px *= scale;
     }
 
+    // Animate only the destination rect of the existing keyboard texture.
+    // Texture generation, SRV ownership and the one retained compositor pass
+    // stay unchanged.
+    const float bounce_x =
+        std::clamp(
+            state.keyboard.scale_x,
+            0.75f,
+            1.25f);
+    const float bounce_y =
+        std::clamp(
+            state.keyboard.scale_y,
+            0.65f,
+            1.30f);
+    display_width_px *= bounce_x;
+    display_height_px *= bounce_y;
+
     const float bottom_margin_px = std::clamp(
         constants.output_height * 0.035f,
         18.0f,
         54.0f);
+    const float lift_px =
+        std::clamp(
+            state.keyboard.lift_output_fraction,
+            0.0f,
+            0.03f) *
+        constants.output_height;
+    const float keyboard_bottom_px =
+        constants.output_height -
+        bottom_margin_px -
+        lift_px;
 
     constants.keyboard_left =
         (constants.output_width - display_width_px) *
@@ -2177,11 +2203,10 @@ Status D3D11Compositor::render_retained(
         0.5f /
         constants.output_width;
     constants.keyboard_bottom =
-        (constants.output_height - bottom_margin_px) /
+        keyboard_bottom_px /
         constants.output_height;
     constants.keyboard_top =
-        (constants.output_height -
-         bottom_margin_px -
+        (keyboard_bottom_px -
          display_height_px) /
         constants.output_height;
 
