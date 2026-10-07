@@ -140,6 +140,8 @@ public sealed partial class MainWindow : Window
                 _settings.Changed -=
                     Settings_OnChanged;
                 _hotkeyTimer.Stop();
+                _countdown?.Close();
+                _countdown = null;
                 SuspendGlobalHotkeys();
 
                 if (_nativeBridge is not null)
