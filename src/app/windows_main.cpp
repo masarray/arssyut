@@ -49,6 +49,10 @@ constexpr int kHotkeyRecordStop = 1;
 constexpr int kWindowWidth = 820;
 constexpr int kWindowHeight = 404;
 
+constexpr DWORD kDisplayAffinityNone = 0x00000000u;
+constexpr DWORD kDisplayAffinityMonitor = 0x00000001u;
+constexpr DWORD kDisplayAffinityExcludeFromCapture = 0x00000011u;
+
 constexpr COLORREF kBackground =
     RGB(14, 17, 20);
 constexpr COLORREF kHeader =
@@ -163,6 +167,33 @@ struct AppWindow {
                RecorderState::Stopping ||
            state ==
                RecorderState::Finalizing;
+}
+
+[[nodiscard]] bool set_workspace_capture_exclusion(
+    HWND window,
+    bool enabled) noexcept
+{
+    if (!window)
+        return false;
+
+    if (!enabled) {
+        return SetWindowDisplayAffinity(
+                   window,
+                   kDisplayAffinityNone) != FALSE;
+    }
+
+    // Prefer true capture exclusion on modern Windows. WDA_MONITOR is the
+    // bounded compatibility fallback: the recorder workspace must never
+    // silently leak into Display/Region recordings while left visible.
+    if (SetWindowDisplayAffinity(
+            window,
+            kDisplayAffinityExcludeFromCapture) != FALSE) {
+        return true;
+    }
+
+    return SetWindowDisplayAffinity(
+               window,
+               kDisplayAffinityMonitor) != FALSE;
 }
 
 [[nodiscard]] std::wstring state_text(
@@ -1154,6 +1185,30 @@ void start_recording(AppWindow &app)
         app.ui.shortcut_keys;
     config.presentation.zoom = 2.0f;
 
+    // Apply recorder-workspace protection before WGC starts. If the main
+    // window is intentionally visible over a Display/Region target, fail
+    // closed rather than encoding our own UI when Windows cannot protect it.
+    const bool workspace_excluded =
+        set_workspace_capture_exclusion(
+            app.window,
+            true);
+
+    const bool workspace_can_overlap_target =
+        !app.ui.hide_main_while_recording &&
+        (app.ui.capture_mode == CaptureMode::Display ||
+         app.ui.capture_mode == CaptureMode::Region);
+
+    if (workspace_can_overlap_target &&
+        !workspace_excluded) {
+        MessageBoxW(
+            app.window,
+            L"Windows could not exclude the Arssyut workspace from capture. Hide the main window or retry before recording this Display/Region.",
+            L"Arssyut",
+            MB_OK |
+                MB_ICONERROR);
+        return;
+    }
+
     auto session =
         std::make_unique<
             RecorderSession>();
@@ -1162,6 +1217,12 @@ void start_recording(AppWindow &app)
         session->start(config);
 
     if (!status.ok()) {
+        if (workspace_excluded) {
+            (void)set_workspace_capture_exclusion(
+                app.window,
+                false);
+        }
+
         MessageBoxW(
             app.window,
             L"Could not start the recording session.",
@@ -1262,6 +1323,10 @@ void complete_recording(
     if (app.overlay_created) {
         app.overlay.hide_toolbar();
     }
+
+    (void)set_workspace_capture_exclusion(
+        app.window,
+        false);
 
     ShowWindow(
         app.window,
