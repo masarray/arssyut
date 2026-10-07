@@ -118,8 +118,14 @@ int main()
 {
     require(
         arssyut_bridge_abi_version() ==
-            ARSSYUT_BRIDGE_ABI_VERSION,
+            ARSSYUT_BRIDGE_ABI_VERSION &&
+            ARSSYUT_BRIDGE_ABI_VERSION == 10,
         "bridge ABI version mismatch");
+
+    require(
+        ARSSYUT_BRIDGE_RECORDER_ARMED == 2 &&
+            ARSSYUT_BRIDGE_RECORDER_RECORDING == 3,
+        "Armed Start state ordering must stay explicit across ABI 10");
 
     ArssyutBridgeHandle bridge =
         arssyut_bridge_create();
@@ -757,6 +763,12 @@ int main()
                 ARSSYUT_BRIDGE_UNSUPPORTED,
             "unbound microphone backend must fail explicitly");
     }
+
+    require(
+        arssyut_bridge_recorder_commit_start(
+            bridge) ==
+            ARSSYUT_BRIDGE_INVALID_STATE,
+        "Armed commit while idle must report invalid state");
 
     require(
         arssyut_bridge_recorder_stop(
