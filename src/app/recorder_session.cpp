@@ -264,6 +264,26 @@ Status RecorderSession::start(
     stop_requested_.store(
         false,
         std::memory_order_release);
+    start_commit_requested_.store(
+        false,
+        std::memory_order_release);
+    const auto requested_at =
+        MonotonicClock::now();
+    start_requested_at_ticks_.store(
+        requested_at.ticks_100ns,
+        std::memory_order_release);
+    armed_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    first_frame_submitted_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    started_at_ticks_.store(
+        0,
+        std::memory_order_release);
+    stopped_at_ticks_.store(
+        0,
+        std::memory_order_release);
     error_code_.store(
         static_cast<std::uint32_t>(
             StatusCode::Ok),
@@ -354,6 +374,23 @@ void RecorderSession::request_stop() noexcept
     stop_requested_.store(
         true,
         std::memory_order_release);
+}
+
+bool RecorderSession::request_start_commit() noexcept
+{
+    if (state_.load(
+            std::memory_order_acquire) !=
+        RecorderState::Armed) {
+        return false;
+    }
+
+    bool expected = false;
+    return start_commit_requested_.
+        compare_exchange_strong(
+            expected,
+            true,
+            std::memory_order_acq_rel,
+            std::memory_order_relaxed);
 }
 
 bool RecorderSession::request_presenter_command(
