@@ -1825,6 +1825,19 @@ public sealed partial class MainWindow : Window
                     false;
                 break;
 
+            case NativeRecorderState.Armed:
+                StatusDot.Fill =
+                    Brush.Parse("#F1B85B");
+                StatusText.Foreground =
+                    Brush.Parse("#F1B85B");
+                StatusText.Text =
+                    "Armed";
+                StatusDetail.Text =
+                    "Capture pipeline is warm; recording starts on ACTION.";
+                SavedActions.IsVisible =
+                    false;
+                break;
+
             case NativeRecorderState.Recording:
                 StatusDot.Fill =
                     Brush.Parse("#FF5360");
@@ -2041,6 +2054,7 @@ public sealed partial class MainWindow : Window
         {
             if (_lastNativeSnapshot?.State is
                 NativeRecorderState.Preparing or
+                NativeRecorderState.Armed or
                 NativeRecorderState.Recording or
                 NativeRecorderState.Stopping or
                 NativeRecorderState.Finalizing or
