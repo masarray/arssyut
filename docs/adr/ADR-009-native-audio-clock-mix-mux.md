@@ -71,28 +71,31 @@ not shifted earlier to hide the gap.
 
 A single `AudioProfile` is resolved before the hot path begins.
 
-P7A internal mix representation:
+P7A canonical program representation:
 
+- 48 kHz;
+- stereo;
 - float32 samples;
-- explicit channel count/channel mapping;
-- one resolved output rate;
-- fixed-size retained mix blocks;
+- fixed 1024-frame retained program blocks;
+- explicit source channel mapping;
 - no implicit reinterpretation of endpoint bytes.
 
-Preferred production output rate is 48 kHz. 44.1 kHz remains valid when the
-enabled sources and AAC path can preserve it without unnecessary conversion.
-When enabled sources disagree, or a device rate is unsupported by the Microsoft
-AAC encoder, a measured high-quality resampler converts only the source(s) that
-need conversion.
+External benchmark work against OBS/libobs and the Microsoft AAC contract
+tightened the earlier “44.1 or 48 depending on the session” policy. P7A now
+uses one 48 kHz program bus so the mix quantum, AAC duration, writer format,
+drift target and diagnostics do not change from recording to recording.
 
-This contract means **no avoidable downsampling**. It does not promise that a
-96/192 kHz endpoint can be stored unchanged in the current AAC/MP4 product
-profile; Microsoft AAC accepts 44.1 or 48 kHz PCM input. Any required
-conversion is explicit, quality-tested and visible in diagnostics.
+A source that is already 48 kHz is not sample-rate converted. 44.1/96/other
+endpoint rates are converted explicitly by the accepted high-quality
+resampler. This is **no hidden/downstream format guessing**, not a promise that
+arbitrary 96/192 kHz endpoint data can be stored unchanged in the current
+AAC/MP4 product profile; Microsoft's native AAC encoder accepts only 44.1 or
+48 kHz PCM input.
 
 The Media Foundation AAC boundary uses 16-bit PCM because that is the native
 Microsoft AAC encoder input contract. Float32 remains the mix domain until the
-encoder boundary.
+encoder boundary. Initial AAC target is 48 kHz stereo AAC-LC at 192 kbps when
+the native encoder accepts that type.
 
 ### 5. Timestamp and sample-count correctness is non-negotiable
 
@@ -112,6 +115,12 @@ Every packet/block carries:
 
 Sample time and duration use rational frame-count math with wide intermediates;
 rounding remainder is carried forward rather than discarded every block.
+
+Device timestamps are validated evidence, not unquestioned truth. A compact
+per-source timing-quality state distinguishes trusted device-QPC timing,
+continuity reconstruction, host-QPC fallback and real discontinuity. A bad
+timestamp must not reset the global recording timeline or poison the drift
+servo.
 
 ### 6. Drift correction is continuous and bounded
 
@@ -174,10 +183,11 @@ ships one mixed AAC program track, not independent mic/system tracks.
 P7A does not silently switch to a different microphone or playback endpoint
 mid-recording.
 
-A device invalidation is an explicit source state. The timeline remains
-monotonic and the unavailable source contributes silence while the session
-surfaces diagnostics/status. Automatic mid-session rebind is a separate,
-evidence-driven future capability.
+A recording pins the resolved endpoint identity. Device invalidation is an
+explicit source state. Arssyut may make bounded, stop-aware attempts to reopen
+the **same pinned endpoint ID**; missing time contributes silence and a
+successful reopen explicitly re-anchors source timing. Switching to a different
+new default endpoint is a separate future capability.
 
 ### 11. Bounded memory and ownership
 
