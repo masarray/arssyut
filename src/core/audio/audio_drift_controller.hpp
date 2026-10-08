@@ -72,11 +72,11 @@ public:
 
     void reset_for_discontinuity() noexcept
     {
-        const auto count =
-            snapshot_.discontinuity_resets + 1;
-        snapshot_ = {};
-        snapshot_.discontinuity_resets =
-            count;
+        snapshot_.measured_source_error_ppm = 0.0;
+        snapshot_.target_correction_ppm = 0.0;
+        snapshot_.smoothed_correction_ppm = 0.0;
+        snapshot_.requested_resampler_ppm = 0.0;
+        ++snapshot_.discontinuity_resets;
         has_smoothed_value_ = false;
     }
 
@@ -119,6 +119,47 @@ public:
         snapshot_.target_correction_ppm =
             target;
 
+        /*
+         * Integrate on a fixed maximum 100 ms policy quantum. The controller
+         * therefore produces the same state for one delayed 5 s update as for
+         * fifty 100 ms updates with the same target; scheduler cadence cannot
+         * become another timing authority.
+         */
+        constexpr std::uint64_t kMaximumPolicyStep100ns =
+            1'000'000; // 100 ms
+
+        std::uint64_t remaining =
+            elapsed_100ns;
+
+        while (remaining != 0) {
+            const std::uint64_t step_100ns =
+                std::min(
+                    remaining,
+                    kMaximumPolicyStep100ns);
+
+            integrate_step(
+                target,
+                step_100ns);
+
+            remaining -=
+                step_100ns;
+        }
+
+        return snapshot_.
+            requested_resampler_ppm;
+    }
+
+    [[nodiscard]] AudioDriftControllerSnapshot
+    snapshot() const noexcept
+    {
+        return snapshot_;
+    }
+
+private:
+    void integrate_step(
+        double target,
+        std::uint64_t elapsed_100ns) noexcept
+    {
         const double seconds =
             static_cast<double>(
                 elapsed_100ns) /
@@ -167,18 +208,8 @@ public:
                     maximum_absolute_correction_ppm,
                 config_.
                     maximum_absolute_correction_ppm);
-
-        return snapshot_.
-            requested_resampler_ppm;
     }
 
-    [[nodiscard]] AudioDriftControllerSnapshot
-    snapshot() const noexcept
-    {
-        return snapshot_;
-    }
-
-private:
     AudioDriftControllerConfig config_{};
     AudioDriftControllerSnapshot snapshot_{};
     bool has_smoothed_value_ = false;
