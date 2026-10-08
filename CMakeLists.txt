@@ -331,6 +331,40 @@ if(ARSSYUT_BUILD_TESTS)
         COMMAND arssyut_audio_core_tests
     )
 
+    find_package(Threads REQUIRED)
+
+    add_executable(arssyut_audio_program_mixer_tests
+        tests/test_audio_program_mixer.cpp
+    )
+    target_link_libraries(
+        arssyut_audio_program_mixer_tests
+        PRIVATE
+            arssyut_core
+            Threads::Threads
+    )
+    if(MSVC)
+        target_compile_options(
+            arssyut_audio_program_mixer_tests
+            PRIVATE
+                /W4
+                /permissive-
+                /utf-8
+                /Zc:__cplusplus
+        )
+    else()
+        target_compile_options(
+            arssyut_audio_program_mixer_tests
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+        )
+    endif()
+    add_test(
+        NAME arssyut_audio_program_mixer_tests
+        COMMAND arssyut_audio_program_mixer_tests
+    )
+
     add_executable(arssyut_shortcut_tests
         tests/test_shortcut_visualizer.cpp
     )
