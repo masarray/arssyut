@@ -243,6 +243,9 @@ jobs:
             "src/core/audio/audio_program_clock.hpp" = "ac37912426c7b1e42a846e95b938182df8caf8b1"
             "src/core/audio/audio_program_mixer.hpp" = "14652f0ea21446483796aad7d29b1210bc9dd4a1"
             "src/core/audio/audio_source_block_window.hpp" = "801fc8a4440f626d6220ccfec462cd6196b929e5"
+            # P7A5 source mapper creates no new clock; exact reviewed blob maps
+            # capture QPC into the RecorderSession media-zero domain.
+            "src/core/audio/audio_source_timeline_mapper.hpp" = "f5be08d1ec6e05adc2a719b2a19593031b8995bc"
 
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
