@@ -112,8 +112,8 @@ void test_wrap_and_high_water(TestContext &test)
         staging.front_chunk();
     test.expect(
         physical_tail.start_frame == 700 &&
-        physical_tail.frame_count == 324,
-        "Front chunk stops at physical wrap");
+        physical_tail.frame_count == 424,
+        "Physical ring prefix from read index 600 spans 424 frames to wrap");
 
     test.expect(
         staging.consume(
@@ -123,9 +123,9 @@ void test_wrap_and_high_water(TestContext &test)
     const auto wrapped =
         staging.front_chunk();
     test.expect(
-        wrapped.start_frame == 1024 &&
-        wrapped.frame_count == 476,
-        "Second physical chunk preserves absolute frame coordinate");
+        wrapped.start_frame == 1124 &&
+        wrapped.frame_count == 376,
+        "Wrapped chunk starts at absolute frame 1124 with 376 remaining");
 }
 
 void test_discontinuity_boundary(TestContext &test)
@@ -190,7 +190,7 @@ void test_fail_closed_gap_and_overflow(TestContext &test)
     test.expect(
         staging.push(
             911,
-            extra,
+            std::span<const float>(extra.data(), 100 * 2),
             100) ==
             AudioCanonicalStagePushStatus::NonContiguous,
         "One-frame timeline gap fails closed");
@@ -198,6 +198,18 @@ void test_fail_closed_gap_and_overflow(TestContext &test)
     test.expect(
         staging.non_contiguous_events() == 1,
         "Non-contiguous source output is diagnosed");
+
+    test.expect(
+        staging.push(
+            911,
+            extra,
+            100) ==
+            AudioCanonicalStagePushStatus::Invalid,
+        "Malformed source sample-span shape is distinct from a timeline gap");
+    test.expect(
+        staging.non_contiguous_events() == 1 &&
+        staging.size_frames() == 900,
+        "Malformed input never alters the canonical timeline or its counters");
 
     test.expect(
         staging.push(
