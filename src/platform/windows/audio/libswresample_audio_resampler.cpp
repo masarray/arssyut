@@ -219,6 +219,33 @@ AudioResampleResult LibSwResampleAudioResampler::process(
         return result;
     }
 
+    const int required_output_frames =
+        swr_get_out_samples(
+            context_,
+            static_cast<int>(
+                input_frames));
+
+    if (required_output_frames < 0) {
+        result.status =
+            AudioResampleStatus::Failed;
+        return result;
+    }
+
+    if (output_frames_capacity <
+        static_cast<std::size_t>(
+            required_output_frames)) {
+        result.status =
+            AudioResampleStatus::OutputFull;
+        result.algorithmic_delay_100ns =
+            current_delay_100ns();
+        refresh_rate_state(
+            rate_state_.
+                requested_rate_adjustment_ppm,
+            rate_state_.
+                applied_rate_adjustment_ppm);
+        return result;
+    }
+
     const std::uint8_t *input_planes[1]{
         reinterpret_cast<const std::uint8_t *>(
             input_interleaved.data())};
@@ -258,9 +285,7 @@ AudioResampleResult LibSwResampleAudioResampler::process(
 
     drain_complete_ = false;
     result.status =
-        output_frames_capacity == 0
-            ? AudioResampleStatus::OutputFull
-            : AudioResampleStatus::Ok;
+        AudioResampleStatus::Ok;
 
     refresh_rate_state(
         rate_state_.requested_rate_adjustment_ppm,
