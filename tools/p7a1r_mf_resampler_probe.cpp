@@ -1,6 +1,7 @@
 #ifdef _WIN32
 
 #include <Windows.h>
+#include <ks.h>
 #include <ksmedia.h>
 #include <mfapi.h>
 #include <mferror.h>
