@@ -61,6 +61,55 @@ void test_sign_and_slew(Test &test)
         "stable +100 ppm source converges near -100 ppm correction");
 }
 
+void test_cadence_invariance(Test &test)
+{
+    const AudioDriftControllerConfig config{
+        .maximum_absolute_correction_ppm = 500.0,
+        .smoothing_time_constant_seconds = 2.0,
+        .maximum_slew_ppm_per_second = 50.0,
+        .deadband_ppm = 0.25,
+    };
+
+    AudioDriftController delayed(config);
+    AudioDriftController regular(config);
+
+    DriftEstimate positive{
+        .rate_error_ppm = -270.0,
+        .valid = true,
+    };
+    DriftEstimate negative{
+        .rate_error_ppm = +300.0,
+        .valid = true,
+    };
+
+    for (int i = 0; i < 100; ++i) {
+        (void)delayed.update(
+            positive,
+            1'000'000);
+        (void)regular.update(
+            positive,
+            1'000'000);
+    }
+
+    (void)delayed.update(
+        negative,
+        50'000'000);
+
+    for (int i = 0; i < 50; ++i)
+        (void)regular.update(
+            negative,
+            1'000'000);
+
+    test.expect(
+        std::abs(
+            delayed.snapshot().
+                requested_resampler_ppm -
+            regular.snapshot().
+                requested_resampler_ppm) <
+            1.0e-9,
+        "five-second delayed update matches fifty 100 ms policy steps");
+}
+
 void test_untrusted_and_discontinuity(Test &test)
 {
     AudioDriftController controller;
@@ -92,6 +141,9 @@ void test_untrusted_and_discontinuity(Test &test)
             requested_resampler_ppm > 0.0,
         "slow source requests positive correction");
 
+    const auto before_reset =
+        controller.snapshot();
+
     controller.reset_for_discontinuity();
 
     const auto reset =
@@ -101,6 +153,14 @@ void test_untrusted_and_discontinuity(Test &test)
         reset.requested_resampler_ppm == 0.0 &&
         reset.discontinuity_resets == 1,
         "discontinuity clears correction and smoothing state");
+    test.expect(
+        reset.accepted_updates ==
+            before_reset.accepted_updates &&
+        reset.rejected_updates ==
+            before_reset.rejected_updates &&
+        reset.clamped_updates ==
+            before_reset.clamped_updates,
+        "discontinuity preserves cumulative diagnostics");
 }
 
 void test_clamp_deadband(Test &test)
@@ -152,6 +212,7 @@ int main()
 {
     Test test;
     test_sign_and_slew(test);
+    test_cadence_invariance(test);
     test_untrusted_and_discontinuity(test);
     test_clamp_deadband(test);
 
