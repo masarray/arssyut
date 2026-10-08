@@ -1,0 +1,172 @@
+#include "core/audio/audio_source_timeline_mapper.hpp"
+
+#include <cstdint>
+#include <iostream>
+
+namespace {
+
+using namespace arssyut::core::audio;
+
+struct Test {
+    int checks = 0;
+    int failures = 0;
+
+    void expect(bool value, const char *message)
+    {
+        ++checks;
+        if (!value) {
+            ++failures;
+            std::cerr << "FAIL: " << message << '\n';
+        }
+    }
+};
+
+AudioSourcePacket packet(
+    std::int64_t start_qpc,
+    AudioTimestampQuality quality,
+    std::uint32_t frames = 480)
+{
+    AudioSourcePacket result;
+    result.source = AudioSourceId::Microphone;
+    result.native_format = canonical_audio_profile().program_format;
+    result.frame_count = frames;
+    result.timing.quality = quality;
+    result.timing.packet_start_qpc_100ns = start_qpc;
+    result.timing.host_observed_qpc_100ns = start_qpc + 10;
+    result.timing.device_frame_position = 9'600;
+    result.flags = AudioPacketFlag::Silent;
+    result.pool_slot = kInvalidAudioPoolSlot;
+    result.payload_bytes = 0;
+    return result;
+}
+
+void test_alignment(Test &test)
+{
+    AudioSourceTimelineMapper mapper;
+    constexpr std::int64_t zero = 10'000'000;
+    mapper.reset(zero);
+
+    auto on_zero =
+        mapper.map(
+            packet(
+                zero,
+                AudioTimestampQuality::
+                    DeviceQpcTrusted));
+
+    test.expect(
+        on_zero.status ==
+            AudioTimelineMapStatus::Mapped,
+        "packet at session zero maps normally");
+    test.expect(
+        on_zero.media_start_100ns == 0 &&
+        on_zero.canonical_start_frame == 0,
+        "session-zero packet maps to frame zero");
+    test.expect(
+        on_zero.drift_eligible &&
+        on_zero.drift_anchor.trusted,
+        "trusted device/QPC packet exports drift anchor");
+
+    auto host =
+        mapper.map(
+            packet(
+                zero + 1'000'000,
+                AudioTimestampQuality::
+                    HostQpcFallback));
+
+    test.expect(
+        host.usable_for_timeline(),
+        "host fallback remains usable for timeline continuity");
+    test.expect(
+        !host.drift_eligible,
+        "host fallback never enters drift estimator");
+    test.expect(
+        host.canonical_start_frame == 4'800,
+        "100 ms offset maps to exact canonical frame");
+}
+
+void test_pre_zero_trim(Test &test)
+{
+    AudioSourceTimelineMapper mapper;
+    constexpr std::int64_t zero = 50'000'000;
+    mapper.reset(zero);
+
+    auto overlap =
+        mapper.map(
+            packet(
+                zero - 50'000,
+                AudioTimestampQuality::
+                    ContinuityReconstructed,
+                480));
+
+    test.expect(
+        overlap.status ==
+            AudioTimelineMapStatus::
+                OverlapsMediaZero,
+        "packet crossing zero is retained");
+    test.expect(
+        overlap.source_frames_before_zero == 240,
+        "5 ms before zero trims exactly 240 frames at 48 kHz");
+    test.expect(
+        overlap.canonical_start_frame == 0,
+        "overlap resumes exactly at canonical frame zero");
+    test.expect(
+        !overlap.drift_eligible,
+        "reconstructed continuity never becomes drift evidence");
+
+    auto stale =
+        mapper.map(
+            packet(
+                zero - 200'000,
+                AudioTimestampQuality::
+                    DeviceQpcTrusted,
+                480));
+
+    test.expect(
+        stale.status ==
+            AudioTimelineMapStatus::
+                FullyBeforeMediaZero,
+        "packet ending before media zero is fully trimmed");
+    test.expect(
+        stale.source_frames_before_zero == 480,
+        "fully pre-zero packet trims all native frames");
+}
+
+void test_rejection(Test &test)
+{
+    AudioSourceTimelineMapper mapper;
+    mapper.reset(1'000);
+
+    auto invalid =
+        packet(
+            0,
+            AudioTimestampQuality::
+                HostQpcFallback);
+
+    const auto mapped = mapper.map(invalid);
+
+    test.expect(
+        mapped.status ==
+            AudioTimelineMapStatus::Invalid,
+        "missing packet-start QPC fails closed");
+    test.expect(
+        mapper.rejected_packets() == 1,
+        "invalid timing is counted");
+}
+
+} // namespace
+
+int main()
+{
+    Test test;
+    test_alignment(test);
+    test_pre_zero_trim(test);
+    test_rejection(test);
+
+    if (test.failures != 0)
+        return 1;
+
+    std::cout
+        << "PASS: " << test.checks
+        << " source timeline mapper checks\n";
+    return 0;
+}
