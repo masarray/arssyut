@@ -162,6 +162,328 @@ packet_bytes(
         bytes};
 }
 
+class NativeWasapiCaptureClient final
+    : public IWasapiCaptureClient {
+public:
+    ~NativeWasapiCaptureClient() override
+    {
+        stop();
+
+        if (audio_event_ != nullptr) {
+            CloseHandle(audio_event_);
+            audio_event_ = nullptr;
+        }
+    }
+
+    [[nodiscard]] Status open(
+        std::wstring_view endpoint_id,
+        WasapiCaptureMode mode) noexcept override
+    {
+        try {
+            std::wstring endpoint_key(endpoint_id);
+
+            ComPtr<IMMDeviceEnumerator> enumerator;
+            HRESULT hr =
+                CoCreateInstance(
+                    __uuidof(MMDeviceEnumerator),
+                    nullptr,
+                    CLSCTX_ALL,
+                    IID_PPV_ARGS(
+                        enumerator.GetAddressOf()));
+            if (FAILED(hr))
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    hr);
+
+            ComPtr<IMMDevice> endpoint;
+            hr = enumerator->GetDevice(
+                endpoint_key.c_str(),
+                endpoint.GetAddressOf());
+            if (FAILED(hr))
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    hr);
+
+            DWORD endpoint_state = 0;
+            hr = endpoint->GetState(
+                &endpoint_state);
+            if (FAILED(hr) ||
+                (endpoint_state &
+                 DEVICE_STATE_ACTIVE) == 0) {
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    FAILED(hr)
+                        ? hr
+                        : AUDCLNT_E_DEVICE_INVALIDATED);
+            }
+
+            ComPtr<IMMEndpoint> endpoint_flow;
+            hr = endpoint.As(
+                &endpoint_flow);
+            if (FAILED(hr))
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    hr);
+
+            EDataFlow data_flow = eAll;
+            hr = endpoint_flow->GetDataFlow(
+                &data_flow);
+            const EDataFlow expected_flow =
+                mode == WasapiCaptureMode::Loopback
+                    ? eRender
+                    : eCapture;
+            if (FAILED(hr) ||
+                data_flow != expected_flow) {
+                return status_from_hresult(
+                    StatusCode::InvalidArgument,
+                    FAILED(hr)
+                        ? hr
+                        : E_INVALIDARG);
+            }
+
+            hr = endpoint->Activate(
+                __uuidof(IAudioClient),
+                CLSCTX_ALL,
+                nullptr,
+                reinterpret_cast<void **>(
+                    audio_client_.GetAddressOf()));
+            if (FAILED(hr))
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    hr);
+
+            WAVEFORMATEX *raw_mix = nullptr;
+            hr = audio_client_->GetMixFormat(
+                &raw_mix);
+            if (FAILED(hr) ||
+                raw_mix == nullptr) {
+                return status_from_hresult(
+                    StatusCode::Unsupported,
+                    FAILED(hr)
+                        ? hr
+                        : E_FAIL);
+            }
+
+            std::unique_ptr<
+                WAVEFORMATEX,
+                CoTaskMemWaveDeleter>
+                mix_format(raw_mix);
+
+            const auto parsed =
+                audio_format_from_wave_format(
+                    mix_format.get());
+            if (!parsed.has_value()) {
+                return status_from_hresult(
+                    StatusCode::Unsupported,
+                    AUDCLNT_E_UNSUPPORTED_FORMAT);
+            }
+
+            audio_event_ =
+                CreateEventW(
+                    nullptr,
+                    FALSE,
+                    FALSE,
+                    nullptr);
+            if (audio_event_ == nullptr) {
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    HRESULT_FROM_WIN32(
+                        GetLastError()));
+            }
+
+            const DWORD stream_flags =
+                AUDCLNT_STREAMFLAGS_EVENTCALLBACK |
+                AUDCLNT_STREAMFLAGS_NOPERSIST |
+                (mode == WasapiCaptureMode::Loopback
+                     ? AUDCLNT_STREAMFLAGS_LOOPBACK
+                     : 0U);
+
+            hr = audio_client_->Initialize(
+                AUDCLNT_SHAREMODE_SHARED,
+                stream_flags,
+                0,
+                0,
+                mix_format.get(),
+                nullptr);
+            if (FAILED(hr))
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    hr);
+
+            hr = audio_client_->SetEventHandle(
+                audio_event_);
+            if (FAILED(hr))
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    hr);
+
+            hr = audio_client_->GetBufferSize(
+                &buffer_frames_);
+            if (FAILED(hr) ||
+                buffer_frames_ == 0) {
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    FAILED(hr)
+                        ? hr
+                        : E_FAIL);
+            }
+
+            hr = audio_client_->GetService(
+                IID_PPV_ARGS(
+                    capture_client_.GetAddressOf()));
+            if (FAILED(hr))
+                return status_from_hresult(
+                    StatusCode::PlatformFailure,
+                    hr);
+
+            format_ = *parsed;
+            return Status::success();
+        } catch (const std::bad_alloc &) {
+            return Status::failure(
+                StatusCode::CapacityExceeded,
+                static_cast<std::uint32_t>(
+                    E_OUTOFMEMORY));
+        } catch (...) {
+            return Status::failure(
+                StatusCode::InternalError,
+                static_cast<std::uint32_t>(
+                    E_FAIL));
+        }
+    }
+
+    [[nodiscard]] core::audio::AudioFormat
+    native_format() const noexcept override
+    {
+        return format_;
+    }
+
+    [[nodiscard]] std::uint32_t
+    endpoint_buffer_frames() const noexcept override
+    {
+        return buffer_frames_;
+    }
+
+    [[nodiscard]] Status start() noexcept override
+    {
+        if (!audio_client_)
+            return Status::failure(
+                StatusCode::InvalidStateTransition);
+
+        const HRESULT hr =
+            audio_client_->Start();
+        if (FAILED(hr))
+            return status_from_hresult(
+                StatusCode::PlatformFailure,
+                hr);
+
+        started_ = true;
+        return Status::success();
+    }
+
+    [[nodiscard]] WasapiCaptureWaitResult wait(
+        HANDLE stop_event,
+        HRESULT &failure_hr) noexcept override
+    {
+        HANDLE waits[2]{
+            stop_event,
+            audio_event_};
+
+        const DWORD wait_result =
+            WaitForMultipleObjects(
+                2,
+                waits,
+                FALSE,
+                INFINITE);
+
+        if (wait_result == WAIT_OBJECT_0)
+            return WasapiCaptureWaitResult::StopRequested;
+
+        if (wait_result == WAIT_OBJECT_0 + 1)
+            return WasapiCaptureWaitResult::PacketReady;
+
+        failure_hr =
+            HRESULT_FROM_WIN32(
+                GetLastError());
+        return WasapiCaptureWaitResult::Failed;
+    }
+
+    [[nodiscard]] HRESULT next_packet_size(
+        std::uint32_t &frames) noexcept override
+    {
+        if (!capture_client_)
+            return E_POINTER;
+
+        UINT32 next = 0;
+        const HRESULT hr =
+            capture_client_->GetNextPacketSize(
+                &next);
+        frames = next;
+        return hr;
+    }
+
+    [[nodiscard]] HRESULT get_packet(
+        WasapiCapturePacketView &packet) noexcept override
+    {
+        if (!capture_client_)
+            return E_POINTER;
+
+        BYTE *data = nullptr;
+        UINT32 frame_count = 0;
+        DWORD flags = 0;
+        UINT64 device_position = 0;
+        UINT64 qpc_position = 0;
+
+        const HRESULT hr =
+            capture_client_->GetBuffer(
+                &data,
+                &frame_count,
+                &flags,
+                &device_position,
+                &qpc_position);
+        if (FAILED(hr))
+            return hr;
+
+        packet.data =
+            reinterpret_cast<const std::byte *>(
+                data);
+        packet.frame_count =
+            frame_count;
+        packet.flags =
+            flags;
+        packet.device_position =
+            device_position;
+        packet.qpc_position_100ns =
+            qpc_position;
+        return S_OK;
+    }
+
+    [[nodiscard]] HRESULT release_packet(
+        std::uint32_t frames) noexcept override
+    {
+        return capture_client_
+            ? capture_client_->ReleaseBuffer(
+                  frames)
+            : E_POINTER;
+    }
+
+    void stop() noexcept override
+    {
+        if (started_ &&
+            audio_client_) {
+            (void)audio_client_->Stop();
+        }
+        started_ = false;
+    }
+
+private:
+    ComPtr<IAudioClient> audio_client_;
+    ComPtr<IAudioCaptureClient> capture_client_;
+    HANDLE audio_event_ = nullptr;
+    core::audio::AudioFormat format_{};
+    std::uint32_t buffer_frames_ = 0;
+    bool started_ = false;
+};
+
 } // namespace
 
 WasapiCaptureSource::~WasapiCaptureSource()
