@@ -10,7 +10,6 @@ extern "C" {
 #include <cmath>
 #include <cstdint>
 #include <limits>
-#include <numeric>
 
 namespace arssyut::platform::windows::audio {
 
@@ -50,25 +49,6 @@ constexpr std::uint32_t kMaximumDrainFrames = 8'192;
            config.input_channels;
 }
 
-[[nodiscard]] std::uint64_t safe_lcm(
-    std::uint32_t first,
-    std::uint32_t second) noexcept
-{
-    if (first == 0 || second == 0)
-        return 0;
-
-    const auto divisor =
-        std::gcd(first, second);
-    const std::uint64_t reduced =
-        first / divisor;
-
-    if (reduced >
-        std::numeric_limits<std::uint64_t>::max() /
-            second)
-        return 0;
-
-    return reduced * second;
-}
 
 } // namespace
 
@@ -128,20 +108,8 @@ AudioResampleStatus LibSwResampleAudioResampler::configure(
 
     context_ = created;
     config_ = config;
-    phase_base_ =
-        safe_lcm(
-            config.input_sample_rate,
-            AudioResamplerConfig::
-                kOutputSampleRate);
-
-    if (phase_base_ == 0 ||
-        phase_base_ >
-            static_cast<std::uint64_t>(
-                std::numeric_limits<
-                    std::int64_t>::max())) {
-        release();
-        return AudioResampleStatus::Failed;
-    }
+    next_input_pts_units_ = 0;
+    effective_compensation_multiplier_ = 1.0;
 
     configured_ = true;
     drain_complete_ = false;
@@ -163,6 +131,8 @@ void LibSwResampleAudioResampler::reset() noexcept
     }
 
     compensation_frames_remaining_ = 0;
+    next_input_pts_units_ = 0;
+    effective_compensation_multiplier_ = 1.0;
     drain_complete_ = false;
     refresh_rate_state(0.0, 0.0);
 }
@@ -274,6 +244,24 @@ AudioResampleResult LibSwResampleAudioResampler::process(
     result.output_frames_produced =
         static_cast<std::uint32_t>(
             produced);
+
+    const std::int64_t pts_increment =
+        static_cast<std::int64_t>(
+            input_frames) *
+        static_cast<std::int64_t>(
+            AudioResamplerConfig::
+                kOutputSampleRate);
+
+    if (next_input_pts_units_ >
+        std::numeric_limits<std::int64_t>::max() -
+            pts_increment) {
+        next_input_pts_units_ =
+            std::numeric_limits<std::int64_t>::max();
+    }
+    else {
+        next_input_pts_units_ +=
+            pts_increment;
+    }
     result.algorithmic_delay_100ns =
         current_delay_100ns();
 
@@ -435,12 +423,23 @@ bool LibSwResampleAudioResampler::apply_rate_adjustment(
                 kCompensationHorizonFrames)) < 0)
         return false;
 
+    const double denominator =
+        static_cast<double>(
+            kCompensationHorizonFrames -
+            sample_delta);
+
+    if (denominator <= 0.0)
+        return false;
+
+    effective_compensation_multiplier_ =
+        static_cast<double>(
+            kCompensationHorizonFrames) /
+        denominator;
+
     const double applied_ppm =
-        static_cast<double>(
-            sample_delta) *
-        1'000'000.0 /
-        static_cast<double>(
-            kCompensationHorizonFrames);
+        (effective_compensation_multiplier_ -
+         1.0) *
+        1'000'000.0;
 
     compensation_frames_remaining_ =
         kCompensationHorizonFrames;
@@ -463,24 +462,23 @@ void LibSwResampleAudioResampler::refresh_rate_state(
         applied_ppm;
 
     const double nominal_ratio =
-        static_cast<double>(
-            AudioResamplerConfig::
-                kOutputSampleRate) /
-        static_cast<double>(
-            config_.input_sample_rate);
+        configured_ &&
+                config_.input_sample_rate != 0
+            ? static_cast<double>(
+                  AudioResamplerConfig::
+                      kOutputSampleRate) /
+                  static_cast<double>(
+                      config_.input_sample_rate)
+            : 0.0;
 
     rate_state_.
         effective_output_per_input_ratio =
-        configured_
-            ? nominal_ratio *
-                  (1.0 +
-                   applied_ppm /
-                       1'000'000.0)
-            : 0.0;
+        nominal_ratio *
+        effective_compensation_multiplier_;
 
     if (!configured_ ||
         context_ == nullptr ||
-        phase_base_ == 0) {
+        config_.input_sample_rate == 0) {
         rate_state_.
             phase_remainder_numerator = 0;
         rate_state_.
@@ -488,33 +486,39 @@ void LibSwResampleAudioResampler::refresh_rate_state(
         return;
     }
 
-    const auto delay_units =
-        swr_get_delay(
+    /*
+     * swr_next_pts() is the public libswresample timestamp authority. Its
+     * integer timebase is exactly 1/(input_rate * output_rate), so one native
+     * input frame is exactly output_rate units. Taking the next-output PTS
+     * modulo that frame width exposes the backend's retained fractional
+     * input-frame phase without approximating it from nominal-rate delay.
+     */
+    const std::int64_t next_output_pts =
+        swr_next_pts(
             context_,
+            next_input_pts_units_);
+
+    constexpr std::uint64_t denominator =
+        AudioResamplerConfig::
+            kOutputSampleRate;
+
+    std::int64_t remainder =
+        next_output_pts %
+        static_cast<std::int64_t>(
+            denominator);
+
+    if (remainder < 0)
+        remainder +=
             static_cast<std::int64_t>(
-                phase_base_));
-
-    const auto units_per_input_frame =
-        phase_base_ /
-        config_.input_sample_rate;
-
-    if (delay_units < 0 ||
-        units_per_input_frame == 0) {
-        rate_state_.
-            phase_remainder_numerator = 0;
-        rate_state_.
-            phase_remainder_denominator = 1;
-        return;
-    }
+                denominator);
 
     rate_state_.
         phase_remainder_denominator =
-        units_per_input_frame;
+        denominator;
     rate_state_.
         phase_remainder_numerator =
         static_cast<std::uint64_t>(
-            delay_units) %
-        units_per_input_frame;
+            remainder);
 }
 
 void LibSwResampleAudioResampler::release() noexcept
@@ -525,7 +529,8 @@ void LibSwResampleAudioResampler::release() noexcept
     configured_ = false;
     config_ = {};
     rate_state_ = {};
-    phase_base_ = 0;
+    next_input_pts_units_ = 0;
+    effective_compensation_multiplier_ = 1.0;
     compensation_frames_remaining_ = 0;
     drain_complete_ = false;
 }
