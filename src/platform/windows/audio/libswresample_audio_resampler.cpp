@@ -1,5 +1,7 @@
 #include "platform/windows/audio/libswresample_audio_resampler.hpp"
 
+#include "core/audio/audio_time.hpp"
+
 extern "C" {
 #include <libavutil/channel_layout.h>
 #include <libavutil/mathematics.h>
