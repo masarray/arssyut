@@ -225,6 +225,173 @@ private:
         : std::numeric_limits<double>::infinity();
 }
 
+[[nodiscard]] double multitone_fit_rms_error(
+    std::span<const float> interleaved,
+    double frequency_one_hz,
+    double frequency_two_hz,
+    int sample_rate)
+{
+    const std::size_t frames =
+        interleaved.size() / kChannels;
+    if (frames < 8'192 ||
+        frequency_one_hz <= 0.0 ||
+        frequency_two_hz <= 0.0 ||
+        sample_rate <= 0)
+        return std::numeric_limits<double>::infinity();
+
+    const std::size_t margin =
+        std::min<std::size_t>(
+            4'096,
+            frames / 10);
+    const std::size_t begin = margin;
+    const std::size_t end = frames - margin;
+    if (end <= begin + 4)
+        return std::numeric_limits<double>::infinity();
+
+    double normal[4][5]{};
+
+    for (std::size_t frame = begin;
+         frame < end;
+         ++frame) {
+        const double t =
+            static_cast<double>(frame) /
+            static_cast<double>(sample_rate);
+
+        const double basis[4]{
+            std::sin(2.0 * kPi * frequency_one_hz * t),
+            std::cos(2.0 * kPi * frequency_one_hz * t),
+            std::sin(2.0 * kPi * frequency_two_hz * t),
+            std::cos(2.0 * kPi * frequency_two_hz * t),
+        };
+
+        const double y =
+            static_cast<double>(
+                interleaved[frame * kChannels]);
+
+        for (int row = 0; row < 4; ++row) {
+            for (int column = 0;
+                 column < 4;
+                 ++column) {
+                normal[row][column] +=
+                    basis[row] *
+                    basis[column];
+            }
+            normal[row][4] +=
+                basis[row] * y;
+        }
+    }
+
+    // Solve the 4x4 normal system with partial-pivot Gaussian elimination.
+    for (int pivot = 0;
+         pivot < 4;
+         ++pivot) {
+        int best = pivot;
+        for (int row = pivot + 1;
+             row < 4;
+             ++row) {
+            if (std::abs(
+                    normal[row][pivot]) >
+                std::abs(
+                    normal[best][pivot])) {
+                best = row;
+            }
+        }
+
+        if (std::abs(
+                normal[best][pivot]) <
+            1.0e-12)
+            return std::numeric_limits<double>::infinity();
+
+        if (best != pivot) {
+            for (int column = pivot;
+                 column < 5;
+                 ++column) {
+                std::swap(
+                    normal[pivot][column],
+                    normal[best][column]);
+            }
+        }
+
+        const double divisor =
+            normal[pivot][pivot];
+        for (int column = pivot;
+             column < 5;
+             ++column) {
+            normal[pivot][column] /=
+                divisor;
+        }
+
+        for (int row = 0;
+             row < 4;
+             ++row) {
+            if (row == pivot)
+                continue;
+
+            const double factor =
+                normal[row][pivot];
+            for (int column = pivot;
+                 column < 5;
+                 ++column) {
+                normal[row][column] -=
+                    factor *
+                    normal[pivot][column];
+            }
+        }
+    }
+
+    const double coefficient[4]{
+        normal[0][4],
+        normal[1][4],
+        normal[2][4],
+        normal[3][4],
+    };
+
+    double squared_error = 0.0;
+    std::uint64_t count = 0;
+
+    for (std::size_t frame = begin;
+         frame < end;
+         ++frame) {
+        const double t =
+            static_cast<double>(frame) /
+            static_cast<double>(sample_rate);
+
+        const double predicted =
+            coefficient[0] *
+                std::sin(
+                    2.0 * kPi *
+                    frequency_one_hz * t) +
+            coefficient[1] *
+                std::cos(
+                    2.0 * kPi *
+                    frequency_one_hz * t) +
+            coefficient[2] *
+                std::sin(
+                    2.0 * kPi *
+                    frequency_two_hz * t) +
+            coefficient[3] *
+                std::cos(
+                    2.0 * kPi *
+                    frequency_two_hz * t);
+
+        const double actual =
+            static_cast<double>(
+                interleaved[frame * kChannels]);
+
+        const double error =
+            actual - predicted;
+        squared_error +=
+            error * error;
+        ++count;
+    }
+
+    return count != 0
+        ? std::sqrt(
+              squared_error /
+              static_cast<double>(count))
+        : std::numeric_limits<double>::infinity();
+}
+
 [[nodiscard]] double max_second_difference(
     std::span<const float> interleaved)
 {
@@ -506,9 +673,9 @@ private:
 struct CompensationEvidence {
     bool valid = false;
     std::int64_t frame_delta = 0;
-    double expected_tone_hz = 0.0;
-    double measured_tone_hz = 0.0;
-    double fit_rms_error = 0.0;
+    double expected_tone_one_hz = 0.0;
+    double expected_tone_two_hz = 0.0;
+    double multitone_fit_rms_error = 0.0;
     double max_second_difference = 0.0;
     std::int64_t post_flush_delay = -1;
 };
@@ -530,10 +697,13 @@ struct CompensationEvidence {
         kOutputRate * kSegmentSeconds;
     constexpr int kTotalFrames =
         kSegmentFrames * kSegments;
-    // Deliberately non-period-aligned with both 48 kHz and the 10 s / ±48
-    // frame compensation window. A coarse whole-cycle insert/drop cannot hide
-    // behind an exact 48-frame / 1 kHz period coincidence.
-    constexpr double kToneHz = 731.29;
+    // Two deliberately non-commensurate components prevent a coarse
+    // repeat/drop implementation from hiding corrections at extrema or at one
+    // component's cycle boundary.
+    constexpr double kToneOneHz = 731.29;
+    constexpr double kToneTwoHz = 1'237.61;
+    constexpr double kToneOneAmplitude = 0.16;
+    constexpr double kToneTwoAmplitude = 0.09;
 
     std::vector<float> output;
     output.reserve(
@@ -575,15 +745,25 @@ struct CompensationEvidence {
              ++frame) {
             const std::int64_t absolute_frame =
                 segment_base + frame;
-            const double phase =
-                2.0 * kPi * kToneHz *
+            const double time_seconds =
                 static_cast<double>(
                     absolute_frame) /
                 static_cast<double>(
                     kOutputRate);
+            const double value_double =
+                kToneOneAmplitude *
+                    std::sin(
+                        2.0 * kPi *
+                        kToneOneHz *
+                        time_seconds) +
+                kToneTwoAmplitude *
+                    std::sin(
+                        2.0 * kPi *
+                        kToneTwoHz *
+                        time_seconds);
             const float value =
                 static_cast<float>(
-                    0.25 * std::sin(phase));
+                    value_double);
 
             input[
                 static_cast<std::size_t>(frame) *
@@ -613,22 +793,24 @@ struct CompensationEvidence {
     evidence.frame_delta =
         output_frames - kTotalFrames;
 
-    evidence.expected_tone_hz =
-        kToneHz *
+    const double effective_rate_scale =
         static_cast<double>(
             kTotalFrames) /
         static_cast<double>(
             output_frames);
 
-    evidence.measured_tone_hz =
-        estimate_frequency_hz(
-            output,
-            kOutputRate);
+    evidence.expected_tone_one_hz =
+        kToneOneHz *
+        effective_rate_scale;
+    evidence.expected_tone_two_hz =
+        kToneTwoHz *
+        effective_rate_scale;
 
-    evidence.fit_rms_error =
-        sine_fit_rms_error(
+    evidence.multitone_fit_rms_error =
+        multitone_fit_rms_error(
             output,
-            evidence.expected_tone_hz,
+            evidence.expected_tone_one_hz,
+            evidence.expected_tone_two_hz,
             kOutputRate);
 
     evidence.max_second_difference =
@@ -652,41 +834,19 @@ struct CompensationEvidence {
             evidence.frame_delta -
             expected_delta) <= 4;
 
-    const bool pitch_ok =
-        evidence.measured_tone_hz > 0.0 &&
-        std::abs(
-            evidence.measured_tone_hz -
-            evidence.expected_tone_hz) <= 0.05;
-
-    // A localized duplicate/drop/rate-step creates a sharp second-difference
-    // spike even when final frame count and global pitch remain correct. For a
-    // smooth sine x[n], the theoretical second-difference amplitude is
-    // 4*A*sin^2(pi*f/Fs). Allow 4x that smooth bound for filter/rate-control
-    // curvature while remaining well below a one-sample repeat/drop impulse.
-    constexpr double kFixtureAmplitude = 0.25;
-    const double smooth_second_difference =
-        4.0 *
-        kFixtureAmplitude *
-        std::pow(
-            std::sin(
-                kPi *
-                evidence.expected_tone_hz /
-                static_cast<double>(
-                    kOutputRate)),
-            2.0);
-    const double second_difference_limit =
-        smooth_second_difference * 4.0 +
-        1.0e-4;
-
+    // The full output must remain well-described by one smoothly time-scaled
+    // two-tone model. A coarse repeat/drop changes phase of at least one
+    // non-commensurate component for the remainder of the window and raises
+    // this residual, even if final frame count is correct.
+    constexpr double kMultitoneResidualLimit = 0.008;
     const bool continuity_ok =
         std::isfinite(
-            evidence.max_second_difference) &&
-        evidence.max_second_difference <=
-            second_difference_limit;
+            evidence.multitone_fit_rms_error) &&
+        evidence.multitone_fit_rms_error <=
+            kMultitoneResidualLimit;
 
     evidence.valid =
         frame_count_ok &&
-        pitch_ok &&
         continuity_ok;
 
     std::cout
@@ -699,16 +859,16 @@ struct CompensationEvidence {
         << " expected_delta=" << expected_delta
         << " observed_delta="
         << evidence.frame_delta
-        << " expected_tone_hz="
-        << evidence.expected_tone_hz
-        << " measured_tone_hz="
-        << evidence.measured_tone_hz
-        << " fit_rms_error="
-        << evidence.fit_rms_error
+        << " expected_tone_one_hz="
+        << evidence.expected_tone_one_hz
+        << " expected_tone_two_hz="
+        << evidence.expected_tone_two_hz
+        << " multitone_fit_rms_error="
+        << evidence.multitone_fit_rms_error
+        << " multitone_residual_limit="
+        << kMultitoneResidualLimit
         << " max_second_difference="
         << evidence.max_second_difference
-        << " second_difference_limit="
-        << second_difference_limit
         << " post_flush_delay="
         << evidence.post_flush_delay
         << '\n';
