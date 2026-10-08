@@ -85,10 +85,25 @@ void test_config_and_rate_state(Test &test)
             adjusted.applied_rate_adjustment_ppm -
             100.0) <= 0.25,
         "applied ppm is close to requested compensation");
+    const double nominal =
+        48'000.0 / 44'100.0;
+    constexpr double distance = 4'800'000.0;
+    constexpr double delta = 480.0;
+    const double expected_multiplier =
+        distance / (distance - delta);
+
     test.expect(
-        adjusted.effective_output_per_input_ratio >
-            48'000.0 / 44'100.0,
-        "positive ppm increases effective output/input ratio");
+        std::abs(
+            adjusted.effective_output_per_input_ratio -
+            nominal * expected_multiplier) <
+            1.0e-12,
+        "effective ratio reports exact compensation multiplier");
+    test.expect(
+        adjusted.phase_remainder_denominator ==
+            48'000 &&
+        adjusted.phase_remainder_numerator <
+            adjusted.phase_remainder_denominator,
+        "phase is exposed in the backend common timestamp lattice");
     test.expect(
         adjusted.observable(),
         "fractional phase remains observable after processing");
