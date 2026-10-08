@@ -472,7 +472,10 @@ struct CompensationEvidence {
         kOutputRate * kSegmentSeconds;
     constexpr int kTotalFrames =
         kSegmentFrames * kSegments;
-    constexpr double kToneHz = 1'000.0;
+    // Deliberately non-period-aligned with both 48 kHz and the 10 s / ±48
+    // frame compensation window. A coarse whole-cycle insert/drop cannot hide
+    // behind an exact 48-frame / 1 kHz period coincidence.
+    constexpr double kToneHz = 731.29;
 
     std::vector<float> output;
     output.reserve(
