@@ -312,6 +312,20 @@ AudioResampleResult LibSwResampleAudioResampler::process(
         return result;
     }
 
+    /*
+     * Keep one process() call inside one compensation epoch. apply_rate_adjustment()
+     * refreshes at/below the half-horizon mark, so bounding one call to that
+     * half horizon guarantees FFmpeg cannot switch back to nominal dst_incr in
+     * the middle of the call while the mirrored phase tracker still uses the
+     * compensated step.
+     */
+    if (required_output_frames >
+        kCompensationRefreshFrames) {
+        result.status =
+            AudioResampleStatus::InvalidArgument;
+        return result;
+    }
+
     const std::uint8_t *input_planes[1]{
         reinterpret_cast<const std::uint8_t *>(
             input_interleaved.data())};
@@ -456,6 +470,16 @@ AudioResampleDrainResult LibSwResampleAudioResampler::drain(
     result.output_frames_produced =
         static_cast<std::uint32_t>(
             produced);
+
+    phase_remainder_ =
+        add_mul_mod(
+            phase_remainder_,
+            static_cast<std::uint64_t>(
+                produced),
+            static_cast<std::uint64_t>(
+                active_dst_incr_),
+            phase_denominator_);
+
     result.remaining_delay_100ns =
         current_delay_100ns();
     result.complete =
