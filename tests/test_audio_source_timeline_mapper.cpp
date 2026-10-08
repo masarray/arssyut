@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <limits>
 
 namespace {
 
@@ -131,6 +132,92 @@ void test_pre_zero_trim(Test &test)
         "fully pre-zero packet trims all native frames");
 }
 
+void test_fractional_overlap(Test &test)
+{
+    AudioSourceTimelineMapper mapper;
+    constexpr std::int64_t zero = 90'000'000;
+    mapper.reset(zero);
+
+    auto one_tick_before =
+        packet(
+            zero - 1,
+            AudioTimestampQuality::
+                DeviceQpcTrusted,
+            480);
+    one_tick_before.native_format.sample_rate =
+        44'100;
+
+    const auto mapped =
+        mapper.map(one_tick_before);
+
+    test.expect(
+        mapped.status ==
+            AudioTimelineMapStatus::
+                OverlapsMediaZero,
+        "fractional-rate packet crossing zero remains usable");
+    test.expect(
+        mapped.source_frames_before_zero == 1,
+        "one tick before zero trims one 44.1 kHz source frame");
+    test.expect(
+        mapped.media_start_100ns > 0 &&
+        mapped.canonical_start_frame == 1,
+        "retained first frame keeps its post-zero offset");
+
+    auto fully_trimmed =
+        packet(
+            zero - 226,
+            AudioTimestampQuality::
+                HostQpcFallback,
+            1);
+    fully_trimmed.native_format.sample_rate =
+        44'100;
+
+    const auto all_trimmed =
+        mapper.map(fully_trimmed);
+
+    test.expect(
+        all_trimmed.status ==
+            AudioTimelineMapStatus::
+                FullyBeforeMediaZero &&
+        all_trimmed.source_frames_before_zero == 1,
+        "ceil duration cannot leave a zero-frame overlap classified usable");
+}
+
+void test_invalid_discontinuity_and_zero(Test &test)
+{
+    AudioSourceTimelineMapper mapper;
+    mapper.reset(1'000);
+
+    auto invalid =
+        packet(
+            0,
+            AudioTimestampQuality::
+                HostQpcFallback);
+    invalid.flags |=
+        AudioPacketFlag::Discontinuity;
+
+    const auto mapped = mapper.map(invalid);
+
+    test.expect(
+        mapped.status ==
+            AudioTimelineMapStatus::Invalid &&
+        mapped.discontinuity,
+        "rejected packet still preserves discontinuity evidence");
+
+    mapper.reset(-1);
+    const auto bad_zero =
+        mapper.map(
+            packet(
+                std::numeric_limits<std::int64_t>::max(),
+                AudioTimestampQuality::
+                    DeviceQpcTrusted));
+
+    test.expect(
+        bad_zero.status ==
+            AudioTimelineMapStatus::Invalid,
+        "negative session-zero fails closed without signed subtraction");
+}
+
 void test_rejection(Test &test)
 {
     AudioSourceTimelineMapper mapper;
@@ -160,6 +247,8 @@ int main()
     Test test;
     test_alignment(test);
     test_pre_zero_trim(test);
+    test_fractional_overlap(test);
+    test_invalid_discontinuity_and_zero(test);
     test_rejection(test);
 
     if (test.failures != 0)
