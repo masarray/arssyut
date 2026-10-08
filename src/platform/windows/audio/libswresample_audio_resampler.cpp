@@ -434,6 +434,14 @@ AudioResampleDrainResult LibSwResampleAudioResampler::drain(
         return result;
     }
 
+    if (!apply_rate_adjustment(
+            rate_state_.
+                requested_rate_adjustment_ppm)) {
+        result.status =
+            AudioResampleStatus::Failed;
+        return result;
+    }
+
     const auto output_frames_capacity =
         output_interleaved.size() /
         AudioResamplerConfig::
