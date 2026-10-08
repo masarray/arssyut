@@ -437,6 +437,37 @@ if(ARSSYUT_BUILD_TESTS)
         COMMAND arssyut_audio_source_timeline_mapper_tests
     )
 
+    add_executable(arssyut_audio_sample_normalizer_tests
+        tests/test_audio_sample_normalizer.cpp
+    )
+    target_link_libraries(
+        arssyut_audio_sample_normalizer_tests
+        PRIVATE
+            arssyut_core
+    )
+    if(MSVC)
+        target_compile_options(
+            arssyut_audio_sample_normalizer_tests
+            PRIVATE
+                /W4
+                /permissive-
+                /utf-8
+                /Zc:__cplusplus
+        )
+    else()
+        target_compile_options(
+            arssyut_audio_sample_normalizer_tests
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+        )
+    endif()
+    add_test(
+        NAME arssyut_audio_sample_normalizer_tests
+        COMMAND arssyut_audio_sample_normalizer_tests
+    )
+
     add_executable(arssyut_audio_drift_controller_tests
         tests/test_audio_drift_controller.cpp
     )
