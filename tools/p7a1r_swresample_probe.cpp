@@ -293,35 +293,23 @@ private:
 [[nodiscard]] bool drain_all(
     SwrContext *context,
     std::vector<float> &output,
-    std::int64_t &final_delay)
+    std::int64_t &post_flush_delay)
 {
     if (context == nullptr)
         return false;
 
+    // FFmpeg defines end-of-stream flushing by repeatedly calling
+    // swr_convert() with NULL input and zero input frames. swr_get_delay()
+    // describes the delay a *next* input sample would experience and therefore
+    // is useful telemetry, but it is not the EOS predicate.
+    constexpr int kDrainCapacity = 8'192;
+
     for (int iteration = 0;
          iteration < 128;
          ++iteration) {
-        const std::int64_t delay =
-            swr_get_delay(
-                context,
-                kOutputRate);
-
-        if (delay == 0) {
-            final_delay = 0;
-            return true;
-        }
-
-        if (delay < 0)
-            return false;
-
-        const int out_capacity =
-            static_cast<int>(
-                std::min<std::int64_t>(
-                    delay + 64,
-                    8'192));
-
         std::vector<float> chunk_out(
-            static_cast<std::size_t>(out_capacity) *
+            static_cast<std::size_t>(
+                kDrainCapacity) *
             kChannels);
 
         uint8_t *output_planes[1]{
@@ -332,7 +320,7 @@ private:
             swr_convert(
                 context,
                 output_planes,
-                out_capacity,
+                kDrainCapacity,
                 nullptr,
                 0);
         if (produced < 0)
@@ -346,15 +334,15 @@ private:
                     produced * kChannels));
 
         if (produced == 0) {
-            final_delay =
+            post_flush_delay =
                 swr_get_delay(
                     context,
                     kOutputRate);
-            return final_delay == 0;
+            return true;
         }
     }
 
-    final_delay =
+    post_flush_delay =
         swr_get_delay(
             context,
             kOutputRate);
@@ -409,11 +397,11 @@ private:
             output))
         return false;
 
-    std::int64_t final_delay = -1;
+    std::int64_t post_flush_delay = -1;
     if (!drain_all(
             owner.get(),
             output,
-            final_delay))
+            post_flush_delay))
         return false;
 
     const std::int64_t output_frames =
@@ -446,11 +434,10 @@ private:
         << " output_frames=" << output_frames
         << " nominal_frames=" << nominal_frames
         << " frame_delta=" << frame_delta
-        << " final_delay=" << final_delay
+        << " post_flush_delay=" << post_flush_delay
         << '\n';
 
     return
-        final_delay == 0 &&
         std::abs(frame_delta) <= 1 &&
         measured > 0.0 &&
         error <=
@@ -465,7 +452,7 @@ struct CompensationEvidence {
     double expected_tone_hz = 0.0;
     double measured_tone_hz = 0.0;
     double fit_rms_error = 0.0;
-    std::int64_t final_delay = -1;
+    std::int64_t post_flush_delay = -1;
 };
 
 [[nodiscard]] CompensationEvidence compensation_case(
@@ -556,7 +543,7 @@ struct CompensationEvidence {
     if (!drain_all(
             owner.get(),
             output,
-            evidence.final_delay))
+            evidence.post_flush_delay))
         return evidence;
 
     const std::int64_t output_frames =
@@ -612,7 +599,6 @@ struct CompensationEvidence {
         evidence.fit_rms_error <= 0.0025;
 
     evidence.valid =
-        evidence.final_delay == 0 &&
         frame_count_ok &&
         pitch_ok &&
         continuity_ok;
@@ -633,8 +619,8 @@ struct CompensationEvidence {
         << evidence.measured_tone_hz
         << " fit_rms_error="
         << evidence.fit_rms_error
-        << " final_delay="
-        << evidence.final_delay
+        << " post_flush_delay="
+        << evidence.post_flush_delay
         << '\n';
 
     return evidence;
