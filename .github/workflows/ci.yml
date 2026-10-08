@@ -34,6 +34,18 @@ jobs:
       - name: Test
         run: ctest --preset windows-release
 
+      - name: P7A1R Media Foundation resampler evidence
+        shell: pwsh
+        run: |
+          $probe = Join-Path $PWD "build/windows-x64/Release/arssyut_p7a1r_mf_resampler_probe.exe"
+          if (-not (Test-Path $probe)) {
+            throw "P7A1R resampler probe executable is missing."
+          }
+          & $probe
+          if ($LASTEXITCODE -ne 0) {
+            throw "P7A1R Media Foundation resampler probe failed with exit code $LASTEXITCODE"
+          }
+
       - name: GUI launch smoke
         shell: pwsh
         run: |
