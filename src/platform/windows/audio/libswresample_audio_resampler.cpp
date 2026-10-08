@@ -511,7 +511,9 @@ AudioResampleDrainResult LibSwResampleAudioResampler::drain(
 bool LibSwResampleAudioResampler::apply_rate_adjustment(
     double requested_ppm) noexcept
 {
-    requested_ppm =
+    const double raw_requested_ppm =
+        requested_ppm;
+    const double applied_request_ppm =
         std::clamp(
             requested_ppm,
             -kMaximumAbsolutePpm,
@@ -519,7 +521,7 @@ bool LibSwResampleAudioResampler::apply_rate_adjustment(
 
     const bool changed =
         std::abs(
-            requested_ppm -
+            raw_requested_ppm -
             rate_state_.
                 requested_rate_adjustment_ppm) >
         0.01;
@@ -534,7 +536,7 @@ bool LibSwResampleAudioResampler::apply_rate_adjustment(
             std::llround(
                 static_cast<double>(
                     kCompensationHorizonFrames) *
-                requested_ppm /
+                applied_request_ppm /
                 1'000'000.0));
 
     if (swr_set_compensation(
@@ -581,7 +583,7 @@ bool LibSwResampleAudioResampler::apply_rate_adjustment(
         kCompensationHorizonFrames;
 
     refresh_rate_state(
-        requested_ppm,
+        raw_requested_ppm,
         applied_ppm);
     return true;
 }
