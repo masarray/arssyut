@@ -443,6 +443,10 @@ public:
         if (FAILED(hr))
             return hr;
 
+        // Preserve benign success statuses such as
+        // AUDCLNT_S_BUFFER_EMPTY. The shared worker owns the policy for that
+        // status and must observe the exact native HRESULT rather than a
+        // normalized S_OK with an empty packet view.
         packet.data =
             reinterpret_cast<const std::byte *>(
                 data);
@@ -454,7 +458,7 @@ public:
             device_position;
         packet.qpc_position_100ns =
             qpc_position;
-        return S_OK;
+        return hr;
     }
 
     [[nodiscard]] HRESULT release_packet(
