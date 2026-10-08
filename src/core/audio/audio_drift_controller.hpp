@@ -87,21 +87,21 @@ public:
         DriftEstimate estimate,
         std::uint64_t elapsed_100ns) noexcept
     {
-        if (!estimate.valid ||
-            !std::isfinite(
-                estimate.rate_error_ppm) ||
-            elapsed_100ns == 0) {
-            ++snapshot_.rejected_updates;
-            return snapshot_.
-                requested_resampler_ppm;
-        }
-
         constexpr std::uint64_t kMaximumContinuousGap100ns =
             50'000'000; // 5 s
 
         if (elapsed_100ns >
             kMaximumContinuousGap100ns) {
             reset_for_discontinuity();
+            ++snapshot_.rejected_updates;
+            return snapshot_.
+                requested_resampler_ppm;
+        }
+
+        if (!estimate.valid ||
+            !std::isfinite(
+                estimate.rate_error_ppm) ||
+            elapsed_100ns == 0) {
             ++snapshot_.rejected_updates;
             return snapshot_.
                 requested_resampler_ppm;
