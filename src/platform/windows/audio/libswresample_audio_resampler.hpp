@@ -53,8 +53,11 @@ private:
     SwrContext *context_ = nullptr;
     core::audio::AudioResamplerConfig config_{};
     core::audio::AudioResamplerRateState rate_state_{};
-    std::int64_t next_input_pts_units_ = 0;
-    double effective_compensation_multiplier_ = 1.0;
+    std::uint64_t phase_remainder_ = 0;
+    std::uint64_t phase_denominator_ = 1;
+    std::int64_t nominal_src_incr_ = 0;
+    std::int64_t nominal_dst_incr_ = 0;
+    std::int64_t active_dst_incr_ = 0;
     std::int64_t compensation_frames_remaining_ = 0;
     bool configured_ = false;
     bool drain_complete_ = false;
