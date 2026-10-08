@@ -95,7 +95,7 @@ jobs:
           }
 
           $installRoot = Join-Path $PWD "build/p7a1r-vcpkg"
-          & $vcpkg install "ffmpeg[swresample]:x64-windows-static" --x-install-root="$installRoot"
+          & $vcpkg install "ffmpeg[core,swresample]:x64-windows-static" --x-install-root="$installRoot"
 
           if ($LASTEXITCODE -ne 0) {
             throw "Isolated libswresample install failed with exit code $LASTEXITCODE"
