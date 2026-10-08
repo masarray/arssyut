@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace arssyut::core::audio {
 
@@ -68,6 +69,7 @@ public:
     {
         snapshot_ = {};
         has_smoothed_value_ = false;
+        pending_elapsed_100ns_ = 0;
     }
 
     void reset_for_discontinuity() noexcept
@@ -78,6 +80,7 @@ public:
         snapshot_.requested_resampler_ppm = 0.0;
         ++snapshot_.discontinuity_resets;
         has_smoothed_value_ = false;
+        pending_elapsed_100ns_ = 0;
     }
 
     [[nodiscard]] double update(
@@ -120,29 +123,53 @@ public:
             target;
 
         /*
-         * Integrate on a fixed maximum 100 ms policy quantum. The controller
-         * therefore produces the same state for one delayed 5 s update as for
-         * fifty 100 ms updates with the same target; scheduler cadence cannot
-         * become another timing authority.
+         * Policy time advances only on canonical 100 ms boundaries. Shorter
+         * caller cadences accumulate in pending_elapsed_100ns_, so 400 x 10 ms
+         * and one 4 s call with the same target traverse identical policy
+         * states. Packet cadence therefore cannot become a second clock.
+         *
+         * A gap beyond five seconds is treated as a discontinuity/re-anchor.
+         * This both matches suspend/stall semantics and bounds each update to
+         * at most 50 integration steps.
          */
-        constexpr std::uint64_t kMaximumPolicyStep100ns =
+        constexpr std::uint64_t kPolicyQuantum100ns =
             1'000'000; // 100 ms
+        constexpr std::uint64_t kMaximumContinuousGap100ns =
+            50'000'000; // 5 s
 
-        std::uint64_t remaining =
+        if (elapsed_100ns >
+            kMaximumContinuousGap100ns) {
+            reset_for_discontinuity();
+            ++snapshot_.rejected_updates;
+            return snapshot_.
+                requested_resampler_ppm;
+        }
+
+        if (pending_elapsed_100ns_ >
+            std::numeric_limits<std::uint64_t>::max() -
+                elapsed_100ns) {
+            reset_for_discontinuity();
+            ++snapshot_.rejected_updates;
+            return snapshot_.
+                requested_resampler_ppm;
+        }
+
+        pending_elapsed_100ns_ +=
             elapsed_100ns;
 
-        while (remaining != 0) {
-            const std::uint64_t step_100ns =
-                std::min(
-                    remaining,
-                    kMaximumPolicyStep100ns);
+        const std::uint64_t steps =
+            pending_elapsed_100ns_ /
+            kPolicyQuantum100ns;
 
+        pending_elapsed_100ns_ %=
+            kPolicyQuantum100ns;
+
+        for (std::uint64_t step = 0;
+             step < steps;
+             ++step) {
             integrate_step(
                 target,
-                step_100ns);
-
-            remaining -=
-                step_100ns;
+                kPolicyQuantum100ns);
         }
 
         return snapshot_.
@@ -213,6 +240,7 @@ private:
     AudioDriftControllerConfig config_{};
     AudioDriftControllerSnapshot snapshot_{};
     bool has_smoothed_value_ = false;
+    std::uint64_t pending_elapsed_100ns_ = 0;
 };
 
 } // namespace arssyut::core::audio
