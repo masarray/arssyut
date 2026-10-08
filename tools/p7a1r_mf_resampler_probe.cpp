@@ -20,6 +20,7 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -277,7 +278,8 @@ private:
     std::span<const float> samples,
     std::uint32_t frame_count,
     std::uint32_t sample_rate,
-    ComPtr<IMFSample> &sample)
+    ComPtr<IMFSample> &sample,
+    LONGLONG sample_time_100ns = 0)
 {
     if (frame_count == 0 ||
         samples.size() !=
@@ -348,7 +350,8 @@ private:
                  frame_count)) /
             sample_rate);
 
-    hr = sample->SetSampleTime(0);
+    hr = sample->SetSampleTime(
+        sample_time_100ns);
     if (FAILED(hr))
         return false;
 
@@ -359,10 +362,22 @@ private:
 
 [[nodiscard]] bool append_output_sample(
     IMFSample *sample,
-    std::vector<float> &output)
+    std::vector<float> &output,
+    std::optional<LONGLONG> *first_sample_time = nullptr)
 {
     if (!sample)
         return false;
+
+    if (first_sample_time != nullptr &&
+        !first_sample_time->has_value()) {
+        LONGLONG sample_time = 0;
+        if (SUCCEEDED(
+                sample->GetSampleTime(
+                    &sample_time))) {
+            *first_sample_time =
+                sample_time;
+        }
+    }
 
     ComPtr<IMFMediaBuffer> contiguous;
     HRESULT hr =
@@ -406,7 +421,8 @@ private:
 [[nodiscard]] bool collect_output(
     IMFTransform *transform,
     const MFT_OUTPUT_STREAM_INFO &stream_info,
-    std::vector<float> &output)
+    std::vector<float> &output,
+    std::optional<LONGLONG> *first_sample_time = nullptr)
 {
     if (!transform)
         return false;
@@ -489,7 +505,8 @@ private:
 
         if (!append_output_sample(
                 produced,
-                output))
+                output,
+                first_sample_time))
             return false;
 
         if (data.pSample != nullptr &&
@@ -819,22 +836,6 @@ private:
             output_info))
         return false;
 
-    constexpr std::uint32_t input_frames = 8'192;
-    std::vector<float> input(
-        static_cast<std::size_t>(input_frames) *
-        kChannels,
-        0.0F);
-    input[0] = 1.0F;
-    input[1] = 1.0F;
-
-    ComPtr<IMFSample> sample;
-    if (!create_input_sample(
-            input,
-            input_frames,
-            input_rate,
-            sample))
-        return false;
-
     HRESULT hr = transform->ProcessMessage(
         MFT_MESSAGE_NOTIFY_BEGIN_STREAMING,
         0);
@@ -845,22 +846,76 @@ private:
         0);
     if (FAILED(hr))
         return false;
-    hr = transform->ProcessInput(
-        0,
-        sample.Get(),
-        0);
-    if (FAILED(hr))
-        return false;
+
+    constexpr std::uint32_t kChunkFrames = 256;
+    constexpr std::uint32_t kTotalFrames = 8'192;
 
     std::vector<float> output;
     output.reserve(
         static_cast<std::size_t>(12'288) *
         kChannels);
-    if (!collect_output(
-            transform.Get(),
-            output_info,
-            output))
-        return false;
+
+    std::optional<LONGLONG> first_output_sample_time;
+    std::uint32_t first_output_after_input_frames = 0;
+    bool first_output_observed = false;
+
+    for (std::uint32_t base = 0;
+         base < kTotalFrames;
+         base += kChunkFrames) {
+        const std::uint32_t frames =
+            std::min(
+                kChunkFrames,
+                kTotalFrames - base);
+
+        std::vector<float> chunk(
+            static_cast<std::size_t>(frames) *
+            kChannels,
+            0.0F);
+
+        if (base == 0) {
+            chunk[0] = 1.0F;
+            chunk[1] = 1.0F;
+        }
+
+        const LONGLONG sample_time =
+            static_cast<LONGLONG>(
+                (10'000'000ULL *
+                 static_cast<std::uint64_t>(base)) /
+                input_rate);
+
+        ComPtr<IMFSample> sample;
+        if (!create_input_sample(
+                chunk,
+                frames,
+                input_rate,
+                sample,
+                sample_time))
+            return false;
+
+        hr = transform->ProcessInput(
+            0,
+            sample.Get(),
+            0);
+        if (FAILED(hr))
+            return false;
+
+        const std::size_t output_before =
+            output.size();
+
+        if (!collect_output(
+                transform.Get(),
+                output_info,
+                output,
+                &first_output_sample_time))
+            return false;
+
+        if (!first_output_observed &&
+            output.size() > output_before) {
+            first_output_observed = true;
+            first_output_after_input_frames =
+                base + frames;
+        }
+    }
 
     hr = transform->ProcessMessage(
         MFT_MESSAGE_NOTIFY_END_OF_STREAM,
@@ -875,16 +930,16 @@ private:
     if (!collect_output(
             transform.Get(),
             output_info,
-            output))
+            output,
+            &first_output_sample_time))
         return false;
 
-    if (output.size() % kChannels != 0)
+    if (output.size() % kChannels != 0 ||
+        output.empty())
         return false;
 
     const std::size_t frames =
         output.size() / kChannels;
-    if (frames == 0)
-        return false;
 
     std::size_t peak_frame = 0;
     float peak = 0.0F;
@@ -900,28 +955,53 @@ private:
         }
     }
 
-    const std::uint64_t delay_100ns =
+    const std::uint64_t pcm_peak_delay_100ns =
         (10'000'000ULL *
          static_cast<std::uint64_t>(peak_frame)) /
         output_rate;
 
-    // The filter may have a short startup/group delay, but a recorder cannot
-    // accept an unbounded or seconds-scale hidden latency.
-    constexpr std::uint64_t kMaxDelay100ns =
+    const std::uint64_t first_output_wait_100ns =
+        (10'000'000ULL *
+         static_cast<std::uint64_t>(
+             first_output_after_input_frames)) /
+        input_rate;
+
+    constexpr std::uint64_t kMaxStartupWait100ns =
         1'000'000ULL; // 100 ms
+
+    const bool timestamp_available =
+        first_output_sample_time.has_value();
+    const bool timestamp_plausible =
+        timestamp_available &&
+        first_output_sample_time.value() >= 0 &&
+        static_cast<std::uint64_t>(
+            first_output_sample_time.value()) <=
+            kMaxStartupWait100ns;
 
     std::cout
         << "MF_RESAMPLER_IMPULSE"
         << " input_rate=" << input_rate
         << " output_rate=" << output_rate
-        << " peak_frame=" << peak_frame
-        << " delay_100ns=" << delay_100ns
+        << " first_output_after_input_frames="
+        << first_output_after_input_frames
+        << " first_output_wait_100ns="
+        << first_output_wait_100ns
+        << " first_output_sample_time_100ns="
+        << (timestamp_available
+                ? first_output_sample_time.value()
+                : -1)
+        << " pcm_peak_frame=" << peak_frame
+        << " pcm_peak_delay_100ns="
+        << pcm_peak_delay_100ns
         << " peak=" << peak
         << " output_frames=" << frames
         << '\n';
 
-    return peak > 0.01F &&
-           delay_100ns <= kMaxDelay100ns;
+    return first_output_observed &&
+           first_output_wait_100ns <=
+               kMaxStartupWait100ns &&
+           timestamp_plausible &&
+           peak > 0.01F;
 }
 
 } // namespace
