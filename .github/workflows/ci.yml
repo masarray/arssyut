@@ -257,8 +257,8 @@ jobs:
             # disabled by default; these blobs are exercised only in the
             # dedicated pinned-dependency adapter lane until packaging is
             # explicitly accepted.
-            "src/platform/windows/audio/libswresample_audio_resampler.hpp" = "6032753dcbf1cda1c250af07533759c70b7ca829"
-            "src/platform/windows/audio/libswresample_audio_resampler.cpp" = "66cb64baf95225340dcd46b9744f8299e32eb71f"
+            "src/platform/windows/audio/libswresample_audio_resampler.hpp" = "e1fc0481e0a257f5b0637a3c67183adc4952586b"
+            "src/platform/windows/audio/libswresample_audio_resampler.cpp" = "35471c66fc81b2d2aec620bf13416f6bf162ba52"
             # P7A4 evolves the accepted single Media Foundation writer into one
             # optional AV authority. Exact blobs keep the video path fail-closed
             # while allowing only the audited AAC/PCM16 extension.
