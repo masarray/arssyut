@@ -17,6 +17,7 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <string_view>
 #include <thread>
 
 namespace arssyut::windows {
@@ -24,6 +25,52 @@ namespace arssyut::windows {
 enum class WasapiCaptureMode : std::uint8_t {
     Microphone = 0,
     Loopback,
+};
+
+enum class WasapiCaptureWaitResult : std::uint8_t {
+    PacketReady = 0,
+    StopRequested,
+    Failed,
+};
+
+struct WasapiCapturePacketView {
+    const std::byte *data = nullptr;
+    std::uint32_t frame_count = 0;
+    std::uint32_t flags = 0;
+    std::uint64_t device_position = 0;
+    std::uint64_t qpc_position_100ns = 0;
+};
+
+class IWasapiCaptureClient {
+public:
+    virtual ~IWasapiCaptureClient() = default;
+
+    [[nodiscard]] virtual core::Status open(
+        std::wstring_view endpoint_id,
+        WasapiCaptureMode mode) noexcept = 0;
+
+    [[nodiscard]] virtual core::audio::AudioFormat
+    native_format() const noexcept = 0;
+
+    [[nodiscard]] virtual std::uint32_t
+    endpoint_buffer_frames() const noexcept = 0;
+
+    [[nodiscard]] virtual core::Status start() noexcept = 0;
+
+    [[nodiscard]] virtual WasapiCaptureWaitResult wait(
+        HANDLE stop_event,
+        HRESULT &failure_hr) noexcept = 0;
+
+    [[nodiscard]] virtual HRESULT next_packet_size(
+        std::uint32_t &frames) noexcept = 0;
+
+    [[nodiscard]] virtual HRESULT get_packet(
+        WasapiCapturePacketView &packet) noexcept = 0;
+
+    [[nodiscard]] virtual HRESULT release_packet(
+        std::uint32_t frames) noexcept = 0;
+
+    virtual void stop() noexcept = 0;
 };
 
 enum class WasapiCaptureState : std::uint8_t {
@@ -74,6 +121,13 @@ struct WasapiCaptureSnapshot {
 class WasapiCaptureSource final {
 public:
     WasapiCaptureSource() = default;
+
+    explicit WasapiCaptureSource(
+        std::shared_ptr<IWasapiCaptureClient> client_override) noexcept
+        : client_override_(std::move(client_override))
+    {
+    }
+
     ~WasapiCaptureSource();
 
     WasapiCaptureSource(
@@ -160,6 +214,11 @@ private:
     std::atomic<std::size_t> terminal_pool_high_water_{0};
     std::atomic<std::uint64_t> terminal_pool_exhaustions_{0};
     std::atomic<std::uint64_t> terminal_ring_overflows_{0};
+
+    // Optional dependency injection for deterministic endpoint-client tests.
+    // Production wrappers leave this null and use the native MMDevice/WASAPI
+    // adapter created inside worker_main().
+    std::shared_ptr<IWasapiCaptureClient> client_override_;
 };
 
 } // namespace arssyut::windows
