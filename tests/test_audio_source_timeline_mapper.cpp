@@ -33,7 +33,13 @@ AudioSourcePacket packet(
     result.frame_count = frames;
     result.timing.quality = quality;
     result.timing.packet_start_qpc_100ns = start_qpc;
-    result.timing.host_observed_qpc_100ns = start_qpc + 10;
+    result.timing.host_observed_qpc_100ns =
+        start_qpc >
+                std::numeric_limits<
+                    std::int64_t>::max() - 10
+            ? std::numeric_limits<
+                  std::int64_t>::max()
+            : start_qpc + 10;
     result.timing.device_frame_position = 9'600;
     result.flags = AudioPacketFlag::Silent;
     result.pool_slot = kInvalidAudioPoolSlot;
