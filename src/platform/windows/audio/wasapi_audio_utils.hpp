@@ -299,7 +299,8 @@ public:
                     AudioTimestampQuality::HostQpcFallback;
                 evidence.packet_start_qpc_100ns =
                     ordered_host_fallback_start(
-                        fallback_start);
+                        fallback_start,
+                        host_observed_qpc_100ns);
                 evidence.device_frame_position =
                     have_expected_
                         ? expected_device_frame_
@@ -381,7 +382,8 @@ public:
                 AudioTimestampQuality::HostQpcFallback;
             evidence.packet_start_qpc_100ns =
                 ordered_host_fallback_start(
-                    fallback_start);
+                    fallback_start,
+                    host_observed_qpc_100ns);
             evidence.device_frame_position =
                 have_expected_
                     ? expected_device_frame_
@@ -417,20 +419,29 @@ private:
     }
 
     [[nodiscard]] std::int64_t ordered_host_fallback_start(
-        std::int64_t arrival_estimate) const noexcept
+        std::int64_t arrival_estimate,
+        std::int64_t host_observed_qpc_100ns) const noexcept
     {
-        // Event-driven WASAPI can expose several buffered packets in one wake.
-        // Their host observations may be nearly identical even though each
-        // packet spans a full media duration. Keep HostQpcFallback quality, but
-        // never move a packet before the end of the previously published
-        // interval. When arrival time advances beyond continuity, move forward
-        // to that newer estimate; never overlap or compress buffered media.
+        // A single event wake can drain multiple buffered packets whose host
+        // observations are almost identical. Exact non-overlap cannot be
+        // reconstructed from arrival timing alone without looking ahead, so do
+        // not manufacture future media time. Preserve monotonic packet-start
+        // ordering while clamping continuity to the observation clock. The
+        // HostQpcFallback quality tells P7A5 this is degraded evidence rather
+        // than a trusted device-clock interval.
         if (!have_expected_)
             return arrival_estimate;
 
-        return std::max(
-            expected_qpc_100ns_,
-            arrival_estimate);
+        if (expected_qpc_100ns_ <=
+            host_observed_qpc_100ns) {
+            return std::max(
+                expected_qpc_100ns_,
+                arrival_estimate);
+        }
+
+        return std::max<std::int64_t>(
+            0,
+            host_observed_qpc_100ns);
     }
 
     [[nodiscard]] bool candidate_matches_host_window(
