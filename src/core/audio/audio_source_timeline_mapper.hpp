@@ -400,7 +400,7 @@ private:
     }
 
     std::int64_t session_zero_qpc_100ns_ = 0;
-    bool session_zero_valid_ = true;
+    bool session_zero_valid_ = false;
     std::uint64_t mapped_packets_ = 0;
     std::uint64_t rejected_packets_ = 0;
     std::uint64_t pre_zero_frames_trimmed_ = 0;
