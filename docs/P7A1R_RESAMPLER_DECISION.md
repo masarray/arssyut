@@ -1,6 +1,6 @@
 # P7A1R Resampler Decision Record
 
-**Status:** phase-B native candidate evidence in progress  
+**Status:** post-merge candidate hardening in progress; P7A5 remains blocked  
 **Baseline:** `main@11e70fcd4bded6c732cc1bd903abf757864b0782`  
 **Tracking:** #72 / PR #80
 
@@ -77,3 +77,32 @@ ppm-compensation requirements.
 The purpose of this gate is to prevent a locally convenient static resampler
 from forcing coarse sync correction or duplicated timing authority into the
 production mixer.
+
+
+## Post-merge hardening gate
+
+A final review after PR #81 identified four evidence gaps that must be closed
+before the libswresample selection is consumable by P7A5:
+
+1. hours-equivalent repeated compensation convergence;
+2. explicit impulse/group-delay and complete drain-tail evidence;
+3. steady-state cost evidence without per-chunk harness allocation;
+4. pinned/recorded candidate version, binary footprint and license evidence.
+
+The follow-up hardening lane therefore requires:
+
+- +100 ppm and -100 ppm over one hour equivalent, refreshed every 10 seconds
+  (360 correction windows per direction);
+- absolute accumulated frame-accounting error <= 8 frames over the hour fixture;
+- chunked impulse conversion at 44.1 -> 48 and 96 -> 48 with bounded peak delay,
+  pre-drain delay, complete EOS drain and post-drain delay evidence;
+- fixed input/output scratch capacity across the entire hours fixture;
+- elapsed processing time and process private-memory growth telemetry;
+- FFmpeg candidate version exactly 9.0.2 for this decision evidence;
+- vcpkg checkout commit recorded in CI;
+- SHA-256 and byte size for the static swresample/avutil libraries;
+- retained FFmpeg copyright/license artifact.
+
+The benchmark remains isolated. These checks do not authorize product linkage or
+installer changes. Product packaging/licensing remains a separate P7A5/P7A6
+integration decision.
