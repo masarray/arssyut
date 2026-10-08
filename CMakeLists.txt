@@ -8,6 +8,11 @@ project(
 )
 
 option(ARSSYUT_BUILD_TESTS "Build Arssyut deterministic unit tests" ON)
+option(
+    ARSSYUT_BUILD_P7A1R_SWRESAMPLE_PROBE
+    "Build isolated P7A1R libswresample benchmark"
+    OFF
+)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -214,6 +219,39 @@ if(WIN32)
                 /utf-8
                 /Zc:__cplusplus
         )
+    endif()
+
+    if(ARSSYUT_BUILD_P7A1R_SWRESAMPLE_PROBE)
+        find_package(FFMPEG REQUIRED)
+
+        add_executable(arssyut_p7a1r_swresample_probe
+            tools/p7a1r_swresample_probe.cpp
+        )
+        target_include_directories(
+            arssyut_p7a1r_swresample_probe
+            PRIVATE
+                ${FFMPEG_INCLUDE_DIRS}
+        )
+        target_link_directories(
+            arssyut_p7a1r_swresample_probe
+            PRIVATE
+                ${FFMPEG_LIBRARY_DIRS}
+        )
+        target_link_libraries(
+            arssyut_p7a1r_swresample_probe
+            PRIVATE
+                ${FFMPEG_LIBRARIES}
+        )
+        if(MSVC)
+            target_compile_options(
+                arssyut_p7a1r_swresample_probe
+                PRIVATE
+                    /W4
+                    /permissive-
+                    /utf-8
+                    /Zc:__cplusplus
+            )
+        endif()
     endif()
 endif()
 

@@ -76,6 +76,55 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  p7a1r-swresample:
+    name: P7A1R libswresample evidence
+    if: github.event_name == 'pull_request' && github.head_ref == 'spike/p7a1r-swresample-benchmark-v2'
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install isolated libswresample
+        shell: pwsh
+        run: |
+          $vcpkg = Join-Path $env:VCPKG_INSTALLATION_ROOT "vcpkg.exe"
+          if (-not (Test-Path $vcpkg)) {
+            throw "Preinstalled vcpkg was not found."
+          }
+
+          $installRoot = Join-Path $PWD "build/p7a1r-vcpkg"
+          & $vcpkg install "ffmpeg[core,swresample]:x64-windows-static" --x-install-root="$installRoot"
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Isolated libswresample install failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Configure isolated probe
+        shell: pwsh
+        run: |
+          $toolchain = Join-Path $env:VCPKG_INSTALLATION_ROOT "scripts/buildsystems/vcpkg.cmake"
+          $installed = Join-Path $PWD "build/p7a1r-vcpkg"
+
+          cmake --preset windows-x64 -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DVCPKG_INSTALLED_DIR="$installed" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DARSSYUT_BUILD_TESTS=OFF -DARSSYUT_BUILD_P7A1R_SWRESAMPLE_PROBE=ON
+
+      - name: Build isolated probe
+        run: cmake --build --preset windows-release --target arssyut_p7a1r_swresample_probe --parallel
+
+      - name: Run libswresample evidence
+        shell: pwsh
+        run: |
+          $probe = Join-Path $PWD "build/windows-x64/Release/arssyut_p7a1r_swresample_probe.exe"
+          if (-not (Test-Path $probe)) {
+            throw "P7A1R libswresample probe executable is missing."
+          }
+
+          & $probe
+          if ($LASTEXITCODE -ne 0) {
+            throw "P7A1R libswresample probe failed with exit code $LASTEXITCODE"
+          }
+
   p6ui-windows:
     name: P6UI Avalonia Windows x64
     runs-on: windows-latest
