@@ -193,6 +193,28 @@ if(WIN32)
             /Zc:__cplusplus
         )
     endif()
+
+    add_executable(arssyut_p7a1r_mf_resampler_probe
+        tools/p7a1r_mf_resampler_probe.cpp
+    )
+    target_link_libraries(
+        arssyut_p7a1r_mf_resampler_probe
+        PRIVATE
+            ole32
+            mfplat
+            mfuuid
+            wmcodecdspuuid
+    )
+    if(MSVC)
+        target_compile_options(
+            arssyut_p7a1r_mf_resampler_probe
+            PRIVATE
+                /W4
+                /permissive-
+                /utf-8
+                /Zc:__cplusplus
+        )
+    endif()
 endif()
 
 if(ARSSYUT_BUILD_TESTS)
@@ -440,6 +462,11 @@ if(ARSSYUT_BUILD_TESTS)
         add_test(
             NAME arssyut_wasapi_loopback_tests
             COMMAND arssyut_wasapi_loopback_tests
+        )
+
+        add_test(
+            NAME arssyut_p7a1r_mf_resampler_probe
+            COMMAND arssyut_p7a1r_mf_resampler_probe
         )
 
         add_executable(arssyut_mf_av_writer_tests
