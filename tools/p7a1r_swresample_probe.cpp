@@ -676,6 +676,7 @@ struct CompensationEvidence {
     double expected_tone_one_hz = 0.0;
     double expected_tone_two_hz = 0.0;
     double multitone_fit_rms_error = 0.0;
+    double coarse_repeat_drop_rms_error = 0.0;
     double max_second_difference = 0.0;
     std::int64_t post_flush_delay = -1;
 };
@@ -813,6 +814,62 @@ struct CompensationEvidence {
             evidence.expected_tone_two_hz,
             kOutputRate);
 
+    // Negative control: exact frame-count matching through nearest-neighbor
+    // staircase time scaling. This deliberately repeats/drops samples instead
+    // of applying a smooth fractional-rate change. The selected backend must
+    // beat this control by a material margin on the identical fixture.
+    std::vector<float> coarse_output(
+        static_cast<std::size_t>(
+            output_frames) *
+        kChannels);
+
+    for (std::int64_t output_frame = 0;
+         output_frame < output_frames;
+         ++output_frame) {
+        const std::int64_t input_frame =
+            std::min<std::int64_t>(
+                kTotalFrames - 1,
+                (output_frame *
+                 static_cast<std::int64_t>(
+                     kTotalFrames)) /
+                    output_frames);
+
+        const double time_seconds =
+            static_cast<double>(
+                input_frame) /
+            static_cast<double>(
+                kOutputRate);
+
+        const float value =
+            static_cast<float>(
+                kToneOneAmplitude *
+                    std::sin(
+                        2.0 * kPi *
+                        kToneOneHz *
+                        time_seconds) +
+                kToneTwoAmplitude *
+                    std::sin(
+                        2.0 * kPi *
+                        kToneTwoHz *
+                        time_seconds));
+
+        coarse_output[
+            static_cast<std::size_t>(
+                output_frame) *
+            kChannels] = value;
+        coarse_output[
+            static_cast<std::size_t>(
+                output_frame) *
+            kChannels + 1] = value;
+    }
+
+    evidence.coarse_repeat_drop_rms_error =
+        multitone_fit_rms_error(
+            coarse_output,
+            evidence.expected_tone_one_hz,
+            evidence.expected_tone_two_hz,
+            kOutputRate);
+
     evidence.max_second_difference =
         max_second_difference(
             output);
@@ -834,16 +891,24 @@ struct CompensationEvidence {
             evidence.frame_delta -
             expected_delta) <= 4;
 
-    // The full output must remain well-described by one smoothly time-scaled
-    // two-tone model. A coarse repeat/drop changes phase of at least one
-    // non-commensurate component for the remainder of the window and raises
-    // this residual, even if final frame count is correct.
-    constexpr double kMultitoneResidualLimit = 0.008;
+    // Require a material quality gap from an explicit nearest-neighbor
+    // repeat/drop negative control instead of relying on an arbitrary absolute
+    // residual alone. A backend that merely redistributes coarse sample
+    // insertions/deletions cannot pass because it converges on the control.
+    constexpr double kMaximumResidual = 0.006;
+    constexpr double kMaximumCoarseRatio = 0.80;
+
     const bool continuity_ok =
         std::isfinite(
             evidence.multitone_fit_rms_error) &&
+        std::isfinite(
+            evidence.coarse_repeat_drop_rms_error) &&
+        evidence.coarse_repeat_drop_rms_error > 0.0 &&
         evidence.multitone_fit_rms_error <=
-            kMultitoneResidualLimit;
+            kMaximumResidual &&
+        evidence.multitone_fit_rms_error <=
+            evidence.coarse_repeat_drop_rms_error *
+            kMaximumCoarseRatio;
 
     evidence.valid =
         frame_count_ok &&
@@ -865,8 +930,17 @@ struct CompensationEvidence {
         << evidence.expected_tone_two_hz
         << " multitone_fit_rms_error="
         << evidence.multitone_fit_rms_error
-        << " multitone_residual_limit="
-        << kMultitoneResidualLimit
+        << " coarse_repeat_drop_rms_error="
+        << evidence.coarse_repeat_drop_rms_error
+        << " coarse_ratio="
+        << (evidence.coarse_repeat_drop_rms_error > 0.0
+                ? evidence.multitone_fit_rms_error /
+                      evidence.coarse_repeat_drop_rms_error
+                : std::numeric_limits<double>::infinity())
+        << " maximum_residual="
+        << kMaximumResidual
+        << " maximum_coarse_ratio="
+        << kMaximumCoarseRatio
         << " max_second_difference="
         << evidence.max_second_difference
         << " post_flush_delay="
