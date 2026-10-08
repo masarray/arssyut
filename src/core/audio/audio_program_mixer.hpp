@@ -25,11 +25,30 @@ struct AudioLevelSnapshot {
     std::uint64_t frames_observed = 0;
 };
 
+struct AudioProgramMediaSpan {
+    std::int64_t media_start_100ns = 0;
+    std::int64_t media_end_100ns = 0;
+
+    [[nodiscard]] bool valid() const noexcept
+    {
+        return media_end_100ns > media_start_100ns;
+    }
+};
+
+struct AudioProgramBlock {
+    CanonicalAudioBlock audio{};
+    bool follows_output_discontinuity = false;
+};
+
 struct AudioProgramMixStats {
+    std::uint64_t blocks_closed = 0;
     std::uint64_t blocks_emitted = 0;
     std::uint64_t silent_blocks = 0;
     std::uint64_t stale_packets_discarded = 0;
     std::uint64_t missing_source_intervals = 0;
+    std::array<std::uint64_t, 2> missing_source_intervals_by_source{};
+    std::uint64_t output_overflow_blocks = 0;
+    std::uint64_t output_discontinuities = 0;
     std::uint64_t clipped_samples = 0;
 };
 
@@ -47,8 +66,14 @@ source_index(AudioSourceId source) noexcept
  * into canonical 48 kHz stereo frames aligned to the current program interval.
  *
  * Missing input remains silence. Mute never changes time. Source arrival never
- * changes the block PTS. Late/stale policy is represented explicitly rather
- * than shifting media into a future block.
+ * changes the block PTS. A packet is fully stale only when its media interval
+ * ends at or before the current open block; overlapping packets must be trimmed
+ * by the assembler instead of discarded wholesale.
+ *
+ * Closing a block always advances the program clock. If the bounded writer
+ * handoff rejects a block, the lost interval is counted and the next successful
+ * block carries follows_output_discontinuity=true. Backpressure therefore never
+ * shifts later media earlier.
  */
 class AudioProgramMixer final {
 public:
@@ -59,6 +84,7 @@ public:
         clock_.reset(media_zero_100ns);
         stats_ = {};
         levels_ = {};
+        pending_output_discontinuity_ = false;
     }
 
     void set_source_config(
@@ -85,14 +111,12 @@ public:
         return clock_.next_end_100ns();
     }
 
-    [[nodiscard]] bool packet_is_stale(
-        const AudioSourcePacket &packet) const noexcept
+    [[nodiscard]] bool interval_is_fully_stale(
+        AudioProgramMediaSpan span) const noexcept
     {
-        if (packet.timing.packet_start_qpc_100ns <= 0)
-            return false;
-
-        return packet.timing.packet_start_qpc_100ns <
-               current_start_100ns();
+        return span.valid() &&
+               span.media_end_100ns <=
+                   current_start_100ns();
     }
 
     void count_stale_packet() noexcept
@@ -101,15 +125,15 @@ public:
     }
 
     [[nodiscard]] bool mix_source(
-        CanonicalAudioBlock &block,
+        AudioProgramBlock &block,
         AudioSourceId source,
         std::span<const float> canonical_stereo) noexcept
     {
-        if (block.frame_count >
+        if (block.audio.frame_count >
                 CanonicalAudioBlock::kFrameCapacity ||
             canonical_stereo.size() !=
                 static_cast<std::size_t>(
-                    block.frame_count) *
+                    block.audio.frame_count) *
                     CanonicalAudioBlock::kChannels)
             return false;
 
@@ -121,19 +145,15 @@ public:
             return true;
         }
 
-        MixStats mix_stats{};
         if (!accumulate_stereo(
                 canonical_stereo,
-                block.interleaved(),
+                block.audio.interleaved(),
                 config.gain,
-                &mix_stats))
+                nullptr))
             return false;
 
-        block.source_presence_mask |=
+        block.audio.source_presence_mask |=
             source_presence_bit(source);
-
-        stats_.clipped_samples +=
-            mix_stats.over_range_samples;
 
         levels_[source_index(source)] =
             level_snapshot(
@@ -143,28 +163,51 @@ public:
         return true;
     }
 
-    void note_missing_source_interval() noexcept
+    void note_missing_source_interval(
+        AudioSourceId source) noexcept
     {
         ++stats_.missing_source_intervals;
+        ++stats_.missing_source_intervals_by_source[
+            source_index(source)];
+        levels_[source_index(source)] = {};
     }
 
-    [[nodiscard]] CanonicalAudioBlock begin_block() const noexcept
+    [[nodiscard]] AudioProgramBlock begin_block() const noexcept
     {
-        CanonicalAudioBlock block;
-        block.media_start_100ns =
+        AudioProgramBlock block;
+        block.audio.media_start_100ns =
             clock_.next_start_100ns();
-        block.clear(
+        block.audio.clear(
             CanonicalAudioBlock::kFrameCapacity);
+        block.follows_output_discontinuity =
+            pending_output_discontinuity_;
         return block;
     }
 
-    void commit_block(
-        const CanonicalAudioBlock &block) noexcept
+    void close_block(
+        const AudioProgramBlock &block,
+        bool output_accepted) noexcept
     {
-        ++stats_.blocks_emitted;
+        ++stats_.blocks_closed;
 
-        if (block.source_presence_mask == 0)
-            ++stats_.silent_blocks;
+        if (output_accepted) {
+            ++stats_.blocks_emitted;
+
+            if (block.audio.source_presence_mask == 0)
+                ++stats_.silent_blocks;
+
+            stats_.clipped_samples +=
+                count_over_range(
+                    block.audio.interleaved());
+
+            if (block.follows_output_discontinuity) {
+                ++stats_.output_discontinuities;
+                pending_output_discontinuity_ = false;
+            }
+        } else {
+            ++stats_.output_overflow_blocks;
+            pending_output_discontinuity_ = true;
+        }
 
         clock_.advance();
     }
@@ -193,6 +236,15 @@ private:
                 0.0F,
                 4.0F);
         return config;
+    }
+
+    [[nodiscard]] static std::uint64_t count_over_range(
+        std::span<const float> stereo) noexcept
+    {
+        std::uint64_t count = 0;
+        for (const float sample : stereo)
+            count += std::fabs(sample) > 1.0F ? 1U : 0U;
+        return count;
     }
 
     [[nodiscard]] static AudioLevelSnapshot level_snapshot(
@@ -239,6 +291,7 @@ private:
     std::array<AudioSourceMixConfig, kSourceCount> configs_{};
     std::array<AudioLevelSnapshot, kSourceCount> levels_{};
     AudioProgramMixStats stats_{};
+    bool pending_output_discontinuity_ = false;
 };
 
 } // namespace arssyut::core::audio
