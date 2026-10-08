@@ -135,7 +135,7 @@ jobs:
             # Windows-audio seam that P7A3 must reuse rather than clone.
             "src/platform/windows/audio/wasapi_audio_utils.hpp" = "8bde8701ab524119f99ca95049ce507084141a5e"
             "src/platform/windows/audio/wasapi_capture_source.hpp" = "d58125d520808b2fdb75cbc8bf490e02e41d8a55"
-            "src/platform/windows/audio/wasapi_capture_source.cpp" = "f9846cc7cdd8472a5080943283e51b2cb295bfe7"
+            "src/platform/windows/audio/wasapi_capture_source.cpp" = "eb2e929a0907fb966f99d33b739831703c16ea12"
             "src/platform/windows/audio/wasapi_microphone_source.hpp" = "7e7e71deae21cc1b8d17609500d6233555ca2995"
             "src/platform/windows/audio/wasapi_microphone_source.cpp" = "ef821592ee5ce01505ae11fcb309ff42caecb1d3"
             "src/platform/windows/audio/wasapi_loopback_source.hpp" = "41ac273b3e3425df397ec38217d64e117473851e"
