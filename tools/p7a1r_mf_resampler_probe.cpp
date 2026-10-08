@@ -526,7 +526,16 @@ private:
     if (end <= begin + 1)
         return 0.0;
 
-    std::uint64_t rising_crossings = 0;
+    // Integer zero-crossing counts are biased by the arbitrary analysis-window
+    // edges and were too coarse to enforce the <=0.1% pitch gate at 440 Hz.
+    // Interpolate each rising crossing between adjacent samples, then measure
+    // the period from first to last crossing. This keeps the benchmark itself
+    // substantially more precise than the acceptance threshold.
+    bool have_first = false;
+    double first_crossing = 0.0;
+    double last_crossing = 0.0;
+    std::uint64_t crossing_count = 0;
+
     float previous =
         interleaved[
             (begin - 1) *
@@ -539,23 +548,48 @@ private:
             interleaved[
                 frame *
                 kChannels];
+
         if (previous <= 0.0F &&
             current > 0.0F) {
-            ++rising_crossings;
+            const double denominator =
+                static_cast<double>(current) -
+                static_cast<double>(previous);
+            const double fraction =
+                denominator > 0.0
+                    ? -static_cast<double>(previous) /
+                          denominator
+                    : 0.0;
+            const double crossing =
+                static_cast<double>(frame - 1) +
+                std::clamp(
+                    fraction,
+                    0.0,
+                    1.0);
+
+            if (!have_first) {
+                first_crossing = crossing;
+                have_first = true;
+            }
+            last_crossing = crossing;
+            ++crossing_count;
         }
+
         previous = current;
     }
 
-    const double seconds =
+    if (crossing_count < 2 ||
+        last_crossing <= first_crossing)
+        return 0.0;
+
+    const double periods =
         static_cast<double>(
-            end - begin) /
-        static_cast<double>(
-            sample_rate);
-    return seconds > 0.0
-        ? static_cast<double>(
-              rising_crossings) /
-              seconds
-        : 0.0;
+            crossing_count - 1);
+    const double frame_span =
+        last_crossing - first_crossing;
+
+    return periods *
+        static_cast<double>(sample_rate) /
+        frame_span;
 }
 
 [[nodiscard]] bool probe_tone_rate(
