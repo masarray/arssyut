@@ -62,12 +62,23 @@ source_index(AudioSourceId source) noexcept
 
 namespace detail {
 
+static_assert(
+    std::atomic<std::uint32_t>::is_always_lock_free,
+    "P7A5 realtime snapshot publication requires lock-free 32-bit atomics");
+static_assert(
+    std::atomic<std::uint64_t>::is_always_lock_free,
+    "P7A5 realtime snapshot publication requires lock-free 64-bit atomics");
+
 /*
  * Versioned atomic publications are single-writer/multi-reader.
  *
  * Payload members are themselves atomic, so readers never data-race with the
- * realtime writer. The even sequence value gives a coherent immutable snapshot
- * across multiple fields without locking the mixer thread.
+ * realtime writer. Sequence and payload operations are sequentially consistent:
+ * a reader that observes the same even epoch before and after the payload
+ * cannot straddle a publication, including on weakly ordered ARM64. This is
+ * intentionally stronger than the minimum fence pattern because publication
+ * happens at control/meter cadence, not per audio sample, and it keeps the
+ * realtime mixer free of mutexes and hidden blocking.
  */
 class AtomicAudioLevelPublication final {
 public:
@@ -76,24 +87,24 @@ public:
     {
         sequence_.fetch_add(
             1,
-            std::memory_order_acq_rel);
+            std::memory_order_seq_cst);
 
         peak_bits_.store(
             std::bit_cast<std::uint32_t>(value.peak),
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         rms_bits_.store(
             std::bit_cast<std::uint32_t>(value.rms),
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         clipped_samples_.store(
             value.clipped_samples,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         frames_observed_.store(
             value.frames_observed,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
 
         sequence_.fetch_add(
             1,
-            std::memory_order_release);
+            std::memory_order_seq_cst);
     }
 
     [[nodiscard]] AudioLevelSnapshot load() const noexcept
@@ -101,7 +112,7 @@ public:
         for (;;) {
             const auto before =
                 sequence_.load(
-                    std::memory_order_acquire);
+                    std::memory_order_seq_cst);
             if ((before & 1U) != 0)
                 continue;
 
@@ -109,21 +120,21 @@ public:
             result.peak =
                 std::bit_cast<float>(
                     peak_bits_.load(
-                        std::memory_order_relaxed));
+                        std::memory_order_seq_cst));
             result.rms =
                 std::bit_cast<float>(
                     rms_bits_.load(
-                        std::memory_order_relaxed));
+                        std::memory_order_seq_cst));
             result.clipped_samples =
                 clipped_samples_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
             result.frames_observed =
                 frames_observed_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
 
             const auto after =
                 sequence_.load(
-                    std::memory_order_acquire);
+                    std::memory_order_seq_cst);
             if (before == after &&
                 (after & 1U) == 0)
                 return result;
@@ -145,16 +156,16 @@ public:
     {
         sequence_.fetch_add(
             1,
-            std::memory_order_acq_rel);
+            std::memory_order_seq_cst);
         gain_bits_.store(
             std::bit_cast<std::uint32_t>(value.gain),
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         muted_.store(
-            value.muted,
-            std::memory_order_relaxed);
+            value.muted ? 1U : 0U,
+            std::memory_order_seq_cst);
         sequence_.fetch_add(
             1,
-            std::memory_order_release);
+            std::memory_order_seq_cst);
     }
 
     [[nodiscard]] AudioSourceMixConfig load() const noexcept
@@ -162,7 +173,7 @@ public:
         for (;;) {
             const auto before =
                 sequence_.load(
-                    std::memory_order_acquire);
+                    std::memory_order_seq_cst);
             if ((before & 1U) != 0)
                 continue;
 
@@ -170,14 +181,14 @@ public:
             result.gain =
                 std::bit_cast<float>(
                     gain_bits_.load(
-                        std::memory_order_relaxed));
+                        std::memory_order_seq_cst));
             result.muted =
                 muted_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst) != 0;
 
             const auto after =
                 sequence_.load(
-                    std::memory_order_acquire);
+                    std::memory_order_seq_cst);
             if (before == after &&
                 (after & 1U) == 0)
                 return result;
@@ -188,7 +199,7 @@ private:
     std::atomic<std::uint64_t> sequence_{0};
     std::atomic<std::uint32_t> gain_bits_{
         std::bit_cast<std::uint32_t>(1.0F)};
-    std::atomic<bool> muted_{false};
+    std::atomic<std::uint32_t> muted_{0};
 };
 
 class AtomicAudioStatsPublication final {
@@ -198,43 +209,43 @@ public:
     {
         sequence_.fetch_add(
             1,
-            std::memory_order_acq_rel);
+            std::memory_order_seq_cst);
 
         blocks_closed_.store(
             value.blocks_closed,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         blocks_emitted_.store(
             value.blocks_emitted,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         silent_blocks_.store(
             value.silent_blocks,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         stale_packets_discarded_.store(
             value.stale_packets_discarded,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         missing_source_intervals_.store(
             value.missing_source_intervals,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         for (std::size_t index = 0;
              index < value.missing_source_intervals_by_source.size();
              ++index) {
             missing_by_source_[index].store(
                 value.missing_source_intervals_by_source[index],
-                std::memory_order_relaxed);
+                std::memory_order_seq_cst);
         }
         output_overflow_blocks_.store(
             value.output_overflow_blocks,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         output_discontinuities_.store(
             value.output_discontinuities,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
         clipped_samples_.store(
             value.clipped_samples,
-            std::memory_order_relaxed);
+            std::memory_order_seq_cst);
 
         sequence_.fetch_add(
             1,
-            std::memory_order_release);
+            std::memory_order_seq_cst);
     }
 
     [[nodiscard]] AudioProgramMixStats load() const noexcept
@@ -242,46 +253,46 @@ public:
         for (;;) {
             const auto before =
                 sequence_.load(
-                    std::memory_order_acquire);
+                    std::memory_order_seq_cst);
             if ((before & 1U) != 0)
                 continue;
 
             AudioProgramMixStats result;
             result.blocks_closed =
                 blocks_closed_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
             result.blocks_emitted =
                 blocks_emitted_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
             result.silent_blocks =
                 silent_blocks_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
             result.stale_packets_discarded =
                 stale_packets_discarded_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
             result.missing_source_intervals =
                 missing_source_intervals_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
             for (std::size_t index = 0;
                  index < result.missing_source_intervals_by_source.size();
                  ++index) {
                 result.missing_source_intervals_by_source[index] =
                     missing_by_source_[index].load(
-                        std::memory_order_relaxed);
+                        std::memory_order_seq_cst);
             }
             result.output_overflow_blocks =
                 output_overflow_blocks_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
             result.output_discontinuities =
                 output_discontinuities_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
             result.clipped_samples =
                 clipped_samples_.load(
-                    std::memory_order_relaxed);
+                    std::memory_order_seq_cst);
 
             const auto after =
                 sequence_.load(
-                    std::memory_order_acquire);
+                    std::memory_order_seq_cst);
             if (before == after &&
                 (after & 1U) == 0)
                 return result;
