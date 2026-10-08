@@ -89,15 +89,37 @@ jobs:
       - name: Install isolated libswresample
         shell: pwsh
         run: |
-          $vcpkg = Join-Path $env:VCPKG_INSTALLATION_ROOT "vcpkg.exe"
-          if (-not (Test-Path $vcpkg)) {
-            throw "Preinstalled vcpkg was not found."
+          $pinnedVcpkgCommit = "617ef1c0c422737d117eda00a471ea1be5bad088"
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+
+          if (-not (Test-Path (Join-Path $vcpkgRoot ".git"))) {
+            throw "Preinstalled vcpkg Git checkout was not found."
           }
 
-          $installRoot = Join-Path $PWD "build/p7a1r-vcpkg"
-          $vcpkgCommit = (git -C $env:VCPKG_INSTALLATION_ROOT rev-parse HEAD).Trim()
+          git -C $vcpkgRoot fetch origin $pinnedVcpkgCommit --depth=1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to fetch pinned vcpkg revision $pinnedVcpkgCommit."
+          }
+
+          git -C $vcpkgRoot checkout --detach --force $pinnedVcpkgCommit
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to checkout pinned vcpkg revision $pinnedVcpkgCommit."
+          }
+
+          & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to bootstrap pinned vcpkg revision."
+          }
+
+          $vcpkg = Join-Path $vcpkgRoot "vcpkg.exe"
+          $vcpkgCommit = (git -C $vcpkgRoot rev-parse HEAD).Trim()
+          if ($vcpkgCommit -ne $pinnedVcpkgCommit) {
+            throw "Pinned vcpkg revision mismatch: $vcpkgCommit"
+          }
+
           Write-Host "P7A1R_VCPKG_COMMIT=$vcpkgCommit"
 
+          $installRoot = Join-Path $PWD "build/p7a1r-vcpkg"
           & $vcpkg install "ffmpeg[core,swresample]:x64-windows-static" --x-install-root="$installRoot"
 
           if ($LASTEXITCODE -ne 0) {
