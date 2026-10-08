@@ -942,6 +942,14 @@ void WasapiMicrophoneSource::worker_main(
         }
 
         while (!terminal) {
+            // Stop is authoritative even while one WASAPI event wake is
+            // draining multiple packets. Do not keep consuming an arbitrarily
+            // replenished endpoint after teardown has begun.
+            if (stop_requested()) {
+                terminal = true;
+                break;
+            }
+
             UINT32 next_frames = 0;
             hr = capture_client->GetNextPacketSize(
                 &next_frames);
@@ -976,6 +984,22 @@ void WasapiMicrophoneSource::worker_main(
                 fail(
                     StatusCode::PlatformFailure,
                     hr);
+                terminal = true;
+                break;
+            }
+
+            // A stop request may race GetBuffer after the loop-level check.
+            // Return the acquired endpoint buffer immediately and publish no
+            // post-stop media.
+            if (stop_requested()) {
+                const HRESULT release_hr =
+                    capture_client->ReleaseBuffer(
+                        frame_count);
+                if (FAILED(release_hr)) {
+                    fail(
+                        StatusCode::PlatformFailure,
+                        release_hr);
+                }
                 terminal = true;
                 break;
             }
