@@ -47,6 +47,7 @@ endif()
 
 if(WIN32)
     add_library(arssyut_windows STATIC
+        src/platform/windows/audio/wasapi_microphone_source.cpp
         src/platform/windows/capture/captured_frame.cpp
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp
@@ -94,6 +95,7 @@ if(WIN32)
             mfreadwrite
             mfuuid
             windowsapp
+            avrt
     )
 
     add_library(arssyut_native_bridge SHARED
@@ -391,6 +393,29 @@ if(ARSSYUT_BUILD_TESTS)
             )
         endif()
         add_test(NAME arssyut_windows_tests COMMAND arssyut_windows_tests)
+
+        add_executable(arssyut_wasapi_microphone_tests
+            tests/windows/test_wasapi_microphone_source.cpp
+        )
+        target_link_libraries(
+            arssyut_wasapi_microphone_tests
+            PRIVATE
+                arssyut_windows
+        )
+        if(MSVC)
+            target_compile_options(
+                arssyut_wasapi_microphone_tests
+                PRIVATE
+                    /W4
+                    /permissive-
+                    /utf-8
+                    /Zc:__cplusplus
+            )
+        endif()
+        add_test(
+            NAME arssyut_wasapi_microphone_tests
+            COMMAND arssyut_wasapi_microphone_tests
+        )
 
         add_executable(arssyut_mf_av_writer_tests
             tests/windows/test_mf_av_writer.cpp
