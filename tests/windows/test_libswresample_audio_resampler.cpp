@@ -94,6 +94,38 @@ void test_config_and_rate_state(Test &test)
         "fractional phase remains observable after processing");
 }
 
+void test_output_pressure(Test &test)
+{
+    LibSwResampleAudioResampler resampler;
+    test.expect(
+        resampler.configure(config_44k1()) ==
+            AudioResampleStatus::Ok,
+        "pressure fixture config succeeds");
+
+    std::vector<float> input(
+        4'410 * 2,
+        0.0F);
+    std::vector<float> too_small(
+        32 * 2,
+        0.0F);
+
+    const auto result =
+        resampler.process(
+            input,
+            4'410,
+            too_small,
+            0.0);
+
+    test.expect(
+        result.status ==
+            AudioResampleStatus::OutputFull,
+        "insufficient output capacity fails before conversion");
+    test.expect(
+        result.input_frames_consumed == 0 &&
+        result.output_frames_produced == 0,
+        "output pressure consumes no source frames");
+}
+
 void test_drain_reset(Test &test)
 {
     LibSwResampleAudioResampler resampler;
@@ -177,6 +209,7 @@ int main()
 {
     Test test;
     test_config_and_rate_state(test);
+    test_output_pressure(test);
     test_drain_reset(test);
     test_invalid_config(test);
 
