@@ -78,7 +78,7 @@ jobs:
 
   p7a1r-swresample:
     name: P7A1R libswresample evidence
-    if: github.event_name == 'pull_request' && github.head_ref == 'spike/p7a1r-swresample-benchmark-v2'
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/p7a1r-postmerge-hardening'
     runs-on: windows-latest
     timeout-minutes: 35
 
@@ -95,11 +95,44 @@ jobs:
           }
 
           $installRoot = Join-Path $PWD "build/p7a1r-vcpkg"
+          $vcpkgCommit = (git -C $env:VCPKG_INSTALLATION_ROOT rev-parse HEAD).Trim()
+          Write-Host "P7A1R_VCPKG_COMMIT=$vcpkgCommit"
+
           & $vcpkg install "ffmpeg[core,swresample]:x64-windows-static" --x-install-root="$installRoot"
 
           if ($LASTEXITCODE -ne 0) {
             throw "Isolated libswresample install failed with exit code $LASTEXITCODE"
           }
+
+          $installed = (& $vcpkg list --x-install-root="$installRoot") -join "`n"
+          Write-Host $installed
+          if ($installed -notmatch "ffmpeg:x64-windows-static\s+9\.0\.2") {
+            throw "P7A1R candidate drifted: expected FFmpeg 9.0.2."
+          }
+
+          $libDir = Join-Path $installRoot "x64-windows-static/lib"
+          $swresample = Join-Path $libDir "swresample.lib"
+          $avutil = Join-Path $libDir "avutil.lib"
+          $license = Join-Path $installRoot "x64-windows-static/share/ffmpeg/copyright"
+
+          foreach ($required in @($swresample, $avutil, $license)) {
+            if (-not (Test-Path $required)) {
+              throw "P7A1R dependency evidence missing: $required"
+            }
+          }
+
+          $evidenceDir = Join-Path $PWD "dist/p7a1r-evidence"
+          New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
+          $metadata = @(
+            "ffmpeg_version=9.0.2",
+            "vcpkg_commit=$vcpkgCommit",
+            "swresample_bytes=$((Get-Item $swresample).Length)",
+            "swresample_sha256=$((Get-FileHash $swresample -Algorithm SHA256).Hash)",
+            "avutil_bytes=$((Get-Item $avutil).Length)",
+            "avutil_sha256=$((Get-FileHash $avutil -Algorithm SHA256).Hash)"
+          )
+          $metadata | Set-Content (Join-Path $evidenceDir "dependency.txt")
+          Copy-Item $license (Join-Path $evidenceDir "FFMPEG_COPYRIGHT.txt")
 
       - name: Configure isolated probe
         shell: pwsh
@@ -110,7 +143,7 @@ jobs:
           cmake --preset windows-x64 -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DVCPKG_INSTALLED_DIR="$installed" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DARSSYUT_BUILD_TESTS=OFF -DARSSYUT_BUILD_P7A1R_SWRESAMPLE_PROBE=ON
 
       - name: Build isolated probe
-        run: cmake --build --preset windows-release --target arssyut_p7a1r_swresample_probe --parallel
+        run: cmake --build --preset windows-release --target arssyut_p7a1r_swresample_probe arssyut_p7a1r_swresample_hardening --parallel
 
       - name: Run libswresample evidence
         shell: pwsh
@@ -124,6 +157,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "P7A1R libswresample probe failed with exit code $LASTEXITCODE"
           }
+
+          $hardening = Join-Path $PWD "build/windows-x64/Release/arssyut_p7a1r_swresample_hardening.exe"
+          if (-not (Test-Path $hardening)) {
+            throw "P7A1R hardening probe executable is missing."
+          }
+
+          & $hardening
+          if ($LASTEXITCODE -ne 0) {
+            throw "P7A1R hardening probe failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload P7A1R dependency evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: p7a1r-swresample-dependency-evidence
+          path: dist/p7a1r-evidence/*
+          if-no-files-found: error
+          retention-days: 90
 
   p6ui-windows:
     name: P6UI Avalonia Windows x64
