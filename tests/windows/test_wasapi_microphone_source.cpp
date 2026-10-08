@@ -366,8 +366,14 @@ void test_timestamp_quality(
     test.expect(
         buffered_one.packet_start_qpc_100ns == 8'900'000 &&
         buffered_two.packet_start_qpc_100ns == 9'000'000 &&
-        buffered_three.packet_start_qpc_100ns == 9'100'000,
-        "Host fallback packets stay ordered and nonoverlapping during one buffered drain");
+        buffered_three.packet_start_qpc_100ns == 9'002'000,
+        "Host fallback packets stay ordered without inventing future packet starts");
+
+    test.expect(
+        buffered_one.packet_start_qpc_100ns <= 9'000'000 &&
+        buffered_two.packet_start_qpc_100ns <= 9'001'000 &&
+        buffered_three.packet_start_qpc_100ns <= 9'002'000,
+        "Every degraded fallback packet start is bounded by its host observation");
 
     windows::WasapiTimestampClassifier reset_clock{
         48'000};
