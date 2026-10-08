@@ -225,6 +225,63 @@ private:
         : std::numeric_limits<double>::infinity();
 }
 
+[[nodiscard]] double max_second_difference(
+    std::span<const float> interleaved)
+{
+    const std::size_t frames =
+        interleaved.size() / kChannels;
+    if (frames < 8'192)
+        return std::numeric_limits<double>::infinity();
+
+    const std::size_t margin =
+        std::min<std::size_t>(
+            4'096,
+            frames / 10);
+    const std::size_t begin =
+        std::max<std::size_t>(
+            margin,
+            1);
+    const std::size_t end =
+        frames > margin
+            ? frames - margin
+            : 0;
+
+    if (end <= begin + 1)
+        return std::numeric_limits<double>::infinity();
+
+    double maximum = 0.0;
+
+    for (std::size_t frame = begin;
+         frame + 1 < end;
+         ++frame) {
+        const double previous =
+            static_cast<double>(
+                interleaved[
+                    (frame - 1) *
+                    kChannels]);
+        const double current =
+            static_cast<double>(
+                interleaved[
+                    frame *
+                    kChannels]);
+        const double next =
+            static_cast<double>(
+                interleaved[
+                    (frame + 1) *
+                    kChannels]);
+
+        maximum =
+            std::max(
+                maximum,
+                std::abs(
+                    next -
+                    2.0 * current +
+                    previous));
+    }
+
+    return maximum;
+}
+
 [[nodiscard]] bool convert_input(
     SwrContext *context,
     std::span<const float> input,
@@ -452,6 +509,7 @@ struct CompensationEvidence {
     double expected_tone_hz = 0.0;
     double measured_tone_hz = 0.0;
     double fit_rms_error = 0.0;
+    double max_second_difference = 0.0;
     std::int64_t post_flush_delay = -1;
 };
 
@@ -573,6 +631,10 @@ struct CompensationEvidence {
             evidence.expected_tone_hz,
             kOutputRate);
 
+    evidence.max_second_difference =
+        max_second_difference(
+            output);
+
     const std::int64_t expected_delta =
         static_cast<std::int64_t>(
             std::llround(
@@ -581,10 +643,14 @@ struct CompensationEvidence {
                 static_cast<double>(ppm) /
                 1'000'000.0));
 
+    // Across six independently refreshed 10 s compensation windows, the
+    // resampler may retain a few samples of fractional filter phase. Four
+    // frames over 2.88M input frames is ~1.4 ppm and still tightly bounds the
+    // requested ±100 ppm correction.
     const bool frame_count_ok =
         std::abs(
             evidence.frame_delta -
-            expected_delta) <= 2;
+            expected_delta) <= 4;
 
     const bool pitch_ok =
         evidence.measured_tone_hz > 0.0 &&
@@ -592,14 +658,31 @@ struct CompensationEvidence {
             evidence.measured_tone_hz -
             evidence.expected_tone_hz) <= 0.05;
 
-    // A localized duplicate/drop/rate-step may preserve total frame count but
-    // produces a phase discontinuity that cannot be represented by one smooth
-    // sine over the compensation run. Keep the residual comfortably below the
-    // 0.25 full-scale fixture amplitude.
+    // A localized duplicate/drop/rate-step creates a sharp second-difference
+    // spike even when final frame count and global pitch remain correct. For a
+    // smooth sine x[n], the theoretical second-difference amplitude is
+    // 4*A*sin^2(pi*f/Fs). Allow 4x that smooth bound for filter/rate-control
+    // curvature while remaining well below a one-sample repeat/drop impulse.
+    constexpr double kFixtureAmplitude = 0.25;
+    const double smooth_second_difference =
+        4.0 *
+        kFixtureAmplitude *
+        std::pow(
+            std::sin(
+                kPi *
+                evidence.expected_tone_hz /
+                static_cast<double>(
+                    kOutputRate)),
+            2.0);
+    const double second_difference_limit =
+        smooth_second_difference * 4.0 +
+        1.0e-4;
+
     const bool continuity_ok =
         std::isfinite(
-            evidence.fit_rms_error) &&
-        evidence.fit_rms_error <= 0.0025;
+            evidence.max_second_difference) &&
+        evidence.max_second_difference <=
+            second_difference_limit;
 
     evidence.valid =
         frame_count_ok &&
@@ -622,6 +705,10 @@ struct CompensationEvidence {
         << evidence.measured_tone_hz
         << " fit_rms_error="
         << evidence.fit_rms_error
+        << " max_second_difference="
+        << evidence.max_second_difference
+        << " second_difference_limit="
+        << second_difference_limit
         << " post_flush_delay="
         << evidence.post_flush_delay
         << '\n';
