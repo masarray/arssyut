@@ -93,7 +93,7 @@ The follow-up hardening lane therefore requires:
 
 - +100 ppm and -100 ppm over one hour equivalent, refreshed every 10 seconds
   (360 correction windows per direction);
-- absolute accumulated frame-accounting error <= 8 frames over the hour fixture;
+- effective compensation-rate error <= 1.0 ppm over the one-hour fixture (<=3.6 ms/hour contribution, leaving margin inside the P7A7 <=20 ms/hour A/V drift budget);
 - chunked impulse conversion at 44.1 -> 48 and 96 -> 48 with bounded peak delay,
   pre-drain delay, complete EOS drain and post-drain delay evidence;
 - fixed input/output scratch capacity across the entire hours fixture;
