@@ -47,6 +47,26 @@ AudioSourcePacket packet(
     return result;
 }
 
+void test_requires_authoritative_zero(Test &test)
+{
+    AudioSourceTimelineMapper mapper;
+
+    const auto mapped =
+        mapper.map(
+            packet(
+                10'000'000,
+                AudioTimestampQuality::
+                    DeviceQpcTrusted));
+
+    test.expect(
+        mapped.status ==
+            AudioTimelineMapStatus::Invalid,
+        "mapper fails closed before RecorderSession media zero is initialized");
+    test.expect(
+        mapper.rejected_packets() == 1,
+        "pre-reset mapping attempt is diagnosed");
+}
+
 void test_alignment(Test &test)
 {
     AudioSourceTimelineMapper mapper;
@@ -273,6 +293,7 @@ void test_rejection(Test &test)
 int main()
 {
     Test test;
+    test_requires_authoritative_zero(test);
     test_alignment(test);
     test_pre_zero_trim(test);
     test_fractional_overlap(test);
