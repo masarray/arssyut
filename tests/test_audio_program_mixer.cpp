@@ -1,5 +1,6 @@
 #include "core/audio/audio_program_clock.hpp"
 #include "core/audio/audio_program_mixer.hpp"
+#include "core/audio/audio_source_block_window.hpp"
 
 #include <array>
 #include <atomic>
@@ -284,6 +285,121 @@ void test_final_block_clipping(TestContext &test)
         "Each final over-range program sample is counted exactly once");
 }
 
+void test_source_block_window(TestContext &test)
+{
+    using namespace arssyut::core::audio;
+
+    AudioSourceBlockWindow window;
+    window.begin(1'024);
+
+    std::array<float, 200 * 2> first{};
+    for (std::size_t frame = 0;
+         frame < 200;
+         ++frame) {
+        first[frame * 2] =
+            static_cast<float>(frame + 1);
+        first[frame * 2 + 1] =
+            -static_cast<float>(frame + 1);
+    }
+
+    const auto partial_stale =
+        window.offer(
+            1'000,
+            std::span<const float>(
+                first.data(),
+                100 * 2),
+            100);
+
+    test.expect(
+        partial_stale.status ==
+            AudioWindowOfferStatus::Applied &&
+        partial_stale.stale_prefix_frames == 24 &&
+        partial_stale.frames_applied == 76 &&
+        partial_stale.input_frames_consumed == 100,
+        "Packet prefix before current block is trimmed while overlap is preserved");
+
+    const auto duplicate =
+        window.offer(
+            1'024,
+            std::span<const float>(
+                first.data() + 24 * 2,
+                76 * 2),
+            76);
+
+    test.expect(
+        duplicate.frames_applied == 0 &&
+        duplicate.duplicate_frames == 76,
+        "Duplicate canonical overlap is diagnosed and never double-written");
+
+    const auto future =
+        window.offer(
+            2'048,
+            std::span<const float>(
+                first.data(),
+                20 * 2),
+            20);
+
+    test.expect(
+        future.status ==
+            AudioWindowOfferStatus::Future &&
+        future.input_frames_consumed == 0 &&
+        future.future_suffix_frames == 20,
+        "Entirely future packet remains in caller-owned bounded storage");
+
+    const auto crossing_end =
+        window.offer(
+            2'000,
+            std::span<const float>(
+                first.data(),
+                100 * 2),
+            100,
+            true);
+
+    test.expect(
+        crossing_end.status ==
+            AudioWindowOfferStatus::Applied &&
+        crossing_end.frames_applied == 48 &&
+        crossing_end.input_frames_consumed == 48 &&
+        crossing_end.future_suffix_frames == 52,
+        "Block-end overlap consumes only the closed prefix and retains future suffix");
+
+    test.expect(
+        window.discontinuity(),
+        "Discontinuity touching current overlap is retained on the source window");
+
+    const auto stale =
+        window.offer(
+            900,
+            std::span<const float>(
+                first.data(),
+                100 * 2),
+            100);
+
+    test.expect(
+        stale.status ==
+            AudioWindowOfferStatus::FullyStale &&
+        stale.input_frames_consumed == 100,
+        "Packet ending before current block is fully stale and consumed");
+
+    const auto rendered =
+        window.interleaved();
+
+    test.expect(
+        rendered[0] == first[24 * 2] &&
+        rendered[1] == first[24 * 2 + 1],
+        "Trimmed packet lands at exact frame zero of current source window");
+
+    test.expect(
+        window.covered_frames() == 124 &&
+        window.missing_frames() == 900,
+        "Uncovered source frames remain deterministic silence");
+
+    test.expect(
+        rendered[500 * 2] == 0.0F &&
+        rendered[500 * 2 + 1] == 0.0F,
+        "Gap inside program interval is represented by exact silence");
+}
+
 void test_cross_thread_publication(TestContext &test)
 {
     using namespace arssyut::core::audio;
@@ -442,6 +558,7 @@ int main()
     test_output_overflow_preserves_timeline(test);
     test_final_block_clipping(test);
     test_gain_level_telemetry(test);
+    test_source_block_window(test);
     test_cross_thread_publication(test);
 
     if (test.failures != 0) {
