@@ -42,6 +42,32 @@ private:
     SwrContext *context_ = nullptr;
 };
 
+[[nodiscard]] bool create_context(
+    int input_rate,
+    SwrOwner &owner)
+{
+    AVChannelLayout stereo =
+        AV_CHANNEL_LAYOUT_STEREO;
+
+    const int result =
+        swr_alloc_set_opts2(
+            owner.address(),
+            &stereo,
+            AV_SAMPLE_FMT_FLT,
+            kOutputRate,
+            &stereo,
+            AV_SAMPLE_FMT_FLT,
+            input_rate,
+            0,
+            nullptr);
+
+    if (result < 0 ||
+        owner.get() == nullptr)
+        return false;
+
+    return swr_init(owner.get()) >= 0;
+}
+
 [[nodiscard]] double estimate_frequency_hz(
     std::span<const float> interleaved,
     int sample_rate)
@@ -112,46 +138,94 @@ private:
         (last_crossing - first_crossing);
 }
 
-[[nodiscard]] bool create_context(
-    int input_rate,
-    SwrOwner &owner)
+[[nodiscard]] double sine_fit_rms_error(
+    std::span<const float> interleaved,
+    double frequency_hz,
+    int sample_rate)
 {
-    AVChannelLayout stereo =
-        AV_CHANNEL_LAYOUT_STEREO;
+    const std::size_t frames =
+        interleaved.size() / kChannels;
+    if (frames < 8'192 ||
+        frequency_hz <= 0.0)
+        return std::numeric_limits<double>::infinity();
 
-    const int result =
-        swr_alloc_set_opts2(
-            owner.address(),
-            &stereo,
-            AV_SAMPLE_FMT_FLT,
-            kOutputRate,
-            &stereo,
-            AV_SAMPLE_FMT_FLT,
-            input_rate,
-            0,
-            nullptr);
+    const std::size_t margin =
+        std::min<std::size_t>(
+            4'096,
+            frames / 10);
+    const std::size_t begin = margin;
+    const std::size_t end = frames - margin;
+    if (end <= begin + 1)
+        return std::numeric_limits<double>::infinity();
 
-    if (result < 0 ||
-        owner.get() == nullptr) {
-        std::cerr
-            << "swr_alloc_set_opts2 failed: "
-            << result << '\n';
-        return false;
+    double ss = 0.0;
+    double cc = 0.0;
+    double sc = 0.0;
+    double ys = 0.0;
+    double yc = 0.0;
+
+    for (std::size_t frame = begin;
+         frame < end;
+         ++frame) {
+        const double phase =
+            2.0 * kPi * frequency_hz *
+            static_cast<double>(frame) /
+            static_cast<double>(sample_rate);
+        const double s = std::sin(phase);
+        const double co = std::cos(phase);
+        const double y =
+            static_cast<double>(
+                interleaved[frame * kChannels]);
+
+        ss += s * s;
+        cc += co * co;
+        sc += s * co;
+        ys += y * s;
+        yc += y * co;
     }
 
-    const int init_result =
-        swr_init(owner.get());
-    if (init_result < 0) {
-        std::cerr
-            << "swr_init failed: "
-            << init_result << '\n';
-        return false;
+    const double determinant =
+        ss * cc - sc * sc;
+    if (std::abs(determinant) < 1.0e-12)
+        return std::numeric_limits<double>::infinity();
+
+    const double a =
+        (ys * cc - yc * sc) /
+        determinant;
+    const double b =
+        (yc * ss - ys * sc) /
+        determinant;
+
+    double squared_error = 0.0;
+    std::uint64_t count = 0;
+
+    for (std::size_t frame = begin;
+         frame < end;
+         ++frame) {
+        const double phase =
+            2.0 * kPi * frequency_hz *
+            static_cast<double>(frame) /
+            static_cast<double>(sample_rate);
+        const double predicted =
+            a * std::sin(phase) +
+            b * std::cos(phase);
+        const double actual =
+            static_cast<double>(
+                interleaved[frame * kChannels]);
+        const double error =
+            actual - predicted;
+        squared_error += error * error;
+        ++count;
     }
 
-    return true;
+    return count != 0
+        ? std::sqrt(
+              squared_error /
+              static_cast<double>(count))
+        : std::numeric_limits<double>::infinity();
 }
 
-[[nodiscard]] bool convert_all(
+[[nodiscard]] bool convert_input(
     SwrContext *context,
     std::span<const float> input,
     int input_frames,
@@ -202,7 +276,6 @@ private:
                 out_capacity,
                 input_planes,
                 frames);
-
         if (produced < 0)
             return false;
 
@@ -214,15 +287,32 @@ private:
                     produced * kChannels));
     }
 
+    return true;
+}
+
+[[nodiscard]] bool drain_all(
+    SwrContext *context,
+    std::vector<float> &output,
+    std::int64_t &final_delay)
+{
+    if (context == nullptr)
+        return false;
+
     for (int iteration = 0;
-         iteration < 64;
+         iteration < 128;
          ++iteration) {
         const std::int64_t delay =
             swr_get_delay(
                 context,
                 kOutputRate);
-        if (delay <= 0)
-            break;
+
+        if (delay == 0) {
+            final_delay = 0;
+            return true;
+        }
+
+        if (delay < 0)
+            return false;
 
         const int out_capacity =
             static_cast<int>(
@@ -245,11 +335,8 @@ private:
                 out_capacity,
                 nullptr,
                 0);
-
         if (produced < 0)
             return false;
-        if (produced == 0)
-            break;
 
         output.insert(
             output.end(),
@@ -257,9 +344,21 @@ private:
             chunk_out.begin() +
                 static_cast<std::ptrdiff_t>(
                     produced * kChannels));
+
+        if (produced == 0) {
+            final_delay =
+                swr_get_delay(
+                    context,
+                    kOutputRate);
+            return final_delay == 0;
+        }
     }
 
-    return true;
+    final_delay =
+        swr_get_delay(
+            context,
+            kOutputRate);
+    return false;
 }
 
 [[nodiscard]] bool static_src_case(
@@ -303,11 +402,18 @@ private:
             kOutputRate + 4'096) *
         kChannels);
 
-    if (!convert_all(
+    if (!convert_input(
             owner.get(),
             input,
             input_frames,
             output))
+        return false;
+
+    std::int64_t final_delay = -1;
+    if (!drain_all(
+            owner.get(),
+            output,
+            final_delay))
         return false;
 
     const std::int64_t output_frames =
@@ -340,14 +446,12 @@ private:
         << " output_frames=" << output_frames
         << " nominal_frames=" << nominal_frames
         << " frame_delta=" << frame_delta
-        << " final_delay="
-        << swr_get_delay(
-               owner.get(),
-               kOutputRate)
+        << " final_delay=" << final_delay
         << '\n';
 
     return
-        std::abs(frame_delta) <= 256 &&
+        final_delay == 0 &&
+        std::abs(frame_delta) <= 1 &&
         measured > 0.0 &&
         error <=
             std::max(
@@ -355,85 +459,185 @@ private:
                 tone_hz * 0.001);
 }
 
-[[nodiscard]] std::int64_t compensation_case(
+struct CompensationEvidence {
+    bool valid = false;
+    std::int64_t frame_delta = 0;
+    double expected_tone_hz = 0.0;
+    double measured_tone_hz = 0.0;
+    double fit_rms_error = 0.0;
+    std::int64_t final_delay = -1;
+};
+
+[[nodiscard]] CompensationEvidence compensation_case(
     int ppm)
 {
+    CompensationEvidence evidence;
+
     SwrOwner owner;
     if (!create_context(
             kOutputRate,
             owner))
-        return std::numeric_limits<std::int64_t>::min();
+        return evidence;
 
-    constexpr int kSeconds = 10;
-    constexpr int kFrames =
-        kOutputRate * kSeconds;
-    constexpr int kCompensationDistance =
-        kFrames;
+    constexpr int kSegmentSeconds = 10;
+    constexpr int kSegments = 6;
+    constexpr int kSegmentFrames =
+        kOutputRate * kSegmentSeconds;
+    constexpr int kTotalFrames =
+        kSegmentFrames * kSegments;
+    constexpr double kToneHz = 1'000.0;
 
-    const int sample_delta =
-        static_cast<int>(
-            std::llround(
-                static_cast<double>(
-                    kCompensationDistance) *
-                static_cast<double>(ppm) /
-                1'000'000.0));
-
-    const int compensation_result =
-        swr_set_compensation(
-            owner.get(),
-            sample_delta,
-            kCompensationDistance);
-    if (compensation_result < 0) {
-        std::cerr
-            << "swr_set_compensation failed"
-            << " ppm=" << ppm
-            << " result="
-            << compensation_result
-            << '\n';
-        return std::numeric_limits<std::int64_t>::min();
-    }
-
-    std::vector<float> input(
-        static_cast<std::size_t>(kFrames) *
-            kChannels,
-        0.0F);
     std::vector<float> output;
     output.reserve(
         static_cast<std::size_t>(
-            kFrames + 4'096) *
+            kTotalFrames + 8'192) *
         kChannels);
 
-    if (!convert_all(
+    for (int segment = 0;
+         segment < kSegments;
+         ++segment) {
+        const int sample_delta =
+            static_cast<int>(
+                std::llround(
+                    static_cast<double>(
+                        kSegmentFrames) *
+                    static_cast<double>(ppm) /
+                    1'000'000.0));
+
+        const int compensation_result =
+            swr_set_compensation(
+                owner.get(),
+                sample_delta,
+                kSegmentFrames);
+        if (compensation_result < 0)
+            return evidence;
+
+        std::vector<float> input(
+            static_cast<std::size_t>(
+                kSegmentFrames) *
+            kChannels);
+
+        const std::int64_t segment_base =
+            static_cast<std::int64_t>(
+                segment) *
+            kSegmentFrames;
+
+        for (int frame = 0;
+             frame < kSegmentFrames;
+             ++frame) {
+            const std::int64_t absolute_frame =
+                segment_base + frame;
+            const double phase =
+                2.0 * kPi * kToneHz *
+                static_cast<double>(
+                    absolute_frame) /
+                static_cast<double>(
+                    kOutputRate);
+            const float value =
+                static_cast<float>(
+                    0.25 * std::sin(phase));
+
+            input[
+                static_cast<std::size_t>(frame) *
+                kChannels] = value;
+            input[
+                static_cast<std::size_t>(frame) *
+                kChannels + 1] = value;
+        }
+
+        if (!convert_input(
+                owner.get(),
+                input,
+                kSegmentFrames,
+                output))
+            return evidence;
+    }
+
+    if (!drain_all(
             owner.get(),
-            input,
-            kFrames,
-            output))
-        return std::numeric_limits<std::int64_t>::min();
+            output,
+            evidence.final_delay))
+        return evidence;
 
     const std::int64_t output_frames =
         static_cast<std::int64_t>(
             output.size() / kChannels);
-    const std::int64_t delta =
-        output_frames - kFrames;
+    evidence.frame_delta =
+        output_frames - kTotalFrames;
+
+    evidence.expected_tone_hz =
+        kToneHz *
+        static_cast<double>(
+            kTotalFrames) /
+        static_cast<double>(
+            output_frames);
+
+    evidence.measured_tone_hz =
+        estimate_frequency_hz(
+            output,
+            kOutputRate);
+
+    evidence.fit_rms_error =
+        sine_fit_rms_error(
+            output,
+            evidence.expected_tone_hz,
+            kOutputRate);
+
+    const std::int64_t expected_delta =
+        static_cast<std::int64_t>(
+            std::llround(
+                static_cast<double>(
+                    kTotalFrames) *
+                static_cast<double>(ppm) /
+                1'000'000.0));
+
+    const bool frame_count_ok =
+        std::abs(
+            evidence.frame_delta -
+            expected_delta) <= 2;
+
+    const bool pitch_ok =
+        evidence.measured_tone_hz > 0.0 &&
+        std::abs(
+            evidence.measured_tone_hz -
+            evidence.expected_tone_hz) <= 0.05;
+
+    // A localized duplicate/drop/rate-step may preserve total frame count but
+    // produces a phase discontinuity that cannot be represented by one smooth
+    // sine over the compensation run. Keep the residual comfortably below the
+    // 0.25 full-scale fixture amplitude.
+    const bool continuity_ok =
+        std::isfinite(
+            evidence.fit_rms_error) &&
+        evidence.fit_rms_error <= 0.0025;
+
+    evidence.valid =
+        evidence.final_delay == 0 &&
+        frame_count_ok &&
+        pitch_ok &&
+        continuity_ok;
 
     std::cout
         << "SWRESAMPLE_COMPENSATION"
         << " ppm=" << ppm
-        << " requested_sample_delta="
-        << sample_delta
-        << " distance="
-        << kCompensationDistance
-        << " output_frames="
-        << output_frames
+        << " segments=" << kSegments
+        << " segment_frames=" << kSegmentFrames
+        << " total_input_frames=" << kTotalFrames
+        << " output_frames=" << output_frames
+        << " expected_delta=" << expected_delta
         << " observed_delta="
-        << delta
+        << evidence.frame_delta
+        << " expected_tone_hz="
+        << evidence.expected_tone_hz
+        << " measured_tone_hz="
+        << evidence.measured_tone_hz
+        << " fit_rms_error="
+        << evidence.fit_rms_error
         << " final_delay="
-        << swr_get_delay(
-               owner.get(),
-               kOutputRate)
+        << evidence.final_delay
         << '\n';
 
-    return delta;
+    return evidence;
 }
 
 } // namespace
@@ -454,45 +658,37 @@ int main()
             96'000,
             1'000.0);
 
-    const std::int64_t plus_delta =
+    const CompensationEvidence plus =
         compensation_case(+100);
-    const std::int64_t minus_delta =
+    const CompensationEvidence minus =
         compensation_case(-100);
 
     if (!static_ok ||
-        plus_delta ==
-            std::numeric_limits<std::int64_t>::min() ||
-        minus_delta ==
-            std::numeric_limits<std::int64_t>::min())
+        !plus.valid ||
+        !minus.valid)
         return 2;
 
     const bool opposite =
-        plus_delta != 0 &&
-        minus_delta != 0 &&
-        ((plus_delta > 0 &&
-          minus_delta < 0) ||
-         (plus_delta < 0 &&
-          minus_delta > 0));
+        plus.frame_delta != 0 &&
+        minus.frame_delta != 0 &&
+        ((plus.frame_delta > 0 &&
+          minus.frame_delta < 0) ||
+         (plus.frame_delta < 0 &&
+          minus.frame_delta > 0));
 
-    const bool magnitude_plausible =
-        std::abs(std::abs(plus_delta) - 48) <= 4 &&
-        std::abs(std::abs(minus_delta) - 48) <= 4;
-
-    if (!opposite ||
-        !magnitude_plausible) {
-        std::cerr
-            << "Soft compensation did not produce"
-            << " the expected bounded opposite frame deltas"
-            << '\n';
+    if (!opposite)
         return 3;
-    }
 
     std::cout
         << "SWRESAMPLE_BASELINE PASS"
         << " static_src=yes"
         << " soft_ppm=yes"
-        << " plus100_delta=" << plus_delta
-        << " minus100_delta=" << minus_delta
+        << " non_silent_continuity=yes"
+        << " repeated_compensation=yes"
+        << " plus100_delta="
+        << plus.frame_delta
+        << " minus100_delta="
+        << minus.frame_delta
         << '\n';
 
     return 0;
