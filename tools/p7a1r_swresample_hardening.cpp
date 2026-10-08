@@ -249,6 +249,15 @@ struct StreamingScratch {
     const std::int64_t error_frames =
         observed_delta - expected_delta;
 
+    const double observed_ppm =
+        static_cast<double>(observed_delta) *
+        1'000'000.0 /
+        static_cast<double>(kTotalFrames);
+    const double effective_ppm_error =
+        std::abs(
+            observed_ppm -
+            static_cast<double>(ppm));
+
     const auto elapsed_us =
         std::chrono::duration_cast<
             std::chrono::microseconds>(
@@ -267,15 +276,24 @@ struct StreamingScratch {
         << " expected_delta=" << expected_delta
         << " observed_delta=" << observed_delta
         << " error_frames=" << error_frames
+        << " observed_ppm=" << observed_ppm
+        << " effective_ppm_error="
+        << effective_ppm_error
         << " tail_frames=" << tail_frames
         << " elapsed_us=" << elapsed_us
         << " private_growth_bytes=" << private_growth
         << " scratch_reallocations=0"
         << '\n';
 
-    // 8 frames over one hour at 48 kHz is <0.05 ppm accounting error.
-    return std::abs(error_frames) <= 8 &&
-           std::abs(private_growth) <= 4 * 1024 * 1024;
+    // The P7A7 drift budget is <=20 ms added over 60 minutes. A 1 ppm
+    // resampler-rate error contributes only 3.6 ms over one hour, leaving
+    // substantial budget for capture timestamp and writer scheduling error.
+    constexpr double kMaximumEffectivePpmError = 1.0;
+
+    return effective_ppm_error <=
+               kMaximumEffectivePpmError &&
+           std::abs(private_growth) <=
+               4 * 1024 * 1024;
 }
 
 struct ImpulseEvidence {
@@ -288,7 +306,8 @@ struct ImpulseEvidence {
 };
 
 [[nodiscard]] ImpulseEvidence impulse_case(
-    int input_rate)
+    int input_rate,
+    bool impulse_at_end)
 {
     ImpulseEvidence evidence;
     SwrOwner owner;
@@ -300,8 +319,17 @@ struct ImpulseEvidence {
         static_cast<std::size_t>(kInputFrames) *
         kChannels,
         0.0F);
-    input[0] = 1.0F;
-    input[1] = 1.0F;
+
+    const int impulse_frame =
+        impulse_at_end
+            ? kInputFrames - 1
+            : 0;
+    input[
+        static_cast<std::size_t>(impulse_frame) *
+        kChannels] = 1.0F;
+    input[
+        static_cast<std::size_t>(impulse_frame) *
+        kChannels + 1] = 1.0F;
 
     std::vector<float> scratch(
         static_cast<std::size_t>(kScratchFrames) *
@@ -344,6 +372,9 @@ struct ImpulseEvidence {
                     produced * kChannels));
     }
 
+    const std::size_t pre_drain_output_frames =
+        output.size() / kChannels;
+
     evidence.pre_drain_delay =
         swr_get_delay(
             owner.get(),
@@ -385,6 +416,7 @@ struct ImpulseEvidence {
 
     float peak = 0.0F;
     constexpr float kSignificant = 1.0e-5F;
+    bool significant_in_drain = false;
 
     for (std::size_t frame = 0;
          frame < evidence.output_frames;
@@ -396,24 +428,45 @@ struct ImpulseEvidence {
             peak = magnitude;
             evidence.peak_frame = frame;
         }
-        if (magnitude >= kSignificant)
+        if (magnitude >= kSignificant) {
             evidence.last_significant_frame = frame;
+            if (frame >= pre_drain_output_frames)
+                significant_in_drain = true;
+        }
     }
 
     const std::uint64_t peak_delay_100ns =
-        (10'000'000ULL *
-         evidence.peak_frame) /
-        kRate;
+        impulse_at_end
+            ? 0
+            : (10'000'000ULL *
+               evidence.peak_frame) /
+                  kRate;
+
+    constexpr std::int64_t kMaximumBufferedDelayFrames = 64;
+    const bool pre_drain_delay_bounded =
+        evidence.pre_drain_delay >= 0 &&
+        evidence.pre_drain_delay <=
+            kMaximumBufferedDelayFrames;
+
+    const bool eos_tail_ok =
+        !impulse_at_end ||
+        significant_in_drain;
 
     std::cout
         << "SWRESAMPLE_IMPULSE"
         << " input_rate=" << input_rate
         << " output_rate=" << kRate
+        << " impulse_at_end="
+        << (impulse_at_end ? 1 : 0)
+        << " pre_drain_output_frames="
+        << pre_drain_output_frames
         << " output_frames=" << evidence.output_frames
         << " peak_frame=" << evidence.peak_frame
         << " peak_delay_100ns=" << peak_delay_100ns
         << " last_significant_frame="
         << evidence.last_significant_frame
+        << " significant_in_drain="
+        << (significant_in_drain ? 1 : 0)
         << " pre_drain_delay="
         << evidence.pre_drain_delay
         << " post_drain_delay="
@@ -421,13 +474,17 @@ struct ImpulseEvidence {
         << " peak=" << peak
         << '\n';
 
-    const std::uint64_t max_delay_100ns = 1'000'000ULL;
+    constexpr std::uint64_t kMaxStartImpulseDelay100ns =
+        1'000'000ULL;
+
     evidence.valid =
         peak > 0.01F &&
-        peak_delay_100ns <= max_delay_100ns &&
+        pre_drain_delay_bounded &&
         evidence.post_drain_delay <= 32 &&
-        evidence.last_significant_frame <
-            evidence.output_frames;
+        eos_tail_ok &&
+        (impulse_at_end ||
+         peak_delay_100ns <=
+             kMaxStartImpulseDelay100ns);
 
     return evidence;
 }
@@ -443,8 +500,10 @@ int main()
         << '\n';
 
     const bool impulse_ok =
-        impulse_case(44'100).valid &&
-        impulse_case(96'000).valid;
+        impulse_case(44'100, false).valid &&
+        impulse_case(44'100, true).valid &&
+        impulse_case(96'000, false).valid &&
+        impulse_case(96'000, true).valid;
 
     const bool hour_plus =
         hours_equivalent_case(+100);
