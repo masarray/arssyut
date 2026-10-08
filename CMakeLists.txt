@@ -13,6 +13,11 @@ option(
     "Build isolated P7A1R libswresample benchmark"
     OFF
 )
+option(
+    ARSSYUT_BUILD_P7A5_SWRESAMPLE_ADAPTER_TESTS
+    "Build isolated P7A5 libswresample adapter tests"
+    OFF
+)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -219,6 +224,42 @@ if(WIN32)
                 /utf-8
                 /Zc:__cplusplus
         )
+    endif()
+
+    if(ARSSYUT_BUILD_P7A5_SWRESAMPLE_ADAPTER_TESTS)
+        find_package(FFMPEG REQUIRED)
+
+        add_executable(arssyut_p7a5_swresample_adapter_tests
+            tests/windows/test_libswresample_audio_resampler.cpp
+            src/platform/windows/audio/libswresample_audio_resampler.cpp
+        )
+        target_include_directories(
+            arssyut_p7a5_swresample_adapter_tests
+            PRIVATE
+                ${CMAKE_CURRENT_SOURCE_DIR}/src
+                ${FFMPEG_INCLUDE_DIRS}
+        )
+        target_link_directories(
+            arssyut_p7a5_swresample_adapter_tests
+            PRIVATE
+                ${FFMPEG_LIBRARY_DIRS}
+        )
+        target_link_libraries(
+            arssyut_p7a5_swresample_adapter_tests
+            PRIVATE
+                arssyut_core
+                ${FFMPEG_LIBRARIES}
+        )
+        if(MSVC)
+            target_compile_options(
+                arssyut_p7a5_swresample_adapter_tests
+                PRIVATE
+                    /W4
+                    /permissive-
+                    /utf-8
+                    /Zc:__cplusplus
+            )
+        endif()
     endif()
 
     if(ARSSYUT_BUILD_P7A1R_SWRESAMPLE_PROBE)
@@ -503,6 +544,13 @@ if(ARSSYUT_BUILD_TESTS)
     )
 
     if(WIN32)
+        if(ARSSYUT_BUILD_P7A5_SWRESAMPLE_ADAPTER_TESTS)
+            add_test(
+                NAME arssyut_p7a5_swresample_adapter_tests
+                COMMAND arssyut_p7a5_swresample_adapter_tests
+            )
+        endif()
+
         add_executable(arssyut_windows_tests
             tests/windows/test_d3d11_device.cpp
         )
