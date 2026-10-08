@@ -134,8 +134,12 @@ jobs:
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
             "src/platform/windows/audio/wasapi_audio_utils.hpp" = "8bde8701ab524119f99ca95049ce507084141a5e"
-            "src/platform/windows/audio/wasapi_microphone_source.hpp" = "b75c7111da940085cffe23980a30ecebcda87abf"
-            "src/platform/windows/audio/wasapi_microphone_source.cpp" = "fe94c3c3490b66d063058dc9b16c3ba4706bb0f0"
+            "src/platform/windows/audio/wasapi_capture_source.hpp" = "d58125d520808b2fdb75cbc8bf490e02e41d8a55"
+            "src/platform/windows/audio/wasapi_capture_source.cpp" = "eb2e929a0907fb966f99d33b739831703c16ea12"
+            "src/platform/windows/audio/wasapi_microphone_source.hpp" = "7e7e71deae21cc1b8d17609500d6233555ca2995"
+            "src/platform/windows/audio/wasapi_microphone_source.cpp" = "ef821592ee5ce01505ae11fcb309ff42caecb1d3"
+            "src/platform/windows/audio/wasapi_loopback_source.hpp" = "41ac273b3e3425df397ec38217d64e117473851e"
+            "src/platform/windows/audio/wasapi_loopback_source.cpp" = "b0a4666811d3392b4572ccda7d7066f253f5a7dc"
             # P7A4 evolves the accepted single Media Foundation writer into one
             # optional AV authority. Exact blobs keep the video path fail-closed
             # while allowing only the audited AAC/PCM16 extension.
