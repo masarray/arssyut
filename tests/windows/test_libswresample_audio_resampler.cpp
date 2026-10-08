@@ -142,18 +142,63 @@ void test_config_and_rate_state(Test &test)
             expected_applied_ppm) <
             1.0e-9,
         "applied ppm reports backend-quantized rate, not requested ideal");
+    const std::uint64_t expected_phase_denominator =
+        static_cast<std::uint64_t>(
+            expected_src_incr) *
+        static_cast<std::uint64_t>(
+            phase_count);
+
+    const std::uint64_t expected_phase_one =
+        (static_cast<std::uint64_t>(
+             result.output_frames_produced) *
+         static_cast<std::uint64_t>(
+             quantized_dst)) %
+        expected_phase_denominator;
+
     test.expect(
         adjusted.phase_remainder_denominator ==
-            static_cast<std::uint64_t>(
-                expected_src_incr) *
-                static_cast<std::uint64_t>(
-                    phase_count) &&
-        adjusted.phase_remainder_numerator <
-            adjusted.phase_remainder_denominator,
-        "phase uses exact mirrored pinned-backend step lattice");
+            expected_phase_denominator &&
+        adjusted.phase_remainder_numerator ==
+            expected_phase_one,
+        "phase numerator exactly matches first compensated output advance");
     test.expect(
         adjusted.observable(),
         "fractional phase remains observable after processing");
+
+    std::fill(
+        output.begin(),
+        output.end(),
+        0.0F);
+
+    const auto second =
+        resampler.process(
+            input,
+            4'410,
+            output,
+            +100.0);
+
+    test.expect(
+        second.ok(),
+        "second compensated process succeeds");
+
+    const auto second_state =
+        resampler.current_rate_state();
+
+    const std::uint64_t expected_phase_two =
+        (expected_phase_one +
+         (static_cast<std::uint64_t>(
+              second.output_frames_produced) *
+          static_cast<std::uint64_t>(
+              quantized_dst)) %
+             expected_phase_denominator) %
+        expected_phase_denominator;
+
+    test.expect(
+        second_state.phase_remainder_numerator ==
+            expected_phase_two &&
+        second_state.phase_remainder_denominator ==
+            expected_phase_denominator,
+        "phase evolves exactly across consecutive compensated calls");
 }
 
 void test_tone_quality(Test &test)
