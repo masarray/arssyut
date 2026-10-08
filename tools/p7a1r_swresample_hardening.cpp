@@ -380,6 +380,8 @@ struct ImpulseEvidence {
             owner.get(),
             kRate);
 
+    bool drain_exhausted = false;
+
     for (int iteration = 0;
          iteration < 128;
          ++iteration) {
@@ -396,8 +398,10 @@ struct ImpulseEvidence {
                 0);
         if (produced < 0)
             return evidence;
-        if (produced == 0)
+        if (produced == 0) {
+            drain_exhausted = true;
             break;
+        }
 
         output.insert(
             output.end(),
@@ -467,6 +471,8 @@ struct ImpulseEvidence {
         << evidence.last_significant_frame
         << " significant_in_drain="
         << (significant_in_drain ? 1 : 0)
+        << " drain_exhausted="
+        << (drain_exhausted ? 1 : 0)
         << " pre_drain_delay="
         << evidence.pre_drain_delay
         << " post_drain_delay="
@@ -479,6 +485,7 @@ struct ImpulseEvidence {
 
     evidence.valid =
         peak > 0.01F &&
+        drain_exhausted &&
         pre_drain_delay_bounded &&
         evidence.post_drain_delay <= 32 &&
         eos_tail_ok &&
