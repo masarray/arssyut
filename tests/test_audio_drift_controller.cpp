@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 namespace {
 
@@ -110,6 +111,61 @@ void test_cadence_invariance(Test &test)
         "five-second delayed update matches fifty 100 ms policy steps");
 }
 
+void test_subquantum_cadence_and_gap_bound(Test &test)
+{
+    const AudioDriftControllerConfig config{
+        .maximum_absolute_correction_ppm = 500.0,
+        .smoothing_time_constant_seconds = 2.0,
+        .maximum_slew_ppm_per_second = 50.0,
+        .deadband_ppm = 0.25,
+    };
+
+    AudioDriftController one_call(config);
+    AudioDriftController packet_cadence(config);
+
+    DriftEstimate prime{
+        .rate_error_ppm = +500.0,
+        .valid = true,
+    };
+    DriftEstimate settle{
+        .rate_error_ppm = 0.0,
+        .valid = true,
+    };
+
+    (void)one_call.update(prime, 10'000'000);
+    (void)packet_cadence.update(prime, 10'000'000);
+
+    (void)one_call.update(settle, 40'000'000);
+
+    for (int i = 0; i < 400; ++i)
+        (void)packet_cadence.update(
+            settle,
+            100'000); // 10 ms
+
+    test.expect(
+        std::abs(
+            one_call.snapshot().
+                requested_resampler_ppm -
+            packet_cadence.snapshot().
+                requested_resampler_ppm) <
+            1.0e-12,
+        "sub-100 ms packet cadence cannot change drift-policy result");
+
+    AudioDriftController pathological(config);
+    (void)pathological.update(
+        prime,
+        std::numeric_limits<std::uint64_t>::max());
+
+    const auto gap =
+        pathological.snapshot();
+
+    test.expect(
+        gap.requested_resampler_ppm == 0.0 &&
+        gap.discontinuity_resets == 1 &&
+        gap.rejected_updates == 1,
+        "pathological elapsed interval reanchors in bounded work");
+}
+
 void test_untrusted_and_discontinuity(Test &test)
 {
     AudioDriftController controller;
@@ -213,6 +269,7 @@ int main()
     Test test;
     test_sign_and_slew(test);
     test_cadence_invariance(test);
+    test_subquantum_cadence_and_gap_bound(test);
     test_untrusted_and_discontinuity(test);
     test_clamp_deadband(test);
 
