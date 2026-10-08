@@ -49,6 +49,8 @@ public:
     {
         session_zero_qpc_100ns_ =
             session_zero_qpc_100ns;
+        session_zero_valid_ =
+            session_zero_qpc_100ns >= 0;
         mapped_packets_ = 0;
         rejected_packets_ = 0;
         pre_zero_frames_trimmed_ = 0;
@@ -59,7 +61,13 @@ public:
     {
         AudioTimelineMapResult result;
 
-        if (!packet.metadata_valid() ||
+        result.discontinuity =
+            has_flag(
+                packet.flags,
+                AudioPacketFlag::Discontinuity);
+
+        if (!session_zero_valid_ ||
+            !packet.metadata_valid() ||
             packet.timing.packet_start_qpc_100ns <= 0 ||
             packet.native_format.sample_rate == 0) {
             ++rejected_packets_;
@@ -78,11 +86,6 @@ public:
             saturating_add(
                 packet_start,
                 duration);
-
-        result.discontinuity =
-            has_flag(
-                packet.flags,
-                AudioPacketFlag::Discontinuity);
 
         if (packet_end <=
             session_zero_qpc_100ns_) {
@@ -112,14 +115,57 @@ public:
                         before_zero_ticks,
                         packet.native_format.sample_rate));
 
+            pre_zero_frames_trimmed_ +=
+                result.source_frames_before_zero;
+
+            if (result.source_frames_before_zero >=
+                packet.frame_count) {
+                result.status =
+                    AudioTimelineMapStatus::
+                        FullyBeforeMediaZero;
+                result.source_frames_before_zero =
+                    packet.frame_count;
+                ++mapped_packets_;
+                populate_drift(packet, result);
+                return result;
+            }
+
+            const auto retained_offset_ticks =
+                frames_to_ticks_ceil(
+                    result.source_frames_before_zero,
+                    packet.native_format.sample_rate);
+
+            const auto retained_qpc =
+                saturating_add(
+                    packet_start,
+                    retained_offset_ticks);
+
+            const auto retained_media_start =
+                retained_qpc <=
+                        session_zero_qpc_100ns_
+                    ? 0ULL
+                    : static_cast<std::uint64_t>(
+                          retained_qpc -
+                          session_zero_qpc_100ns_);
+
             result.status =
                 AudioTimelineMapStatus::
                     OverlapsMediaZero;
-            result.media_start_100ns = 0;
-            result.canonical_start_frame = 0;
-
-            pre_zero_frames_trimmed_ +=
-                result.source_frames_before_zero;
+            result.media_start_100ns =
+                retained_media_start >
+                        static_cast<std::uint64_t>(
+                            std::numeric_limits<
+                                std::int64_t>::max())
+                    ? std::numeric_limits<
+                          std::int64_t>::max()
+                    : static_cast<std::int64_t>(
+                          retained_media_start);
+            result.canonical_start_frame =
+                static_cast<std::int64_t>(
+                    ticks_to_frames_floor(
+                        retained_media_start,
+                        CanonicalAudioBlock::
+                            kSampleRate));
         }
         else {
             const auto media_start =
@@ -284,6 +330,7 @@ private:
     }
 
     std::int64_t session_zero_qpc_100ns_ = 0;
+    bool session_zero_valid_ = true;
     std::uint64_t mapped_packets_ = 0;
     std::uint64_t rejected_packets_ = 0;
     std::uint64_t pre_zero_frames_trimmed_ = 0;
