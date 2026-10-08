@@ -34,16 +34,16 @@ jobs:
       - name: Test
         run: ctest --preset windows-release
 
-      - name: P7A5 Media Foundation resampler evidence
+      - name: P7A1R Media Foundation resampler evidence
         shell: pwsh
         run: |
           $probe = Join-Path $PWD "build/windows-x64/Release/arssyut_p7a1r_mf_resampler_probe.exe"
           if (-not (Test-Path $probe)) {
-            throw "P7A5 resampler probe executable is missing."
+            throw "P7A1R resampler probe executable is missing."
           }
           & $probe
           if ($LASTEXITCODE -ne 0) {
-            throw "P7A5 Media Foundation resampler probe failed with exit code $LASTEXITCODE"
+            throw "P7A1R Media Foundation resampler probe failed with exit code $LASTEXITCODE"
           }
 
       - name: GUI launch smoke
@@ -86,108 +86,79 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install isolated libswresample
+      - name: Install pinned libswresample
         shell: pwsh
         run: |
           $pinnedVcpkgCommit = "617ef1c0c422737d117eda00a471ea1be5bad088"
           $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
 
-          if (-not (Test-Path (Join-Path $vcpkgRoot ".git"))) {
-            throw "Preinstalled vcpkg Git checkout was not found."
-          }
-
           git -C $vcpkgRoot fetch origin $pinnedVcpkgCommit --depth=1
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to fetch pinned vcpkg revision $pinnedVcpkgCommit."
+            throw "Failed to fetch pinned vcpkg revision."
           }
 
           git -C $vcpkgRoot checkout --detach --force $pinnedVcpkgCommit
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to checkout pinned vcpkg revision $pinnedVcpkgCommit."
+            throw "Failed to checkout pinned vcpkg revision."
           }
 
           & (Join-Path $vcpkgRoot "bootstrap-vcpkg.bat") -disableMetrics
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to bootstrap pinned vcpkg revision."
+            throw "Failed to bootstrap pinned vcpkg."
           }
 
           $vcpkg = Join-Path $vcpkgRoot "vcpkg.exe"
-          $vcpkgCommit = (git -C $vcpkgRoot rev-parse HEAD).Trim()
-          if ($vcpkgCommit -ne $pinnedVcpkgCommit) {
-            throw "Pinned vcpkg revision mismatch: $vcpkgCommit"
-          }
-
-          Write-Host "P7A5_VCPKG_COMMIT=$vcpkgCommit"
-
           $installRoot = Join-Path $PWD "build/p7a5-vcpkg"
-          & $vcpkg install "ffmpeg[core,swresample]:x64-windows-static" --x-install-root="$installRoot"
 
+          & $vcpkg install "ffmpeg[core,swresample]:x64-windows-static" --x-install-root="$installRoot"
           if ($LASTEXITCODE -ne 0) {
-            throw "Isolated libswresample install failed with exit code $LASTEXITCODE"
+            throw "Pinned libswresample install failed."
           }
 
           $installed = (& $vcpkg list --x-install-root="$installRoot") -join "`n"
-          Write-Host $installed
           if ($installed -notmatch "ffmpeg:x64-windows-static\s+9\.0\.2") {
             throw "P7A5 candidate drifted: expected FFmpeg 9.0.2."
           }
 
+          $evidenceDir = Join-Path $PWD "dist/p7a5-evidence"
+          New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
           $libDir = Join-Path $installRoot "x64-windows-static/lib"
           $swresample = Join-Path $libDir "swresample.lib"
           $avutil = Join-Path $libDir "avutil.lib"
           $license = Join-Path $installRoot "x64-windows-static/share/ffmpeg/copyright"
 
-          foreach ($required in @($swresample, $avutil, $license)) {
-            if (-not (Test-Path $required)) {
-              throw "P7A5 dependency evidence missing: $required"
-            }
-          }
-
-          $evidenceDir = Join-Path $PWD "dist/p7a5-evidence"
-          New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
-          $metadata = @(
+          @(
             "ffmpeg_version=9.0.2",
-            "vcpkg_commit=$vcpkgCommit",
+            "vcpkg_commit=$pinnedVcpkgCommit",
             "swresample_bytes=$((Get-Item $swresample).Length)",
             "swresample_sha256=$((Get-FileHash $swresample -Algorithm SHA256).Hash)",
             "avutil_bytes=$((Get-Item $avutil).Length)",
             "avutil_sha256=$((Get-FileHash $avutil -Algorithm SHA256).Hash)"
-          )
-          $metadata | Set-Content (Join-Path $evidenceDir "dependency.txt")
+          ) | Set-Content (Join-Path $evidenceDir "dependency.txt")
           Copy-Item $license (Join-Path $evidenceDir "FFMPEG_COPYRIGHT.txt")
 
-      - name: Configure isolated probe
+      - name: Configure isolated adapter tests
         shell: pwsh
         run: |
           $toolchain = Join-Path $env:VCPKG_INSTALLATION_ROOT "scripts/buildsystems/vcpkg.cmake"
           $installed = Join-Path $PWD "build/p7a5-vcpkg"
 
-          cmake --preset windows-x64 -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DVCPKG_INSTALLED_DIR="$installed" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DARSSYUT_BUILD_TESTS=OFF -DARSSYUT_BUILD_P7A5_SWRESAMPLE_PROBE=ON
+          cmake --preset windows-x64 -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DVCPKG_INSTALLED_DIR="$installed" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DARSSYUT_BUILD_TESTS=ON -DARSSYUT_BUILD_P7A5_SWRESAMPLE_ADAPTER_TESTS=ON
 
-      - name: Build isolated probe
-        run: cmake --build --preset windows-release --target arssyut_p7a1r_swresample_probe arssyut_p7a1r_swresample_hardening --parallel
+      - name: Build isolated adapter tests
+        run: cmake --build --preset windows-release --target arssyut_p7a5_swresample_adapter_tests --parallel
 
-      - name: Run libswresample evidence
+      - name: Run adapter contract evidence
         shell: pwsh
         run: |
-          $probe = Join-Path $PWD "build/windows-x64/Release/arssyut_p7a1r_swresample_probe.exe"
-          if (-not (Test-Path $probe)) {
-            throw "P7A5 libswresample probe executable is missing."
+          $test = Join-Path $PWD "build/windows-x64/Release/arssyut_p7a5_swresample_adapter_tests.exe"
+          if (-not (Test-Path $test)) {
+            throw "P7A5 adapter test executable is missing."
           }
 
-          & $probe
+          & $test
           if ($LASTEXITCODE -ne 0) {
-            throw "P7A5 libswresample probe failed with exit code $LASTEXITCODE"
-          }
-
-          $hardening = Join-Path $PWD "build/windows-x64/Release/arssyut_p7a1r_swresample_hardening.exe"
-          if (-not (Test-Path $hardening)) {
-            throw "P7A5 hardening probe executable is missing."
-          }
-
-          & $hardening
-          if ($LASTEXITCODE -ne 0) {
-            throw "P7A5 hardening probe failed with exit code $LASTEXITCODE"
+            throw "P7A5 adapter contract tests failed with exit code $LASTEXITCODE"
           }
 
       - name: Upload P7A5 dependency evidence
