@@ -1,5 +1,8 @@
 #ifdef _WIN32
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h>
 #include <ks.h>
 #include <ksmedia.h>
@@ -17,6 +20,7 @@
 #include <cstring>
 #include <iostream>
 #include <limits>
+#include <span>
 #include <vector>
 
 namespace {
