@@ -169,6 +169,28 @@ void test_fractional_overlap(Test &test)
         mapped.canonical_start_frame == 1,
         "retained first frame keeps its post-zero offset");
 
+    auto near_boundary =
+        packet(
+            zero - 472,
+            AudioTimestampQuality::
+                DeviceQpcTrusted,
+            480);
+    near_boundary.native_format.sample_rate =
+        44'100;
+
+    const auto boundary_mapped =
+        mapper.map(near_boundary);
+
+    test.expect(
+        boundary_mapped.status ==
+            AudioTimelineMapStatus::
+                OverlapsMediaZero &&
+        boundary_mapped.source_frames_before_zero == 3,
+        "472-tick deficit trims exactly three 44.1 kHz frames");
+    test.expect(
+        boundary_mapped.canonical_start_frame == 0,
+        "rational retained position stays before the first 48 kHz boundary");
+
     auto fully_trimmed =
         packet(
             zero - 226,
