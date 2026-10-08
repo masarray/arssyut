@@ -96,6 +96,17 @@ public:
                 requested_resampler_ppm;
         }
 
+        constexpr std::uint64_t kMaximumContinuousGap100ns =
+            50'000'000; // 5 s
+
+        if (elapsed_100ns >
+            kMaximumContinuousGap100ns) {
+            reset_for_discontinuity();
+            ++snapshot_.rejected_updates;
+            return snapshot_.
+                requested_resampler_ppm;
+        }
+
         ++snapshot_.accepted_updates;
         snapshot_.measured_source_error_ppm =
             estimate.rate_error_ppm;
@@ -134,17 +145,6 @@ public:
          */
         constexpr std::uint64_t kPolicyQuantum100ns =
             1'000'000; // 100 ms
-        constexpr std::uint64_t kMaximumContinuousGap100ns =
-            50'000'000; // 5 s
-
-        if (elapsed_100ns >
-            kMaximumContinuousGap100ns) {
-            reset_for_discontinuity();
-            ++snapshot_.rejected_updates;
-            return snapshot_.
-                requested_resampler_ppm;
-        }
-
         if (pending_elapsed_100ns_ >
             std::numeric_limits<std::uint64_t>::max() -
                 elapsed_100ns) {
