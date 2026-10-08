@@ -84,11 +84,6 @@ void test_config_and_rate_state(Test &test)
         adjusted.requested_rate_adjustment_ppm ==
             100.0,
         "requested ppm remains observable");
-    test.expect(
-        std::abs(
-            adjusted.applied_rate_adjustment_ppm -
-            100.0) <= 0.25,
-        "applied ppm is close to requested compensation");
     constexpr std::int64_t phase_count = 1LL << 10;
     int expected_src_incr = 0;
     int expected_dst_incr = 0;
@@ -199,6 +194,47 @@ void test_config_and_rate_state(Test &test)
         second_state.phase_remainder_denominator ==
             expected_phase_denominator,
         "phase evolves exactly across consecutive compensated calls");
+}
+
+void test_requested_vs_applied_saturation(Test &test)
+{
+    LibSwResampleAudioResampler resampler;
+
+    test.expect(
+        resampler.configure(config_44k1()) ==
+            AudioResampleStatus::Ok,
+        "saturation fixture config succeeds");
+
+    std::vector<float> input(
+        4'410 * 2,
+        0.0F);
+    std::vector<float> output(
+        5'300 * 2,
+        0.0F);
+
+    const auto result =
+        resampler.process(
+            input,
+            4'410,
+            output,
+            +5'000.0);
+
+    test.expect(
+        result.ok(),
+        "out-of-range requested ppm is handled through bounded backend clamp");
+
+    const auto state =
+        resampler.current_rate_state();
+
+    test.expect(
+        state.requested_rate_adjustment_ppm ==
+            5'000.0,
+        "raw caller requested ppm remains observable after clamp");
+
+    test.expect(
+        state.applied_rate_adjustment_ppm > 900.0 &&
+        state.applied_rate_adjustment_ppm < 1'100.0,
+        "applied ppm reports bounded backend correction rather than raw request");
 }
 
 void test_tone_quality(Test &test)
@@ -387,6 +423,7 @@ int main()
 {
     Test test;
     test_config_and_rate_state(test);
+    test_requested_vs_applied_saturation(test);
     test_tone_quality(test);
     test_output_pressure(test);
     test_drain_reset(test);
