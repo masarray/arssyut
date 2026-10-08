@@ -95,6 +95,7 @@ if(WIN32)
             mfreadwrite
             mfuuid
             windowsapp
+            avrt
     )
 
     add_library(arssyut_native_bridge SHARED
