@@ -249,6 +249,9 @@ jobs:
             # P7A5 drift policy consumes only accepted trusted drift estimates;
             # exact blob keeps slew/deadband/reanchor semantics fail-closed.
             "src/core/audio/audio_drift_controller.hpp" = "af7c342d17126c2781ad9d15f9fe56a156c5d184"
+            # P7A5 native-container normalizer converts retained endpoint PCM/float
+            # into allocation-free float32 without creating rate/timeline authority.
+            "src/core/audio/audio_sample_normalizer.hpp" = "4fcb7e54bb7a36235b578c8b8fdcfb497da2f144"
 
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
