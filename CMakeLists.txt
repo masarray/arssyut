@@ -227,6 +227,9 @@ if(WIN32)
         add_executable(arssyut_p7a1r_swresample_probe
             tools/p7a1r_swresample_probe.cpp
         )
+        add_executable(arssyut_p7a1r_swresample_hardening
+            tools/p7a1r_swresample_hardening.cpp
+        )
         target_include_directories(
             arssyut_p7a1r_swresample_probe
             PRIVATE
@@ -242,9 +245,33 @@ if(WIN32)
             PRIVATE
                 ${FFMPEG_LIBRARIES}
         )
+        target_include_directories(
+            arssyut_p7a1r_swresample_hardening
+            PRIVATE
+                ${FFMPEG_INCLUDE_DIRS}
+        )
+        target_link_directories(
+            arssyut_p7a1r_swresample_hardening
+            PRIVATE
+                ${FFMPEG_LIBRARY_DIRS}
+        )
+        target_link_libraries(
+            arssyut_p7a1r_swresample_hardening
+            PRIVATE
+                ${FFMPEG_LIBRARIES}
+                psapi
+        )
         if(MSVC)
             target_compile_options(
                 arssyut_p7a1r_swresample_probe
+                PRIVATE
+                    /W4
+                    /permissive-
+                    /utf-8
+                    /Zc:__cplusplus
+            )
+            target_compile_options(
+                arssyut_p7a1r_swresample_hardening
                 PRIVATE
                     /W4
                     /permissive-
