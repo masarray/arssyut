@@ -2,9 +2,11 @@
 #include "core/audio/audio_program_mixer.hpp"
 
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <thread>
 
 namespace {
 
@@ -282,6 +284,117 @@ void test_final_block_clipping(TestContext &test)
         "Each final over-range program sample is counted exactly once");
 }
 
+void test_cross_thread_publication(TestContext &test)
+{
+    using namespace arssyut::core::audio;
+
+    AudioProgramMixer mixer;
+    mixer.reset(0);
+
+    std::atomic<bool> start{false};
+    std::atomic<bool> mixer_done{false};
+    std::atomic<int> violations{0};
+
+    std::thread control([&] {
+        while (!start.load(
+            std::memory_order_acquire)) {
+        }
+
+        for (int iteration = 0;
+             iteration < 4'000;
+             ++iteration) {
+            mixer.set_source_config(
+                AudioSourceId::Microphone,
+                {
+                    .gain =
+                        (iteration & 1) != 0
+                            ? 0.5F
+                            : 1.5F,
+                    .muted =
+                        (iteration % 7) == 0,
+                });
+        }
+    });
+
+    std::thread telemetry([&] {
+        while (!start.load(
+            std::memory_order_acquire)) {
+        }
+
+        while (!mixer_done.load(
+            std::memory_order_acquire)) {
+            const auto level =
+                mixer.level(
+                    AudioSourceId::Microphone);
+            const auto stats =
+                mixer.stats();
+
+            if (!std::isfinite(level.peak) ||
+                !std::isfinite(level.rms) ||
+                level.rms < 0.0F ||
+                level.peak < 0.0F ||
+                stats.blocks_emitted >
+                    stats.blocks_closed) {
+                violations.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+        }
+    });
+
+    start.store(
+        true,
+        std::memory_order_release);
+
+    std::array<float, CanonicalAudioBlock::kSampleCapacity>
+        signal{};
+    signal.fill(0.25F);
+
+    for (int iteration = 0;
+         iteration < 4'000;
+         ++iteration) {
+        auto block =
+            mixer.begin_block();
+
+        if (!mixer.mix_source(
+                block,
+                AudioSourceId::Microphone,
+                signal)) {
+            violations.fetch_add(
+                1,
+                std::memory_order_relaxed);
+        }
+
+        if ((iteration % 13) == 0) {
+            mixer.note_missing_source_interval(
+                AudioSourceId::SystemAudio);
+        }
+
+        mixer.close_block(
+            block,
+            true);
+    }
+
+    mixer_done.store(
+        true,
+        std::memory_order_release);
+
+    control.join();
+    telemetry.join();
+
+    const auto final_stats =
+        mixer.stats();
+
+    test.expect(
+        violations.load(
+            std::memory_order_relaxed) == 0,
+        "Cross-thread config and telemetry publication remains coherent");
+    test.expect(
+        final_stats.blocks_closed == 4'000 &&
+        final_stats.blocks_emitted == 4'000,
+        "Mixer owner progress remains deterministic under concurrent readers");
+}
+
 void test_gain_level_telemetry(TestContext &test)
 {
     using namespace arssyut::core::audio;
@@ -329,6 +442,7 @@ int main()
     test_output_overflow_preserves_timeline(test);
     test_final_block_clipping(test);
     test_gain_level_telemetry(test);
+    test_cross_thread_publication(test);
 
     if (test.failures != 0) {
         std::cerr
