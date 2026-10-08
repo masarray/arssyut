@@ -164,6 +164,32 @@ void test_subquantum_cadence_and_gap_bound(Test &test)
         gap.discontinuity_resets == 1 &&
         gap.rejected_updates == 1,
         "pathological elapsed interval reanchors in bounded work");
+
+    AudioDriftController invalid_gap(config);
+    (void)invalid_gap.update(
+        prime,
+        10'000'000);
+
+    DriftEstimate invalid{
+        .rate_error_ppm = +500.0,
+        .valid = false,
+    };
+
+    const double invalid_gap_result =
+        invalid_gap.update(
+            invalid,
+            60'000'000);
+
+    const auto invalid_gap_snapshot =
+        invalid_gap.snapshot();
+
+    test.expect(
+        invalid_gap_result == 0.0 &&
+        invalid_gap_snapshot.
+            requested_resampler_ppm == 0.0 &&
+        invalid_gap_snapshot.
+            discontinuity_resets == 1,
+        "invalid evidence cannot bypass long-gap reanchor");
 }
 
 void test_untrusted_and_discontinuity(Test &test)
