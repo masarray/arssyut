@@ -31,7 +31,6 @@ constexpr std::uint32_t kOutputRate = 48'000;
 constexpr std::uint32_t kChannels = 2;
 constexpr std::uint32_t kBytesPerFloatFrame =
     kChannels * static_cast<std::uint32_t>(sizeof(float));
-constexpr double kToneHz = 1'000.0;
 constexpr double kPi = 3.14159265358979323846;
 
 class ScopedCom final {
@@ -559,9 +558,10 @@ private:
         : 0.0;
 }
 
-[[nodiscard]] bool probe_rate(
+[[nodiscard]] bool probe_tone_rate(
     std::uint32_t input_rate,
-    std::uint32_t output_rate)
+    std::uint32_t output_rate,
+    double tone_hz)
 {
     ComPtr<IMFTransform> transform;
     MFT_OUTPUT_STREAM_INFO output_info{};
@@ -586,7 +586,7 @@ private:
         const double phase =
             2.0 *
             kPi *
-            kToneHz *
+            tone_hz *
             static_cast<double>(frame) /
             static_cast<double>(input_rate);
         const float sample =
@@ -709,7 +709,7 @@ private:
     const double frequency_error_hz =
         std::abs(
             frequency_hz -
-            kToneHz);
+            tone_hz);
 
     const auto processing_us =
         std::chrono::duration_cast<
@@ -717,17 +717,22 @@ private:
             end - start)
             .count();
 
-    const std::uint64_t min_frames =
-        nominal_frames * 9U / 10U;
-    const std::uint64_t max_frames =
-        nominal_frames * 11U / 10U;
+    const std::uint64_t frame_delta =
+        output_frames > nominal_frames
+            ? output_frames - nominal_frames
+            : nominal_frames - output_frames;
 
+    // One second of steady input must not hide large accounting error behind a
+    // percentage gate. Permit only a small, bounded filter tail/startup delay.
+    constexpr std::uint64_t kMaxStaticFrameDelta = 256;
     const bool frame_count_plausible =
-        output_frames >= min_frames &&
-        output_frames <= max_frames;
+        frame_delta <= kMaxStaticFrameDelta;
     const bool frequency_plausible =
         frequency_hz > 0.0 &&
-        frequency_error_hz <= 2.0;
+        frequency_error_hz <=
+            std::max(
+                0.25,
+                tone_hz * 0.001);
 
     std::cout
         << "MF_RESAMPLER_MEASURE"
@@ -741,7 +746,8 @@ private:
                output_frames) -
                static_cast<std::int64_t>(
                    nominal_frames)
-        << " tone_hz=" << frequency_hz
+        << " expected_tone_hz=" << tone_hz
+        << " measured_tone_hz=" << frequency_hz
         << " tone_error_hz="
         << frequency_error_hz
         << " process_us="
@@ -764,6 +770,124 @@ private:
     }
 
     return true;
+}
+
+[[nodiscard]] bool probe_impulse_delay(
+    std::uint32_t input_rate,
+    std::uint32_t output_rate)
+{
+    ComPtr<IMFTransform> transform;
+    MFT_OUTPUT_STREAM_INFO output_info{};
+    if (!create_transform(
+            input_rate,
+            output_rate,
+            transform,
+            output_info))
+        return false;
+
+    constexpr std::uint32_t input_frames = 8'192;
+    std::vector<float> input(
+        static_cast<std::size_t>(input_frames) *
+        kChannels,
+        0.0F);
+    input[0] = 1.0F;
+    input[1] = 1.0F;
+
+    ComPtr<IMFSample> sample;
+    if (!create_input_sample(
+            input,
+            input_frames,
+            input_rate,
+            sample))
+        return false;
+
+    HRESULT hr = transform->ProcessMessage(
+        MFT_MESSAGE_NOTIFY_BEGIN_STREAMING,
+        0);
+    if (FAILED(hr))
+        return false;
+    hr = transform->ProcessMessage(
+        MFT_MESSAGE_NOTIFY_START_OF_STREAM,
+        0);
+    if (FAILED(hr))
+        return false;
+    hr = transform->ProcessInput(
+        0,
+        sample.Get(),
+        0);
+    if (FAILED(hr))
+        return false;
+
+    std::vector<float> output;
+    output.reserve(
+        static_cast<std::size_t>(12'288) *
+        kChannels);
+    if (!collect_output(
+            transform.Get(),
+            output_info,
+            output))
+        return false;
+
+    hr = transform->ProcessMessage(
+        MFT_MESSAGE_NOTIFY_END_OF_STREAM,
+        0);
+    if (FAILED(hr))
+        return false;
+    hr = transform->ProcessMessage(
+        MFT_MESSAGE_COMMAND_DRAIN,
+        0);
+    if (FAILED(hr))
+        return false;
+    if (!collect_output(
+            transform.Get(),
+            output_info,
+            output))
+        return false;
+
+    if (output.size() % kChannels != 0)
+        return false;
+
+    const std::size_t frames =
+        output.size() / kChannels;
+    if (frames == 0)
+        return false;
+
+    std::size_t peak_frame = 0;
+    float peak = 0.0F;
+    for (std::size_t frame = 0;
+         frame < frames;
+         ++frame) {
+        const float magnitude =
+            std::abs(
+                output[frame * kChannels]);
+        if (magnitude > peak) {
+            peak = magnitude;
+            peak_frame = frame;
+        }
+    }
+
+    const std::uint64_t delay_100ns =
+        (10'000'000ULL *
+         static_cast<std::uint64_t>(peak_frame)) /
+        output_rate;
+
+    // The filter may have a short startup/group delay, but a recorder cannot
+    // accept an unbounded or seconds-scale hidden latency.
+    constexpr std::uint64_t kMaxDelay100ns =
+        1'000'000ULL; // 100 ms
+
+    std::cout
+        << "MF_RESAMPLER_IMPULSE"
+        << " input_rate=" << input_rate
+        << " output_rate=" << output_rate
+        << " peak_frame=" << peak_frame
+        << " delay_100ns=" << delay_100ns
+        << " peak=" << peak
+        << " output_frames=" << frames
+        << '\n';
+
+    return peak > 0.01F &&
+           delay_100ns <= kMaxDelay100ns;
 }
 
 } // namespace
@@ -792,23 +916,50 @@ int main()
         return 1;
     }
 
-    const bool rate_44k1 =
-        probe_rate(
+    const bool tone_44k1_440 =
+        probe_tone_rate(
+            44'100,
+            kOutputRate,
+            440.0);
+    const bool tone_44k1_1k =
+        probe_tone_rate(
+            44'100,
+            kOutputRate,
+            1'000.0);
+    const bool tone_96k_440 =
+        probe_tone_rate(
+            96'000,
+            kOutputRate,
+            440.0);
+    const bool tone_96k_1k =
+        probe_tone_rate(
+            96'000,
+            kOutputRate,
+            1'000.0);
+    const bool impulse_44k1 =
+        probe_impulse_delay(
             44'100,
             kOutputRate);
-    const bool rate_96k =
-        probe_rate(
+    const bool impulse_96k =
+        probe_impulse_delay(
             96'000,
             kOutputRate);
 
-    if (!rate_44k1 ||
-        !rate_96k)
+    if (!tone_44k1_440 ||
+        !tone_44k1_1k ||
+        !tone_96k_440 ||
+        !tone_96k_1k ||
+        !impulse_44k1 ||
+        !impulse_96k)
         return 2;
 
     std::cout
         << "MF_RESAMPLER_BASELINE PASS"
         << " static_src=44.1k_to_48k,96k_to_48k"
+        << " tones=440Hz,1kHz"
+        << " impulse_delay=bounded"
         << " drift_ppm_control=not_exposed_by_IWMResamplerProps"
+        << " sole_p7a5_authority=no"
         << '\n';
 
     return 0;
