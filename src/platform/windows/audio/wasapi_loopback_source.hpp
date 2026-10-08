@@ -13,6 +13,13 @@ using WasapiLoopbackSnapshot = WasapiCaptureSnapshot;
 class WasapiLoopbackSource final {
 public:
     WasapiLoopbackSource() = default;
+
+    explicit WasapiLoopbackSource(
+        std::shared_ptr<IWasapiCaptureClient> client_override) noexcept
+        : source_(std::move(client_override))
+    {
+    }
+
     ~WasapiLoopbackSource() = default;
 
     WasapiLoopbackSource(
