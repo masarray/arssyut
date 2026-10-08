@@ -265,6 +265,14 @@ jobs:
             "src/core/audio/audio_resampler.hpp" = "f207dee9b689b176d000209ef7760d7110ba6fa3"
             "src/core/audio/audio_time.hpp" = "c80c0f60ca6d73fe8f2f305c5a76ed3eca1260fb"
 
+            # P7A5 canonical program timing/mixer/window core. These exact
+            # reviewed blobs preserve one 48 kHz/1024-frame authority,
+            # bounded source-window semantics and lock-free telemetry
+            # publication without admitting arbitrary future core changes.
+            "src/core/audio/audio_program_clock.hpp" = "ac37912426c7b1e42a846e95b938182df8caf8b1"
+            "src/core/audio/audio_program_mixer.hpp" = "14652f0ea21446483796aad7d29b1210bc9dd4a1"
+            "src/core/audio/audio_source_block_window.hpp" = "801fc8a4440f626d6220ccfec462cd6196b929e5"
+
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
             "src/platform/windows/audio/wasapi_audio_utils.hpp" = "8bde8701ab524119f99ca95049ce507084141a5e"
