@@ -130,42 +130,112 @@ public:
                 return result;
             }
 
-            const auto retained_offset_ticks =
-                frames_to_ticks_ceil(
-                    result.source_frames_before_zero,
+            const auto deficit_ticks =
+                static_cast<std::uint64_t>(
+                    session_zero_qpc_100ns_ -
+                    packet_start);
+
+            const auto retained_native_frames =
+                static_cast<std::uint64_t>(
+                    result.source_frames_before_zero);
+
+            const auto source_rate =
+                static_cast<std::uint64_t>(
                     packet.native_format.sample_rate);
 
-            const auto retained_qpc =
-                saturating_add(
-                    packet_start,
-                    retained_offset_ticks);
+            /*
+             * Keep canonical placement rational. Converting the retained
+             * native-frame timestamp through a ceil-rounded 100 ns tick can
+             * cross a 48 kHz frame boundary even when the exact rational time
+             * has not. Compute floor(A-B) directly where:
+             *   A = trimmed_native_frames * 48000 / source_rate
+             *   B = pre-zero_ticks * 48000 / 10,000,000.
+             */
+            const std::uint64_t source_scaled =
+                retained_native_frames *
+                CanonicalAudioBlock::
+                    kSampleRate;
+            const std::uint64_t source_whole =
+                source_scaled /
+                source_rate;
+            const std::uint64_t source_remainder =
+                source_scaled %
+                source_rate;
 
-            const auto retained_media_start =
-                retained_qpc <=
-                        session_zero_qpc_100ns_
-                    ? 0ULL
-                    : static_cast<std::uint64_t>(
-                          retained_qpc -
-                          session_zero_qpc_100ns_);
+            const std::uint64_t deficit_seconds =
+                deficit_ticks /
+                kMediaTicksPerSecond;
+            const std::uint64_t deficit_tick_remainder =
+                deficit_ticks %
+                kMediaTicksPerSecond;
+
+            const std::uint64_t deficit_fraction_scaled =
+                deficit_tick_remainder *
+                CanonicalAudioBlock::
+                    kSampleRate;
+
+            const std::uint64_t deficit_whole =
+                deficit_seconds *
+                    CanonicalAudioBlock::
+                        kSampleRate +
+                deficit_fraction_scaled /
+                    kMediaTicksPerSecond;
+            const std::uint64_t deficit_remainder =
+                deficit_fraction_scaled %
+                kMediaTicksPerSecond;
+
+            const bool fractional_borrow =
+                source_remainder *
+                    kMediaTicksPerSecond <
+                deficit_remainder *
+                    source_rate;
+
+            const std::uint64_t canonical_frame =
+                source_whole >=
+                        deficit_whole +
+                            (fractional_borrow
+                                 ? 1ULL
+                                 : 0ULL)
+                    ? source_whole -
+                          deficit_whole -
+                          (fractional_borrow
+                               ? 1ULL
+                               : 0ULL)
+                    : 0ULL;
+
+            const std::uint64_t retained_ticks_floor =
+                (retained_native_frames *
+                 kMediaTicksPerSecond) /
+                    source_rate;
+
+            const std::uint64_t media_start_floor =
+                retained_ticks_floor >=
+                        deficit_ticks
+                    ? retained_ticks_floor -
+                          deficit_ticks
+                    : 0ULL;
 
             result.status =
                 AudioTimelineMapStatus::
                     OverlapsMediaZero;
             result.media_start_100ns =
-                retained_media_start >
+                media_start_floor >
                         static_cast<std::uint64_t>(
                             std::numeric_limits<
                                 std::int64_t>::max())
                     ? std::numeric_limits<
                           std::int64_t>::max()
                     : static_cast<std::int64_t>(
-                          retained_media_start);
+                          media_start_floor);
             result.canonical_start_frame =
-                static_cast<std::int64_t>(
-                    ticks_to_frames_floor(
-                        retained_media_start,
-                        CanonicalAudioBlock::
-                            kSampleRate));
+                canonical_frame >
+                        static_cast<std::uint64_t>(
+                            std::numeric_limits<
+                                std::int64_t>::max())
+                    ? std::numeric_limits<
+                          std::int64_t>::max()
+                    : static_cast<std::int64_t>(
+                          canonical_frame);
         }
         else {
             const auto media_start =
