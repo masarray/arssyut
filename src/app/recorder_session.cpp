@@ -1164,6 +1164,20 @@ void RecorderSession::worker_main() noexcept
 
     while (!stop_requested_.load(
         std::memory_order_acquire)) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        // Keep the AAC mux timeline fed BEFORE reserving another MF video
+        // surface. Audio-only work is bounded; video-only retains its
+        // existing due-work and timing path unchanged.
+        if (audio_runtime) {
+            const auto audio_status =
+                audio_runtime->service(MonotonicClock::now(), writer);
+            if (!audio_status.ok()) {
+                fail(audio_status);
+                failed = true;
+                break;
+            }
+        }
+#endif
         const TimePoint now =
             MonotonicClock::now();
 
@@ -1401,19 +1415,6 @@ void RecorderSession::worker_main() noexcept
                 }
             }
         }
-
-#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
-        // Video due work has already run. Cooperatively service at most
-        // two native packets per source and two AAC blocks, on this worker.
-        if (audio_runtime) {
-            const auto audio_status = audio_runtime->service(now, writer);
-            if (!audio_status.ok()) {
-                fail(audio_status);
-                failed = true;
-                break;
-            }
-        }
-#endif
 
         if (capture.source_closed()) {
             fail(Status::failure(

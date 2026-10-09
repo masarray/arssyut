@@ -377,7 +377,7 @@ void verify_decoded_canonical_aac(
     std::int32_t peak = 0;
     std::uint64_t sample_count = 0;
     bool read_failure = false;
-    for (int block = 0; block < 64; ++block) {
+    for (int block = 0; block < 4096; ++block) {
         DWORD actual_stream = 0;
         DWORD flags = 0;
         LONGLONG timestamp = 0;
@@ -564,14 +564,13 @@ void test_product_native_av_writer_with_canonical_audio(
                     test_blocks * 1'024ULL,
         "Real product writer accepts canonical PCM16 into AAC track");
 
-    // Regression for real user failure: earlier native smoke wrote ONE video
-    // and SIX AAC samples, which could not expose the fixed eight-slot
-    // Media Foundation starvation seen on hardware. Interleave a FULL 5 s
-    // of real D3D11 H264 (30 fps) and AAC (48k / 1024), with live pacing.
-    // On machines without a supported encoder the function explicitly
-    // SKIPs above; on native A/V capable machines no shortened stream passes.
-    constexpr std::uint32_t kLongVideoFrames = 150;
-    constexpr std::uint64_t kLongAudioFrames = 240'000;
+    // Real 10-second encode/decode regression: exercise more than the former
+    // 8-sample (and present 128-credit) AAC ownership lifetime. Offer AAC
+    // through the video deadline BEFORE trying the next D3D11 surface: a
+    // muxer waiting on audio must not deadlock the video surface pool.
+    // Capability SKIPs on generic WARP CI are NOT product acceptance.
+    constexpr std::uint32_t kLongVideoFrames = 300;
+    constexpr std::uint64_t kLongAudioFrames = 480'000;
     std::uint64_t next_audio_frame = test_blocks * 1'024ULL;
     bool continued = samples_ok;
     for (std::uint32_t frame = 1; frame < kLongVideoFrames && continued;
@@ -580,26 +579,6 @@ void test_product_native_av_writer_with_canonical_audio(
             core::audio::frames_to_ticks_floor(
                 static_cast<std::uint64_t>(frame), 30));
         const auto video_time = core::TimePoint{video_pts};
-        bool video_ok = false;
-        for (int tries = 0; tries < 25; ++tries) {
-            const auto attempt = writer.write_frame(
-                device.immediate_context(), source.Get(),
-                video_time, 333'333);
-            if (attempt.ok()) {
-                video_ok = true;
-                break;
-            }
-            if (attempt.code != core::StatusCode::EncoderBackpressure)
-                break;
-            std::this_thread::sleep_for(std::chrono::milliseconds(4));
-        }
-        if (!video_ok) {
-            std::cerr << "FAIL: A/V video encoder stalled at frame "
-                      << frame << " (submitted "
-                      << writer.submitted_frames() << ")\\n";
-            continued = false;
-            break;
-        }
         const auto through = core::audio::ticks_to_frames_floor(
             static_cast<std::uint64_t>(video_pts + 333'333), 48'000);
         while (next_audio_frame < through &&
@@ -628,14 +607,36 @@ void test_product_native_av_writer_with_canonical_audio(
             }
             next_audio_frame += 1'024;
         }
+        if (!continued)
+            break;
+        bool video_ok = false;
+        for (int tries = 0; tries < 25; ++tries) {
+            const auto attempt = writer.write_frame(
+                device.immediate_context(), source.Get(),
+                video_time, 333'333);
+            if (attempt.ok()) {
+                video_ok = true;
+                break;
+            }
+            if (attempt.code != core::StatusCode::EncoderBackpressure)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        }
+        if (!video_ok) {
+            std::cerr << "FAIL: A/V video encoder stalled at frame "
+                      << frame << " (submitted "
+                      << writer.submitted_frames() << ")\\n";
+            continued = false;
+            break;
+        }
         // Live pacing gives actual asynchronous MF codecs an opportunity
         // to release buffers instead of racing a 5-second backlog at t=0.
         std::this_thread::sleep_for(std::chrono::milliseconds(33));
     }
-    test.expect(continued && writer.submitted_frames() >= 140 &&
-                writer.submitted_audio_frames() >= 220'000ULL &&
+    test.expect(continued && writer.submitted_frames() >= 290 &&
+                writer.submitted_audio_frames() >= 450'000ULL &&
                 writer.audio_backpressure_events() == 0,
-        "Native writer sustains 5 seconds interleaved H264+AAC without"
+        "Native writer sustains 10 seconds interleaved H264+AAC without"
         " eight-block starvation or video backpressure");
 
     const auto final_status = writer.finalize();
@@ -689,16 +690,16 @@ void test_product_native_av_writer_with_canonical_audio(
                 break;
             }
         }
-        test.expect(end_of_stream && latest >= 40'000'000LL, name);
+        test.expect(end_of_stream && latest >= 90'000'000LL, name);
     };
     if (has_video)
         verify_duration(static_cast<DWORD>(
             MF_SOURCE_READER_FIRST_VIDEO_STREAM),
-            "Final MP4 video lasts at least 4 seconds");
+            "Final MP4 video lasts at least 9 seconds");
     if (has_audio)
         verify_duration(static_cast<DWORD>(
             MF_SOURCE_READER_FIRST_AUDIO_STREAM),
-            "Final MP4 AAC lasts at least 4 seconds");
+            "Final MP4 AAC lasts at least 9 seconds");
     if (has_audio) {
         GUID subtype{};
         const bool is_aac = SUCCEEDED(audio_type->GetGUID(

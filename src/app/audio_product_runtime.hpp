@@ -112,9 +112,11 @@ public:
         return core::Status::success();
     }
 
-    // Invoke after each video process_due/write_frame, never on a capture
-    // callback. Hard upper bound: 2 lease pops/source, 1 newly due program
-    // interval and 2 AAC blocks per pass, with no blocking audio waits.
+    // Run before video submission on RecorderSession's sole writer worker:
+    // feed the muxer's AAC stream before another video surface is retained.
+    // Four bounded rounds can recover from video/compositor latency without
+    // dropping overdue program intervals or growing an unbounded queue.
+    // WASAPI callbacks only hand off leases; no second writer/clock/thread.
     [[nodiscard]] core::Status service(
         core::TimePoint now, windows::MfH264Mp4Writer &writer) noexcept
     {
@@ -122,33 +124,58 @@ public:
             return core::Status::failure(
                 core::StatusCode::InvalidStateTransition);
 
-        if (pinned_.microphone) {
-            const auto r = mic_ingress_.pump_available(
-                microphone_, program_, 2);
-            if (!acceptable(r.status))
-                return ingress_failure(r.status);
-            mic_ingested_ = mic_ingested_ || r.packets_popped != 0;
-            const auto state = microphone_.snapshot();
-            if (state.state == windows::WasapiCaptureState::Failed ||
-                state.state == windows::WasapiCaptureState::DeviceInvalidated)
-                return core::Status::failure(
-                    core::StatusCode::PlatformFailure, state.last_hresult);
-        }
-        if (pinned_.system_audio) {
-            const auto r = sys_ingress_.pump_available(
-                loopback_, program_, 2);
-            if (!acceptable(r.status))
-                return ingress_failure(r.status);
-            sys_ingested_ = sys_ingested_ || r.packets_popped != 0;
-            const auto state = loopback_.snapshot();
-            if (state.state == windows::WasapiCaptureState::Failed ||
-                state.state == windows::WasapiCaptureState::DeviceInvalidated)
-                return core::Status::failure(
-                    core::StatusCode::PlatformFailure, state.last_hresult);
-        }
+        // A 10 ms capture-settle allowance lets event-driven WASAPI
+        // publish its last packet before the canonical interval closes.
+        // This is a bounded delay, NOT a second clock or a PTS offset.
+        constexpr std::int64_t kPacketSettle100ns = 100'000;
+        constexpr std::uint32_t kMaxRounds = 4;
+        constexpr std::uint32_t kPacketsPerRound = 2;
+        constexpr std::uint32_t kBlocksPerRound = 2;
+        const auto due_through = now.ticks_100ns - kPacketSettle100ns;
 
-        (void)program_.close_one_due(now.ticks_100ns);
-        return submit(writer, -1);
+        for (std::uint32_t round = 0; round < kMaxRounds; ++round) {
+            if (pinned_.microphone) {
+                const auto r = mic_ingress_.pump_available(
+                    microphone_, program_, kPacketsPerRound);
+                if (!acceptable(r.status))
+                    return ingress_failure(r.status);
+                mic_ingested_ = mic_ingested_ || r.packets_popped != 0;
+                const auto state = microphone_.snapshot();
+                if (state.state == windows::WasapiCaptureState::Failed ||
+                    state.state == windows::WasapiCaptureState::DeviceInvalidated)
+                    return core::Status::failure(
+                        core::StatusCode::PlatformFailure, state.last_hresult);
+            }
+            if (pinned_.system_audio) {
+                const auto r = sys_ingress_.pump_available(
+                    loopback_, program_, kPacketsPerRound);
+                if (!acceptable(r.status))
+                    return ingress_failure(r.status);
+                sys_ingested_ = sys_ingested_ || r.packets_popped != 0;
+                const auto state = loopback_.snapshot();
+                if (state.state == windows::WasapiCaptureState::Failed ||
+                    state.state == windows::WasapiCaptureState::DeviceInvalidated)
+                    return core::Status::failure(
+                        core::StatusCode::PlatformFailure, state.last_hresult);
+            }
+
+            // Drain EACH completed interval before closing the next one.
+            // The canonical handoff has only four slots; batching closes
+            // without matching writer consumption silently drops PCM.
+            for (std::uint32_t n = 0; n < kBlocksPerRound; ++n) {
+                if (program_.next_due_100ns() > due_through)
+                    break;
+                if (!program_.close_one_due(program_.next_due_100ns()))
+                    return core::Status::failure(
+                        core::StatusCode::InvalidStateTransition);
+                const auto status = submit(writer, -1);
+                if (!status.ok())
+                    return status;
+            }
+            if (program_.next_due_100ns() > due_through)
+                break;
+        }
+        return core::Status::success();
     }
 
     // Finish while MF writer is OPEN; no source or compressor runs beyond
