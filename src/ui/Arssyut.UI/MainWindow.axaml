@@ -300,7 +300,7 @@
                                 IsChecked="False"
                                 IsEnabled="False"
                                 OnContent="" OffContent=""
-                                ToolTip.Tip="System audio backend is pending." />
+                                ToolTip.Tip="System audio recording is unavailable in this build." />
                 </Grid>
                 <Border x:Name="SystemAudioDeviceComboMain"
                         Grid.Row="1" Padding="8,7" CornerRadius="7"
@@ -332,14 +332,14 @@
                                 IsChecked="False"
                                 IsEnabled="False"
                                 OnContent="" OffContent=""
-                                ToolTip.Tip="Microphone recording backend is pending." />
+                                ToolTip.Tip="Microphone recording is unavailable in this build." />
                 </Grid>
                 <ComboBox x:Name="MicrophoneDeviceComboMain"
                           Grid.Row="1"
                           Classes="context-device"
                           SelectedIndex="0"
                           IsEnabled="False"
-                          ToolTip.Tip="Detected device; recording selection activates with the microphone backend.">
+                          ToolTip.Tip="Microphone selection is unavailable in this build.">
                   <ComboBoxItem Content="No microphone detected" />
                 </ComboBox>
               </Grid>

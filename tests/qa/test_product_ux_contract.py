@@ -39,6 +39,22 @@ class UXContract(unittest.TestCase):
         self.assertIn("_microphoneDeviceToken,", self.code)
         self.assertIn("Windows default playback", self.xaml)
 
+    def test_audio_tooltips_match_actual_build_capabilities(self):
+        # Internal hardware-test UI must not claim that its *working* recorder
+        # backend is pending. Public builds still stay explicitly disabled.
+        self.assertNotIn("System audio backend is pending", self.xaml)
+        self.assertNotIn("Microphone recording backend is pending", self.xaml)
+        self.assertNotIn("selection activates with the microphone backend", self.xaml)
+        self.assertIn("ToolTip.SetTip(SystemAudioToggle,", self.code)
+        self.assertIn("ToolTip.SetTip(MicToggle,", self.code)
+        self.assertIn("ToolTip.SetTip(MicrophoneDeviceComboMain,", self.code)
+        self.assertIn("if (_audioHardwarePreview)", self.code)
+        self.assertIn("Record sound from the Windows default playback device.", self.code)
+        self.assertIn("Record audio from the selected microphone.", self.code)
+        self.assertIn("Audio controls are a visual preview; no audio is recorded.", self.code)
+        self.assertIn("Microphone recording is unavailable in this build.", self.xaml)
+        self.assertIn("System audio recording is unavailable in this build.", self.xaml)
+
     def test_preview_is_internal_only_and_launches_directly(self):
         self.assertIn("<OutputType>WinExe</OutputType>", self.project)
         self.assertIn("'$(InternalAudioPreview)' == 'true'", self.project)

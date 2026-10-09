@@ -2058,6 +2058,38 @@ public sealed partial class MainWindow : Window
 
     private void ApplyProductCapabilitySurface()
     {
+        // The public build is deliberately video-only. Hardware acceptance
+        // binaries, however, record real WASAPI audio, so a static
+        // "backend pending" tooltip is misleading and is NOT acceptable.
+        // Keep this capability-derived instead of relying on XAML defaults.
+        if (_audioHardwarePreview)
+        {
+            ToolTip.SetTip(SystemAudioToggle,
+                "Record sound from the Windows default playback device.");
+            ToolTip.SetTip(MicToggle,
+                "Record audio from the selected microphone.");
+            ToolTip.SetTip(MicrophoneDeviceComboMain,
+                "Choose the microphone to use for the recording.");
+        }
+        else if (_allowInteractionPreview)
+        {
+            ToolTip.SetTip(SystemAudioToggle,
+                "Audio controls are a visual preview; no audio is recorded.");
+            ToolTip.SetTip(MicToggle,
+                "Audio controls are a visual preview; no audio is recorded.");
+            ToolTip.SetTip(MicrophoneDeviceComboMain,
+                "Device selection is simulated in interaction preview.");
+        }
+        else
+        {
+            ToolTip.SetTip(SystemAudioToggle,
+                "System audio recording is unavailable in this build.");
+            ToolTip.SetTip(MicToggle,
+                "Microphone recording is unavailable in this build.");
+            ToolTip.SetTip(MicrophoneDeviceComboMain,
+                "Microphone selection is unavailable in this build.");
+        }
+
         if (_allowInteractionPreview)
             return;
 
