@@ -88,6 +88,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Restore pinned FFmpeg install cache
+        uses: actions/cache@v4
+        with:
+          path: build/p7a5-vcpkg
+          key: p7a5-ffmpeg-9.0.2-x64-windows-static-617ef1c0c422737d117eda00a471ea1be5bad088-v1
+
       - name: Install pinned libswresample
         shell: pwsh
         run: |
@@ -165,6 +171,101 @@ jobs:
             throw "P7A5 adapter contract tests failed with exit code $LASTEXITCODE"
           }
 
+      - name: Setup .NET 10 for internal hardware-audio preview
+        if: github.head_ref == 'feat/p7-product-audio-integration-v1'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish INTERNAL FFmpeg-enabled Avalonia recorder
+        if: github.head_ref == 'feat/p7-product-audio-integration-v1'
+        shell: pwsh
+        run: |
+          $package = Join-Path $PWD "dist/arssyut-audio-acceptance"
+          $native = Join-Path $PWD "src/ui/Arssyut.UI/Native"
+          New-Item -ItemType Directory -Force -Path $native | Out-Null
+          Copy-Item "build/windows-x64/Release/arssyut_native_bridge.dll" `
+            (Join-Path $native "arssyut_native_bridge.dll") -Force
+
+          dotnet publish src/ui/Arssyut.UI/Arssyut.UI.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None -p:DebugSymbols=false `
+            -o $package
+          if ($LASTEXITCODE -ne 0) {
+            throw "Internal FFmpeg-enabled UI publish failed."
+          }
+
+          if (-not (Test-Path (Join-Path $package "Arssyut.UI.exe"))) {
+            throw "Hardware audio acceptance executable missing."
+          }
+          if (Test-Path (Join-Path $package "arssyut_native_bridge.dll")) {
+            throw "Experimental engine must be embedded in the single-file UI."
+          }
+          Get-ChildItem $package -Filter "*.pdb" -ErrorAction SilentlyContinue |
+            Remove-Item -Force
+
+          Copy-Item "dist/p7a5-evidence/FFMPEG_COPYRIGHT.txt" `
+            (Join-Path $package "FFMPEG_COPYRIGHT.txt") -Force
+          Copy-Item "dist/p7a5-evidence/dependency.txt" `
+            (Join-Path $package "DEPENDENCY_PIN.txt") -Force
+          Copy-Item "docs/P6UI_THIRD_PARTY_NOTICES.md" `
+            (Join-Path $package "THIRD_PARTY_NOTICES.md") -Force
+
+          @'
+          @echo off
+          set "ARSSYUT_AUDIO_PREVIEW=1"
+          start "" "%~dp0Arssyut.UI.exe"
+          '@ | Set-Content -Encoding ascii (Join-Path $package "START_AUDIO_PREVIEW.cmd")
+
+          @'
+          INTERNAL WINDOWS HARDWARE AUDIO ACCEPTANCE — NOT A PUBLIC RELEASE
+
+          1. Unzip the complete artifact on Windows 10/11 x64.
+          2. Double-click START_AUDIO_PREVIEW.cmd.
+          3. In the Audio panel, enable Microphone, System audio, or both.
+          4. Select a microphone from the detected real Windows device list.
+             System audio uses the default Windows eConsole playback endpoint.
+          5. Record a short display video, stop, and PLAY the resulting MP4.
+          6. Check audible audio, A/V sync, Stop completion and any error.
+          7. Repeat for Mic-only, System-only, and dual source. Report the
+             session diagnostics and reproducible device configuration.
+
+          CAUTION: This opt-in package has not passed real-device audio
+          acceptance yet. Do not replace the stable video-only release.
+          The experimental bridge refuses Mic/System unless the launcher
+          explicitly sets ARSSYUT_AUDIO_PREVIEW=1. Camera remains unsupported.
+          FFmpeg linkage and redistribution require licensing review.
+          '@ | Set-Content (Join-Path $package "README_AUDIO_ACCEPTANCE.txt")
+
+      - name: Internal preview launch smoke (no device requested)
+        if: github.head_ref == 'feat/p7-product-audio-integration-v1'
+        shell: pwsh
+        run: |
+          $env:ARSSYUT_AUDIO_PREVIEW = "1"
+          $exe = Join-Path $PWD "dist/arssyut-audio-acceptance/Arssyut.UI.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
+          try {
+            Start-Sleep -Seconds 4
+            if ($process.HasExited) {
+              throw "Experimental audio UI exited early: $($process.ExitCode)"
+            }
+          } finally {
+            if (-not $process.HasExited) {
+              Stop-Process -Id $process.Id -Force
+            }
+          }
+
+      - name: Upload INTERNAL audio hardware acceptance package
+        if: github.head_ref == 'feat/p7-product-audio-integration-v1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-INTERNAL-audio-acceptance-win-x64
+          path: dist/arssyut-audio-acceptance/*
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload P7A5 dependency evidence
         uses: actions/upload-artifact@v4
         with:
@@ -236,6 +337,9 @@ jobs:
             "src/app/audio_pcm16_submission_adapter.hpp" = "d69fdccb252f6ba6c0dd0cef6d9dc444a81cff52"
             # P7A6 sole RecorderSession product audio owner (opt-in).
             "src/app/audio_product_runtime.hpp" = "4aa719fae81ec7a20813b027aa9e7ae455e44d91"
+            # Experimental-only bridge approval: default/release still
+            # rejects audio. Mic tokens are generation checked.
+            "src/bridge/native_bridge.cpp" = "c17fd0d0744570124110155d495b53428a8fb174"
 
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;

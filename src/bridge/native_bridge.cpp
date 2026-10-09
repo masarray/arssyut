@@ -1609,21 +1609,34 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_UNSUPPORTED;
     }
 
-    constexpr std::uint32_t unsupported_input_flags =
+    // Only an explicitly marked INTERNAL product-on build permits real
+    // hardware audio acceptance. Public/default video-only builds still
+    // reject Mic/System requests and Camera is never silently accepted.
+    constexpr std::uint32_t audio_flags =
         ARSSYUT_BRIDGE_START_SYSTEM_AUDIO |
-        ARSSYUT_BRIDGE_START_MICROPHONE |
-        ARSSYUT_BRIDGE_START_CAMERA;
-
-    if ((request->flags &
-         unsupported_input_flags) != 0) {
-        // P6R.3/P6R.4 own these media backends. Never silently claim they were
-        // recorded while only the video recorder is active.
+        ARSSYUT_BRIDGE_START_MICROPHONE;
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    wchar_t preview_value[2]{};
+    const bool audio_preview_allowed =
+        GetEnvironmentVariableW(
+            L"ARSSYUT_AUDIO_PREVIEW", preview_value, 2) == 1 &&
+        preview_value[0] == L'1';
+    const std::uint32_t unsupported_input_flags =
+        ARSSYUT_BRIDGE_START_CAMERA |
+        (audio_preview_allowed ? 0U : audio_flags);
+#else
+    constexpr std::uint32_t unsupported_input_flags =
+        ARSSYUT_BRIDGE_START_CAMERA | audio_flags;
+#endif
+    if ((request->flags & unsupported_input_flags) != 0)
         return ARSSYUT_BRIDGE_UNSUPPORTED;
-    }
 
     try {
         std::unique_ptr<RecorderSession> previous;
         RecorderTarget target;
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        std::wstring microphone_id;
+#endif
         RegionCropMapping region_mapping{};
         bool have_region_mapping = false;
 
@@ -1648,6 +1661,23 @@ arssyut_bridge_recorder_start(
             target =
                 *resolved;
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if ((request->flags & ARSSYUT_BRIDGE_START_MICROPHONE) != 0 &&
+                request->microphone_device_token != 0) {
+                std::uint32_t generation = 0;
+                std::uint32_t index = 0;
+                if (!decode_token(request->microphone_device_token,
+                                  generation, index) ||
+                    generation != context->device_generation ||
+                    index >= context->microphones.size())
+                    return ARSSYUT_BRIDGE_STALE_TOKEN;
+
+                // Resolve to the concrete IMMDevice ID, never the UI label.
+                microphone_id = context->microphones[index].id;
+                if (microphone_id.empty())
+                    return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+            }
+#endif
             if (request->capture_mode ==
                 ARSSYUT_BRIDGE_CAPTURE_REGION) {
                 if (!ensure_region_mapping_locked(
@@ -1724,6 +1754,16 @@ arssyut_bridge_recorder_start(
         config.visual_mode =
             to_visual_mode(
                 request->visual_mode);
+
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        config.audio_microphone =
+            (request->flags & ARSSYUT_BRIDGE_START_MICROPHONE) != 0;
+        config.audio_system =
+            (request->flags & ARSSYUT_BRIDGE_START_SYSTEM_AUDIO) != 0;
+        config.audio_microphone_id = std::move(microphone_id);
+        // The eConsole render endpoint is pinned once during Preparing.
+        // Current bridge V1 intentionally has no render-device token field.
+#endif
 
         config.presentation.smart_zoom =
             (request->flags &

@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly NativeBridgeAvailability _bridgeAvailability;
     private readonly bool _stressLongNames;
     private readonly bool _allowInteractionPreview;
+    private readonly bool _audioHardwarePreview;
     private readonly DispatcherTimer _hotkeyTimer;
     private readonly IBrush _recordBrush;
     private readonly IBrush _recordHoverBrush;
@@ -75,8 +76,30 @@ public sealed partial class MainWindow : Window
         _stressLongNames = stressLongNames;
         _allowInteractionPreview =
             allowInteractionPreview;
+        // This never enables audio in the public/default artifact.
+        // The native bridge independently enforces product-on + opt-in.
+        _audioHardwarePreview =
+            nativeBridge is not null &&
+            !allowInteractionPreview &&
+            string.Equals(
+                Environment.GetEnvironmentVariable("ARSSYUT_AUDIO_PREVIEW"),
+                "1", StringComparison.Ordinal);
 
         InitializeComponent();
+
+        MicrophoneDeviceComboMain.SelectionChanged += (_, _) =>
+        {
+            if (!_audioHardwarePreview ||
+                MicrophoneDeviceComboMain.SelectedItem is not ComboBoxItem
+                {
+                    Tag: NativeDeviceItem selected
+                })
+                return;
+
+            _microphoneDevice = selected.Name;
+            _microphoneDeviceToken = selected.Token;
+            RefreshInputLabels();
+        };
 
         _recordBrush =
             ArBrushResolver.Require(
@@ -724,7 +747,8 @@ public sealed partial class MainWindow : Window
             combo.Items.Add(
                 new ComboBoxItem
                 {
-                    Content = device.Name
+                    Content = device.Name,
+                    Tag = device
                 });
         }
 
@@ -891,7 +915,7 @@ public sealed partial class MainWindow : Window
 
     private void RefreshInputLabels()
     {
-        if (!_allowInteractionPreview)
+        if (!_allowInteractionPreview && !_audioHardwarePreview)
         {
             SystemAudioToggle.IsChecked =
                 false;
@@ -1580,8 +1604,10 @@ public sealed partial class MainWindow : Window
                 else
                 {
                     ShowCommandFeedback(
-                        "Input backend pending",
-                        "Disable System audio, Microphone and Camera to record video now. Their real backends remain scheduled work.");
+                        "Audio unavailable",
+                        _audioHardwarePreview
+                            ? "Selected audio device is unavailable or the native bridge is not an experimental FFmpeg build."
+                            : "System audio, Microphone and Camera require the experimental audio build; public release remains video-only.");
                 }
                 break;
 
@@ -2003,6 +2029,26 @@ public sealed partial class MainWindow : Window
         if (_allowInteractionPreview)
             return;
 
+        if (_audioHardwarePreview)
+        {
+            // Deliberate hardware acceptance only, not a default release.
+            // Mic selection is the actual MMDevice token, not fake examples.
+            SystemAudioToggle.IsEnabled = true;
+            MicToggle.IsEnabled = true;
+            MicrophoneDeviceComboMain.IsEnabled =
+                _microphoneDeviceToken != 0;
+            SystemAudioDeviceComboMain.IsEnabled = false;
+            CameraToggle.IsChecked = false;
+            CameraToggle.IsEnabled = false;
+            CameraDeviceButton.IsEnabled = false;
+            CameraDeviceComboMain.IsEnabled = false;
+            CameraDeviceChevron.IsVisible = false;
+            foreach (var option in _cameraOptions)
+                option.IsVisible = false;
+            UpdateRecordAvailability();
+            return;
+        }
+
         _systemAudioEnabled =
             false;
         _session.MicrophoneEnabled =
@@ -2109,12 +2155,15 @@ public sealed partial class MainWindow : Window
                 : "native engine ready";
 
         var inputState =
-            _allowInteractionPreview &&
-            (_systemAudioEnabled ||
-             _session.MicrophoneEnabled ||
-             _session.CameraEnabled)
-                ? "preview inputs"
-                : "video ready";
+            _audioHardwarePreview
+                ? (_systemAudioEnabled || _session.MicrophoneEnabled
+                    ? "audio hardware test" : "audio test available")
+                : _allowInteractionPreview &&
+                  (_systemAudioEnabled ||
+                   _session.MicrophoneEnabled ||
+                   _session.CameraEnabled)
+                    ? "preview inputs"
+                    : "video ready";
 
         var hotkey =
             _nativeBridge is not null &&
