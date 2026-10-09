@@ -502,6 +502,29 @@ if(ARSSYUT_BUILD_TESTS)
         COMMAND arssyut_audio_canonical_program_assembler_tests
     )
 
+    # P7A5 native packet ingress into accepted canonical assembler.
+    # Uses selected IAudioResampler, never a second SRC implementation.
+    add_executable(arssyut_audio_packet_ingress_tests
+        tests/test_audio_packet_ingress.cpp
+    )
+    target_link_libraries(
+        arssyut_audio_packet_ingress_tests
+        PRIVATE arssyut_core Threads::Threads
+    )
+    if(MSVC)
+        target_compile_options(arssyut_audio_packet_ingress_tests PRIVATE
+            /W4 /permissive- /utf-8 /Zc:__cplusplus
+        )
+    else()
+        target_compile_options(arssyut_audio_packet_ingress_tests PRIVATE
+            -Wall -Wextra -Wpedantic
+        )
+    endif()
+    add_test(
+        NAME arssyut_audio_packet_ingress_tests
+        COMMAND arssyut_audio_packet_ingress_tests
+    )
+
     add_executable(arssyut_audio_sample_normalizer_tests
         tests/test_audio_sample_normalizer.cpp
     )

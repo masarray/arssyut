@@ -258,6 +258,9 @@ jobs:
             # P7A5 closed-program assembly: vetted exact blob composes the
             # existing staging/windows/mixer; no replacement clock or backend.
             "src/core/audio/audio_canonical_program_assembler.hpp" = "506256245d20ffa0efb487d27f4d63077782aa28"
+            # P7A5 typed packet lease -> native normalization -> mapped
+            # canonical SRC ingress, exact blob; no unreviewed core drift.
+            "src/core/audio/audio_packet_ingress.hpp" = "8587d2992f45ab0147485095562bf93d32a7491f"
 
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
