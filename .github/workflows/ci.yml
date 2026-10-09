@@ -233,6 +233,7 @@ jobs:
             "src/core/audio/audio_format.hpp" = "e1d597197ac14cd4bbe69f67f07442641f6941ae"
             "src/core/audio/audio_mix.hpp" = "4b773669f3213bd0308e7c37774a02f0366ee639"
             "src/core/audio/audio_packet.hpp" = "4b95111fccceaf8b45436499115b79b52544f10d"
+            "src/core/audio/audio_program.hpp" = "bc375a689db08c2ef5b5e97878f7e23b6a59b111"
             "src/core/audio/audio_resampler.hpp" = "f207dee9b689b176d000209ef7760d7110ba6fa3"
             "src/core/audio/audio_time.hpp" = "c80c0f60ca6d73fe8f2f305c5a76ed3eca1260fb"
 
