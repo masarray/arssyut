@@ -6,6 +6,9 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#ifdef _WIN32
+#include "platform/windows/audio/wasapi_audio_utils.hpp"
+#endif
 
 using namespace arssyut::core::audio;
 
@@ -320,6 +323,108 @@ void test_detect_trusted_qpc_gap(Test &t) {
     t.check(saw_gap, "source discontinuity survives future staging");
 }
 
+
+#ifdef _WIN32
+void test_real_wasapi_lease_pipeline(Test &t)
+{
+    using arssyut::windows::WasapiPacketHandoff;
+    using arssyut::windows::WasapiPacketLease;
+    using arssyut::windows::WasapiPacketPublishResult;
+
+    // This is the real Windows handoff/pool/lease implementation, not a
+    // synthetic fake lease. Only the actual device and SRC DSP are injected.
+    auto handoff = std::make_shared<WasapiPacketHandoff>(
+        8, 8, 4'096 * sizeof(float) * 2);
+    t.check(handoff->valid(), "real Windows WASAPI packet handoff allocated");
+    auto assembler = std::make_unique<CanonicalProgramAssembler>();
+    auto ingress = std::make_unique<CanonicalPacketIngress>();
+    FakeResampler src;
+    assembler->reset(kZero, true, false);
+    t.check(ingress->configure(
+        AudioSourceId::Microphone, kFloatStereo, kZero, src),
+        "lease ingress config uses already accepted resampler API");
+
+    std::array<float, 2'400 * 2> samples{};
+    samples.fill(0.375F);
+    auto meta = packet(AudioSourceId::Microphone,
+        kFloatStereo, 2'400, kZero);
+    t.check(handoff->publish(meta, bytes(samples)) ==
+        WasapiPacketPublishResult::Published,
+        "2400-frame native packet published into REAL fixed WASAPI pool");
+    AudioSourcePacket popped{};
+    t.check(handoff->try_pop(popped),
+        "real WASAPI packet metadata popped");
+    WasapiPacketLease lease(handoff, popped);
+    const auto result = ingress->process_lease(lease, *assembler);
+    t.check(result.status == PacketIngressStatus::Applied &&
+            result.native_frames_consumed == 2'400 &&
+            result.canonical_frames_emitted == 2'400 &&
+            src.calls == 3 &&
+            !lease.valid() &&
+            handoff->outstanding_payload_leases() == 0,
+        "single real lease split as 1024+1024+352; payload released exactly once");
+    t.check(assembler->close_one_due(
+        kZero+static_cast<std::int64_t>(
+            frames_to_ticks_floor(1024,48'000))),
+        "lease-fed first program block closes");
+    AudioProgramBlock program;
+    std::uint64_t first=99;
+    t.check(assembler->try_take(program,first) && first == 0 &&
+            program.audio.samples[0] == 0.375F &&
+            program.audio.samples[2047] == 0.375F,
+        "real WASAPI lease bytes reached actual canonical mixer");
+
+    struct SourceView {
+        std::shared_ptr<WasapiPacketHandoff> handoff;
+        [[nodiscard]] bool try_pop(WasapiPacketLease &out) noexcept {
+            AudioSourcePacket item;
+            if (!handoff->try_pop(item))
+                return false;
+            out = WasapiPacketLease(handoff, item);
+            return true;
+        }
+    } source{handoff};
+
+    // Actual WASAPI silence has no backing bytes, but still has meaningful
+    // frames that must advance the 48k canonical media timeline.
+    auto silent = packet(AudioSourceId::Microphone,
+        kFloatStereo, 1'024,
+        kZero+static_cast<std::int64_t>(
+            frames_to_ticks_floor(2'400,48'000)),2'400);
+    silent.flags = AudioPacketFlag::Silent;
+    t.check(handoff->publish(silent, {}) ==
+        WasapiPacketPublishResult::Published,
+        "real handoff accepts allocation-free silence packet");
+    auto pumped=ingress->pump_available(source,*assembler,1);
+    t.check(pumped.status==PacketIngressStatus::Applied &&
+            pumped.packets_popped==1 &&
+            pumped.canonical_frames_emitted==1'024 &&
+            handoff->outstanding_payload_leases()==0 &&
+            src.calls == 4,
+        "bounded pump consumes actual silent lease and releases it");
+    pumped=ingress->pump_available(source,*assembler,2);
+    t.check(pumped.packets_popped==0 && pumped.source_empty,
+        "nonblocking WASAPI pump returns immediately on no data");
+
+    auto too_big = packet(AudioSourceId::Microphone,
+        kFloatStereo, 8*1'024+1, kZero);
+    // A large allocation-free silence lease must fail closed in bounded
+    // ingress but still return the handoff to its owning generation.
+    too_big.flags=AudioPacketFlag::Silent;
+    t.check(handoff->publish(too_big,{}) ==
+        WasapiPacketPublishResult::Published,
+        "larger-than-budget silent lease can be represented by handoff");
+    t.check(handoff->try_pop(popped),
+        "overbudget lease popped");
+    WasapiPacketLease large(handoff,popped);
+    const auto rejected=ingress->process_lease(large,*assembler);
+    t.check(rejected.status==PacketIngressStatus::TooLarge &&
+            !large.valid() &&
+            handoff->outstanding_payload_leases()==0,
+        "overbudget lease rejected without leaking pool generation");
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -328,6 +433,9 @@ int main() {
     test_pcm16_mono_44100(t);
     test_invalid_and_pre_zero(t);
     test_detect_trusted_qpc_gap(t);
+#ifdef _WIN32
+    test_real_wasapi_lease_pipeline(t);
+#endif
     if (t.failures) {
         std::cerr << "FAIL: " << t.failures << '/' << t.checks
                   << " packet ingress checks\n";

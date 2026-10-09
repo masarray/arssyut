@@ -10,6 +10,10 @@
 #include "core/audio/audio_resampler.hpp"
 #include "core/audio/audio_canonical_program_assembler.hpp"
 
+#ifdef _WIN32
+#include "platform/windows/audio/wasapi_audio_utils.hpp"
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -266,6 +270,169 @@ public:
         result.canonical_frames_emitted = count;
         return result;
     }
+
+
+#ifdef _WIN32
+    // Consume an actual Windows WASAPI pool lease, retaining the original
+    // packet storage until every bounded native chunk has been normalized.
+    // At most 8 x 1024 native frames per lease; nothing is silently
+    // truncated, and the payload is released on *every* exit path.
+    [[nodiscard]] PacketIngressResult process_lease(
+        windows::WasapiPacketLease &lease,
+        CanonicalProgramAssembler &assembler) noexcept
+    {
+        PacketIngressResult aggregate{};
+        if (!lease.valid())
+            return aggregate;
+
+        const auto &original = lease.packet();
+        const auto payload = lease.payload();
+        constexpr std::uint32_t kMaxChunksPerLease = 8;
+        if (!ready_ || !original.metadata_valid() ||
+            original.native_format.sample_rate == 0 ||
+            original.frame_count > kMaxChunksPerLease * kMaxNativeFrames ||
+            original.payload_bytes != payload.size()) {
+            aggregate.status = original.frame_count >
+                    kMaxChunksPerLease * kMaxNativeFrames
+                ? PacketIngressStatus::TooLarge
+                : PacketIngressStatus::Invalid;
+            if (!lease.release())
+                ready_ = false;
+            return aggregate;
+        }
+
+        aggregate.status = PacketIngressStatus::NoOutput;
+        std::uint32_t offset = 0;
+        while (offset < original.frame_count) {
+            const auto frames = std::min(
+                kMaxNativeFrames, original.frame_count - offset);
+            auto part = original;
+            part.frame_count = frames;
+
+            // The ORIGINAL packet's metadata remains authoritative.
+            // Every slice has a rational offset from that one QPC anchor;
+            // it does not receive a new capture/host timestamp.
+            const auto qpc_delta = frames_to_ticks_floor(
+                offset, original.native_format.sample_rate);
+            if (qpc_delta >
+                    static_cast<std::uint64_t>(
+                        (std::numeric_limits<std::int64_t>::max)()) ||
+                original.timing.packet_start_qpc_100ns >
+                    (std::numeric_limits<std::int64_t>::max)() -
+                        static_cast<std::int64_t>(qpc_delta) ||
+                original.timing.device_frame_position >
+                    (std::numeric_limits<std::uint64_t>::max)() - offset) {
+                aggregate.status = PacketIngressStatus::Invalid;
+                ready_ = false;
+                break;
+            }
+            part.timing.packet_start_qpc_100ns +=
+                static_cast<std::int64_t>(qpc_delta);
+            part.timing.device_frame_position += offset;
+
+            // A packet discontinuity marks its first frame only. Subsequent
+            // slices inherit degraded timestamp quality, not a second reset.
+            if (offset != 0) {
+                const auto flags = static_cast<std::uint8_t>(part.flags);
+                part.flags = static_cast<AudioPacketFlag>(
+                    flags & ~static_cast<std::uint8_t>(
+                        AudioPacketFlag::Discontinuity |
+                        AudioPacketFlag::TimestampError));
+            }
+            if (has_flag(original.flags, AudioPacketFlag::TimestampError))
+                part.timing.quality = AudioTimestampQuality::HostQpcFallback;
+
+            std::span<const std::byte> bytes;
+            if (!has_flag(original.flags, AudioPacketFlag::Silent)) {
+                const auto start = original.native_format.bytes_for_frames(offset);
+                const auto length = original.native_format.bytes_for_frames(frames);
+                if (start > payload.size() || length > payload.size() - start) {
+                    aggregate.status = PacketIngressStatus::Invalid;
+                    ready_ = false;
+                    break;
+                }
+                bytes = payload.subspan(start, length);
+                part.payload_bytes = static_cast<std::uint32_t>(length);
+            } else {
+                // An allocation-free WASAPI silence packet has no pool slot.
+                part.payload_bytes = 0;
+            }
+
+            const auto attempt = process_packet(part, bytes, assembler);
+            if (attempt.status != PacketIngressStatus::Applied &&
+                attempt.status != PacketIngressStatus::NoOutput &&
+                attempt.status != PacketIngressStatus::BeforeMediaZero) {
+                aggregate.status = attempt.status;
+                ready_ = false; // A partly-consumed SRC cannot be retried.
+                break;
+            }
+            aggregate.native_frames_consumed +=
+                attempt.native_frames_consumed;
+            aggregate.canonical_frames_emitted +=
+                attempt.canonical_frames_emitted;
+            if (attempt.canonical_frames_emitted != 0) {
+                if (aggregate.canonical_frames_emitted ==
+                        attempt.canonical_frames_emitted)
+                    aggregate.first_canonical_frame =
+                        attempt.first_canonical_frame;
+                aggregate.status = PacketIngressStatus::Applied;
+            } else if (aggregate.status == PacketIngressStatus::NoOutput &&
+                       attempt.status == PacketIngressStatus::BeforeMediaZero) {
+                aggregate.status = PacketIngressStatus::BeforeMediaZero;
+            }
+            aggregate.discontinuity =
+                aggregate.discontinuity || attempt.discontinuity;
+            offset += frames;
+        }
+        if (!lease.release()) {
+            ready_ = false;
+            aggregate.status = PacketIngressStatus::Invalid;
+        }
+        return aggregate;
+    }
+
+    struct SourcePumpResult {
+        PacketIngressStatus status = PacketIngressStatus::NoOutput;
+        std::uint32_t packets_popped = 0;
+        std::uint32_t canonical_frames_emitted = 0;
+        bool source_empty = false;
+    };
+
+    // The RecorderSession owner performs VIDEO due-work first, then calls
+    // pump_available() on either accepted WASAPI wrapper (both have try_pop).
+    // No waiting, added thread, additional packet queue or I/O.
+    template<class WasapiSource>
+    [[nodiscard]] SourcePumpResult pump_available(
+        WasapiSource &source,
+        CanonicalProgramAssembler &assembler,
+        std::uint32_t max_packets = 2) noexcept
+    {
+        SourcePumpResult result;
+        if (!ready_ || max_packets == 0 || max_packets > 4) {
+            result.status = PacketIngressStatus::Invalid;
+            return result;
+        }
+        for (std::uint32_t i = 0; i < max_packets; ++i) {
+            windows::WasapiPacketLease lease;
+            if (!source.try_pop(lease)) {
+                result.source_empty = true;
+                break;
+            }
+            ++result.packets_popped;
+            const auto one = process_lease(lease, assembler);
+            if (one.status != PacketIngressStatus::Applied &&
+                one.status != PacketIngressStatus::BeforeMediaZero &&
+                one.status != PacketIngressStatus::NoOutput) {
+                result.status = one.status;
+                return result; // Fail session, never conceal packet loss.
+            }
+            result.canonical_frames_emitted += one.canonical_frames_emitted;
+            if (one.status == PacketIngressStatus::Applied)
+                result.status = PacketIngressStatus::Applied;
+        }
+        return result;
+    }
+#endif
 
     [[nodiscard]] bool ready() const noexcept { return ready_; }
     [[nodiscard]] AudioDriftControllerSnapshot drift() const noexcept
