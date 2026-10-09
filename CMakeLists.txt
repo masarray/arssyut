@@ -468,6 +468,40 @@ if(ARSSYUT_BUILD_TESTS)
         COMMAND arssyut_audio_canonical_staging_tests
     )
 
+    # P7A5: one canonical assembly stage reuses staging/source windows/
+    # mixer with bounded, nonblocking program output for the P7A6 writer.
+    add_executable(arssyut_audio_canonical_program_assembler_tests
+        tests/test_audio_canonical_program_assembler.cpp
+    )
+    target_link_libraries(
+        arssyut_audio_canonical_program_assembler_tests
+        PRIVATE
+            arssyut_core
+            Threads::Threads
+    )
+    if(MSVC)
+        target_compile_options(
+            arssyut_audio_canonical_program_assembler_tests
+            PRIVATE
+                /W4
+                /permissive-
+                /utf-8
+                /Zc:__cplusplus
+        )
+    else()
+        target_compile_options(
+            arssyut_audio_canonical_program_assembler_tests
+            PRIVATE
+                -Wall
+                -Wextra
+                -Wpedantic
+        )
+    endif()
+    add_test(
+        NAME arssyut_audio_canonical_program_assembler_tests
+        COMMAND arssyut_audio_canonical_program_assembler_tests
+    )
+
     add_executable(arssyut_audio_sample_normalizer_tests
         tests/test_audio_sample_normalizer.cpp
     )

@@ -255,6 +255,9 @@ jobs:
             # P7A5 fixed canonical staging retains already-produced future SRC
             # suffixes without unbounded growth or a second timing authority.
             "src/core/audio/audio_canonical_staging.hpp" = "64d57912a54977a526e19ea4d18f5a62299cc16b"
+            # P7A5 closed-program assembly: vetted exact blob composes the
+            # existing staging/windows/mixer; no replacement clock or backend.
+            "src/core/audio/audio_canonical_program_assembler.hpp" = "506256245d20ffa0efb487d27f4d63077782aa28"
 
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
