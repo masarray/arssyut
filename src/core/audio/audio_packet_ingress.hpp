@@ -11,6 +11,12 @@
 #include "core/audio/audio_canonical_program_assembler.hpp"
 
 #ifdef _WIN32
+// This header is tested outside the arssyut_windows target too. Explicitly
+// prevent the Windows SDK's min/max macros from corrupting the accepted
+// WASAPI utility header and standard C++ algorithms; do not modify P7A2.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include "platform/windows/audio/wasapi_audio_utils.hpp"
 #endif
 

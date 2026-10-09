@@ -260,7 +260,7 @@ jobs:
             "src/core/audio/audio_canonical_program_assembler.hpp" = "506256245d20ffa0efb487d27f4d63077782aa28"
             # P7A5 typed packet lease -> native normalization -> mapped
             # canonical SRC ingress, exact blob; no unreviewed core drift.
-            "src/core/audio/audio_packet_ingress.hpp" = "ddf423bed2388b80baf4d9a54a14c5b785ad8329"
+            "src/core/audio/audio_packet_ingress.hpp" = "28525e79048aa288a608022b64288bee0a62130e"
 
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
