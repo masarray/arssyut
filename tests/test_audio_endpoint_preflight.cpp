@@ -1,3 +1,6 @@
+// Include the canonical audio contracts before Windows MMDevice headers.
+// This is the order used by the future single RecorderSession AV owner.
+#include "app/audio_pcm16_submission_adapter.hpp"
 #include "app/audio_endpoint_preflight.hpp"
 #include "app/audio_source_preparation.hpp"
 
@@ -194,6 +197,96 @@ int main()
     check_fail_closed();
     check_untrusted_selection();
     check_session_isolation();
+
+    // Single-owner P7A6 cross-tranche acceptance: selected endpoint profile
+    // -> source starts -> one AAC writer readiness -> canonical MF submission.
+    // Real WASAPI/Media Foundation codecs are tested separately, while this
+    // test verifies that both accepted contracts link and compose without
+    // accidentally Armed-before-writer or independent media-zero origins.
+    {
+        using namespace arssyut::app::audio;
+        FakeLookup lookup;
+        AudioEndpointRequest profile;
+        profile.microphone = true;
+        profile.system_audio = true;
+        profile.microphone_id = L"{pinned-capture}";
+        PinnedAudioEndpoints pinned;
+        check(resolve_audio_endpoints(profile, lookup, pinned).ok(),
+              "integration resolves both Windows audio roles");
+        struct IntegratedSource {
+            int starts = 0;
+            int stops = 0;
+            std::wstring device;
+            [[nodiscard]] Status start(std::wstring id)
+            {
+                ++starts;
+                device = std::move(id);
+                return Status::success();
+            }
+            void stop() noexcept { ++stops; }
+        } mic, system;
+        AudioStartupGate startup;
+        const auto generation = startup.begin({
+            .microphone = true, .system_audio = true
+        });
+        check(start_pinned_audio_sources(
+                  pinned, startup, generation, mic, system,
+                  [] { return false; }).ok() &&
+                  mic.device == L"{pinned-capture}" &&
+                  system.device == L"{pinned-default-render}",
+              "integration starts two concrete pinned device identities");
+        check(startup.state() == AudioStartupState::Pending,
+              "two sources alone cannot falsely Arm without AAC writer");
+        check(startup.writer_ready(generation) &&
+                  startup.state() == AudioStartupState::Ready,
+              "same-generation sole AAC writer permits Armed");
+        struct IntegratedWriter {
+            int calls = 0;
+            bool discontinuity = false;
+            std::int64_t pts = -1;
+            std::size_t samples = 0;
+            [[nodiscard]] Status write_audio_pcm16(
+                std::span<const std::int16_t> pcm,
+                arssyut::core::TimePoint relative,
+                std::int64_t duration,
+                bool boundary)
+            {
+                ++calls;
+                samples = pcm.size();
+                pts = relative.ticks_100ns;
+                discontinuity = boundary;
+                return duration > 0 ? Status::success() :
+                    Status::failure(StatusCode::InvalidArgument);
+            }
+        } writer;
+        AacPcm16SubmissionAdapter adapter;
+        constexpr std::int64_t media_zero = 41'000'000;
+        adapter.reset(media_zero);
+        arssyut::core::audio::AudioProgramBlock block{};
+        block.audio.clear();
+        block.audio.media_start_100ns = media_zero;
+        block.audio.samples[0] = 0.5F;
+        const auto first = adapter.submit_to(writer, block, 0);
+        check(first.submitted && writer.calls == 1 &&
+                  writer.samples == 2048 && writer.pts == 0 &&
+                  !writer.discontinuity,
+              "integration writes first 1024-frame program block at media zero");
+        block.audio.media_start_100ns = media_zero +
+            static_cast<std::int64_t>(
+                arssyut::core::audio::frames_to_ticks_floor(2048, 48'000));
+        block.follows_output_discontinuity = true;
+        const auto later = adapter.submit_to(writer, block, 2048);
+        check(later.submitted && writer.calls == 2 &&
+                  writer.discontinuity &&
+                  writer.pts == static_cast<std::int64_t>(
+                      arssyut::core::audio::frames_to_ticks_floor(2048, 48'000)),
+              "integration preserves absolute gap and discontinuity to AAC");
+        system.stop();
+        mic.stop();
+        check(system.stops == 1 && mic.stops == 1,
+              "integration returns all source lifetimes to the one owner");
+    }
+
 
     // Windows MSVC instantiates the same generic preparation function
     // against the real _WIN32 header set, without opening CI runner devices.
