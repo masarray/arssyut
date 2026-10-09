@@ -1,0 +1,31 @@
+name: P7A6 AAC Submission Contract
+
+on:
+  pull_request:
+    paths:
+      - 'src/app/audio_pcm16_submission_adapter.hpp'
+      - 'tests/test_audio_pcm16_submission_adapter.cpp'
+      - '.github/workflows/p7a6-aac-submission.yml'
+  workflow_dispatch:
+
+jobs:
+  portable-aac-input:
+    name: Canonical PCM16 AAC input (GCC / UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile C++20 with strict warnings
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -pedantic -Isrc \
+            tests/test_audio_pcm16_submission_adapter.cpp \
+            -o /tmp/arssyut_aac_submission
+      - name: Exact duration, PCM16, stop trim, 1h-equivalent and backpressure
+        run: /tmp/arssyut_aac_submission
+      - name: Compile with UBSan
+        run: |
+          g++ -std=c++20 -O1 -g -Wall -Wextra -Werror -pedantic \
+            -fsanitize=undefined -fno-sanitize-recover=all -Isrc \
+            tests/test_audio_pcm16_submission_adapter.cpp \
+            -o /tmp/arssyut_aac_submission_ubsan
+      - name: Run undefined-behavior sanitizer
+        run: /tmp/arssyut_aac_submission_ubsan

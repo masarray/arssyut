@@ -225,6 +225,11 @@ jobs:
             # Region output.
             "src/app/windows_main.cpp" = "f75b48c688023d9c154cf472a3ff7ef0fda28c30"
 
+            # P7A6 single-owner canonical float32 -> PCM16 submission;
+            # reviewed non-sticky Media Foundation discontinuity support.
+            # The exact hashes below replace, not relax, the baseline guard.
+            "src/app/audio_pcm16_submission_adapter.hpp" = "d69fdccb252f6ba6c0dd0cef6d9dc444a81cff52"
+
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;
             # later audio lanes must not silently mutate the shared contract.
@@ -274,8 +279,8 @@ jobs:
             # P7A4 evolves the accepted single Media Foundation writer into one
             # optional AV authority. Exact blobs keep the video path fail-closed
             # while allowing only the audited AAC/PCM16 extension.
-            "src/platform/windows/media/mf_h264_mp4_writer.hpp" = "e26fc192af7f84a9b2392406598d54686463dbcd"
-            "src/platform/windows/media/mf_h264_mp4_writer.cpp" = "1b9249d1d437aade0f88f29755464e5bbae8c640"
+            "src/platform/windows/media/mf_h264_mp4_writer.hpp" = "0fe410330d192a58724c03e0583ccd2458f31263"
+            "src/platform/windows/media/mf_h264_mp4_writer.cpp" = "deebd6c1f329fd850a095ad1538b9ec0aaf90cc8"
           }
 
           $changedNative = @(

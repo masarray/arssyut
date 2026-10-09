@@ -129,6 +129,13 @@ configure_mf_pcm16_input_type(
     IMFMediaType *type,
     MfAudioWriterConfig config) noexcept;
 
+// Explicit one-sample boundary signal used by the existing MF writer; a
+// non-discontinuous sample leaves the extension absent. Testable without
+// Windows capture devices or an encoder.
+[[nodiscard]] HRESULT configure_mf_audio_sample_discontinuity(
+    IMFSample *sample,
+    bool discontinuity) noexcept;
+
 class MfH264Mp4Writer final {
 public:
     static constexpr std::size_t max_surface_count = 8;
@@ -152,10 +159,14 @@ public:
         arssyut::core::TimePoint relative_pts,
         std::int64_t duration_ticks) noexcept;
 
+    // Backpressure/drop gaps keep their original media PTS. The caller
+    // forwards canonical program discontinuity to the existing MF sample,
+    // rather than silently resetting the writer's own timing authority.
     [[nodiscard]] arssyut::core::Status write_audio_pcm16(
         std::span<const std::int16_t> interleaved,
         arssyut::core::TimePoint relative_pts,
-        std::int64_t duration_ticks) noexcept;
+        std::int64_t duration_ticks,
+        bool discontinuity = false) noexcept;
 
     [[nodiscard]] arssyut::core::Status finalize() noexcept;
 

@@ -138,6 +138,22 @@ inline constexpr GUID kArssyutAudioSlot = {
 
 } // namespace
 
+HRESULT configure_mf_audio_sample_discontinuity(
+    IMFSample *sample,
+    bool discontinuity) noexcept
+{
+    if (!sample)
+        return E_POINTER;
+
+    // A fresh sample is created for every attempt. Do not turn this into
+    // a sticky writer state; only a requested boundary carries the flag.
+    if (!discontinuity)
+        return S_OK;
+
+    return sample->SetUINT32(
+        MFSampleExtension_Discontinuity, TRUE);
+}
+
 Status configure_mf_aac_output_type(
     IMFMediaType *type,
     MfAudioWriterConfig config) noexcept
@@ -1608,7 +1624,8 @@ Status MfH264Mp4Writer::write_frame(
 Status MfH264Mp4Writer::write_audio_pcm16(
     std::span<const std::int16_t> interleaved,
     arssyut::core::TimePoint relative_pts,
-    std::int64_t duration_ticks) noexcept
+    std::int64_t duration_ticks,
+    bool discontinuity) noexcept
 {
     if (!open_ ||
         !audio_enabled_ ||
@@ -1780,6 +1797,16 @@ Status MfH264Mp4Writer::write_audio_pcm16(
 
     hr = sample->SetSampleDuration(
         duration_ticks);
+    if (FAILED(hr)) {
+        return fail_slot(
+            MfWriterStage::CreateAudioSample,
+            hr);
+    }
+
+    // Canonical gaps (writer drop, endpoint loss or source discontinuity)
+    // must be visible to the AAC transform. Never rebase media timestamps.
+    hr = configure_mf_audio_sample_discontinuity(
+        sample.Get(), discontinuity);
     if (FAILED(hr)) {
         return fail_slot(
             MfWriterStage::CreateAudioSample,
