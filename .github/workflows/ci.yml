@@ -192,6 +192,7 @@ jobs:
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:DebugType=None -p:DebugSymbols=false `
+            -p:InternalAudioPreview=true `
             -o $package
           if ($LASTEXITCODE -ne 0) {
             throw "Internal FFmpeg-enabled UI publish failed."
@@ -214,16 +215,10 @@ jobs:
             (Join-Path $package "THIRD_PARTY_NOTICES.md") -Force
 
           @'
-          @echo off
-          set "ARSSYUT_AUDIO_PREVIEW=1"
-          start "" "%~dp0Arssyut.UI.exe"
-          '@ | Set-Content -Encoding ascii (Join-Path $package "START_AUDIO_PREVIEW.cmd")
-
-          @'
           INTERNAL WINDOWS HARDWARE AUDIO ACCEPTANCE — NOT A PUBLIC RELEASE
 
           1. Unzip the complete artifact on Windows 10/11 x64.
-          2. Double-click START_AUDIO_PREVIEW.cmd.
+          2. Double-click Arssyut.UI.exe directly. NO CMD or console.
           3. In the Audio panel, enable Microphone, System audio, or both.
           4. Select a microphone from the detected real Windows device list.
              System audio uses the default Windows eConsole playback endpoint.
@@ -234,8 +229,8 @@ jobs:
 
           CAUTION: This opt-in package has not passed real-device audio
           acceptance yet. Do not replace the stable video-only release.
-          The experimental bridge refuses Mic/System unless the launcher
-          explicitly sets ARSSYUT_AUDIO_PREVIEW=1. Camera remains unsupported.
+          The dedicated INTERNAL executable enables its acceptance mode
+          within its process. Public builds do not. Camera is unsupported.
           FFmpeg linkage and redistribution require licensing review.
           '@ | Set-Content (Join-Path $package "README_AUDIO_ACCEPTANCE.txt")
 
@@ -243,7 +238,7 @@ jobs:
         if: github.head_ref == 'feat/p7-product-audio-integration-v1'
         shell: pwsh
         run: |
-          $env:ARSSYUT_AUDIO_PREVIEW = "1"
+          # Acceptance symbol in the single-file EXE enables audio itself.
           $exe = Join-Path $PWD "dist/arssyut-audio-acceptance/Arssyut.UI.exe"
           $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
           try {
