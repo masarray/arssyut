@@ -229,6 +229,10 @@ jobs:
             # not a new recorder clock/worker or product audio activation.
             "src/app/audio_startup_gate.hpp" = "f9f993e663e1117d965e8ce8402f4328c50cf9bf"
 
+            # P7A6: Windows MMDevice Preparing-only endpoint preflight
+            # pins default/selected capture and render IDs before Armed.
+            "src/app/audio_endpoint_preflight.hpp" = "859170accf6351963fa51326ebcad6170293a148"
+
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;
             # later audio lanes must not silently mutate the shared contract.

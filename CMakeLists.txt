@@ -689,6 +689,32 @@ if(ARSSYUT_BUILD_TESTS)
         endif()
         add_test(NAME arssyut_windows_tests COMMAND arssyut_windows_tests)
 
+        # P7A6 Preparing boundary: endpoint role/default/pinned ID checks.
+        # Single existing Windows CI lane, no independent workflow.
+        add_executable(arssyut_audio_endpoint_preflight_tests
+            tests/test_audio_endpoint_preflight.cpp
+        )
+        target_link_libraries(
+            arssyut_audio_endpoint_preflight_tests
+            PRIVATE
+                arssyut_core
+                ole32
+        )
+        if(MSVC)
+            target_compile_options(
+                arssyut_audio_endpoint_preflight_tests
+                PRIVATE
+                    /W4
+                    /permissive-
+                    /utf-8
+                    /Zc:__cplusplus
+            )
+        endif()
+        add_test(
+            NAME arssyut_audio_endpoint_preflight_tests
+            COMMAND arssyut_audio_endpoint_preflight_tests
+        )
+
         add_executable(arssyut_wasapi_microphone_tests
             tests/windows/test_wasapi_microphone_source.cpp
         )
