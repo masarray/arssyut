@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
+#include <span>
 
 namespace {
 using arssyut::app::audio::AacPcm16SubmissionAdapter;
@@ -217,6 +219,145 @@ void hours_equivalent_no_pts_accumulation()
             "exact skipped interval recorded without retiming");
 }
 
+
+struct FakeProgramWriter {
+    int calls = 0;
+    arssyut::core::Status next_status =
+        arssyut::core::Status::success();
+    bool throws = false;
+    std::int64_t last_pts = -1;
+    std::int64_t last_duration = 0;
+    bool last_discontinuity = false;
+    std::size_t last_samples = 0;
+    std::int16_t first_pcm16 = 0;
+
+    [[nodiscard]] arssyut::core::Status write_audio_pcm16(
+        std::span<const std::int16_t> interleaved,
+        arssyut::core::TimePoint pts,
+        std::int64_t duration,
+        bool discontinuity)
+    {
+        ++calls;
+        last_pts = pts.ticks_100ns;
+        last_duration = duration;
+        last_discontinuity = discontinuity;
+        last_samples = interleaved.size();
+        first_pcm16 = interleaved[0];
+        if (throws)
+            throw std::runtime_error("writer failed unexpectedly");
+        return next_status;
+    }
+};
+
+void single_writer_submission_contract()
+{
+    using arssyut::core::Status;
+    using arssyut::core::StatusCode;
+    AacPcm16SubmissionAdapter adapter;
+    FakeProgramWriter writer;
+    adapter.reset(kZero);
+    auto b = make_block(0);
+    b.audio.samples[0] = 0.5F;
+    auto result = adapter.submit_to(writer, b, 0);
+    require(result.prepare_status == AacPrepareStatus::Ready &&
+            result.writer_attempted && result.submitted &&
+            result.writer_status.ok() && !adapter.has_pending(),
+        "single synchronous AAC submission pairs prepare/write/finish");
+    require(writer.calls == 1 && writer.last_samples == 2048 &&
+            writer.last_pts == 0 && writer.last_duration == 213'333 &&
+            writer.first_pcm16 == 16384 && !writer.last_discontinuity,
+        "writer receives canonical PCM16 with exact initial PTS");
+
+    auto invalid = b;
+    invalid.audio.media_start_100ns += 1;
+    result = adapter.submit_to(writer, invalid, 1024);
+    require(result.prepare_status == AacPrepareStatus::Invalid &&
+            !result.writer_attempted && writer.calls == 1 &&
+            result.writer_status.code == StatusCode::InvalidArgument,
+        "invalid timestamp fails before touching Media Foundation");
+    result = adapter.submit_to(writer, b, 0);
+    require(result.prepare_status == AacPrepareStatus::OutOfOrder &&
+            !result.writer_attempted &&
+            result.writer_status.code == StatusCode::InvalidStateTransition &&
+            writer.calls == 1,
+        "duplicate output cannot be sent to writer twice");
+
+    writer.next_status = Status::failure(
+        StatusCode::EncoderBackpressure, 0xABCD);
+    const auto second = make_block(1024);
+    result = adapter.submit_to(writer, second, 1024);
+    require(result.writer_attempted && !result.submitted &&
+            result.writer_status.code == StatusCode::EncoderBackpressure &&
+            result.writer_status.detail == 0xABCD &&
+            !adapter.has_pending() && writer.calls == 2,
+        "writer backpressure is surfaced and leaves no pending sample");
+
+    writer.next_status = Status::success();
+    const auto third = make_block(2048);
+    result = adapter.submit_to(writer, third, 2048);
+    require(result.submitted && writer.last_discontinuity &&
+            writer.last_pts == static_cast<std::int64_t>(
+                frames_to_ticks_floor(2048, 48'000)) &&
+            adapter.stats().dropped_blocks == 1,
+        "backpressure marks next AAC sample without retiming media");
+
+    writer.throws = true;
+    const auto fourth = make_block(3072);
+    result = adapter.submit_to(writer, fourth, 3072);
+    require(!result.submitted && result.writer_attempted &&
+            result.writer_status.code == StatusCode::InternalError &&
+            !adapter.has_pending() &&
+            adapter.stats().dropped_blocks == 2,
+        "unexpected writer exception cannot strand an in-flight PCM buffer");
+
+    writer.throws = false;
+    const auto fifth = make_block(4096);
+    result = adapter.submit_to(writer, fifth, 4096);
+    require(result.submitted && writer.last_discontinuity &&
+            adapter.stats().submitted_blocks == 3,
+        "writer resumes from canonical PTS with discontinuity after exception");
+
+    // Deliberately hold the old direct prepare() contract: the newer API
+    // must not overwrite another attempt's fixed 2048-sample staging buffer.
+    const auto pending = make_block(5120);
+    require(adapter.prepare(pending, 5120).status == AacPrepareStatus::Ready,
+        "pending attempt exists for Busy regression");
+    const int before_calls = writer.calls;
+    result = adapter.submit_to(writer, pending, 5120);
+    require(result.prepare_status == AacPrepareStatus::Busy &&
+            !result.writer_attempted && writer.calls == before_calls,
+        "busy adapter never overwrites or double-writes in-flight sample");
+    require(adapter.finish(false), "manual pending attempt released");
+}
+
+void single_writer_stop_and_reset()
+{
+    AacPcm16SubmissionAdapter adapter;
+    FakeProgramWriter writer;
+    adapter.reset(kZero);
+    const auto first = make_block(0);
+    const auto stop = kZero +
+        static_cast<std::int64_t>(frames_to_ticks_floor(256, 48'000)) + 1;
+    auto result = adapter.submit_to(writer, first, 0, stop);
+    require(result.submitted && writer.last_samples == 512 &&
+            writer.last_duration ==
+                static_cast<std::int64_t>(
+                    frames_to_ticks_floor(256, 48'000)),
+        "stop cuts AAC submission to 256 complete canonical frames");
+    result = adapter.submit_to(writer, make_block(1024), 1024, stop);
+    require(result.prepare_status == AacPrepareStatus::PastStop &&
+            !result.writer_attempted && result.writer_status.ok() &&
+            writer.calls == 1, "after-stop audio is dropped before writer");
+
+    adapter.reset(kZero);
+    result = adapter.submit_to(writer, make_block(0), 0);
+    require(result.submitted && writer.last_pts == 0 &&
+            !writer.last_discontinuity &&
+            adapter.stats().submitted_blocks == 1 &&
+            adapter.stats().dropped_blocks == 0,
+        "new recording generation resets writer media-time and error state");
+}
+
 } // namespace
 
 int main()
@@ -226,6 +367,8 @@ int main()
     live_then_stop_tail();
     malformed_and_overflow_fail_closed();
     hours_equivalent_no_pts_accumulation();
+    single_writer_submission_contract();
+    single_writer_stop_and_reset();
 
     if (failures != 0) {
         std::cerr << "FAIL: " << failures << "/" << checked

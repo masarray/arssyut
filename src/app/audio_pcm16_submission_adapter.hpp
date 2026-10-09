@@ -2,6 +2,8 @@
 
 #include "core/audio/audio_program_mixer.hpp"
 #include "core/audio/audio_time.hpp"
+#include "core/result/status.hpp"
+#include "core/time/monotonic_clock.hpp"
 
 #include <algorithm>
 #include <array>
@@ -56,6 +58,15 @@ struct AacPcm16AdapterStats {
 struct AacPrepareResult {
     AacPrepareStatus status = AacPrepareStatus::Invalid;
     AacPcm16WriteView view{};
+};
+
+// One synchronous attempt: distinguishes skipped tail/invalid timeline,
+// writer backpressure, and successful AAC handoff. No retry queue.
+struct AacSubmissionResult {
+    AacPrepareStatus prepare_status = AacPrepareStatus::Invalid;
+    core::Status writer_status = core::Status::success();
+    bool writer_attempted = false;
+    bool submitted = false;
 };
 
 class AacPcm16SubmissionAdapter final {
@@ -244,6 +255,54 @@ public:
         pending_ = false;
         pending_frames_ = 0;
         return true;
+    }
+
+    /*
+     * The RecorderSession's SINGLE AV-writer owner calls this for each
+     * canonical P7A5 program block. It is the exact production API that
+     * replaces error-prone manual prepare/write/finish choreography.
+     *
+     * If the writer rejects or throws, finish(false) still runs and the next
+     * accepted block retains absolute PTS plus a discontinuity flag. Writer
+     * failure is returned untouched, so RecorderSession can distinguish
+     * backpressure (drop) from fatal Media Foundation failure (stop/fail).
+     * Do not retry the same block, synthesize a second clock, or grow a queue.
+     */
+    template<class Writer>
+    [[nodiscard]] AacSubmissionResult submit_to(
+        Writer &writer,
+        const core::audio::AudioProgramBlock &block,
+        std::uint64_t first_frame,
+        std::int64_t stop_100ns = -1) noexcept
+    {
+        const auto prepared = prepare(block, first_frame, stop_100ns);
+        AacSubmissionResult result;
+        result.prepare_status = prepared.status;
+        if (prepared.status != AacPrepareStatus::Ready) {
+            if (prepared.status == AacPrepareStatus::Invalid) {
+                result.writer_status = core::Status::failure(
+                    core::StatusCode::InvalidArgument);
+            } else if (prepared.status != AacPrepareStatus::PastStop) {
+                result.writer_status = core::Status::failure(
+                    core::StatusCode::InvalidStateTransition);
+            }
+            return result;
+        }
+
+        result.writer_attempted = true;
+        try {
+            result.writer_status = writer.write_audio_pcm16(
+                prepared.view.interleaved,
+                core::TimePoint{prepared.view.relative_pts_100ns},
+                prepared.view.duration_100ns,
+                prepared.view.discontinuity);
+        } catch (...) {
+            result.writer_status = core::Status::failure(
+                core::StatusCode::InternalError);
+        }
+        result.submitted = result.writer_status.ok();
+        (void)finish(result.submitted);
+        return result;
     }
 
     [[nodiscard]] bool has_pending() const noexcept { return pending_; }

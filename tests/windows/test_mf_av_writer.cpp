@@ -545,18 +545,14 @@ void test_product_native_av_writer_with_canonical_audio(
 
         if (n == 3U)
             block.audio.discontinuity_mask = 1U;
-        auto prepared = adapter.prepare(block, first_frame);
-        if (prepared.status != app::audio::AacPrepareStatus::Ready) {
-            samples_ok = false;
-            break;
-        }
-        const auto write_status = writer.write_audio_pcm16(
-            prepared.view.interleaved,
-            core::TimePoint{prepared.view.relative_pts_100ns},
-            prepared.view.duration_100ns,
-            prepared.view.discontinuity);
-        const bool accepted = write_status.ok();
-        if (!adapter.finish(accepted) || !accepted) {
+        // Exercise the exact future RecorderSession writer-owner API.
+        // Discontinuity, writer outcome and pending-buffer lifetime can no
+        // longer diverge between application and test-only helper code.
+        const auto submission =
+            adapter.submit_to(writer, block, first_frame);
+        if (submission.prepare_status !=
+                app::audio::AacPrepareStatus::Ready ||
+            !submission.submitted) {
             samples_ok = false;
             break;
         }

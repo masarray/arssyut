@@ -228,7 +228,7 @@ jobs:
             # P7A6 single-owner canonical float32 -> PCM16 submission;
             # reviewed non-sticky Media Foundation discontinuity support.
             # The exact hashes below replace, not relax, the baseline guard.
-            "src/app/audio_pcm16_submission_adapter.hpp" = "f7bacaa4e0230e70fbff15a6fcd295fb9f434399"
+            "src/app/audio_pcm16_submission_adapter.hpp" = "e80836821c415702f6598e49c7940393a27fc9ca"
 
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;
