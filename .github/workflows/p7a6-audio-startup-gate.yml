@@ -1,0 +1,29 @@
+name: P7A6 Audio Startup Gate
+
+on:
+  pull_request:
+    paths:
+      - 'src/app/audio_startup_gate.hpp'
+      - 'tests/test_audio_startup_gate.cpp'
+      - '.github/workflows/p7a6-audio-startup-gate.yml'
+  workflow_dispatch:
+
+jobs:
+  portable-startup-contract:
+    name: Portable startup readiness (GCC + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile with production warnings
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Werror -pedantic -Isrc \
+            tests/test_audio_startup_gate.cpp -o /tmp/arssyut_audio_startup_gate
+      - name: Deterministic cases and 10000-generation lifecycle
+        run: /tmp/arssyut_audio_startup_gate
+      - name: Compile undefined-behavior sanitizer
+        run: |
+          g++ -std=c++20 -O1 -g -Wall -Wextra -Werror -pedantic \
+            -fsanitize=undefined -fno-sanitize-recover=all -Isrc \
+            tests/test_audio_startup_gate.cpp -o /tmp/arssyut_audio_startup_gate_ubsan
+      - name: Verify no undefined behavior
+        run: /tmp/arssyut_audio_startup_gate_ubsan

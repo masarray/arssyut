@@ -225,6 +225,17 @@ jobs:
             # Region output.
             "src/app/windows_main.cpp" = "f75b48c688023d9c154cf472a3ff7ef0fda28c30"
 
+            # P7A6 generation-safe single-owner startup readiness barrier;
+            # not a new recorder clock/worker or product audio activation.
+            "src/app/audio_startup_gate.hpp" = "453a2fe2b1beea85d093244c77b68df2dff35771"
+
+            # P7A6: Windows MMDevice Preparing-only endpoint preflight
+            # pins default/selected capture and render IDs before Armed.
+            # P7A6: source start order, cancellation and reverse-order
+            # rollback stay on the existing RecorderSession single owner.
+            "src/app/audio_source_preparation.hpp" = "5f64b96540f5a98d319c5af793cc5cbe868f8b21"
+            "src/app/audio_endpoint_preflight.hpp" = "859170accf6351963fa51326ebcad6170293a148"
+
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;
             # later audio lanes must not silently mutate the shared contract.
