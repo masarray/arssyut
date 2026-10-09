@@ -283,8 +283,7 @@ private:
                 return program_.try_take(out, first_frame);
             },
             scratch_, 2, stop_100ns);
-        if (r.status.code == core::StatusCode::EncoderBackpressure)
-            return core::Status::success();
+        // Never discard all subsequent audio while still reporting Saved.
         return r.status;
     }
 

@@ -1160,6 +1160,7 @@ void RecorderSession::worker_main() noexcept
         overview_gate;
 
     bool failed = false;
+    std::uint32_t consecutive_video_backpressure = 0;
 
     while (!stop_requested_.load(
         std::memory_order_acquire)) {
@@ -1368,6 +1369,14 @@ void RecorderSession::worker_main() noexcept
                 diagnostics_.increment(
                     DiagnosticMetric::
                         EncoderFramesBackpressured);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+                if (audio_runtime && ++consecutive_video_backpressure >= 30) {
+                    fail(Status::failure(
+                        StatusCode::EncoderBackpressure, 0xA002));
+                    failed = true;
+                    break;
+                }
+#endif
             } else if (!write_status.ok()) {
                 diagnostics_.increment(
                     DiagnosticMetric::
@@ -1379,6 +1388,7 @@ void RecorderSession::worker_main() noexcept
                 failed = true;
                 break;
             } else {
+                consecutive_video_backpressure = 0;
                 diagnostics_.increment(
                     DiagnosticMetric::
                         EncoderFramesSubmitted);
@@ -1546,8 +1556,26 @@ void RecorderSession::worker_main() noexcept
             audio_samples, std::memory_order_relaxed);
         audio_frames_submitted_.store(
             writer.submitted_audio_frames(), std::memory_order_relaxed);
-        if ((!writer.audio_enabled() || audio_samples == 0) && !failed) {
+        const auto captured_span = static_cast<std::uint64_t>(
+            (std::max)(std::int64_t{0},
+                recording_stopped.ticks_100ns - start.ticks_100ns));
+        const auto audio_span = core::audio::frames_to_ticks_floor(
+            writer.submitted_audio_frames(), 48'000);
+        // A 170 ms AAC fragment does not qualify as a successful
+        // 22-second recording. A/V must cover the real session.
+        if ((!writer.audio_enabled() || audio_samples == 0 ||
+             (captured_span > 20'000'000ULL &&
+              audio_span < (captured_span * 8ULL) / 10ULL)) &&
+            !failed) {
             fail(Status::failure(StatusCode::PlatformFailure, 0xA001));
+            failed = true;
+        }
+        const auto expected_video =
+            (captured_span * config_.frame_rate.numerator) /
+            (10'000'000ULL * config_.frame_rate.denominator);
+        if (!failed && captured_span > 20'000'000ULL &&
+            writer.submitted_frames() < (expected_video * 8ULL) / 10ULL) {
+            fail(Status::failure(StatusCode::EncoderBackpressure, 0xA003));
             failed = true;
         }
     }

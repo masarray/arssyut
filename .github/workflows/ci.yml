@@ -336,7 +336,7 @@ jobs:
             "src/app/audio_endpoint_preflight.hpp" = "859170accf6351963fa51326ebcad6170293a148"
             "src/app/audio_pcm16_submission_adapter.hpp" = "d69fdccb252f6ba6c0dd0cef6d9dc444a81cff52"
             # P7A6 sole RecorderSession product audio owner (opt-in).
-            "src/app/audio_product_runtime.hpp" = "4aa719fae81ec7a20813b027aa9e7ae455e44d91"
+            "src/app/audio_product_runtime.hpp" = "68990110b6720d7a2005f22973397b7abf99bd88"
             # Experimental-only bridge approval: default/release still
             # rejects audio. Mic tokens are generation checked.
             "src/bridge/native_bridge.cpp" = "c17fd0d0744570124110155d495b53428a8fb174"
@@ -396,8 +396,8 @@ jobs:
             # P7A4 evolves the accepted single Media Foundation writer into one
             # optional AV authority. Exact blobs keep the video path fail-closed
             # while allowing only the audited AAC/PCM16 extension.
-            "src/platform/windows/media/mf_h264_mp4_writer.hpp" = "0fe410330d192a58724c03e0583ccd2458f31263"
-            "src/platform/windows/media/mf_h264_mp4_writer.cpp" = "deebd6c1f329fd850a095ad1538b9ec0aaf90cc8"
+            "src/platform/windows/media/mf_h264_mp4_writer.hpp" = "afbe1fa90492d5fcb4bc03f442907e9ae552a2fa"
+            "src/platform/windows/media/mf_h264_mp4_writer.cpp" = "a6bc27fdbbc28daf980658c107326f32d56b0f1e"
           }
 
           $changedNative = @(

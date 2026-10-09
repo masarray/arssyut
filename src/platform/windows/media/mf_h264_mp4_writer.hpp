@@ -353,6 +353,7 @@ private:
     std::int64_t last_audio_end_100ns_ = 0;
 
     std::atomic<std::uint64_t> submitted_frames_{0};
+    std::atomic<std::uint32_t> dynamic_audio_in_flight_{0};
     std::atomic<std::uint64_t> submitted_audio_samples_{0};
     std::atomic<std::uint64_t> submitted_audio_frames_{0};
     std::atomic<std::uint64_t> audio_backpressure_events_{0};

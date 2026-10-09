@@ -14,6 +14,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <chrono>
+#include <thread>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
@@ -562,11 +564,85 @@ void test_product_native_av_writer_with_canonical_audio(
                     test_blocks * 1'024ULL,
         "Real product writer accepts canonical PCM16 into AAC track");
 
+    // Regression for real user failure: earlier native smoke wrote ONE video
+    // and SIX AAC samples, which could not expose the fixed eight-slot
+    // Media Foundation starvation seen on hardware. Interleave a FULL 5 s
+    // of real D3D11 H264 (30 fps) and AAC (48k / 1024), with live pacing.
+    // On machines without a supported encoder the function explicitly
+    // SKIPs above; on native A/V capable machines no shortened stream passes.
+    constexpr std::uint32_t kLongVideoFrames = 150;
+    constexpr std::uint64_t kLongAudioFrames = 240'000;
+    std::uint64_t next_audio_frame = test_blocks * 1'024ULL;
+    bool continued = samples_ok;
+    for (std::uint32_t frame = 1; frame < kLongVideoFrames && continued;
+         ++frame) {
+        const auto video_pts = static_cast<std::int64_t>(
+            core::audio::frames_to_ticks_floor(
+                static_cast<std::uint64_t>(frame), 30));
+        const auto video_time = core::TimePoint{video_pts};
+        bool video_ok = false;
+        for (int tries = 0; tries < 25; ++tries) {
+            const auto attempt = writer.write_frame(
+                device.immediate_context(), source.Get(),
+                video_time, 333'333);
+            if (attempt.ok()) {
+                video_ok = true;
+                break;
+            }
+            if (attempt.code != core::StatusCode::EncoderBackpressure)
+                break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(4));
+        }
+        if (!video_ok) {
+            std::cerr << "FAIL: A/V video encoder stalled at frame "
+                      << frame << " (submitted "
+                      << writer.submitted_frames() << ")\\n";
+            continued = false;
+            break;
+        }
+        const auto through = core::audio::ticks_to_frames_floor(
+            static_cast<std::uint64_t>(video_pts + 333'333), 48'000);
+        while (next_audio_frame < through &&
+               next_audio_frame < kLongAudioFrames) {
+            core::audio::AudioProgramBlock block;
+            block.audio.clear();
+            block.audio.media_start_100ns = static_cast<std::int64_t>(
+                core::audio::frames_to_ticks_floor(
+                    next_audio_frame, 48'000));
+            for (std::uint32_t n = 0; n < 1'024; ++n) {
+                const double phase = 2.0 * 3.14159265358979323846 *
+                    440.0 * static_cast<double>(next_audio_frame + n) /
+                    48'000.0;
+                const auto pcm = static_cast<float>(std::sin(phase) * 0.25);
+                block.audio.samples[2 * n] = pcm;
+                block.audio.samples[2 * n + 1] = pcm;
+            }
+            const auto accepted = adapter.submit_to(
+                writer, block, next_audio_frame);
+            if (!accepted.submitted) {
+                std::cerr << "FAIL: A/V AAC stream stopped at frame "
+                          << next_audio_frame << " (audio in flight "
+                          << writer.in_flight_audio_samples() << ")\\n";
+                continued = false;
+                break;
+            }
+            next_audio_frame += 1'024;
+        }
+        // Live pacing gives actual asynchronous MF codecs an opportunity
+        // to release buffers instead of racing a 5-second backlog at t=0.
+        std::this_thread::sleep_for(std::chrono::milliseconds(33));
+    }
+    test.expect(continued && writer.submitted_frames() >= 140 &&
+                writer.submitted_audio_frames() >= 220'000ULL &&
+                writer.audio_backpressure_events() == 0,
+        "Native writer sustains 5 seconds interleaved H264+AAC without"
+        " eight-block starvation or video backpressure");
+
     const auto final_status = writer.finalize();
     test.expect(final_status.ok(),
         "Real H264/AAC product writer finalizes synchronized MP4");
 
-    if (!frame_written.ok() || !samples_ok || !final_status.ok())
+    if (!frame_written.ok() || !continued || !final_status.ok())
         return;
 
     ComPtr<IMFSourceReader> reader;
@@ -588,6 +664,41 @@ void test_product_native_av_writer_with_canonical_audio(
         static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM), 0,
         audio_type.GetAddressOf())) && audio_type;
     test.expect(has_audio, "Product MP4 contains native AAC audio stream");
+    // The writer accepted 5 seconds; confirm BOTH streams independently
+    // report a last decoded/encoded packet near the actual Stop time.
+    const auto verify_duration = [&](DWORD stream, const char *name) {
+        if (!reader)
+            return;
+        LONGLONG latest = -1;
+        bool end_of_stream = false;
+        for (std::size_t i = 0; i < 1200; ++i) {
+            DWORD actual = 0, flags = 0;
+            LONGLONG time = 0;
+            ComPtr<IMFSample> sample;
+            const HRESULT hr = reader->ReadSample(
+                stream, 0, &actual, &flags, &time,
+                sample.GetAddressOf());
+            if (FAILED(hr) || (flags & MF_SOURCE_READERF_ERROR)) {
+                test.expect(false, name);
+                return;
+            }
+            if (sample)
+                latest = (std::max)(latest, time);
+            if ((flags & MF_SOURCE_READERF_ENDOFSTREAM) != 0) {
+                end_of_stream = true;
+                break;
+            }
+        }
+        test.expect(end_of_stream && latest >= 40'000'000LL, name);
+    };
+    if (has_video)
+        verify_duration(static_cast<DWORD>(
+            MF_SOURCE_READER_FIRST_VIDEO_STREAM),
+            "Final MP4 video lasts at least 4 seconds");
+    if (has_audio)
+        verify_duration(static_cast<DWORD>(
+            MF_SOURCE_READER_FIRST_AUDIO_STREAM),
+            "Final MP4 AAC lasts at least 4 seconds");
     if (has_audio) {
         GUID subtype{};
         const bool is_aac = SUCCEEDED(audio_type->GetGUID(
