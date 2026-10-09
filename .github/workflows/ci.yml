@@ -78,7 +78,9 @@ jobs:
 
   p7a5-swresample-adapter:
     name: P7A5 libswresample adapter evidence
-    if: github.event_name == 'pull_request' && github.head_ref == 'feat/p7a5-swresample-adapter-v1'
+    # Only explicitly requested product integration compiles against pinned
+    # static FFmpeg. Normal UI/portable CI stays cheap and dependency-free.
+    if: github.event_name == 'pull_request' && (github.head_ref == 'feat/p7a5-swresample-adapter-v1' || github.head_ref == 'feat/p7-product-audio-integration-v1')
     runs-on: windows-latest
     timeout-minutes: 35
 
@@ -143,10 +145,12 @@ jobs:
           $toolchain = Join-Path $env:VCPKG_INSTALLATION_ROOT "scripts/buildsystems/vcpkg.cmake"
           $installed = Join-Path $PWD "build/p7a5-vcpkg"
 
-          cmake --preset windows-x64 -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DVCPKG_INSTALLED_DIR="$installed" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DARSSYUT_BUILD_TESTS=ON -DARSSYUT_BUILD_P7A5_SWRESAMPLE_ADAPTER_TESTS=ON
+          cmake --preset windows-x64 -DCMAKE_TOOLCHAIN_FILE="$toolchain" -DVCPKG_INSTALLED_DIR="$installed" -DVCPKG_TARGET_TRIPLET=x64-windows-static -DARSSYUT_BUILD_TESTS=ON -DARSSYUT_BUILD_P7A5_SWRESAMPLE_ADAPTER_TESTS=ON -DARSSYUT_ENABLE_PRODUCT_AUDIO=ON
 
       - name: Build isolated adapter tests
-        run: cmake --build --preset windows-release --target arssyut_p7a5_swresample_adapter_tests --parallel
+        run: # Product build must compile/link both actual RecorderSession entry
+          # points against the selected static FFmpeg backend, not just tests.
+          cmake --build --preset windows-release --target arssyut_p7a5_swresample_adapter_tests arssyut_native_bridge arssyut --parallel
 
       - name: Run adapter contract evidence
         shell: pwsh
@@ -225,6 +229,14 @@ jobs:
             # Region output.
             "src/app/windows_main.cpp" = "f75b48c688023d9c154cf472a3ff7ef0fda28c30"
 
+            # P7A6 exact production source-ready and AAC handoff contracts.
+            "src/app/audio_startup_gate.hpp" = "453a2fe2b1beea85d093244c77b68df2dff35771"
+            "src/app/audio_source_preparation.hpp" = "5f64b96540f5a98d319c5af793cc5cbe868f8b21"
+            "src/app/audio_endpoint_preflight.hpp" = "859170accf6351963fa51326ebcad6170293a148"
+            "src/app/audio_pcm16_submission_adapter.hpp" = "d69fdccb252f6ba6c0dd0cef6d9dc444a81cff52"
+            # P7A6 sole RecorderSession product audio owner (opt-in).
+            "src/app/audio_product_runtime.hpp" = "4aa719fae81ec7a20813b027aa9e7ae455e44d91"
+
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;
             # later audio lanes must not silently mutate the shared contract.
@@ -280,8 +292,8 @@ jobs:
             # P7A4 evolves the accepted single Media Foundation writer into one
             # optional AV authority. Exact blobs keep the video path fail-closed
             # while allowing only the audited AAC/PCM16 extension.
-            "src/platform/windows/media/mf_h264_mp4_writer.hpp" = "e26fc192af7f84a9b2392406598d54686463dbcd"
-            "src/platform/windows/media/mf_h264_mp4_writer.cpp" = "1b9249d1d437aade0f88f29755464e5bbae8c640"
+            "src/platform/windows/media/mf_h264_mp4_writer.hpp" = "0fe410330d192a58724c03e0583ccd2458f31263"
+            "src/platform/windows/media/mf_h264_mp4_writer.cpp" = "deebd6c1f329fd850a095ad1538b9ec0aaf90cc8"
           }
 
           $changedNative = @(

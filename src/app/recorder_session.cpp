@@ -2,6 +2,10 @@
 
 #ifdef _WIN32
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+#include "app/audio_product_runtime.hpp"
+#endif
+
 #include "core/result/status.hpp"
 #include "platform/windows/capture/latest_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
@@ -18,6 +22,8 @@
 #include <chrono>
 #include <fstream>
 #include <iomanip>
+#include <memory>
+#include <new>
 #include <sstream>
 #include <system_error>
 #include <utility>
@@ -252,6 +258,11 @@ Status RecorderSession::start(
         return Status::failure(
             StatusCode::InvalidArgument);
     }
+
+#if !defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    if (config.audio_microphone || config.audio_system)
+        return Status::failure(StatusCode::Unsupported);
+#endif
 
     // Product mode is the single public visual authority. Always rebuild the
     // internal P5A/P5B grade from the mode so UI/config callers cannot drift
@@ -662,10 +673,46 @@ void RecorderSession::worker_main() noexcept
     writer_config.bitrate_bps =
         config_.bitrate_bps;
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    // This is the SAME RecorderSession worker as video/MF. Preparing pins
+    // default/explicit devices once, starts the existing WASAPI wrappers and
+    // checks readiness before opening the one AV Sink Writer.
+    std::unique_ptr<audio::ProductAudioRuntime> audio_runtime;
+    if (config_.audio_microphone || config_.audio_system) {
+        audio_runtime.reset(new (std::nothrow) audio::ProductAudioRuntime);
+        if (!audio_runtime) {
+            fail(Status::failure(StatusCode::InternalError));
+            state_.store(RecorderState::Failed, std::memory_order_release);
+            return;
+        }
+        const audio::AudioEndpointRequest request{
+            .microphone = config_.audio_microphone,
+            .system_audio = config_.audio_system,
+            .microphone_id = config_.audio_microphone_id,
+            .system_audio_id = config_.audio_system_id,
+        };
+        const auto preflight = audio_runtime->prepare(request);
+        if (!preflight.ok()) {
+            fail(preflight);
+            state_.store(RecorderState::Failed, std::memory_order_release);
+            return;
+        }
+    }
+#endif
+
     Status status = writer.open(
         device->device(),
         config_.output_path,
-        writer_config);
+        writer_config
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        , arssyut::windows::MfAudioWriterConfig{
+              .enabled = static_cast<bool>(audio_runtime),
+              .sample_rate = 48'000,
+              .channels = 2,
+              .bitrate_bps = 192'000
+          }
+#endif
+    );
     if (!status.ok()) {
         encoder_failure_stage_.store(
             writer.failure_stage(),
@@ -710,6 +757,18 @@ void RecorderSession::worker_main() noexcept
             std::memory_order_release);
         return;
     }
+
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    if (audio_runtime) {
+        status = audio_runtime->writer_opened();
+        if (!status.ok()) {
+            fail(status);
+            (void)writer.finalize();
+            state_.store(RecorderState::Failed, std::memory_order_release);
+            return;
+        }
+    }
+#endif
 
     const bool presentation_enabled =
         config_.presentation.needs_presentation_frames();
@@ -939,6 +998,10 @@ void RecorderSession::worker_main() noexcept
                !stop_requested_.load(
                    std::memory_order_acquire) &&
                !capture.source_closed()) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime)
+                audio_runtime->discard_preroll();
+#endif
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(1));
         }
@@ -992,6 +1055,10 @@ void RecorderSession::worker_main() noexcept
     status = pipeline->reset_timeline(
         start,
         config_.frame_rate);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    if (status.ok() && audio_runtime)
+        status = audio_runtime->begin(start.ticks_100ns);
+#endif
     if (!status.ok()) {
         fail(status);
         presentation_input.stop();
@@ -1323,6 +1390,19 @@ void RecorderSession::worker_main() noexcept
             }
         }
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        // Video due work has already run. Cooperatively service at most
+        // two native packets per source and two AAC blocks, on this worker.
+        if (audio_runtime) {
+            const auto audio_status = audio_runtime->service(now, writer);
+            if (!audio_status.ok()) {
+                fail(audio_status);
+                failed = true;
+                break;
+            }
+        }
+#endif
+
         if (capture.source_closed()) {
             fail(Status::failure(
                 StatusCode::PlatformFailure));
@@ -1438,6 +1518,17 @@ void RecorderSession::worker_main() noexcept
 
     presentation_input.stop();
     capture.stop();
+
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    if (audio_runtime) {
+        const auto audio_status =
+            audio_runtime->finish(recording_stopped, writer);
+        if (!audio_status.ok() && !failed) {
+            fail(audio_status);
+            failed = true;
+        }
+    }
+#endif
 
     state_.store(
         RecorderState::Finalizing,

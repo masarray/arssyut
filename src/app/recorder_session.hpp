@@ -80,6 +80,14 @@ struct RecorderConfig {
     // waits in Armed until request_start_commit() defines frame zero.
     bool start_armed = false;
     std::uint32_t bitrate_bps = 18'000'000;
+
+    // Product audio is opt-in and fail-closed. Explicit endpoint IDs must be
+    // concrete Windows MMDevice IDs, never GUI display names or stale tokens.
+    // The existing bridge still rejects audio until real-device MP4 acceptance.
+    bool audio_microphone = false;
+    bool audio_system = false;
+    std::wstring audio_microphone_id;
+    std::wstring audio_system_id;
     arssyut::presentation::PresentationSettings presentation{};
     PresenterMomentaryBinding hold_zoom_hotkey{};
     PresenterMomentaryBinding overview_peek_hotkey{};
