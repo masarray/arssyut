@@ -69,6 +69,19 @@ struct AacSubmissionResult {
     bool submitted = false;
 };
 
+
+// Per-iteration telemetry for the ONE RecorderSession writer worker.
+// 'consumed' includes a skipped after-Stop block; only 'submitted' reached
+// the Media Foundation sink. No work is ever deferred into a hidden queue.
+struct AacWriterServiceResult {
+    core::Status status = core::Status::success();
+    std::uint32_t consumed = 0;
+    std::uint32_t submitted = 0;
+    bool source_empty = false;
+    bool backpressured = false;
+    bool reached_stop = false;
+};
+
 class AacPcm16SubmissionAdapter final {
 public:
     static constexpr std::uint32_t kFrameCount =
@@ -302,6 +315,93 @@ public:
         }
         result.submitted = result.writer_status.ok();
         (void)finish(result.submitted);
+        return result;
+    }
+
+    /*
+     * Bounded cooperative service point for the existing RecorderSession
+     * video/AV-writer loop. ALWAYS call video's due work first; then invoke
+     * service_ready_blocks with a small explicit per-pass budget (typically
+     * 1-2) so catching up audio never starves the next video deadline.
+     *
+     * try_take(out_block, out_first_absolute_frame) is a nonblocking P7A5
+     * producer callback returning bool. RecorderSession owns 'scratch', the
+     * adapter and the sole writer, so this helper allocates no queue, locks
+     * no media worker, polls no device, and advances no independent clock.
+     * Callback and writer calls are serialized on that same owner worker.
+     *
+     * On writer backpressure consume/drop just one block then yield; retrying
+     * it would create unbounded lag or replay stale PCM16 samples. Other
+     * writer/producer failures stop this service with their error preserved.
+     * The stop tick is in the existing RecorderSession absolute 100ns domain.
+     */
+    template<class Writer, class TryTake>
+    [[nodiscard]] AacWriterServiceResult service_ready_blocks(
+        Writer &writer,
+        TryTake &&try_take,
+        core::audio::AudioProgramBlock &scratch,
+        std::uint32_t max_blocks,
+        std::int64_t stop_100ns = -1) noexcept
+    {
+        AacWriterServiceResult result;
+        // This is a *bounded fairness contract*, not a configurable batch
+        // size: reject accidental unlimited work on the video-owner worker.
+        constexpr std::uint32_t kMaxBlocksPerPass = 4;
+        if (max_blocks == 0 || max_blocks > kMaxBlocksPerPass) {
+            result.status = core::Status::failure(
+                core::StatusCode::InvalidArgument);
+            return result;
+        }
+
+        for (std::uint32_t n = 0; n < max_blocks; ++n) {
+            std::uint64_t first_frame = 0;
+            bool available = false;
+            try {
+                available = try_take(scratch, first_frame);
+            } catch (...) {
+                result.status = core::Status::failure(
+                    core::StatusCode::InternalError);
+                return result;
+            }
+            if (!available) {
+                result.source_empty = true;
+                break;
+            }
+            ++result.consumed;
+
+            const auto trimmed_before = stats_.trimmed_stop_frames;
+            const auto attempt =
+                submit_to(writer, scratch, first_frame, stop_100ns);
+            if (attempt.prepare_status == AacPrepareStatus::PastStop) {
+                result.reached_stop = true;
+                break;
+            }
+            if (attempt.prepare_status != AacPrepareStatus::Ready) {
+                result.status = attempt.writer_status;
+                return result;
+            }
+
+            // Stop exactly at a whole-frame trimmed tail. Do not needlessly
+            // ask the producer for the following after-Stop interval.
+            if (stats_.trimmed_stop_frames != trimmed_before)
+                result.reached_stop = true;
+
+            if (attempt.submitted)
+                ++result.submitted;
+            else {
+                result.status = attempt.writer_status;
+                if (attempt.writer_status.code ==
+                        core::StatusCode::EncoderBackpressure) {
+                    result.backpressured = true;
+                    // Cooperative yield; next pass may attempt the next
+                    // canonical frame with a discontinuity, never the drop.
+                }
+                return result;
+            }
+
+            if (result.reached_stop)
+                break;
+        }
         return result;
     }
 

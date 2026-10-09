@@ -358,6 +358,145 @@ void single_writer_stop_and_reset()
         "new recording generation resets writer media-time and error state");
 }
 
+
+void bounded_writer_service_and_fairness()
+{
+    using arssyut::core::Status;
+    using arssyut::core::StatusCode;
+    AacPcm16SubmissionAdapter adapter;
+    FakeProgramWriter writer;
+    adapter.reset(kZero);
+    AudioProgramBlock scratch;
+    std::uint64_t next_frame = 0;
+    int calls = 0;
+    auto take = [&](AudioProgramBlock &out, std::uint64_t &first) {
+        ++calls;
+        if (next_frame == 5ULL * 1024)
+            return false;
+        first = next_frame;
+        out = make_block(first);
+        next_frame += 1024;
+        return true;
+    };
+
+    auto result = adapter.service_ready_blocks(
+        writer, take, scratch, 0);
+    require(result.status.code == StatusCode::InvalidArgument &&
+            result.consumed == 0 && calls == 0,
+            "zero audio service budget cannot spin or touch producer");
+    result = adapter.service_ready_blocks(writer, take, scratch, 5);
+    require(result.status.code == StatusCode::InvalidArgument &&
+            result.consumed == 0 && calls == 0,
+            "oversized audio budget rejected before draining");
+    result = adapter.service_ready_blocks(writer, take, scratch, 2);
+    require(result.status.ok() && result.submitted == 2 &&
+            result.consumed == 2 && calls == 2 && writer.calls == 2 &&
+            !result.source_empty && !result.backpressured,
+            "one service call submits at most its two-block budget");
+    result = adapter.service_ready_blocks(writer, take, scratch, 2);
+    require(result.submitted == 2 && calls == 4,
+            "next video-owner pass serves next two blocks fairly");
+    result = adapter.service_ready_blocks(writer, take, scratch, 2);
+    require(result.submitted == 1 && result.source_empty &&
+            result.consumed == 1 && calls == 6 &&
+            adapter.stats().submitted_frames == 5ULL * 1024,
+            "source exhaustion is nonblocking with truthful consumed count");
+}
+
+void bounded_writer_service_backpressure_and_fatal()
+{
+    using arssyut::core::Status;
+    using arssyut::core::StatusCode;
+    AacPcm16SubmissionAdapter adapter;
+    FakeProgramWriter writer;
+    AudioProgramBlock scratch;
+    adapter.reset(kZero);
+    std::uint64_t frame = 0;
+    auto take = [&](AudioProgramBlock &out, std::uint64_t &first) {
+        first = frame;
+        out = make_block(frame);
+        frame += 1024;
+        return true;
+    };
+
+    writer.next_status = Status::failure(
+        StatusCode::EncoderBackpressure, 0xABCD);
+    auto result = adapter.service_ready_blocks(
+        writer, take, scratch, 4);
+    require(result.consumed == 1 && result.submitted == 0 &&
+            result.backpressured && writer.calls == 1 &&
+            result.status.detail == 0xABCD,
+            "one backpressured AAC block is dropped then owner yields");
+
+    writer.next_status = Status::success();
+    result = adapter.service_ready_blocks(writer, take, scratch, 1);
+    require(result.status.ok() && result.submitted == 1 &&
+            writer.last_discontinuity && writer.last_pts ==
+                static_cast<std::int64_t>(
+                    frames_to_ticks_floor(1024, 48'000)),
+            "next service pass keeps true PTS and discontinuity");
+
+    writer.next_status = Status::failure(
+        StatusCode::MediaFoundationFailure, 0x1357);
+    result = adapter.service_ready_blocks(writer, take, scratch, 4);
+    require(!result.backpressured && result.consumed == 1 &&
+            result.submitted == 0 &&
+            result.status.code == StatusCode::MediaFoundationFailure &&
+            result.status.detail == 0x1357,
+            "non-backpressure writer failure is fatal and not hidden");
+    const auto writer_calls = writer.calls;
+    result = adapter.service_ready_blocks(
+        writer, [](AudioProgramBlock &, std::uint64_t &) -> bool {
+            throw std::runtime_error("P7A5 producer failed");
+        }, scratch, 2);
+    require(result.status.code == StatusCode::InternalError &&
+            result.consumed == 0 && writer.calls == writer_calls,
+            "producer exception cannot re-enter AAC writer or spin");
+}
+
+void bounded_writer_service_cut_and_stale()
+{
+    AacPcm16SubmissionAdapter adapter;
+    FakeProgramWriter writer;
+    AudioProgramBlock scratch;
+    adapter.reset(kZero);
+    std::uint64_t frame = 0;
+    auto take = [&](AudioProgramBlock &out, std::uint64_t &first) {
+        first = frame;
+        out = make_block(frame);
+        frame += 1024;
+        return true;
+    };
+    const auto stop = kZero +
+        static_cast<std::int64_t>(
+            frames_to_ticks_floor(256, 48'000)) + 1;
+    auto result = adapter.service_ready_blocks(
+        writer, take, scratch, 4, stop);
+    require(result.status.ok() && result.submitted == 1 &&
+            result.consumed == 1 && result.reached_stop &&
+            writer.last_samples == 512 && frame == 1024,
+            "stop tail prevents draining beyond first trimmed audio block");
+    result = adapter.service_ready_blocks(
+        writer, take, scratch, 2, stop);
+    require(result.reached_stop && result.consumed == 1 &&
+            result.submitted == 0 && writer.calls == 1,
+            "subsequent after-Stop audio never reaches AAC sink");
+
+    adapter.reset(kZero);
+    frame = 0;
+    result = adapter.service_ready_blocks(
+        writer, [&](AudioProgramBlock &out, std::uint64_t &first) {
+            first = 1; // invalid unaligned canonical coordinate
+            out = make_block(0);
+            return true;
+        }, scratch, 4);
+    require(result.consumed == 1 &&
+            result.status.code ==
+                arssyut::core::StatusCode::InvalidArgument &&
+            writer.calls == 1,
+            "malformed P7A5 absolute-frame coordinate fails closed");
+}
+
 } // namespace
 
 int main()
@@ -369,6 +508,9 @@ int main()
     hours_equivalent_no_pts_accumulation();
     single_writer_submission_contract();
     single_writer_stop_and_reset();
+    bounded_writer_service_and_fairness();
+    bounded_writer_service_backpressure_and_fatal();
+    bounded_writer_service_cut_and_stale();
 
     if (failures != 0) {
         std::cerr << "FAIL: " << failures << "/" << checked
