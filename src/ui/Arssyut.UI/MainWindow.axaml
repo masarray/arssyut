@@ -294,6 +294,7 @@
                     <TextBlock Text="Desktop playback" Classes="micro" />
                   </StackPanel>
                   <ToggleSwitch x:Name="SystemAudioToggle"
+                                Click="SystemAudioToggle_OnClick"
                                 Grid.Column="2"
                                 Classes="context-toggle ar-toggle"
                                 IsChecked="False"
@@ -301,14 +302,14 @@
                                 OnContent="" OffContent=""
                                 ToolTip.Tip="System audio backend is pending." />
                 </Grid>
-                <ComboBox x:Name="SystemAudioDeviceComboMain"
-                          Grid.Row="1"
-                          Classes="context-device"
-                          SelectedIndex="0"
-                          IsEnabled="False"
-                          ToolTip.Tip="Playback device selection activates with the native audio backend.">
-                  <ComboBoxItem Content="Default playback device" />
-                </ComboBox>
+                <Border x:Name="SystemAudioDeviceComboMain"
+                        Grid.Row="1" Padding="8,7" CornerRadius="7"
+                        Background="{DynamicResource ArBrush.Surface3}"
+                        ToolTip.Tip="Captures the current Windows default playback endpoint. Explicit device selection is not supported yet.">
+                  <TextBlock Text="Windows default playback"
+                             FontSize="10.5"
+                             Foreground="{DynamicResource ArBrush.TextSecondary}"/>
+                </Border>
               </Grid>
 
               <Grid Grid.Row="2" RowDefinitions="Auto,Auto" RowSpacing="5">
@@ -325,6 +326,7 @@
                     <TextBlock Text="Narration input" Classes="micro" />
                   </StackPanel>
                   <ToggleSwitch x:Name="MicToggle"
+                                Click="MicToggle_OnClick"
                                 Grid.Column="2"
                                 Classes="context-toggle ar-toggle"
                                 IsChecked="False"

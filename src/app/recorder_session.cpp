@@ -760,6 +760,8 @@ void RecorderSession::worker_main() noexcept
 
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     if (audio_runtime) {
+        audio_writer_enabled_.store(
+            writer.audio_enabled(), std::memory_order_relaxed);
         status = audio_runtime->writer_opened();
         if (!status.ok()) {
             fail(status);
@@ -1534,6 +1536,23 @@ void RecorderSession::worker_main() noexcept
         RecorderState::Finalizing,
         std::memory_order_release);
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    // A successful video MP4 is NOT a successful audio recording.
+    // Fail the session if Mic/System was selected but the sole writer
+    // never accepted a single AAC input sample.
+    if (audio_runtime) {
+        const auto audio_samples = writer.submitted_audio_samples();
+        audio_samples_submitted_.store(
+            audio_samples, std::memory_order_relaxed);
+        audio_frames_submitted_.store(
+            writer.submitted_audio_frames(), std::memory_order_relaxed);
+        if ((!writer.audio_enabled() || audio_samples == 0) && !failed) {
+            fail(Status::failure(StatusCode::PlatformFailure, 0xA001));
+            failed = true;
+        }
+    }
+#endif
+
     const std::uint64_t writer_submitted =
         writer.submitted_frames();
     const std::uint64_t writer_backpressure =
@@ -1688,6 +1707,19 @@ void RecorderSession::write_diagnostics(
             << "  \"fps_num\": " << config_.frame_rate.numerator << ",\n"
             << "  \"fps_den\": " << config_.frame_rate.denominator << ",\n"
             << "  \"bitrate_bps\": " << config_.bitrate_bps << ",\n"
+            << "  \"audio_microphone_requested\": "
+            << (config_.audio_microphone ? "true" : "false") << ",\n"
+            << "  \"audio_system_requested\": "
+            << (config_.audio_system ? "true" : "false") << ",\n"
+            << "  \"audio_writer_enabled\": "
+            << (audio_writer_enabled_.load(std::memory_order_relaxed)
+                ? "true" : "false") << ",\n"
+            << "  \"audio_samples_submitted\": "
+            << audio_samples_submitted_.load(std::memory_order_relaxed)
+            << ",\n"
+            << "  \"audio_frames_submitted\": "
+            << audio_frames_submitted_.load(std::memory_order_relaxed)
+            << ",\n"
             << "  \"encoder_h264_profile\": \""
             << arssyut::windows::mf_h264_profile_name(
                    encoder_profile)

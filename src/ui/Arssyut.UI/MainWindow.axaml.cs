@@ -691,17 +691,37 @@ public sealed partial class MainWindow : Window
                 _cameraOptions,
                 devices.Cameras);
 
+            // Preserve the user's selection across an MMDevice refresh.
+            // Tokens have a new generation after refresh, so pin the new
+            // token by a uniquely matched displayed device name.
+            var selectedMicIndex = 0;
+            if (!string.IsNullOrEmpty(_microphoneDevice))
+            {
+                var matches = devices.Microphones
+                    .Select((device, index) => (device, index))
+                    .Where(item => string.Equals(
+                        item.device.Name, _microphoneDevice,
+                        StringComparison.Ordinal))
+                    .ToArray();
+                if (matches.Length == 1)
+                    selectedMicIndex = matches[0].index;
+            }
             ApplyReadOnlyDeviceCombo(
                 MicrophoneDeviceComboMain,
                 devices.Microphones,
-                "No microphone detected");
+                "No microphone detected",
+                selectedMicIndex);
 
             if (devices.Microphones.Count > 0)
             {
                 _microphoneDevice =
-                    devices.Microphones[0].Name;
+                    devices.Microphones[selectedMicIndex].Name;
                 _microphoneDeviceToken =
-                    devices.Microphones[0].Token;
+                    devices.Microphones[selectedMicIndex].Token;
+            }
+            else
+            {
+                _microphoneDeviceToken = 0;
             }
 
             ApplyReadOnlyDeviceCombo(
@@ -727,7 +747,8 @@ public sealed partial class MainWindow : Window
     private static void ApplyReadOnlyDeviceCombo(
         ComboBox combo,
         IReadOnlyList<NativeDeviceItem> devices,
-        string emptyText)
+        string emptyText,
+        int selectedIndex = 0)
     {
         combo.Items.Clear();
 
@@ -752,7 +773,10 @@ public sealed partial class MainWindow : Window
                 });
         }
 
-        combo.SelectedIndex = 0;
+        combo.SelectedIndex = selectedIndex >= 0 &&
+            selectedIndex < devices.Count
+                ? selectedIndex
+                : 0;
     }
 
     private static void ApplyNativeDeviceButtons(
@@ -878,8 +902,12 @@ public sealed partial class MainWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
+        if (!_allowInteractionPreview && !_audioHardwarePreview)
+            return;
+
         _systemAudioEnabled =
             SystemAudioToggle.IsChecked == true;
+        RefreshInputLabels();
         UpdateReadyDetail();
     }
 
@@ -887,9 +915,13 @@ public sealed partial class MainWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
+        if (!_allowInteractionPreview && !_audioHardwarePreview)
+            return;
+
         _session.MicrophoneEnabled =
             MicToggle.IsChecked == true;
         RefreshInputLabels();
+        UpdateReadyDetail();
     }
 
     private void CameraToggle_OnClick(
@@ -2037,6 +2069,9 @@ public sealed partial class MainWindow : Window
             MicToggle.IsEnabled = true;
             MicrophoneDeviceComboMain.IsEnabled =
                 _microphoneDeviceToken != 0;
+            // Once chosen, preserve these flags until the user changes them
+            // (never rewrite them on Ready/Saved UI refresh).
+            RefreshInputLabels();
             SystemAudioDeviceComboMain.IsEnabled = false;
             CameraToggle.IsChecked = false;
             CameraToggle.IsEnabled = false;

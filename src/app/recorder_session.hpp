@@ -216,6 +216,9 @@ private:
     std::atomic<std::int64_t> armed_at_ticks_{0};
     std::atomic<std::int64_t> first_frame_submitted_at_ticks_{0};
     std::atomic<std::uint64_t> capture_preroll_received_{0};
+    std::atomic<bool> audio_writer_enabled_{false};
+    std::atomic<std::uint64_t> audio_samples_submitted_{0};
+    std::atomic<std::uint64_t> audio_frames_submitted_{0};
     std::atomic<std::int64_t> started_at_ticks_{0};
     std::atomic<std::int64_t> stopped_at_ticks_{0};
 

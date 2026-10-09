@@ -454,6 +454,21 @@ jobs:
       - name: Build
         run: dotnet build src/ui/Arssyut.UI/Arssyut.UI.csproj -c Release --no-restore
 
+      - name: Validate audio toggles are actually bound
+        shell: pwsh
+        run: |
+          $xaml = Get-Content "src/ui/Arssyut.UI/MainWindow.axaml" -Raw
+          foreach ($binding in @(
+            @("SystemAudioToggle", "SystemAudioToggle_OnClick"),
+            @("MicToggle", "MicToggle_OnClick")
+          )) {
+            $pattern = '<ToggleSwitch\s+x:Name="' + $binding[0] +
+              '"[^>]*Click="' + $binding[1] + '"'
+            if (-not [regex]::IsMatch($xaml, $pattern, 'Singleline')) {
+              throw "Audio toggle $($binding[0]) is not wired to its state handler."
+            }
+          }
+
       - name: Interaction-state regression
         run: dotnet run --project tests/ui/Arssyut.UI.InteractionTests/Arssyut.UI.InteractionTests.csproj -c Release
 
