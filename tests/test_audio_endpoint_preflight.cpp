@@ -1,4 +1,5 @@
 #include "app/audio_endpoint_preflight.hpp"
+#include "app/audio_source_preparation.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -193,6 +194,33 @@ int main()
     check_fail_closed();
     check_untrusted_selection();
     check_session_isolation();
+
+    // Windows MSVC instantiates the same generic preparation function
+    // against the real _WIN32 header set, without opening CI runner devices.
+    struct FakeSource {
+        int starts = 0;
+        [[nodiscard]] Status start(std::wstring) {
+            ++starts;
+            return Status::success();
+        }
+        void stop() noexcept {}
+    };
+    FakeSource microphone;
+    FakeSource loopback;
+    arssyut::app::audio::AudioStartupGate gate;
+    PinnedAudioEndpoints input{
+        .microphone = true,
+        .microphone_id = L"{already-pinned-capture}",
+    };
+    const auto ticket = gate.begin({.microphone = true});
+    check(arssyut::app::audio::start_pinned_audio_sources(
+              input, gate, ticket, microphone, loopback,
+              [] { return false; }).ok() &&
+              microphone.starts == 1 && loopback.starts == 0 &&
+              gate.state() ==
+                  arssyut::app::audio::AudioStartupState::Pending,
+          "MSVC Preparing bridge starts only requested pinned WASAPI source");
+
 #ifdef _WIN32
     // Compiles/links the real Windows COM resolver without relying on a
     // microphone or render endpoint on ephemeral CI runners.

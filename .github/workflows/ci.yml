@@ -231,6 +231,9 @@ jobs:
 
             # P7A6: Windows MMDevice Preparing-only endpoint preflight
             # pins default/selected capture and render IDs before Armed.
+            # P7A6: source start order, cancellation and reverse-order
+            # rollback stay on the existing RecorderSession single owner.
+            "src/app/audio_source_preparation.hpp" = "5f64b96540f5a98d319c5af793cc5cbe868f8b21"
             "src/app/audio_endpoint_preflight.hpp" = "859170accf6351963fa51326ebcad6170293a148"
 
             # P7A1 canonical portable audio contracts. These exact blobs are
