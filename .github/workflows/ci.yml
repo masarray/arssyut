@@ -34,6 +34,11 @@ jobs:
       - name: Test
         run: ctest --preset windows-release
 
+      # Non-skipped policy/unit regressions: protect accepted 27s A/V and GUI.
+      # This does not claim that a runner without devices recorded hardware MP4.
+      - name: Verify A/V acceptance policy and GUI contracts
+        run: python -m unittest discover -s tests/qa -p "test_*.py" -v
+
       - name: P7A1R Media Foundation resampler evidence
         shell: pwsh
         run: |

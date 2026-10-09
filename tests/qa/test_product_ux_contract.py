@@ -1,0 +1,55 @@
+"""Preserve working native Audio UI and direct EXE launch, besides Avalonia smoke."""
+from pathlib import Path
+import re
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+UI = ROOT / "src/ui/Arssyut.UI"
+
+
+class UXContract(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.xaml = (UI / "MainWindow.axaml").read_text(encoding="utf-8-sig")
+        cls.code = (UI / "MainWindow.axaml.cs").read_text(encoding="utf-8-sig")
+        cls.program = (UI / "Program.cs").read_text(encoding="utf-8-sig")
+        cls.project = (UI / "Arssyut.UI.csproj").read_text(encoding="utf-8-sig")
+        cls.workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8-sig")
+
+    def test_capture_workflow_and_saved_actions_preserved(self):
+        for name in ("RecordButton", "SavedActions", "SystemAudioToggle",
+                     "MicToggle", "MicrophoneDeviceComboMain", "CameraToggle"):
+            with self.subTest(name=name):
+                self.assertIn(f'x:Name="{name}"', self.xaml)
+        for mode in ("Capture Display", "Capture Window", "Capture Region"):
+            self.assertIn(f'AutomationProperties.Name="{mode}"', self.xaml)
+        for handler in ("Record_OnClick", "OpenSaved_OnClick"):
+            self.assertIn(f'Click="{handler}"', self.xaml)
+
+    def test_audio_toggle_handlers_and_native_flags_preserved(self):
+        for control, handler in (("SystemAudioToggle", "SystemAudioToggle_OnClick"),
+                                 ("MicToggle", "MicToggle_OnClick")):
+            self.assertRegex(self.xaml,
+                rf'<ToggleSwitch\s+x:Name="{control}"[^>]*Click="{handler}"')
+            self.assertIn(f"void {handler}(", self.code)
+        self.assertRegex(self.code,
+            r'if \(_systemAudioEnabled\)\s*flags \|=\s*NativeStartFlags\.SystemAudio;')
+        self.assertRegex(self.code,
+            r'if \(_session\.MicrophoneEnabled\)\s*flags \|=\s*NativeStartFlags\.Microphone;')
+        self.assertIn("_microphoneDeviceToken,", self.code)
+        self.assertIn("Windows default playback", self.xaml)
+
+    def test_preview_is_internal_only_and_launches_directly(self):
+        self.assertIn("<OutputType>WinExe</OutputType>", self.project)
+        self.assertIn("'$(InternalAudioPreview)' == 'true'", self.project)
+        self.assertIn("#if ARSSYUT_INTERNAL_AUDIO_PREVIEW", self.program)
+        self.assertIn('"ARSSYUT_AUDIO_PREVIEW", "1"', self.program)
+        self.assertIn("if (!_allowInteractionPreview && !_audioHardwarePreview)", self.code)
+        self.assertIn("p:InternalAudioPreview=true", self.workflow)
+        self.assertIn('Join-Path $package "Arssyut.UI.exe"', self.workflow)
+        self.assertIn("name: arssyut-INTERNAL-audio-acceptance-win-x64", self.workflow)
+        self.assertNotIn("START_AUDIO_PREVIEW.cmd", self.workflow)
+
+
+if __name__ == "__main__":
+    unittest.main()
