@@ -216,12 +216,13 @@ int main()
         struct IntegratedSource {
             int starts = 0;
             int stops = 0;
+            Status result = Status::success();
             std::wstring device;
             [[nodiscard]] Status start(std::wstring id)
             {
                 ++starts;
                 device = std::move(id);
-                return Status::success();
+                return result;
             }
             void stop() noexcept { ++stops; }
         } mic, system;
@@ -285,6 +286,28 @@ int main()
         mic.stop();
         check(system.stops == 1 && mic.stops == 1,
               "integration returns all source lifetimes to the one owner");
+
+        // Negative cross-tranche regression: the second endpoint failing
+        // must prevent a writer from being marked ready or consuming media.
+        IntegratedSource failing_mic, failing_system;
+        failing_system.result = Status::failure(
+            StatusCode::PlatformFailure, 0x2480);
+        AudioStartupGate failed_startup;
+        const auto failed_ticket = failed_startup.begin({
+            .microphone = true, .system_audio = true
+        });
+        const auto failure = start_pinned_audio_sources(
+            pinned, failed_startup, failed_ticket,
+            failing_mic, failing_system, [] { return false; });
+        check(failure.code == StatusCode::PlatformFailure &&
+                  failure.detail == 0x2480 &&
+                  failing_mic.stops == 1 &&
+                  failing_system.stops == 1 &&
+                  failed_startup.state() == AudioStartupState::Failed &&
+                  !failed_startup.writer_ready(failed_ticket),
+              "failed dual-source startup rolls back before writer can Arm");
+        check(writer.calls == 2,
+              "failed source startup cannot emit a phantom AAC sample");
     }
 
 
