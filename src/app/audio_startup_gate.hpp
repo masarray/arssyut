@@ -62,7 +62,7 @@ public:
         AudioStartRequirements requested) noexcept
     {
         if (generation_ ==
-            std::numeric_limits<std::uint64_t>::max()) {
+            (std::numeric_limits<std::uint64_t>::max)()) {
             generation_exhausted_ = true;
             return 0;
         }

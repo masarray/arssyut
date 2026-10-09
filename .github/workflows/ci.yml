@@ -227,7 +227,7 @@ jobs:
 
             # P7A6 generation-safe single-owner startup readiness barrier;
             # not a new recorder clock/worker or product audio activation.
-            "src/app/audio_startup_gate.hpp" = "f9f993e663e1117d965e8ce8402f4328c50cf9bf"
+            "src/app/audio_startup_gate.hpp" = "453a2fe2b1beea85d093244c77b68df2dff35771"
 
             # P7A6: Windows MMDevice Preparing-only endpoint preflight
             # pins default/selected capture and render IDs before Armed.
