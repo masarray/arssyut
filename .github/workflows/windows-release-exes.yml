@@ -10,8 +10,13 @@ on:
         description: "Release candidate version (0.1.0-rc.1)"
         required: true
         type: string
+      publish_prerelease:
+        description: "Publish a labeled preview GitHub Release"
+        required: true
+        type: boolean
+        default: false
 permissions:
-  contents: read
+  contents: write
   actions: read
 jobs:
   package:
@@ -81,3 +86,20 @@ jobs:
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub preview (manual opt-in only)
+        if: ${{ inputs.publish_prerelease }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          $tag = "v$env:VERSION"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) { throw 'Tag already exists; refusing overwrite' }
+          $notes = 'Windows preview: NOT stable. Includes audio-enabled test build. Real-device stereo, A/V sync, long captures and Stop/Finalize require acceptance. No commercial code signature; SmartScreen may appear.'
+          $assets = @(Get-ChildItem dist/release -Filter '*.exe' | ForEach-Object FullName)
+          $assets += (Resolve-Path dist/SHA256SUMS.txt).Path
+          if ($assets.Count -ne 3) { throw 'Expected exactly two executables plus SHA256SUMS' }
+          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Arssyut $tag Windows Preview" --prerelease --notes "$notes"
+          if ($LASTEXITCODE -ne 0) { throw 'Preview release publication failed' }

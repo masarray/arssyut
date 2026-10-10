@@ -64,8 +64,9 @@
     const release = releases.find(item =>
       item && !item.draft && Array.isArray(item.assets) &&
       item.assets.some(asset => officialAsset(asset) &&
-        (/^arssyut.*(setup|installer).*\.exe$/i.test(asset.name) ||
-         /^arssyut.*portable.*win[-_.]?x64\.exe$/i.test(asset.name))));
+        /^arssyut.*(setup|installer).*\.exe$/i.test(asset.name)) &&
+      item.assets.some(asset => officialAsset(asset) &&
+        /^arssyut.*portable.*win[-_.]?x64\.exe$/i.test(asset.name)));
     if (!release) {
       showStatus("No published Windows release yet", false);
       showEmpty("Public release coming soon",
