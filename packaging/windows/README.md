@@ -36,3 +36,12 @@ Automatic CI is not proof of real-device Windows audio acceptance. Before
 publishing an audio-enabled release, validate Mic-only, System-only, dual
 input stereo, long MP4s, A/V duration sync, Stop/Finalize, repeated
 Start/Stop, and accurate persisted mix/fader behavior on real hardware.
+
+## Release candidate packaging
+
+The [Windows Release Candidate EXEs](../../.github/workflows/windows-release-exes.yml) workflow deliberately does not publish a GitHub Release automatically. Run it from `main` with a successful exact-commit audio-enabled CI run ID and a candidate version such as `0.1.0-rc.1`. It verifies source provenance and produces exactly two executable assets using one byte-identical standalone payload:
+
+- `Arssyut-Setup-0.1.0-rc.1-win-x64.exe` — Inno installer.
+- `Arssyut-0.1.0-rc.1-portable-win-x64.exe` — direct standalone GUI, no ZIP.
+
+It also produces SHA256SUMS. This is an **unpromoted** release candidate; do not label stable or publish until actual hardware A/V and installer acceptance is complete. The download website only displays binary assets after they are uploaded to an actual published GitHub Release, not merely a CI run.
