@@ -57,6 +57,24 @@ class UXContract(unittest.TestCase):
         self.assertIn("ExtractAssociatedIcon", self.workflow)
         ElementTree.fromstring(self.project)
 
+    def test_audio_artifact_survives_merge_and_video_only_is_explicit(self):
+        import re
+        self.assertIn("github.ref == 'refs/heads/main'", self.workflow)
+        self.assertIn("contains(github.event.pull_request.title, '[audio]')", self.workflow)
+        self.assertNotIn("github.head_ref == 'feat/p7-product-audio-integration-v1'", self.workflow)
+        for job_step in ("Publish INTERNAL FFmpeg-enabled Avalonia recorder",
+                         "Internal preview launch smoke",
+                         "Upload INTERNAL audio hardware acceptance package"):
+            self.assertIn(job_step, self.workflow)
+        self.assertIn("-DARSSYUT_ENABLE_PRODUCT_AUDIO=ON", self.workflow)
+        self.assertIn("-p:InternalAudioPreview=true", self.workflow)
+        self.assertIn("name: arssyut-AUDIO-ENABLED-TEST-win-x64", self.workflow)
+        self.assertIn("name: arssyut-VIDEO-ONLY-avalonia-win-x64", self.workflow)
+        self.assertIn("README_VIDEO_ONLY.txt", self.workflow)
+        self.assertIn('Title="Arssyut — Enhanced Screen Recorder"', self.xaml)
+        self.assertIn('Text="Enhanced Screen Recorder"', self.xaml)
+        self.assertIn("Video-only build.", self.code)
+
     def test_capture_workflow_and_saved_actions_preserved(self):
         for name in ("RecordButton", "SavedActions", "SystemAudioToggle",
                      "MicToggle", "MicrophoneDeviceComboMain", "CameraToggle"):
@@ -281,7 +299,7 @@ class UXContract(unittest.TestCase):
         self.assertIn("if (!_allowInteractionPreview && !_audioHardwarePreview)", self.code)
         self.assertIn("p:InternalAudioPreview=true", self.workflow)
         self.assertIn('Join-Path $package "Arssyut.UI.exe"', self.workflow)
-        self.assertIn("name: arssyut-INTERNAL-audio-acceptance-win-x64", self.workflow)
+        self.assertIn("name: arssyut-AUDIO-ENABLED-TEST-win-x64", self.workflow)
         self.assertNotIn("START_AUDIO_PREVIEW.cmd", self.workflow)
 
 

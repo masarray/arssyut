@@ -1057,7 +1057,7 @@ public sealed partial class MainWindow : Window
             MicDeviceText.Text =
                 _nativeBridge is null
                     ? "Engine unavailable"
-                    : "Backend pending";
+                    : "Video-only build";
 
             CameraToggle.IsChecked =
                 false;
@@ -2232,9 +2232,9 @@ public sealed partial class MainWindow : Window
         else
         {
             ToolTip.SetTip(SystemAudioToggle,
-                "System audio recording is unavailable in this build.");
+                "Video-only build. Download the audio-enabled test artifact to record System Audio.");
             ToolTip.SetTip(MicToggle,
-                "Microphone recording is unavailable in this build.");
+                "Video-only build. Download the audio-enabled test artifact to record Microphone.");
             ToolTip.SetTip(MicrophoneDeviceComboMain,
                 "Microphone selection is unavailable in this build.");
         }
@@ -2288,7 +2288,7 @@ public sealed partial class MainWindow : Window
         MicDeviceText.Text =
             _nativeBridge is null
                 ? "Engine unavailable"
-                : "Backend pending";
+                : "Video-only build";
 
         CameraDeviceButton.IsEnabled =
             false;
