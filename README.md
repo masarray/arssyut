@@ -9,7 +9,7 @@
 Arssyut is a focused Windows screen recorder for tutorials, software demos, walkthroughs, and everyday captures. Choose what to record, start capturing, and save an MP4—without a crowded workspace.
 
 > [!IMPORTANT]
-> **Download status:** A Windows **preview** is available through the [Download page](https://masarray.github.io/arssyut/download/) and [GitHub Releases](https://github.com/masarray/arssyut/releases). The Download page selects the newest complete **Setup EXE + portable single EXE** pair from the same official release automatically. A preview is not a stable release. **System audio and microphone recording are implemented**, including the recording mixer; **webcam is not implemented**.
+> **Download status — audio quality acceptance BLOCKED:** Both initial previews have real-world recording defects: RC1 stops on System Audio onset; RC2 may save crackling audio even when it reports `ready`. **Do not recommend them as accepted Windows downloads.** The [Download page](https://masarray.github.io/arssyut/download/) only enables matched Setup/Portable EXEs when their GitHub Release explicitly records completed on-device audio QA. Historical previews remain visible on [GitHub Releases](https://github.com/masarray/arssyut/releases) for diagnosis. Microphone/System Audio features are implemented but reliable capture is under active correction; **webcam is not implemented**.
 
 ## What can Arssyut do?
 
@@ -35,7 +35,7 @@ The application you launch is **Arssyut.UI.exe**, the compact Windows GUI. It do
 3. Launch Arssyut, select **Display**, **Window** or **Region**, enable **System audio** and/or **Microphone** as needed, and press **Start**.
 4. Click **Stop** to finalize the MP4, then choose **Open** or **Folder** to review it.
 
-The Download page resolves the **latest complete published GitHub Release asset pair dynamically**. If GitHub API metadata is unavailable, follow the official GitHub Releases link rather than downloading an unverified file.
+The Download page resolves the **latest complete AND real-device-audio-accepted GitHub Release asset pair dynamically**. Acceptance is explicitly indicated on a dedicated line `ARSSYUT_AUDIO_HARDWARE_ACCEPTED` in the official release notes after hardware signoff; SHA-256 and green CI alone do not prove audio fidelity. If GitHub API metadata is unavailable, the page falls back to GitHub Releases without inventing a downloadable binary.
 
 ### Audio and webcam
 
