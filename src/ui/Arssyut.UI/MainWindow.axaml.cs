@@ -1030,23 +1030,23 @@ public sealed partial class MainWindow : Window
             var meter = _nativeBridge.AudioMeter(
                 _microphoneDeviceToken, _systemAudioEnabled,
                 _session.MicrophoneEnabled);
-            SystemLevelL.Value = _systemAudioEnabled
-                ? MeterValue(meter.SystemLeft) : 0;
-            SystemLevelR.Value = _systemAudioEnabled &&
-                meter.SystemChannels > 1 ? MeterValue(meter.SystemRight) : 0;
-            MicrophoneLevelL.Value = _session.MicrophoneEnabled
-                ? MeterValue(meter.MicrophoneLeft) : 0;
-            MicrophoneLevelR.Value = _session.MicrophoneEnabled &&
+            SystemLevelL.Height = 55.0 * (_systemAudioEnabled
+                ? MeterValue(meter.SystemLeft) : 0) / 100.0;
+            SystemLevelR.Height = 55.0 * (_systemAudioEnabled &&
+                meter.SystemChannels > 1 ? MeterValue(meter.SystemRight) : 0) / 100.0;
+            MicrophoneLevelL.Height = 55.0 * (_session.MicrophoneEnabled
+                ? MeterValue(meter.MicrophoneLeft) : 0) / 100.0;
+            MicrophoneLevelR.Height = 55.0 * (_session.MicrophoneEnabled &&
                 meter.MicrophoneChannels > 1
-                    ? MeterValue(meter.MicrophoneRight) : 0;
+                    ? MeterValue(meter.MicrophoneRight) : 0) / 100.0;
         }
         catch (Exception)
         {
             // Disconnected endpoint or bridge? Never display stale signal.
-            SystemLevelL.Value = 0;
-            SystemLevelR.Value = 0;
-            MicrophoneLevelL.Value = 0;
-            MicrophoneLevelR.Value = 0;
+            SystemLevelL.Height = 55.0 * (0) / 100.0;
+            SystemLevelR.Height = 55.0 * (0) / 100.0;
+            MicrophoneLevelL.Height = 55.0 * (0) / 100.0;
+            MicrophoneLevelR.Height = 55.0 * (0) / 100.0;
         }
     }
 

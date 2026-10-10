@@ -59,7 +59,7 @@ class UXContract(unittest.TestCase):
         for meter in ("SystemLevelL", "SystemLevelR",
                       "MicrophoneLevelL", "MicrophoneLevelR"):
             self.assertIn(f'x:Name="{meter}"', self.xaml)
-            self.assertIn(meter + ".Value =", self.code)
+            self.assertIn(meter + ".Height =", self.code)
         self.assertIn("NativeMethods.AudioMeter(", (
             UI / "Interop/NativeBridgeClient.cs").read_text(encoding="utf-8-sig"))
         self.assertIn("arssyut_bridge_audio_meter", (
@@ -98,12 +98,19 @@ class UXContract(unittest.TestCase):
         for name in ("SystemLevelL", "SystemLevelR",
                      "MicrophoneLevelL", "MicrophoneLevelR"):
             meter = re.search(
-                rf'<ProgressBar x:Name="{name}"[^>]*>', self.xaml)
+                rf'<Border x:Name="{name}"[^>]*>', self.xaml)
             self.assertIsNotNone(meter, name)
-            self.assertIn('Orientation="Vertical"', meter.group())
-            self.assertIn('Height="49"', meter.group())
+            self.assertIn('Height="0"', meter.group())
+            self.assertIn('VerticalAlignment="Bottom"', meter.group())
         self.assertIn('Grid.Column="1" Grid.RowSpan="2"', self.xaml)
-        self.assertIn('Height" Value="65"', (
+        self.assertIn('Height" Value="72"', (
+            UI / "Design/ArControls.axaml").read_text(encoding="utf-8-sig"))
+
+    def test_audio_meter_tracks_are_bounded_inside_cards(self):
+        self.assertNotIn('ProgressBar x:Name="SystemLevelL"', self.xaml)
+        self.assertEqual(self.xaml.count('Width="8" Height="55"'), 4)
+        self.assertIn('ColumnDefinitions="2.00*,1.70*,1.05*,0.95*"', self.xaml)
+        self.assertIn('HorizontalAlignment" Value="Stretch"', (
             UI / "Design/ArControls.axaml").read_text(encoding="utf-8-sig"))
 
     def test_webcam_preview_is_centered_and_does_not_fake_capture(self):

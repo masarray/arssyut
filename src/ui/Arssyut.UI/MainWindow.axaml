@@ -129,11 +129,11 @@
 
         <!-- Context workspace -->
         <Grid Grid.Row="0"
-              ColumnDefinitions="2.05*,1.53*,1.05*,0.95*"
+              ColumnDefinitions="2.00*,1.70*,1.05*,0.95*"
               ColumnSpacing="10">
 
           <Border Classes="context-card">
-            <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+            <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
               <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                   <LucideIcon Kind="ScanLine" Size="14" StrokeWidth="1.8"
@@ -149,7 +149,7 @@
                 </Button>
               </Grid>
 
-              <Grid Grid.Row="1"
+              <Grid Grid.Row="1" VerticalAlignment="Center"
                     ColumnDefinitions="*,*,*,*"
                     ColumnSpacing="6">
                 <ToggleButton x:Name="ModeDisplay"
@@ -232,7 +232,7 @@
 
               <Button x:Name="SourcePickerButton"
                       Grid.Row="2"
-                      VerticalAlignment="Center"
+                      VerticalAlignment="Bottom"
                       Classes="source-picker"
                       AutomationProperties.Name="Choose capture source"
                       AutomationProperties.HelpText="Opens native sources for the selected capture mode.">
@@ -335,18 +335,20 @@
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             ToolTip.Tip="Live input peak L/R (60 dB range).">
                   <StackPanel Spacing="3" HorizontalAlignment="Center">
-                    <ProgressBar x:Name="SystemLevelL" Orientation="Vertical"
-                                 Width="6" Height="49" Minimum="0" Maximum="100" Value="0"
-                                 Foreground="{DynamicResource ArBrush.Success}"
-                                 Background="{DynamicResource ArBrush.Surface3}" />
+                    <Border Width="8" Height="55" CornerRadius="4" ClipToBounds="True"
+                            Background="{DynamicResource ArBrush.Surface3}">
+                      <Border x:Name="SystemLevelL" Height="0" VerticalAlignment="Bottom"
+                              CornerRadius="4" Background="{DynamicResource ArBrush.Success}" />
+                    </Border>
                     <TextBlock Text="L" FontSize="9" HorizontalAlignment="Center"
                                Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   </StackPanel>
                   <StackPanel Spacing="3" HorizontalAlignment="Center">
-                    <ProgressBar x:Name="SystemLevelR" Orientation="Vertical"
-                                 Width="6" Height="49" Minimum="0" Maximum="100" Value="0"
-                                 Foreground="{DynamicResource ArBrush.Success}"
-                                 Background="{DynamicResource ArBrush.Surface3}" />
+                    <Border Width="8" Height="55" CornerRadius="4" ClipToBounds="True"
+                            Background="{DynamicResource ArBrush.Surface3}">
+                      <Border x:Name="SystemLevelR" Height="0" VerticalAlignment="Bottom"
+                              CornerRadius="4" Background="{DynamicResource ArBrush.Success}" />
+                    </Border>
                     <TextBlock Text="R" FontSize="9" HorizontalAlignment="Center"
                                Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   </StackPanel>
@@ -383,18 +385,20 @@
                             HorizontalAlignment="Right" VerticalAlignment="Center"
                             ToolTip.Tip="Live input peak L/R (60 dB range).">
                   <StackPanel Spacing="3" HorizontalAlignment="Center">
-                    <ProgressBar x:Name="MicrophoneLevelL" Orientation="Vertical"
-                                 Width="6" Height="49" Minimum="0" Maximum="100" Value="0"
-                                 Foreground="{DynamicResource ArBrush.Success}"
-                                 Background="{DynamicResource ArBrush.Surface3}" />
+                    <Border Width="8" Height="55" CornerRadius="4" ClipToBounds="True"
+                            Background="{DynamicResource ArBrush.Surface3}">
+                      <Border x:Name="MicrophoneLevelL" Height="0" VerticalAlignment="Bottom"
+                              CornerRadius="4" Background="{DynamicResource ArBrush.Success}" />
+                    </Border>
                     <TextBlock Text="L" FontSize="9" HorizontalAlignment="Center"
                                Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   </StackPanel>
                   <StackPanel Spacing="3" HorizontalAlignment="Center">
-                    <ProgressBar x:Name="MicrophoneLevelR" Orientation="Vertical"
-                                 Width="6" Height="49" Minimum="0" Maximum="100" Value="0"
-                                 Foreground="{DynamicResource ArBrush.Success}"
-                                 Background="{DynamicResource ArBrush.Surface3}" />
+                    <Border Width="8" Height="55" CornerRadius="4" ClipToBounds="True"
+                            Background="{DynamicResource ArBrush.Surface3}">
+                      <Border x:Name="MicrophoneLevelR" Height="0" VerticalAlignment="Bottom"
+                              CornerRadius="4" Background="{DynamicResource ArBrush.Success}" />
+                    </Border>
                     <TextBlock Text="R" FontSize="9" HorizontalAlignment="Center"
                                Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   </StackPanel>
