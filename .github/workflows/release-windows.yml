@@ -81,6 +81,11 @@ jobs:
         run: |
           dotnet publish src/ui/Arssyut.UI/Arssyut.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o dist/published-gui
           if ($LASTEXITCODE -ne 0) { throw "Windows publish failed" }
+          # Some Skia/HarfBuzz native dependencies ship *debug symbols* alongside
+          # a fully self-contained EXE. PDB files are not runtime dependencies;
+          # remove them before the strict one-file acceptance check.
+          Get-ChildItem dist/published-gui -File -Filter '*.pdb' |
+            Remove-Item -Force
           $exe = "dist/published-gui/Arssyut.UI.exe"
           if (-not (Test-Path $exe)) { throw "Single-file EXE not found" }
           if ((Get-Item $exe).Length -lt 1000000) { throw "Portable EXE is unexpectedly small" }
