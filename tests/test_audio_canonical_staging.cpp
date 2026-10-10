@@ -270,8 +270,8 @@ void test_bounded_sparse_discontinuity_and_overlap(TestContext &test)
         staging.push(48000 * 4 + 200, duplicate, 100, true) ==
             AudioCanonicalStagePushStatus::Applied,
         "Backward reanchor trims only overlapping samples");
-    test.expect(staging.size_frames() == 556,
-        "Overlap doesn't double-write the buffered PCM");
+    test.expect(staging.size_frames() == 300,
+        "Overlap does not double-write the already buffered 56 frames");
     test.expect(
         staging.push(48000 * 4 + 300, duplicate, 100) ==
             AudioCanonicalStagePushStatus::Applied,
