@@ -339,7 +339,7 @@ jobs:
             "src/app/audio_product_runtime.hpp" = "e358d9bb6309f3c53d0e84b42a93a4b2b0a04026"
             # Experimental-only bridge approval: default/release still
             # rejects audio. Mic tokens are generation checked.
-            "src/bridge/native_bridge.cpp" = "70978e33a0557da8ac14828f7b011bd79f0c7649"
+            "src/bridge/native_bridge.cpp" = "a938bfd908f781ed55a9c6f083fc5937630c40c8"
 
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;

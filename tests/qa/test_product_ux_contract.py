@@ -70,6 +70,14 @@ class UXContract(unittest.TestCase):
             self.assertNotIn(noise, self.xaml)
         self.assertIn("StatusDetail.IsVisible = false;", self.code)
 
+    def test_mic_meter_reads_wasapi_packets_and_stops_before_recorder(self):
+        bridge = (ROOT / "src/bridge/native_bridge.cpp").read_text(encoding="utf-8-sig")
+        self.assertIn("preview_mic.try_pop(lease)", bridge)
+        self.assertIn("accumulate_input_peak(", bridge)
+        self.assertIn("preview_mic.stop();", bridge)
+        self.assertIn("opts.queue_capacity = 32;", bridge)
+        self.assertNotIn("meter->microphone_channels,\n                meter->microphone_left", bridge)
+
     def test_preview_is_internal_only_and_launches_directly(self):
         self.assertIn("<OutputType>WinExe</OutputType>", self.project)
         self.assertIn("'$(InternalAudioPreview)' == 'true'", self.project)

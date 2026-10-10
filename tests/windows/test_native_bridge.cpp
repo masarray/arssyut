@@ -624,6 +624,16 @@ int main()
         snapshot.camera_zoom >= 1.0f,
         "default camera zoom must be valid");
 
+    ArssyutBridgeAudioMeterV1 meter{};
+    meter.struct_size = sizeof(meter);
+    require(arssyut_bridge_audio_meter(bridge, 0, 0, &meter) ==
+            ARSSYUT_BRIDGE_OK, "inactive meter fails");
+    require(meter.microphone_left == 0 && meter.system_left == 0,
+            "inactive meter not zero");
+    require(arssyut_bridge_audio_meter(bridge, 0, 4U, &meter) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT, "unknown meter flags accepted");
+    require(arssyut_bridge_audio_meter(bridge, 0, 2U, &meter) !=
+            ARSSYUT_BRIDGE_OK, "invalid mic token accepted");
     // P6UI.4B command semantics: stale tokens and unsupported inputs must
     // fail before the recorder starts, rather than silently selecting another
     // source or pretending an unavailable media stream was recorded.
