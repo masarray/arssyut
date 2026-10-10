@@ -12,9 +12,11 @@ Do not maintain a second icon set in the installer, UI, or landing website.
 
 ## Portable build
 
-GitHub `CI / P6UI Avalonia Windows x64` builds the self-contained, single-file
-`Arssyut.UI.exe`. Unzip the artifact and double-click it; it is the actual
-Avalonia Windows product. The official app icon is compiled into its PE headers.
+The audio-enabled release candidate uses one self-contained single-file
+`Arssyut.UI.exe` payload (the actual Avalonia GUI), renamed as
+`Arssyut-<version>-portable-win-x64.exe` for public download. This is an
+**actual standalone EXE, not a ZIP**. The Setup EXE is built from the same
+verified audio-enabled GUI payload. The official app icon is embedded in PE.
 
 ## Installer candidate (manual, NOT a public release)
 
@@ -44,4 +46,4 @@ The [Windows Release Candidate EXEs](../../.github/workflows/windows-release-exe
 - `Arssyut-Setup-0.1.0-rc.1-win-x64.exe` — Inno installer.
 - `Arssyut-0.1.0-rc.1-portable-win-x64.exe` — direct standalone GUI, no ZIP.
 
-It also produces SHA256SUMS. This is an **unpromoted** release candidate; do not label stable or publish until actual hardware A/V and installer acceptance is complete. The download website only displays binary assets after they are uploaded to an actual published GitHub Release, not merely a CI run.
+It also produces SHA256SUMS. The preview **v0.1.0-rc.1 was published on 2026-10-10**, with both EXEs and checksums. It remains labeled prerelease, not stable. System audio and microphone are implemented and user-confirmed; **webcam is not implemented**. Before future stable promotion, verify the installed GUI, portable EXE, real MP4 and checksums and capture specific evidence rather than retaining obsolete claims that audio still needs implementation. The download website must only link to assets on actual GitHub Releases.

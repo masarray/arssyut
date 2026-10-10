@@ -25,7 +25,7 @@ https://api.github.com/repos/masarray/arssyut/releases?per_page=20
 
 It never invents binary URLs. It only uses GitHub-hosted asset URLs from that returned release, selects an Arssyut Setup Installer (.exe) or Windows Portable (.exe) when attached, and excludes internal/test/candidate files. A draft or prerelease is not exposed as stable; a missing release or a GitHub API failure has a clear explanatory fallback. The website works with no external framework or tracking service.
 
-**No public releases have been published as of 2026-10-10.** Thus the initial download page properly displays **Public release coming soon**. A public release should be published only after the separate hardware and packaging acceptance gates are met. Do not turn GitHub Actions internal audio acceptance artifacts into public stable links.
+**Windows preview v0.1.0-rc.1 is published as of 2026-10-10**, with a Setup EXE, portable single EXE, and SHA256SUMS. It is labeled *prerelease*, not stable. System audio and microphone recording are implemented (user confirmed); **webcam recording remains unimplemented**. Do not mislabel preview assets as stable or substitute video-only CI artifacts.
 
 ## Launch/readiness checklist
 
@@ -34,6 +34,6 @@ It never invents binary URLs. It only uses GitHub-hosted asset URLs from that re
 3. Review Windows Installer / Portable artifacts before creating the first GitHub release.
 4. Publish verified release assets named consistently (for example Arssyut-Setup-vX.Y.Z-win-x64.exe and Arssyut-vX.Y.Z-portable-win-x64.exe); the page will discover them automatically.
 5. Verify the download links originate from GitHub Releases and independently verify the downloaded binary can install or launch on a clean Windows computer.
-6. Keep audio-enabled release claims gated until real-device stereo and A/V checks pass.
+6. Keep the user-confirmed audio feature status accurate; mark **webcam** as the unimplemented feature. Run independent binary, installer and website acceptance before promoting the preview to stable.
 
 The README includes links to the intended Pages URLs; until Pages is enabled, these may not resolve. The GitHub repository remains the source of truth.

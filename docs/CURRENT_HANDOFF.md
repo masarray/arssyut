@@ -1,5 +1,13 @@
 # Current Handoff — Arssyut
 
+> **STATUS OVERRIDE — 2026-10-10:** This file preserves historical milestone notes
+> and is no longer the current product-release status. **Read
+> [RELEASE_HANDOFF_2026-10-10.md](RELEASE_HANDOFF_2026-10-10.md) first.**
+> The user confirmed System Audio and Microphone are finished; webcam is the
+> unimplemented feature. Preview v0.1.0-rc.1 has actual Setup and Portable EXEs.
+> Do not restart P7 audio implementation from this outdated planning lock.
+
+
 **Updated:** 2026-10-07  
 **Accepted product baseline:** `main@9dc6c49cf92b47932b0f2767cf90c7e8d6a94420`  
 **P6UI integration:** PR #31 merged; post-merge CI #339 green  
