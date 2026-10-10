@@ -1548,6 +1548,7 @@ void RecorderSession::worker_main() noexcept
     if (audio_runtime) {
         const auto audio_status =
             audio_runtime->finish(recording_stopped, writer);
+        audio_health_ = audio_runtime->health_snapshot();
         if (!audio_status.ok() && !failed) {
             fail(audio_status);
             failed = true;
@@ -1761,6 +1762,29 @@ void RecorderSession::write_diagnostics(
             << "  \"audio_frames_submitted\": "
             << audio_frames_submitted_.load(std::memory_order_relaxed)
             << ",\n"
+            << "  \"audio_system_packets_captured\": " << audio_health_.system.captured << ",\n"
+            << "  \"audio_system_packets_published\": " << audio_health_.system.published << ",\n"
+            << "  \"audio_system_packets_silent\": " << audio_health_.system.silent << ",\n"
+            << "  \"audio_system_packets_discontinuous\": " << audio_health_.system.discontinuities << ",\n"
+            << "  \"audio_system_timestamp_errors\": " << audio_health_.system.timestamp_errors << ",\n"
+            << "  \"audio_system_packets_dropped\": " << audio_health_.system.dropped << ",\n"
+            << "  \"audio_system_pool_exhaustions\": " << audio_health_.system.pool_exhaustions << ",\n"
+            << "  \"audio_system_ring_overflows\": " << audio_health_.system.ring_overflows << ",\n"
+            << "  \"audio_microphone_packets_captured\": " << audio_health_.microphone.captured << ",\n"
+            << "  \"audio_microphone_packets_published\": " << audio_health_.microphone.published << ",\n"
+            << "  \"audio_microphone_packets_silent\": " << audio_health_.microphone.silent << ",\n"
+            << "  \"audio_microphone_packets_discontinuous\": " << audio_health_.microphone.discontinuities << ",\n"
+            << "  \"audio_microphone_timestamp_errors\": " << audio_health_.microphone.timestamp_errors << ",\n"
+            << "  \"audio_microphone_packets_dropped\": " << audio_health_.microphone.dropped << ",\n"
+            << "  \"audio_microphone_pool_exhaustions\": " << audio_health_.microphone.pool_exhaustions << ",\n"
+            << "  \"audio_microphone_ring_overflows\": " << audio_health_.microphone.ring_overflows << ",\n"
+            << "  \"audio_missing_source_intervals\": " << audio_health_.missing_source_intervals << ",\n"
+            << "  \"audio_silent_program_blocks\": " << audio_health_.silent_program_blocks << ",\n"
+            << "  \"audio_stale_canonical_frames\": " << audio_health_.stale_canonical_frames << ",\n"
+            << "  \"audio_duplicate_canonical_frames\": " << audio_health_.duplicate_canonical_frames << ",\n"
+            << "  \"audio_staging_gaps\": " << audio_health_.staging_gaps << ",\n"
+            << "  \"audio_staging_overflows\": " << audio_health_.staging_overflows << ",\n"
+            << "  \"audio_dropped_program_blocks\": " << audio_health_.dropped_program_blocks << ",\n"
             << "  \"encoder_h264_profile\": \""
             << arssyut::windows::mf_h264_profile_name(
                    encoder_profile)

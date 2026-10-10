@@ -309,5 +309,16 @@ class UXContract(unittest.TestCase):
         self.assertNotIn("START_AUDIO_PREVIEW.cmd", self.workflow)
 
 
+    def test_recorder_audio_quality_forensics_reports_real_source_drops(self):
+        runtime = (ROOT / "src/app/audio_product_runtime.hpp").read_text(encoding="utf-8")
+        session = (ROOT / "src/app/recorder_session.cpp").read_text(encoding="utf-8")
+        for item in ("audio_system_packets_discontinuous", "audio_system_packets_dropped",
+                     "audio_microphone_packets_discontinuous", "audio_microphone_packets_dropped",
+                     "audio_missing_source_intervals", "audio_stale_canonical_frames"):
+            self.assertIn(item, session)
+        self.assertIn("audio_runtime->health_snapshot()", session)
+        self.assertIn("loopback_.snapshot()", runtime)
+        self.assertIn("microphone_.snapshot()", runtime)
+
 if __name__ == "__main__":
     unittest.main()
