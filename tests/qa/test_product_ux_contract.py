@@ -55,6 +55,21 @@ class UXContract(unittest.TestCase):
         self.assertIn("Microphone recording is unavailable in this build.", self.xaml)
         self.assertIn("System audio recording is unavailable in this build.", self.xaml)
 
+    def test_stereo_input_meter_and_quiet_primary_ui(self):
+        for meter in ("SystemLevelL", "SystemLevelR",
+                      "MicrophoneLevelL", "MicrophoneLevelR"):
+            self.assertIn(f'x:Name="{meter}"', self.xaml)
+            self.assertIn(meter + ".Value =", self.code)
+        self.assertIn("NativeMethods.AudioMeter(", (
+            UI / "Interop/NativeBridgeClient.cs").read_text(encoding="utf-8-sig"))
+        self.assertIn("arssyut_bridge_audio_meter", (
+            ROOT / "src/bridge/native_bridge.cpp").read_text(encoding="utf-8-sig"))
+        for noise in ("Screen · game · camera recorder", "Desktop playback",
+                      "Narration input", "PiP backend pending",
+                      "native engine ready ·"):
+            self.assertNotIn(noise, self.xaml)
+        self.assertIn("StatusDetail.IsVisible = false;", self.code)
+
     def test_preview_is_internal_only_and_launches_directly(self):
         self.assertIn("<OutputType>WinExe</OutputType>", self.project)
         self.assertIn("'$(InternalAudioPreview)' == 'true'", self.project)

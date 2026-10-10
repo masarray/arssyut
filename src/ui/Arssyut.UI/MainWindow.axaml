@@ -59,9 +59,6 @@
                 Text="Arssyut"
                 FontSize="13"
                 FontWeight="SemiBold" />
-            <TextBlock
-                Classes="micro"
-                Text="Screen · game · camera recorder" />
           </StackPanel>
         </StackPanel>
 
@@ -280,7 +277,7 @@
                 <TextBlock Text="Audio" Classes="context-title" />
               </StackPanel>
 
-              <Grid Grid.Row="1" RowDefinitions="Auto,Auto" RowSpacing="5">
+              <Grid Grid.Row="1" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
                   <Border Width="28" Height="28" CornerRadius="8"
                           Background="{DynamicResource ArBrush.Surface3}">
@@ -291,7 +288,6 @@
                   </Border>
                   <StackPanel Grid.Column="1" Spacing="0" VerticalAlignment="Center">
                     <TextBlock Text="System audio" FontWeight="SemiBold" FontSize="10.8" />
-                    <TextBlock Text="Desktop playback" Classes="micro" />
                   </StackPanel>
                   <ToggleSwitch x:Name="SystemAudioToggle"
                                 Click="SystemAudioToggle_OnClick"
@@ -310,9 +306,26 @@
                              FontSize="10.5"
                              Foreground="{DynamicResource ArBrush.TextSecondary}"/>
                 </Border>
+                <Grid Grid.Row="2" RowDefinitions="Auto,Auto"
+                      ColumnDefinitions="10,*" ColumnSpacing="5" RowSpacing="2"
+                      ToolTip.Tip="Live Windows endpoint peak levels (L/R); recording starts only when you press Start.">
+                  <TextBlock Grid.Row="0" Text="L" FontSize="9"
+                             Foreground="{DynamicResource ArBrush.TextDim}" />
+                  <ProgressBar x:Name="SystemLevelL" Grid.Row="0" Grid.Column="1"
+                               Height="4" Minimum="0" Maximum="100" Value="0"
+                               Foreground="{DynamicResource ArBrush.Success}"
+                               Background="{DynamicResource ArBrush.Surface3}" />
+                  <TextBlock Grid.Row="1" Text="R" FontSize="9"
+                             Foreground="{DynamicResource ArBrush.TextDim}" />
+                  <ProgressBar x:Name="SystemLevelR" Grid.Row="1" Grid.Column="1"
+                               Height="4" Minimum="0" Maximum="100" Value="0"
+                               Foreground="{DynamicResource ArBrush.Success}"
+                               Background="{DynamicResource ArBrush.Surface3}" />
+                </Grid>
+
               </Grid>
 
-              <Grid Grid.Row="2" RowDefinitions="Auto,Auto" RowSpacing="5">
+              <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
                   <Border Width="28" Height="28" CornerRadius="8"
                           Background="{DynamicResource ArBrush.Surface3}">
@@ -323,7 +336,6 @@
                   </Border>
                   <StackPanel Grid.Column="1" Spacing="0" VerticalAlignment="Center">
                     <TextBlock Text="Microphone" FontWeight="SemiBold" FontSize="10.8" />
-                    <TextBlock Text="Narration input" Classes="micro" />
                   </StackPanel>
                   <ToggleSwitch x:Name="MicToggle"
                                 Click="MicToggle_OnClick"
@@ -342,6 +354,23 @@
                           ToolTip.Tip="Microphone selection is unavailable in this build.">
                   <ComboBoxItem Content="No microphone detected" />
                 </ComboBox>
+                <Grid Grid.Row="2" RowDefinitions="Auto,Auto"
+                      ColumnDefinitions="10,*" ColumnSpacing="5" RowSpacing="2"
+                      ToolTip.Tip="Live Windows endpoint peak levels (L/R); recording starts only when you press Start.">
+                  <TextBlock Grid.Row="0" Text="L" FontSize="9"
+                             Foreground="{DynamicResource ArBrush.TextDim}" />
+                  <ProgressBar x:Name="MicrophoneLevelL" Grid.Row="0" Grid.Column="1"
+                               Height="4" Minimum="0" Maximum="100" Value="0"
+                               Foreground="{DynamicResource ArBrush.Success}"
+                               Background="{DynamicResource ArBrush.Surface3}" />
+                  <TextBlock Grid.Row="1" Text="R" FontSize="9"
+                             Foreground="{DynamicResource ArBrush.TextDim}" />
+                  <ProgressBar x:Name="MicrophoneLevelR" Grid.Row="1" Grid.Column="1"
+                               Height="4" Minimum="0" Maximum="100" Value="0"
+                               Foreground="{DynamicResource ArBrush.Success}"
+                               Background="{DynamicResource ArBrush.Surface3}" />
+                </Grid>
+
               </Grid>
             </Grid>
           </Border>
@@ -375,7 +404,6 @@
               </Border>
 
               <StackPanel Grid.Row="2" Spacing="5" VerticalAlignment="Bottom">
-                <TextBlock Text="Camera" FontWeight="SemiBold" FontSize="10.8" />
                 <ComboBox x:Name="CameraDeviceComboMain"
                           Classes="context-device"
                           SelectedIndex="0"
@@ -383,7 +411,6 @@
                           ToolTip.Tip="Detected camera; selection activates with the camera compositor backend.">
                   <ComboBoxItem Content="No camera detected" />
                 </ComboBox>
-                <TextBlock Text="PiP backend pending" Classes="micro" />
               </StackPanel>
             </Grid>
           </Border>
@@ -392,8 +419,6 @@
             <StackPanel HorizontalAlignment="Center"
                         VerticalAlignment="Center"
                         Spacing="5">
-              <TextBlock Text="Record" Classes="context-title"
-                         HorizontalAlignment="Center" />
               <Button x:Name="RecordButton"
                       Classes="record-circle"
                       Click="Record_OnClick"
@@ -469,7 +494,7 @@
             <TextBlock
                 x:Name="StatusDetail"
                 Grid.Column="1"
-                Text="Display · 60 fps · Smart Zoom on"
+                Text=""
                 Classes="micro"
                 VerticalAlignment="Center"
                 TextTrimming="CharacterEllipsis" />

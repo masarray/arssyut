@@ -1008,10 +1008,54 @@ public sealed partial class MainWindow : Window
         UpdateReadyDetail();
     }
 
+
+    // Endpoint meter display is read-only. dBFS-style 60dB logarithmic
+    // scale makes quiet audio visible without altering PCM or adding gain.
+    private static double MeterValue(float peak)
+    {
+        if (!float.IsFinite(peak) || peak <= 0)
+            return 0;
+        return Math.Clamp(100.0 +
+            20.0 * Math.Log10(Math.Clamp(peak, 0.000001f, 1.0f))
+                * (100.0 / 60.0), 0.0, 100.0);
+    }
+
+    private void UpdateAudioMeters()
+    {
+        if (!_audioHardwarePreview || _nativeBridge is null || !IsVisible)
+            return;
+
+        try
+        {
+            var meter = _nativeBridge.AudioMeter(
+                _microphoneDeviceToken, _systemAudioEnabled,
+                _session.MicrophoneEnabled);
+            SystemLevelL.Value = _systemAudioEnabled
+                ? MeterValue(meter.SystemLeft) : 0;
+            SystemLevelR.Value = _systemAudioEnabled &&
+                meter.SystemChannels > 1 ? MeterValue(meter.SystemRight) : 0;
+            MicrophoneLevelL.Value = _session.MicrophoneEnabled
+                ? MeterValue(meter.MicrophoneLeft) : 0;
+            MicrophoneLevelR.Value = _session.MicrophoneEnabled &&
+                meter.MicrophoneChannels > 1
+                    ? MeterValue(meter.MicrophoneRight) : 0;
+        }
+        catch (Exception)
+        {
+            // Disconnected endpoint or bridge? Never display stale signal.
+            SystemLevelL.Value = 0;
+            SystemLevelR.Value = 0;
+            MicrophoneLevelL.Value = 0;
+            MicrophoneLevelR.Value = 0;
+        }
+    }
+
     private void GlobalHotkeyTimer_OnTick(
         object? sender,
         EventArgs e)
     {
+        // The meter is useful before any recording or hotkey registration.
+        UpdateAudioMeters();
         if (_nativeBridge is null ||
             _registeredHotkeys.Count == 0 ||
             _settingsOpen)
@@ -1675,6 +1719,7 @@ public sealed partial class MainWindow : Window
         string title,
         string detail)
     {
+        StatusDetail.IsVisible = true;
         StatusDot.Fill =
             _warningBrush;
         StatusText.Foreground =
@@ -1814,6 +1859,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        StatusDetail.IsVisible = true;
         RefreshInputLabels();
 
         switch (_session.Phase)
@@ -1873,6 +1919,7 @@ public sealed partial class MainWindow : Window
     private void ApplyNativeSessionState(
         NativeRecorderSnapshot snapshot)
     {
+        StatusDetail.IsVisible = true;
         _lastNativeSnapshot =
             snapshot;
 
@@ -2003,6 +2050,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyNativeReadyState()
     {
+        StatusDetail.IsVisible = false;
         StatusDot.Fill =
             _successBrush;
         StatusText.Foreground =
@@ -2024,6 +2072,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyEngineUnavailableState()
     {
+        StatusDetail.IsVisible = true;
         StatusDot.Fill =
             _warningBrush;
         StatusText.Foreground =
@@ -2195,54 +2244,19 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var source =
-            _captureMode switch
-            {
-                PreviewCaptureMode.Window =>
-                    "Window",
-                PreviewCaptureMode.Region =>
-                    "Region",
-                PreviewCaptureMode.Game =>
-                    "Game",
-                _ =>
-                    "Display"
-            };
-
-        if (_nativeBridge is null &&
-            !_allowInteractionPreview)
+        // Ready is self-explanatory; source, quality and hotkeys already
+        // have their own controls. Preserve detail only for actual errors,
+        // progress and saved-file outcomes, never repetitive static prose.
+        if (_nativeBridge is null && !_allowInteractionPreview)
         {
-            StatusDetail.Text =
-                BridgeUnavailableMessage();
-            return;
+            StatusDetail.Text = BridgeUnavailableMessage();
+            StatusDetail.IsVisible = true;
         }
-
-        var bridge =
-            _nativeBridge is null
-                ? "UI preview only"
-                : "native engine ready";
-
-        var inputState =
-            _audioHardwarePreview
-                ? (_systemAudioEnabled || _session.MicrophoneEnabled
-                    ? "audio hardware test" : "audio test available")
-                : _allowInteractionPreview &&
-                  (_systemAudioEnabled ||
-                   _session.MicrophoneEnabled ||
-                   _session.CameraEnabled)
-                    ? "preview inputs"
-                    : "video ready";
-
-        var hotkey =
-            _nativeBridge is not null &&
-            !_allowInteractionPreview
-                ? IsHotkeyRegistered(
-                      NativeHotkeyAction.ToggleRecord)
-                    ? $"global {_settings.RecordHotkey}"
-                    : $"{_settings.RecordHotkey} unavailable"
-                : _settings.RecordHotkey;
-
-        StatusDetail.Text =
-            $"{source} · {bridge} · {inputState} · {_settings.FrameRate} fps · {VisualStyleLabel()} · Zoom {(_settings.SmartZoom ? "on" : "off")} · {hotkey}";
+        else
+        {
+            StatusDetail.Text = string.Empty;
+            StatusDetail.IsVisible = false;
+        }
     }
 
     private static string FormatNativeElapsed(

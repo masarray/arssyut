@@ -10,6 +10,9 @@
 #include "app/source_catalog.hpp"
 
 #include <Windows.h>
+#include <endpointvolume.h>
+#include <mmdeviceapi.h>
+#include <wrl/client.h>
 #include <ShlObj.h>
 
 #include <algorithm>
@@ -396,6 +399,43 @@ to_visual_mode(
                 ArVisualProductMode::
                     PixelAccurate;
     }
+}
+
+
+[[nodiscard]] bool read_endpoint_peak(
+    IMMDevice *device,
+    std::uint32_t &channels,
+    float &left,
+    float &right) noexcept
+{
+    channels = 0;
+    left = 0.0f;
+    right = 0.0f;
+    if (!device)
+        return false;
+
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IAudioMeterInformation> meter;
+    const HRESULT activate = device->Activate(
+        __uuidof(IAudioMeterInformation), CLSCTX_ALL,
+        nullptr, reinterpret_cast<void **>(meter.GetAddressOf()));
+    if (FAILED(activate) || !meter)
+        return false;
+
+    UINT count = 0;
+    if (FAILED(meter->GetMeteringChannelCount(&count)) ||
+        count == 0 || count > 32)
+        return false;
+
+    float peaks[32]{};
+    if (FAILED(meter->GetChannelsPeakValues(count, peaks)))
+        return false;
+    channels = count;
+    left = std::clamp(peaks[0], 0.0f, 1.0f);
+    // A mono device has no right-hand input channel. Never synthesize a
+    // stereo channel or alter the independent recorder's sample format.
+    right = count > 1 ? std::clamp(peaks[1], 0.0f, 1.0f) : 0.0f;
+    return true;
 }
 
 void fill_snapshot(
@@ -1996,6 +2036,84 @@ arssyut_bridge_recorder_snapshot(
     fill_snapshot(
         native,
         *snapshot);
+
+    return ARSSYUT_BRIDGE_OK;
+}
+
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_audio_meter(
+    ArssyutBridgeHandle handle,
+    std::uint64_t microphone_device_token,
+    std::uint32_t flags,
+    ArssyutBridgeAudioMeterV1 *meter) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !meter ||
+        meter->struct_size < sizeof(ArssyutBridgeAudioMeterV1) ||
+        (flags & ~(ARSSYUT_BRIDGE_METER_SYSTEM |
+                   ARSSYUT_BRIDGE_METER_MICROPHONE)) != 0)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    *meter = ArssyutBridgeAudioMeterV1{};
+    meter->struct_size = sizeof(ArssyutBridgeAudioMeterV1);
+    if (flags == 0)
+        return ARSSYUT_BRIDGE_OK;
+
+    // Called from the Avalonia UI's modest meter poll cadence; no new
+    // WASAPI client, capture thread, media clock, or effect is introduced.
+    const HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(init) && init != RPC_E_CHANGED_MODE)
+        return ARSSYUT_BRIDGE_INTERNAL_ERROR;
+    struct ComScope final {
+        bool initialized = false;
+        ~ComScope() { if (initialized) CoUninitialize(); }
+    } scope{SUCCEEDED(init)};
+
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    if (FAILED(CoCreateInstance(
+            __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+            IID_PPV_ARGS(enumerator.GetAddressOf()))) || !enumerator)
+        return ARSSYUT_BRIDGE_INTERNAL_ERROR;
+
+    // Resolve the same eConsole default used by the recorder preflight.
+    // Endpoint metering is a live *device* indication, not a guarantee
+    // that a separately finalized MP4 has already been encoded.
+    if ((flags & ARSSYUT_BRIDGE_METER_SYSTEM) != 0) {
+        ComPtr<IMMDevice> device;
+        if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(
+                eRender, eConsole, device.GetAddressOf()))) {
+            (void)read_endpoint_peak(device.Get(),
+                meter->system_channels,
+                meter->system_left, meter->system_right);
+        }
+    }
+
+    if ((flags & ARSSYUT_BRIDGE_METER_MICROPHONE) != 0) {
+        std::wstring selected_id;
+        {
+            std::scoped_lock lock(context->mutex);
+            std::uint32_t generation = 0, index = 0;
+            if (!decode_token(microphone_device_token, generation, index) ||
+                generation != context->device_generation ||
+                index >= context->microphones.size())
+                return ARSSYUT_BRIDGE_STALE_TOKEN;
+            try {
+                selected_id = context->microphones[index].id;
+            } catch (...) {
+                return ARSSYUT_BRIDGE_INTERNAL_ERROR;
+            }
+        }
+        ComPtr<IMMDevice> device;
+        if (!selected_id.empty() &&
+            SUCCEEDED(enumerator->GetDevice(
+                selected_id.c_str(), device.GetAddressOf()))) {
+            (void)read_endpoint_peak(device.Get(),
+                meter->microphone_channels,
+                meter->microphone_left, meter->microphone_right);
+        }
+    }
 
     return ARSSYUT_BRIDGE_OK;
 }

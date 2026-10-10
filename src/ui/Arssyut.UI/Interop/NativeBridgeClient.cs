@@ -161,6 +161,15 @@ public sealed record NativeRecorderSnapshot(
     uint ErrorCode,
     uint ErrorDetail);
 
+// Endpoint preview telemetry, independent of the recorded stereo PCM.
+public sealed record NativeAudioMeter(
+    uint SystemChannels,
+    uint MicrophoneChannels,
+    float SystemLeft,
+    float SystemRight,
+    float MicrophoneLeft,
+    float MicrophoneRight);
+
 public sealed record NativeRecorderResult(
     string OutputPath,
     string DiagnosticsPath);
@@ -783,6 +792,27 @@ public sealed class NativeBridgeClient : IDisposable
             snapshot.ErrorDetail);
     }
 
+    public NativeAudioMeter AudioMeter(
+        ulong microphoneDeviceToken,
+        bool systemAudio,
+        bool microphone)
+    {
+        ThrowIfDisposed();
+
+        var meter = new NativeAudioMeterV1
+        {
+            StructSize = checked((uint)Marshal.SizeOf<NativeAudioMeterV1>())
+        };
+        var flags = (systemAudio ? 1U : 0U) |
+                    (microphone ? 2U : 0U);
+        EnsureOk(NativeMethods.AudioMeter(
+            _handle, microphoneDeviceToken, flags, ref meter));
+        return new NativeAudioMeter(
+            meter.SystemChannels, meter.MicrophoneChannels,
+            meter.SystemLeft, meter.SystemRight,
+            meter.MicrophoneLeft, meter.MicrophoneRight);
+    }
+
     public NativeBridgeStatus StartRecording(
         NativeStartRequest request)
     {
@@ -991,6 +1021,19 @@ public sealed class NativeBridgeClient : IDisposable
             UnmanagedType.ByValTStr,
             SizeConst = 256)]
         public string Name;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeAudioMeterV1
+    {
+        public uint StructSize;
+        public uint SystemChannels;
+        public uint MicrophoneChannels;
+        public uint Reserved;
+        public float SystemLeft;
+        public float SystemRight;
+        public float MicrophoneLeft;
+        public float MicrophoneRight;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -1236,6 +1279,16 @@ public sealed class NativeBridgeClient : IDisposable
         public static extern int RecorderSnapshot(
             IntPtr handle,
             ref NativeRecorderSnapshotV1 snapshot);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_audio_meter",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int AudioMeter(
+            IntPtr handle,
+            ulong microphoneDeviceToken,
+            uint flags,
+            ref NativeAudioMeterV1 meter);
 
         [DllImport(
             LibraryName,
