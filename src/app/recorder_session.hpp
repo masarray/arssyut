@@ -4,6 +4,7 @@
 
 #include "core/diagnostics/diagnostics.hpp"
 #include "core/result/status.hpp"
+#include "app/recording_audio_health.hpp"
 #include "core/time/monotonic_clock.hpp"
 #include "core/video/frame_geometry.hpp"
 #include "core/video/frame_scheduler.hpp"
@@ -223,6 +224,7 @@ private:
     std::atomic<bool> audio_writer_enabled_{false};
     std::atomic<std::uint64_t> audio_samples_submitted_{0};
     std::atomic<std::uint64_t> audio_frames_submitted_{0};
+    RecordingAudioHealth audio_health_{}; // only recorder worker reads/writes
     std::atomic<std::int64_t> started_at_ticks_{0};
     std::atomic<std::int64_t> stopped_at_ticks_{0};
 

@@ -7,6 +7,7 @@
 #if defined(_WIN32) && defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
 
 #include "app/audio_endpoint_preflight.hpp"
+#include "app/recording_audio_health.hpp"
 #include "app/audio_source_preparation.hpp"
 #include "app/audio_pcm16_submission_adapter.hpp"
 #include "app/recorded_input_sounds.hpp"
@@ -291,6 +292,31 @@ public:
         return program_.pending_blocks() == 0
             ? core::Status::success()
             : core::Status::failure(core::StatusCode::InvalidStateTransition);
+    }
+
+    // Snapshot the actual capture evidence on the existing recorder worker.
+    // No packet processing, reconfiguration or extra synchronization.
+    [[nodiscard]] app::RecordingAudioHealth health_snapshot() const noexcept
+    {
+        app::RecordingAudioHealth v{};
+        const auto copy = [](auto &dst, const auto &s) noexcept {
+            dst.captured=s.captured_packets; dst.published=s.published_packets;
+            dst.silent=s.silent_packets; dst.discontinuities=s.discontinuity_packets;
+            dst.timestamp_errors=s.timestamp_error_packets; dst.dropped=s.dropped_packets;
+            dst.pool_exhaustions=s.pool_exhaustions; dst.ring_overflows=s.ring_overflows;
+        };
+        if (pinned_.microphone) copy(v.microphone, microphone_.snapshot());
+        if (pinned_.system_audio) copy(v.system, loopback_.snapshot());
+        const auto stats=program_.stats();
+        const auto mix=program_.mix_stats();
+        v.missing_source_intervals=mix.missing_source_intervals;
+        v.silent_program_blocks=mix.silent_blocks;
+        v.stale_canonical_frames=stats.stale_canonical_frames;
+        v.duplicate_canonical_frames=stats.duplicate_canonical_frames;
+        v.staging_gaps=stats.staging_gaps;
+        v.staging_overflows=stats.staging_overflows;
+        v.dropped_program_blocks=stats.dropped_program_blocks;
+        return v;
     }
 
     void stop_sources() noexcept
