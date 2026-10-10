@@ -39,6 +39,9 @@ jobs:
       - name: Verify A/V acceptance policy and GUI contracts
         run: python -m unittest discover -s tests/qa -p "test_*.py" -v
 
+      - name: Public release asset selection regression (offline Node)
+        run: node --test tests/qa/public_releases.test.cjs
+
       - name: P7A1R Media Foundation resampler evidence
         shell: pwsh
         run: |

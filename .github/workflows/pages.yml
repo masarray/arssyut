@@ -30,6 +30,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify dynamic release selection (mock GitHub API, no downloads)
+        run: node --test tests/qa/public_releases.test.cjs
+
       - name: Stage only public website files
         shell: bash
         run: |
