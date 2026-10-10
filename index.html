@@ -4,56 +4,113 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0c1119">
-  <meta name="description" content="Arssyut is a precision Windows screen recorder with a lightweight native capture engine and polished presentation controls.">
-  <title>Arssyut — Windows Screen Recorder</title>
+  <meta name="description" content="Arssyut is an enhanced screen recorder for Windows. Record displays, windows and selected regions with a compact, focused interface.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Arssyut — Enhanced Screen Recorder">
+  <meta property="og:description" content="A focused Windows screen recorder for tutorials, walkthroughs and everyday captures.">
+  <meta property="og:image" content="https://masarray.github.io/arssyut/assets/favicon/android-chrome-512x512.png">
+  <meta name="twitter:card" content="summary">
+  <title>Arssyut — Enhanced Screen Recorder for Windows</title>
   <link rel="icon" href="assets/favicon/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/favicon/favicon-16x16.png">
   <link rel="apple-touch-icon" href="assets/favicon/apple-touch-icon.png">
   <link rel="manifest" href="assets/favicon/site.webmanifest">
-  <style>
-    :root{color-scheme:dark;--base:#0c1119;--surface:#131923;--line:#29313f;--text:#edf1f6;--muted:#9ba6ba;--accent:#ff4f60;font:400 15px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
-    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse 60% 42% at 50% 8%,#273041 0%,var(--base) 84%);color:var(--text);min-height:100vh}
-    a{color:inherit;text-decoration:none}a:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
-    .wrap{max-width:1010px;padding:0 25px;margin:auto}
-    header{border-bottom:1px solid var(--line)}nav{display:flex;align-items:center;justify-content:space-between;height:74px;gap:16px}
-    .brand{display:inline-flex;gap:10px;align-items:center;font-size:16px;font-weight:650;letter-spacing:.01em}
-    .brand img{width:31px;height:31px;object-fit:contain} .link{font-size:13px;color:var(--muted)}.link:hover{color:var(--text)}
-    main{padding:70px 0 52px;text-align:center}.mark{height:132px;width:132px;object-fit:contain;margin-bottom:10px}
-    h1{font-size:clamp(32px,5vw,53px);line-height:1.16;letter-spacing:-.04em;font-weight:650;margin:0 auto 16px;max-width:730px}
-    .lead{color:var(--muted);max-width:575px;font-size:16px;margin:0 auto 27px}
-    .actions{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}.button{border:1px solid var(--line);border-radius:9px;padding:10px 18px;font-weight:560;font-size:13px;background:var(--surface)}.button.primary{background:var(--accent);color:#181015;border-color:var(--accent)}.button:hover{filter:brightness(1.12)}
-    .eyebrow{font-size:11px;color:#ff9fac;letter-spacing:.13em;text-transform:uppercase;margin:0 0 14px}
-    .features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;text-align:left;margin-top:75px}
-    article{border:1px solid var(--line);background:rgba(19,25,35,.75);padding:21px;border-radius:12px}
-    article h2{font-size:14px;font-weight:630;margin:0 0 5px}article p{font-size:13px;color:var(--muted);margin:0}
-    .note{font-size:12px;color:var(--muted);margin:30px auto 0;max-width:640px}
-    footer{border-top:1px solid var(--line);padding:21px 0;color:var(--muted);font-size:12px;text-align:center}
-    @media(max-width:650px){main{padding-top:48px}.features{grid-template-columns:1fr;margin-top:50px}.mark{width:112px;height:112px}nav{height:64px}}
-    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
-  </style>
+  <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
-  <header><nav class="wrap">
-    <a class="brand" href="./" aria-label="Arssyut home"><img src="assets/favicon/android-chrome-192x192.png" width="31" height="31" alt="">Arssyut</a>
-    <a class="link" href="https://github.com/masarray/arssyut">GitHub ↗</a>
-  </nav></header>
-  <main class="wrap">
-    <img class="mark" src="assets/favicon/android-chrome-512x512.png" width="132" height="132" alt="Arssyut product logo">
-    <p class="eyebrow">Windows · Native capture · Precise presentation</p>
-    <h1>Record your screen.<br>Keep every detail.</h1>
-    <p class="lead">A focused Windows screen recorder with clean controls, hardware-backed video capture, and thoughtful on-screen presentation tools.</p>
-    <div class="actions">
-      <a class="button primary" href="https://github.com/masarray/arssyut/releases">View downloads ↗</a>
-      <a class="button" href="https://github.com/masarray/arssyut#readme">Explore the project</a>
+  <a class="sr-only" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap topbar">
+      <a class="identity" href="./" aria-label="Arssyut home">
+        <img src="assets/favicon/android-chrome-192x192.png" width="30" height="30" alt="">
+        <span>Arssyut</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="./" aria-current="page">Overview</a>
+        <a href="download/">Download</a>
+        <a class="docs-link" href="https://github.com/masarray/arssyut#readme">Guide</a>
+        <a class="button subtle" href="https://github.com/masarray/arssyut" aria-label="View Arssyut on GitHub">GitHub ↗</a>
+      </nav>
     </div>
-    <section class="features" aria-label="Product features">
-      <article><h2>Capture with precision</h2><p>Display and window workflows with a responsive, compact native Windows interface.</p></article>
-      <article><h2>Present naturally</h2><p>Thoughtful cursor, zoom, click, and shortcut visualization designed for tutorials.</p></article>
-      <article><h2>Keep your workflow simple</h2><p>Choose a source, record, stop, and open your MP4 directly in the GUI.</p></article>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <span class="eyebrow">Made for Windows</span>
+          <h1>Capture your screen.<br>Stay in the flow.</h1>
+          <p class="lead">Arssyut puts screen recording where it belongs: a compact interface that helps you capture the moment, explain an idea, and get back to work.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="download/">Get Arssyut <span aria-hidden="true">→</span></a>
+            <a class="button subtle" href="#features">Explore features</a>
+          </div>
+          <p class="hero-under">Windows x64 · Desktop application · MP4 output</p>
+        </div>
+        <div class="mock" role="img" aria-label="Illustration of Arssyut's compact recorder layout, with capture choices and recording controls">
+          <div class="mock-top"><div class="mock-brand"><img src="assets/favicon/android-chrome-192x192.png" width="17" height="17" alt="">Arssyut</div><div class="mock-top-right">Enhanced Screen Recorder</div></div>
+          <div class="mock-content">
+            <div class="mock-block">
+              <span class="mock-caption">Capture</span>
+              <div class="mock-tiles">
+                <div class="mock-tile current"><div class="mock-monitor"></div>Display</div>
+                <div class="mock-tile"><div class="mock-window"></div>Window</div>
+                <div class="mock-tile"><div class="mock-region"></div>Region</div>
+              </div>
+              <div class="mock-select">Display 1 — 1920 × 1080 <span aria-hidden="true">⌄</span></div>
+            </div>
+            <div class="mock-block">
+              <span class="mock-caption">Audio · Internal testing</span>
+              <div class="mock-source"><span>System audio</span><span class="mock-switch"></span></div>
+              <div class="mock-meter"></div>
+              <div class="mock-source"><span>Microphone</span><span class="mock-switch"></span></div>
+              <div class="mock-meter alt"></div>
+            </div>
+            <div class="mock-block mock-record-side"><span class="mock-caption">Record</span><div class="mock-record"></div><div class="mock-record-caption">Start</div></div>
+          </div>
+          <div class="mock-footer">● Ready</div>
+        </div>
+      </div>
     </section>
-    <p class="note">To run the portable GUI, extract the ZIP and double-click <strong>Arssyut.UI.exe</strong>.</p>
-    <p class="note">Current public release builds are video-only. Stereo microphone/system-audio recording is under internal hardware acceptance; audio-enabled packages are not yet public stable releases.</p>
+
+    <div class="mini-facts">
+      <div class="wrap facts">
+        <div class="fact"><strong>Record what matters</strong>Display, window or region</div>
+        <div class="fact"><strong>Stay focused</strong>Compact Windows interface</div>
+        <div class="fact"><strong>Easy to share</strong>Save recordings as MP4</div>
+      </div>
+    </div>
+
+    <section class="section" id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">Built around your workflow</p>
+          <h2>Everything you need, without the clutter.</h2>
+          <p>Make tutorials, product demos, walkthroughs and everyday screen recordings with a straightforward capture workflow.</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature"><span class="feature-number">01 / CAPTURE</span><h3>Pick your source</h3><p>Record a display, an application window, or a selected screen region.</p></div>
+          <div class="feature"><span class="feature-number">02 / PRESENT</span><h3>Show what matters</h3><p>Highlight clicks and keyboard shortcuts to make explanations easier to follow.</p></div>
+          <div class="feature"><span class="feature-number">03 / FOCUS</span><h3>Keep controls close</h3><p>Start and stop from a clean desktop interface with less visual noise.</p></div>
+          <div class="feature"><span class="feature-number">04 / OUTPUT</span><h3>Record to MP4</h3><p>Save your capture in a familiar video format ready to review and share.</p></div>
+          <div class="feature"><span class="feature-number">05 / SETUP</span><h3>Keep your choices</h3><p>Settings and selected devices are designed to persist between sessions.</p></div>
+          <div class="feature"><span class="feature-number">06 / IN DEVELOPMENT</span><h3>Audio recording</h3><p>System and microphone recording are undergoing Windows hardware testing before public release.</p></div>
+        </div>
+      </div>
+    </section>
+    <section class="band">
+      <div class="wrap band-inner">
+        <div><h2>Ready to start recording?</h2><p>Check the download page for public builds and current availability.</p></div>
+        <a class="button primary" href="download/">See downloads <span aria-hidden="true">→</span></a>
+      </div>
+    </section>
   </main>
-  <footer><div class="wrap">© Arssyut · <a href="https://github.com/masarray/arssyut">Source and documentation</a></div></footer>
-</body></html>
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <span>Arssyut · Built for focused screen recording.</span>
+      <div class="footer-links"><a href="download/">Downloads</a><a href="https://github.com/masarray/arssyut/issues">Report an issue</a><a href="https://github.com/masarray/arssyut">Open-source project</a></div>
+    </div>
+  </footer>
+</body>
+</html>

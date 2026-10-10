@@ -1,126 +1,78 @@
-<p align="center">
-  <img src="assets/favicon/android-chrome-192x192.png" alt="Arssyut product logo" width="76" height="76" />
-</p>
-
+<p align="center"><img src="assets/favicon/android-chrome-192x192.png" alt="Arssyut product logo" width="80" height="80"></p>
 <h1 align="center">Arssyut</h1>
+<p align="center"><strong>Enhanced Screen Recorder for Windows</strong></p>
+<p align="center">Capture your screen. Stay in the flow.</p>
+<p align="center"><a href="https://masarray.github.io/arssyut/">Website</a> · <a href="https://masarray.github.io/arssyut/download/">Downloads</a> · <a href="https://github.com/masarray/arssyut/releases">GitHub Releases</a> · <a href="https://github.com/masarray/arssyut/issues">Support</a></p>
 
-<p align="center">Windows screen recorder · Native capture · Precision presentation</p>
+<p align="center"><img alt="Windows x64" src="https://img.shields.io/badge/Windows-x64-303c4b?style=flat-square"> <a href="https://github.com/masarray/arssyut/actions/workflows/ci.yml"><img alt="Windows build status" src="https://github.com/masarray/arssyut/actions/workflows/ci.yml/badge.svg"></a></p>
 
-<p align="center"><a href="https://github.com/masarray/arssyut/releases">Downloads</a> · <a href="index.html">Product landing</a> · <a href="docs/ROADMAP.md">Engineering roadmap</a></p>
+Arssyut is a focused Windows screen recorder for tutorials, software demos, walkthroughs, and everyday captures. Choose what to record, start capturing, and save an MP4—without a crowded workspace.
 
-Arssyut is a Windows-first, lightweight screen recorder designed for polished tutorials, software demonstrations, engineering walkthroughs, and product presentations.
+> [!IMPORTANT]
+> **Public release status:** Arssyut is in release preparation. Check [GitHub Releases](https://github.com/masarray/arssyut/releases) for officially published versions; **no stable public release has been published yet**. Audio-enabled builds are for Windows hardware testing, not a finished public release.
 
-The product direction is intentionally narrower than OBS: one-click recording with a production-grade native capture pipeline, smooth camera motion, click feedback, shortcut visualization, tasteful color enhancement, synchronized audio, and an optimized MP4 result.
+## What can Arssyut do?
 
-## Product principles
+| Feature | Current status |
+| --- | --- |
+| Record an entire display | Available in the Windows video recorder |
+| Capture a window or selected region | Available |
+| Save and open MP4 recordings | Available |
+| Mouse click highlighting and shortcut visualization | Available |
+| Zoom/presentation controls | Available, subject to capture mode |
+| Remember user preferences | Available |
+| System audio and microphone recording | Internal audio-enabled testing build only |
+| Game capture and webcam recording | Not yet available as finished features |
 
-- **Lightweight by architecture** — native capture/compositing/encoding path; no CPU full-frame processing in steady state.
-- **One camera authority** — ArZoom camera/planner concepts are transplanted as a single deterministic zoom/follow engine, not duplicated across UI and renderer.
-- **GPU-first presentation** — native WGC cursor stays inside the captured GPU source while zoom, click visuals, keycap overlay, and color treatment remain on the GPU path.
-- **Bounded realtime work** — fixed-capacity queues, latest-wins coalescing for replaceable state, no session-length growth, no unbounded event history.
-- **Smooth before flashy** — time-based motion, jerk-limited transitions, stable frame pacing, no zoom jitter.
-- **Privacy-aware input visualization** — shortcut/chord visualization by default; ordinary typed text is not persisted.
-- **Crash-safe recording** — temporary recoverable recording container, then lossless/remux-only finalization to optimized MP4.
-- **Evidence-based optimization** — performance changes require measurements and regression protection.
+The application you launch is **Arssyut.UI.exe**, the compact Windows GUI. It does not require opening a Command Prompt.
 
-## Upstream engines
+## Download & get started
 
-Arssyut will reuse the proven behavior of:
+1. Visit the **[download page](https://masarray.github.io/arssyut/download/)** or [GitHub Releases](https://github.com/masarray/arssyut/releases). Only releases published there should be considered public downloads.
+2. When available, choose a **Windows installer** for Start menu integration, or a **portable ZIP** to extract and run yourself.
+3. Open **Arssyut.UI.exe**, select **Display**, **Window**, or **Region**, and click **Start**.
+4. Click **Stop** to finalize your MP4, then choose **Open** or **Folder** to review it.
 
-- [ArZoom for OBS](https://github.com/masarray/arzoom-follow-obs) for camera planning, kinematic motion, click feedback, cursor mapping, and presentation semantics.
-- [ArVisual for OBS](https://github.com/masarray/arvisual-obs) for bounded color enhancement, neutral/highlight protection, scene adaptation, and GPU grading behavior.
+**No public download showing?** That means no eligible release has been published yet. Please do not confuse a source-code ZIP or an internal GitHub Actions artifact with a finished installer.
 
-The OBS glue is **not** copied blindly. Portable algorithms are separated from OBS-specific state and adapted to the standalone D3D11 recording pipeline with explicit provenance and parity tests.
+### About audio
 
-## Planned architecture
+The native system-audio and microphone pipeline is under acceptance testing for stereo capture, recorded volume/mute, synchronization, long sessions, and repeated Start/Stop. Audio testing uses a **separate build** named **arssyut-AUDIO-ENABLED-TEST-win-x64** in [GitHub Actions](https://github.com/masarray/arssyut/actions). These builds may require a GitHub login and are not stable public downloads.
 
-```text
-Windows Graphics Capture / DXGI fallback
-              |
-              v
-       Latest-frame slot
-              |
-Input -> canonical event reducer -> Camera/Overlay state
-              |
-              v
-      D3D11 compositor
-      |  zoom / pan
-      |  click visual
-      |  keycap overlay
-      |  ArVisual grade
-      v
-       RGB -> NV12
-              |
-              v
-     hardware H.264 encoder
-              |
-Audio --------+--------> bounded mux writer
-                       |
-                       v
-              recoverable temp media
-                       |
-                       v
-                optimized MP4
-```
+If you open **arssyut-VIDEO-ONLY-avalonia-win-x64**, its audio toggles are intentionally unavailable. This is a different build, **not** a microphone configuration problem.
 
-## Foundation documents
+## Questions and support
 
-- `AGENTS.md` — non-naive production realtime engineering contract.
-- `docs/CONCEPT.md` — product/UX concept and presentation behavior.
-- `docs/PRD.md` — product requirements and acceptance criteria.
-- `docs/ARCHITECTURE.md` — capture/render/input/audio/encoding architecture and invariants.
-- `docs/ROADMAP.md` — gated implementation strategy and validation milestones.
-- `docs/RESEARCH.md` — ArZoom/ArVisual audit plus Microsoft/GitHub/GitLab research.
+**Does it work on Windows 10 and 11?** Arssyut targets Windows x64. Hardware capabilities and Windows capture support can affect device compatibility.
 
-## Build the P0 foundation
+**Do I need to install it?** When an official portable ZIP is published, you can extract and run the app directly. The installer is a separate download option.
 
-Windows x64:
+**Where are bugs reported?** Open a [GitHub Issue](https://github.com/masarray/arssyut/issues) and include your Windows version, capture mode, reproduction steps, and relevant diagnostics.
 
-```powershell
-cmake --preset windows-x64
+## For contributors and technical readers
+
+Arssyut combines an Avalonia Windows interface with a native C++ capture/processing engine. Development emphasizes bounded real-time work, GPU-based presentation, explicit A/V clock ownership, and regression testing.
+
+| Resource | Description |
+| --- | --- |
+| [Architecture](docs/ARCHITECTURE.md) | Capture, graphics, input, audio and encoding design |
+| [Engineering roadmap](docs/ROADMAP.md) | Planned stages and acceptance gates |
+| [Development handoff](docs/CURRENT_HANDOFF.md) | Current technical status and constraints |
+| [Build / packaging](packaging/windows/README.md) | Windows portable and installer candidate workflows |
+| [Third-party notices](docs/P6UI_THIRD_PARTY_NOTICES.md) | Dependency attribution and notices |
+
+To run the native regression suite on a compatible Windows development machine:
+
+<pre><code>cmake --preset windows-x64
 cmake --build --preset windows-release --parallel
-ctest --preset windows-release
-```
+ctest --preset windows-release</code></pre>
 
-P0 builds the production core primitives and deterministic tests. It does not
-include a temporary screenshot recorder.
+The default video-only reference build and experimental audio-enabled package have **different native capabilities** and must not be substituted for each other.
 
-## P0 foundation
+### Branding
 
-Implemented on the production path:
+The official product identity lives in [assets/favicon/](assets/favicon). The Windows executable, installer icon, website favicon, and product image reuse that source.
 
-- canonical 100-ns monotonic clock backed by QPC on Windows;
-- compact `Status/Result` failure contracts;
-- fixed-capacity SPSC event ring;
-- lock-free latest-wins primitive for small replaceable state;
-- bounded diagnostic counters;
-- canonical recording session state machine;
-- RAII D3D11 device/immediate-context ownership;
-- deterministic core and D3D11 WARP CI tests;
-- source provenance and third-party dependency ledgers;
-- Windows x64 GitHub CI.
+### License and redistribution
 
-See `docs/P0_FOUNDATION.md` for ownership and acceptance gates.
-
-## Current release readiness
-
-The Avalonia Windows GUI (`Arssyut.UI.exe`) is the active product, not the
-earlier native probe or the legacy Win32 shell. Display/Window/Region capture,
-presentation controls, persistent Settings, and the video-only portable build
-have native Windows CI coverage.
-
-Microphone/System Audio stereo capture, 48 kHz canonical mixing, A/V timeline
-integration, and click/keycap sounds are available only in the **internal
-hardware acceptance** build. This is not yet a public audio-enabled release.
-Real-device acceptance for concurrent Mic + System, long sessions, repeated
-Start/Stop, and output MP4 synchronization is still required before publishing
-an audio-enabled stable installer.
-
-For the latest verified artifacts see [GitHub Actions](https://github.com/masarray/arssyut/actions).
-**For Mic/System recording tests, choose `arssyut-AUDIO-ENABLED-TEST-win-x64`.**
-The similarly named `arssyut-VIDEO-ONLY-avalonia-win-x64` is only a
-reference GUI; its audio switches are intentionally disabled. Both are
-portable: extract and double-click `Arssyut.UI.exe` (no CMD).
-The audio artifact is experimental until Windows hardware MP4 acceptance passes.
-Windows installer candidate packaging is **manual only** until those release
-gates pass. See [Windows packaging](packaging/windows/README.md).
+This repository currently does not contain a root software license file. Public access to source does not by itself grant reuse or redistribution rights. Third-party components have separate licenses and notices. A software license should be explicitly selected before positioning the repository as an open-source release.
