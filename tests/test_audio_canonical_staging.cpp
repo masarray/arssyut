@@ -225,6 +225,78 @@ void test_fail_closed_gap_and_overflow(TestContext &test)
         "Overflow preserves previous staged media and bounded capacity");
 }
 
+
+void test_bounded_sparse_discontinuity_and_overlap(TestContext &test)
+{
+    FixedCanonicalAudioStaging<2048> staging;
+    std::array<float, 256 * 2> first{};
+    std::array<float, 256 * 2> resumed{};
+    std::array<float, 100 * 2> duplicate{};
+
+    first.fill(0.25F);
+    resumed.fill(0.75F);
+    duplicate.fill(0.5F);
+
+    test.expect(
+        staging.push(100, first, 256) ==
+            AudioCanonicalStagePushStatus::Applied,
+        "Audio before YouTube/loopback source gap stays staged");
+
+    // Model a multi-second silence/clock discontinuity while a small
+    // earlier source suffix still waits for its assigned program block.
+    test.expect(
+        staging.push(48000 * 4, resumed, 256, true) ==
+            AudioCanonicalStagePushStatus::Applied,
+        "Marked real WASAPI gap is accepted without filling seconds with zeros");
+
+    const auto before = staging.front_chunk();
+    test.expect(
+        before.valid() && before.start_frame == 100 &&
+        before.frame_count == 256 && !before.discontinuity &&
+        before.interleaved[0] == 0.25F,
+        "Audio preceding the gap retains exact samples and timestamps");
+    test.expect(staging.size_frames() == 512,
+        "Four-second gap consumes no additional ring capacity");
+
+    test.expect(staging.consume(256), "Prefix consumes without losing future island");
+    const auto after = staging.front_chunk();
+    test.expect(
+        after.valid() && after.start_frame == 48000 * 4 &&
+        after.frame_count == 256 && after.discontinuity &&
+        after.interleaved[0] == 0.75F,
+        "First resumed source block has exact future time and gap marker");
+
+    test.expect(
+        staging.push(48000 * 4 + 200, duplicate, 100, true) ==
+            AudioCanonicalStagePushStatus::Applied,
+        "Backward reanchor trims only overlapping samples");
+    test.expect(staging.size_frames() == 556,
+        "Overlap doesn't double-write the buffered PCM");
+    test.expect(
+        staging.push(48000 * 4 + 300, duplicate, 100) ==
+            AudioCanonicalStagePushStatus::Applied,
+        "Normal stream resumes contiguous after deduplicated reanchor");
+
+    test.expect(staging.consume(256), "Crosses previous 256-frame island");
+    const auto trimmed = staging.front_chunk();
+    test.expect(
+        trimmed.start_frame == 48000 * 4 + 256 &&
+        trimmed.frame_count == 144 &&
+        trimmed.discontinuity,
+        "Overlapped suffix and following sample stay correctly anchored");
+
+    FixedCanonicalAudioStaging<1024> fail_closed;
+    test.expect(fail_closed.push(0, first, 256) ==
+                    AudioCanonicalStagePushStatus::Applied &&
+                fail_closed.push(600, resumed, 256, false) ==
+                    AudioCanonicalStagePushStatus::NonContiguous,
+        "Unmarked time jumps still fail closed; no silent corrupt timeline");
+    test.expect(
+        fail_closed.push(600, resumed, 256, true) ==
+            AudioCanonicalStagePushStatus::Applied,
+        "Sparse source gap remains valid under smaller fixed capacity");
+}
+
 } // namespace
 
 int main()
@@ -234,6 +306,7 @@ int main()
     test_contiguous_future_suffix(test);
     test_wrap_and_high_water(test);
     test_discontinuity_boundary(test);
+    test_bounded_sparse_discontinuity_and_overlap(test);
     test_fail_closed_gap_and_overflow(test);
 
     if (test.failures != 0) {

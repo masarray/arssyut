@@ -2,6 +2,7 @@
 
 #include "core/audio/audio_packet.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bitset>
 #include <cstddef>
@@ -41,9 +42,11 @@ struct AudioCanonicalStageChunk {
  * output that belongs to future program blocks so callers never discard or
  * time-shift a suffix merely because the current 1024-frame window ended.
  *
- * Appends must be exactly contiguous in canonical frame coordinates. A gap or
- * overlap fails closed and must be handled by the caller as discontinuity /
- * missing-media policy. Capacity never grows.
+ * Normal appends remain exactly contiguous in canonical frame coordinates.
+ * An explicitly signalled source discontinuity can reanchor a future chunk
+ * without filling its missing time with fabricated samples or moving QPC zero.
+ * Overlapping buffered samples are trimmed only at a discontinuity boundary;
+ * unmarked gaps/overlaps remain failures. Capacity never grows.
  *
  * The ring publishes front chunks split at wrap boundaries and discontinuity
  * markers. This lets the mixer-thread offer each chunk to
@@ -68,6 +71,7 @@ public:
         read_frame_ = 0;
         size_frames_ = 0;
         start_frame_ = 0;
+        tail_frame_ = 0;
         have_start_ = false;
         discontinuities_.reset();
         high_water_frames_ = 0;
@@ -89,26 +93,36 @@ public:
                     kChannels)
             return AudioCanonicalStagePushStatus::Invalid;
 
-        const auto free_frames =
-            CapacityFrames - size_frames_;
+        // The single fixed ring can hold multiple chronological islands:
+        // a discontinuity marker carries the real absolute frame at its head.
+        // There is no silence allocation and no timestamp shift for older data.
+        if (have_start_) {
+            if (start_frame != tail_frame_ && !discontinuity) {
+                ++non_contiguous_events_;
+                return AudioCanonicalStagePushStatus::NonContiguous;
+            }
+            if (start_frame < tail_frame_) {
+                // A reanchored SRC can return overlapping samples. The old
+                // samples are already staged; never duplicate them in MP4.
+                const auto stale =
+                    static_cast<std::uint64_t>(tail_frame_ - start_frame);
+                const auto trim = static_cast<std::uint32_t>(
+                    std::min<std::uint64_t>(stale, frame_count));
+                if (trim == frame_count)
+                    return AudioCanonicalStagePushStatus::Applied;
+                start_frame += trim;
+                frame_count -= trim;
+                canonical_stereo =
+                    canonical_stereo.subspan(static_cast<std::size_t>(trim) * kChannels);
+            }
+        }
 
+        const auto free_frames = CapacityFrames - size_frames_;
         if (frame_count > free_frames) {
             ++overflow_events_;
             return AudioCanonicalStagePushStatus::Full;
         }
-
-        if (have_start_) {
-            const auto expected =
-                saturating_add(
-                    start_frame_,
-                    size_frames_);
-
-            if (start_frame != expected) {
-                ++non_contiguous_events_;
-                return AudioCanonicalStagePushStatus::NonContiguous;
-            }
-        }
-        else {
+        if (!have_start_) {
             start_frame_ = start_frame;
             have_start_ = true;
         }
@@ -141,11 +155,13 @@ public:
                 physical_frame);
         }
 
-        if (discontinuity)
-            discontinuities_.set(
-                write_frame);
+        if (discontinuity) {
+            discontinuities_.set(write_frame);
+            absolute_at_discontinuity_[write_frame] = start_frame;
+        }
 
         size_frames_ += frame_count;
+        tail_frame_ = saturating_add(start_frame, frame_count);
         if (size_frames_ > high_water_frames_)
             high_water_frames_ =
                 size_frames_;
@@ -203,27 +219,30 @@ public:
             frame_count > size_frames_)
             return false;
 
+        // Walk the existing bounded ring prefix. Crossing a stored
+        // discontinuity reanchors the QPC-derived frame rather than
+        // erroneously treating a sparse time interval as adjacent PCM.
+        auto next_start = start_frame_;
         for (std::uint32_t frame = 0;
              frame < frame_count;
              ++frame) {
-            discontinuities_.reset(
-                (read_frame_ + frame) %
-                CapacityFrames);
+            const auto index = (read_frame_ + frame) % CapacityFrames;
+            if (frame != 0 && discontinuities_.test(index))
+                next_start = absolute_at_discontinuity_[index];
+            next_start = saturating_add(next_start, 1);
+            discontinuities_.reset(index);
         }
 
-        read_frame_ =
-            (read_frame_ + frame_count) %
-            CapacityFrames;
+        read_frame_ = (read_frame_ + frame_count) % CapacityFrames;
         size_frames_ -= frame_count;
-
-        start_frame_ =
-            saturating_add(
-                start_frame_,
-                frame_count);
+        start_frame_ = next_start;
 
         if (size_frames_ == 0) {
             have_start_ = false;
             read_frame_ = 0;
+            tail_frame_ = 0;
+        } else if (discontinuities_.test(read_frame_)) {
+            start_frame_ = absolute_at_discontinuity_[read_frame_];
         }
 
         return true;
@@ -291,10 +310,15 @@ private:
         samples_{};
     std::bitset<CapacityFrames>
         discontinuities_{};
+    // Sparse absolute anchors are read only at marked ring positions.
+    // Fixed allocation: no heap churn on the audio/writer hot path.
+    std::array<std::int64_t, CapacityFrames>
+        absolute_at_discontinuity_{};
 
     std::size_t read_frame_ = 0;
     std::size_t size_frames_ = 0;
     std::int64_t start_frame_ = 0;
+    std::int64_t tail_frame_ = 0;
     bool have_start_ = false;
 
     std::size_t high_water_frames_ = 0;
