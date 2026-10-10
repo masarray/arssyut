@@ -18,6 +18,7 @@ class PageReferences(HTMLParser):
         self.links = []
         self.ids = set()
         self.headings = []
+        self.h1_count = 0
         self._heading = None
 
     def handle_starttag(self, tag, attrs):
@@ -28,6 +29,8 @@ class PageReferences(HTMLParser):
             self.links.append(attr.get("href", ""))
         if tag in ("script", "img"):
             self.links.append(attr.get("src", ""))
+        if tag == "h1":
+            self.h1_count += 1
         if tag in ("h1", "h2", "h3"):
             self._heading = tag
 
@@ -52,8 +55,7 @@ class PublicSiteContracts(unittest.TestCase):
                 parser = PageReferences()
                 parser.feed(html)
                 self.assertIn("main", parser.ids)
-                self.assertEqual(
-                    sum(1 for tag, _ in parser.headings if tag == "h1"), 1)
+                self.assertEqual(parser.h1_count, 1)
                 for url in parser.links:
                     if not url or url.startswith(("https://", "mailto:", "#")):
                         continue
