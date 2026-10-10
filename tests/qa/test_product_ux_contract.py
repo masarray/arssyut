@@ -85,7 +85,7 @@ class UXContract(unittest.TestCase):
         ElementTree.fromstring(self.xaml)
         for mode in ("Display", "Window", "Region", "Game"):
             block = re.search(
-                rf'<ToggleButton x:Name="Mode{mode}"[\\s\\S]*?</ToggleButton>',
+                rf'<ToggleButton x:Name="Mode{mode}"[\s\S]*?</ToggleButton>',
                 self.xaml)
             self.assertIsNotNone(block, mode)
             self.assertIn('Orientation="Vertical"', block.group())
