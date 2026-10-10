@@ -83,7 +83,7 @@ test("cross-tag URLs, wrong host, pending upload and placeholder binaries fail c
 test("draft releases and missing or malformed metadata never create download links", async () => {
   const draft = release("v0.1.1", "2026-10-13T00:00:00Z", false);
   draft.draft = true;
-  const el = await render([draft, { tag_name: "v0.1.2", assets: [] }]);
+  const el = await render([null, draft, { tag_name: "v0.1.2", assets: [] }]);
   assert.equal(el("release-assets").hidden, true);
   assert.equal(el("installer-link").href, "https://github.com/masarray/arssyut/releases");
 });
