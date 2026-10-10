@@ -42,7 +42,11 @@
     }
   }
   function eligibleRelease(item) {
-    if (!item || item.draft || !item.published_at ||
+    // Asset SHA, launch smoke and CI green do not prove captured audio fidelity.
+    // Only a separately accepted on-device audio QA release is a public download.
+    if (!item || typeof item.body !== "string" ||
+        !/(?:^|\r?\n)ARSSYUT_AUDIO_HARDWARE_ACCEPTED(?:\r?\n|$)/.test(item.body) ||
+        item.draft || !item.published_at ||
         !Array.isArray(item.assets) || typeof item.tag_name !== "string" ||
         !/^v?\d+\.\d+\.\d+(?:-(?:rc|beta|alpha)\.\d+)?$/i.test(item.tag_name))
       return null;
@@ -80,9 +84,9 @@
     const matched = releases.map(item => (item && !item.draft ? eligibleRelease(item) : null))
       .filter(Boolean).sort((a, b) => b.published - a.published)[0];
     if (!matched) {
-      showStatus("No complete public Windows release available", false);
-      showEmpty("Windows download not available",
-        "No published release contains a complete, matching Windows Setup EXE and standalone Portable EXE pair. Please check GitHub Releases.");
+      showStatus("No Windows release has passed audio quality acceptance", false);
+      showEmpty("Audio quality acceptance pending",
+        "Recent preview builds have documented recording audio defects. Installer and Portable downloads are withheld until real-device audio quality is accepted. Historical test builds remain available on GitHub Releases.");
       return;
     }
     const { release, installer, portable } = matched;

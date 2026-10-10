@@ -13,7 +13,8 @@ function release(tag, published, prerelease = true) {
     name, state: "uploaded", size,
     browser_download_url: releaseBase + tag + "/" + name
   });
-  return { tag_name: tag, published_at: published, draft: false, prerelease, assets: [
+  return { tag_name: tag, published_at: published, draft: false, prerelease,
+    body: "ARSSYUT_AUDIO_HARDWARE_ACCEPTED", assets: [
     makeAsset("Arssyut-Setup-" + version + "-win-x64.exe", 34000000),
     makeAsset("Arssyut-" + version + "-portable-win-x64.exe", 105000000),
     makeAsset("SHA256SUMS.txt", 200)
@@ -49,6 +50,27 @@ async function render(releases, { homepage = false, fail = false } = {}) {
   assert.equal(fetched, true);
   return element;
 }
+test("unaccepted real-world audio releases never become public download buttons", async () => {
+  const rc1 = release("v0.1.0-rc.1", "2026-10-10T12:41:45Z");
+  const rc2 = release("v0.1.0-rc.2", "2026-10-10T22:25:43Z");
+  rc1.body = "Preview - audio incomplete on YouTube onset";
+  rc2.body = "Preview - real device audio crackling pending repair";
+  const page = await render([rc1, rc2]);
+  assert.equal(page("release-assets").hidden, true);
+  assert.equal(page("no-release").hidden, false);
+  assert.match(page("release-status").textContent, /audio quality acceptance/i);
+  const home = await render([rc2], { homepage: true });
+  assert.equal(home("home-installer-download").href, "download/");
+});
+test("acceptance marker must be exact and line-delimited", async () => {
+  const releaseCandidate = release("v0.4.0", "2026-10-15T00:00:00Z");
+  releaseCandidate.body = "not_" + "ARSSYUT_AUDIO_HARDWARE_ACCEPTED";
+  const bad = await render([releaseCandidate]);
+  assert.equal(bad("release-assets").hidden, true);
+  releaseCandidate.body = "Hardware test approved\nARSSYUT_AUDIO_HARDWARE_ACCEPTED\n";
+  const ok = await render([releaseCandidate]);
+  assert.equal(ok("release-assets").hidden, false);
+});
 test("newest complete preview pair is selected together even when listing is unordered", async () => {
   const older = release("v0.1.0", "2026-10-09T10:00:00Z", false);
   const newer = release("v0.2.0-rc.1", "2026-10-10T10:00:00Z");
