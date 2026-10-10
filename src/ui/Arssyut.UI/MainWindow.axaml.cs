@@ -285,6 +285,16 @@ public sealed partial class MainWindow : Window
         object? sender,
         EventArgs e)
     {
+        if (_audioHardwarePreview && !_allowInteractionPreview)
+        {
+            // Shared persisted source authority: Settings toggles and main
+            // toolbar toggles always reflect the same next-session flags.
+            _systemAudioEnabled = _settings.SystemAudioEnabled;
+            _session.MicrophoneEnabled = _settings.MicrophoneEnabled;
+            RefreshInputLabels();
+            UpdateAudioMeters();
+        }
+
         RefreshSettingsSurface();
         SyncGlobalHotkeys();
     }
@@ -301,7 +311,11 @@ public sealed partial class MainWindow : Window
             var settings =
                 new SettingsWindow(
                     _settings,
-                    _nativeBridge)
+                    _nativeBridge,
+                    audioSessionLocked: _lastNativeSnapshot?.State is
+                        NativeRecorderState.Preparing or NativeRecorderState.Armed or
+                        NativeRecorderState.Recording or NativeRecorderState.Stopping or
+                        NativeRecorderState.Finalizing)
                 {
                     WindowStartupLocation =
                         WindowStartupLocation.CenterOwner
@@ -1092,17 +1106,9 @@ public sealed partial class MainWindow : Window
     }
 
 
-    // Endpoint meter display is read-only. dBFS-style 60dB logarithmic
-    // scale makes quiet audio visible without altering PCM or adding gain.
-    private static double MeterValue(float peak)
-    {
-        if (!float.IsFinite(peak) || peak <= 0)
-            return 0;
-        return Math.Clamp(100.0 +
-            20.0 * Math.Log10(Math.Clamp(peak, 0.000001f, 1.0f))
-                * (100.0 / 60.0), 0.0, 100.0);
-    }
-
+    // Main and Settings use the exact same per-source post-fader mapping.
+    // Input peaks come from native WASAPI; gain/mute are applied by the
+    // existing canonical PCM mixer when the next session starts.
     private void UpdateAudioMeters()
     {
         if (!_audioHardwarePreview || _nativeBridge is null || !IsVisible)
@@ -1113,23 +1119,30 @@ public sealed partial class MainWindow : Window
             var meter = _nativeBridge.AudioMeter(
                 _microphoneDeviceToken, _systemAudioEnabled,
                 _session.MicrophoneEnabled);
-            SystemLevelL.Height = 55.0 * (_systemAudioEnabled
-                ? MeterValue(meter.SystemLeft) : 0) / 100.0;
-            SystemLevelR.Height = 55.0 * (_systemAudioEnabled &&
-                meter.SystemChannels > 1 ? MeterValue(meter.SystemRight) : 0) / 100.0;
-            MicrophoneLevelL.Height = 55.0 * (_session.MicrophoneEnabled
-                ? MeterValue(meter.MicrophoneLeft) : 0) / 100.0;
-            MicrophoneLevelR.Height = 55.0 * (_session.MicrophoneEnabled &&
-                meter.MicrophoneChannels > 1
-                    ? MeterValue(meter.MicrophoneRight) : 0) / 100.0;
+            var systemL = RecordedAudioMeter.PostFaderPeak(
+                meter.SystemLeft, _systemAudioEnabled,
+                _settings.SystemMixPercent, _settings.SystemMixMuted);
+            var systemR = RecordedAudioMeter.PostFaderPeak(
+                meter.SystemRight, _systemAudioEnabled && meter.SystemChannels > 1,
+                _settings.SystemMixPercent, _settings.SystemMixMuted);
+            var micL = RecordedAudioMeter.PostFaderPeak(
+                meter.MicrophoneLeft, _session.MicrophoneEnabled,
+                _settings.MicrophoneMixPercent, _settings.MicrophoneMixMuted);
+            var micR = RecordedAudioMeter.PostFaderPeak(
+                meter.MicrophoneRight, _session.MicrophoneEnabled &&
+                meter.MicrophoneChannels > 1,
+                _settings.MicrophoneMixPercent, _settings.MicrophoneMixMuted);
+
+            SystemLevelL.Height = 0.55 * RecordedAudioMeter.DisplayPercent(systemL);
+            SystemLevelR.Height = 0.55 * RecordedAudioMeter.DisplayPercent(systemR);
+            MicrophoneLevelL.Height = 0.55 * RecordedAudioMeter.DisplayPercent(micL);
+            MicrophoneLevelR.Height = 0.55 * RecordedAudioMeter.DisplayPercent(micR);
         }
         catch (Exception)
         {
-            // Disconnected endpoint or bridge? Never display stale signal.
-            SystemLevelL.Height = 55.0 * (0) / 100.0;
-            SystemLevelR.Height = 55.0 * (0) / 100.0;
-            MicrophoneLevelL.Height = 55.0 * (0) / 100.0;
-            MicrophoneLevelR.Height = 55.0 * (0) / 100.0;
+            // No fake activity or stale levels when endpoint disconnects.
+            SystemLevelL.Height = SystemLevelR.Height = 0;
+            MicrophoneLevelL.Height = MicrophoneLevelR.Height = 0;
         }
     }
 

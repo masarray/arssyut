@@ -135,6 +135,29 @@ class UXContract(unittest.TestCase):
         self.assertIn('x:Name="RecordIcon"', self.xaml)
         self.assertNotIn('Click="RefreshSources_OnClick"', self.xaml)
 
+    def test_settings_audio_toggle_and_post_fader_contract(self):
+        settings = (UI / "SettingsWindow.axaml").read_text(encoding="utf-8-sig")
+        setting_code = (UI / "SettingsWindow.axaml.cs").read_text(encoding="utf-8-sig")
+        state = (UI / "Preview/SettingsPreviewState.cs").read_text(encoding="utf-8-sig")
+        main = (UI / "MainWindow.axaml.cs").read_text(encoding="utf-8-sig")
+        meter = (UI / "Preview/RecordedAudioMeter.cs").read_text(encoding="utf-8-sig")
+        for name, handler in (("SettingsSystemAudioToggle", "SettingsSystemAudio_OnClick"),
+                              ("SettingsMicrophoneToggle", "SettingsMicrophone_OnClick")):
+            self.assertIn(f'x:Name="{name}"', settings)
+            self.assertIn(f'Click="{handler}"', settings)
+            self.assertIn(f'private void {handler}', setting_code)
+        self.assertIn('Changed?.Invoke(this, EventArgs.Empty);', state)
+        self.assertIn('RefreshInputLabels();', main)
+        self.assertIn('_settings.SystemAudioEnabled', main)
+        self.assertIn('_settings.MicrophoneEnabled', main)
+        self.assertIn('audioSessionLocked:', main)
+        self.assertIn('_audioSessionLocked', setting_code)
+        self.assertIn('RecordedAudioMeter.PostFaderPeak(', main)
+        self.assertIn('RecordedAudioMeter.PostFaderPeak(', setting_code)
+        self.assertIn('Math.Clamp(gainPercent, 0, 100) / 100f', meter)
+        self.assertNotIn('private static double MeterValue(', main)
+        self.assertNotIn('private static double PeakPercent(', setting_code)
+
     def test_settings_audio_mixer_is_real_and_persisted(self):
         settings = (UI / "SettingsWindow.axaml").read_text(encoding="utf-8-sig")
         state = (UI / "Preview/SettingsPreviewState.cs").read_text(encoding="utf-8-sig")

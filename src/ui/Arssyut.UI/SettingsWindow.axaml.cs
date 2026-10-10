@@ -31,6 +31,7 @@ public sealed partial class SettingsWindow : Window
 
     private string? _capturingHotkeyAction;
     private ulong _settingsMicrophoneToken;
+    private readonly bool _audioSessionLocked;
     private bool _audioReady;
     private bool _uiReady;
     private bool _syncingPreviewControls;
@@ -38,8 +39,10 @@ public sealed partial class SettingsWindow : Window
     public SettingsWindow(
         SettingsPreviewState preview,
         NativeBridgeClient? nativeBridge = null,
-        bool stressLayout = false)
+        bool stressLayout = false,
+        bool audioSessionLocked = false)
     {
+        _audioSessionLocked = audioSessionLocked;
         _preview = preview;
         _nativeBridge = nativeBridge;
         _stressLayout = stressLayout;
@@ -321,6 +324,7 @@ public sealed partial class SettingsWindow : Window
                 ? "Mouse & Keystroke"
                 : tag;
 
+        SettingsFooterHint.IsVisible = tag != "Audio";
         _audioPreviewTimer.Stop();
         if (tag == "Audio" && _audioReady)
         {
@@ -923,18 +927,35 @@ public sealed partial class SettingsWindow : Window
                 _settingsMicrophoneToken,
                 _preview.SystemAudioEnabled,
                 _preview.MicrophoneEnabled && _settingsMicrophoneToken != 0);
-            SystemMeter.Value = PeakPercent(meter.SystemLeft);
-            SystemMeterR.Value = meter.SystemChannels > 1
-                ? PeakPercent(meter.SystemRight) : 0;
-            MicMeter.Value = PeakPercent(meter.MicrophoneLeft);
-            MicMeterR.Value = meter.MicrophoneChannels > 1
-                ? PeakPercent(meter.MicrophoneRight) : 0;
-            SystemDbText.Text = PeakDb(meter.SystemLeft);
-            MicDbText.Text = PeakDb(meter.MicrophoneLeft);
+
+            // Endpoint levels are PRE-fader. The canonical mixer uses this
+            // exact per-source gain and mute for the encoded MP4. Display
+            // the resulting POST-fader peaks, independently for L and R.
+            var systemL = RecordedAudioMeter.PostFaderPeak(
+                meter.SystemLeft, _preview.SystemAudioEnabled,
+                _preview.SystemMixPercent, _preview.SystemMixMuted);
+            var systemR = RecordedAudioMeter.PostFaderPeak(
+                meter.SystemRight, _preview.SystemAudioEnabled &&
+                meter.SystemChannels > 1,
+                _preview.SystemMixPercent, _preview.SystemMixMuted);
+            var micL = RecordedAudioMeter.PostFaderPeak(
+                meter.MicrophoneLeft, _preview.MicrophoneEnabled &&
+                _settingsMicrophoneToken != 0,
+                _preview.MicrophoneMixPercent, _preview.MicrophoneMixMuted);
+            var micR = RecordedAudioMeter.PostFaderPeak(
+                meter.MicrophoneRight, _preview.MicrophoneEnabled &&
+                _settingsMicrophoneToken != 0 && meter.MicrophoneChannels > 1,
+                _preview.MicrophoneMixPercent, _preview.MicrophoneMixMuted);
+
+            SystemMeter.Value = RecordedAudioMeter.DisplayPercent(systemL);
+            SystemMeterR.Value = RecordedAudioMeter.DisplayPercent(systemR);
+            MicMeter.Value = RecordedAudioMeter.DisplayPercent(micL);
+            MicMeterR.Value = RecordedAudioMeter.DisplayPercent(micR);
+            SystemDbText.Text = RecordedAudioMeter.DbLabel(Math.Max(systemL, systemR));
+            MicDbText.Text = RecordedAudioMeter.DbLabel(Math.Max(micL, micR));
         }
         catch (Exception)
         {
-            // No synthetic fallback or stale bars. Failed endpoints read 0.
             ClearAudioMeters();
         }
     }
@@ -946,56 +967,90 @@ public sealed partial class SettingsWindow : Window
         SystemDbText.Text = MicDbText.Text = "−∞ dB";
     }
 
-    private static double PeakPercent(float peak) =>
-        float.IsFinite(peak) && peak > 0
-            ? Math.Clamp((20.0 * Math.Log10(peak) + 60.0) / 60.0 * 100.0,
-                0.0, 100.0)
-            : 0.0;
+    private void SettingsSystemAudio_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!_uiReady || _syncingPreviewControls ||
+            !_audioReady || _audioSessionLocked) return;
+        _preview.SetAudioPreferences(
+            SettingsSystemAudioToggle.IsChecked == true,
+            _preview.MicrophoneEnabled);
+        RefreshAudioControlState();
+        AudioPreviewTimer_OnTick(this, EventArgs.Empty);
+    }
 
-    private static string PeakDb(float peak) =>
-        float.IsFinite(peak) && peak > 0
-            ? $"{Math.Clamp(20.0 * Math.Log10(peak), -60.0, 0.0):0} dB"
-            : "−∞ dB";
+    private void SettingsMicrophone_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!_uiReady || _syncingPreviewControls ||
+            !_audioReady || _audioSessionLocked) return;
+        _preview.SetAudioPreferences(
+            _preview.SystemAudioEnabled,
+            SettingsMicrophoneToggle.IsChecked == true);
+        RefreshAudioControlState();
+        AudioPreviewTimer_OnTick(this, EventArgs.Empty);
+    }
 
     private void SystemGain_OnPropertyChanged(
         object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (!_uiReady || _syncingPreviewControls ||
+            !_audioReady || _audioSessionLocked ||
             e.Property != Slider.ValueProperty ||
             sender is not Slider slider) return;
         _preview.SetMixLevel(false, (int)Math.Round(slider.Value));
         SystemGainLabel.Text = $"{_preview.SystemMixPercent}%";
+        AudioPreviewTimer_OnTick(this, EventArgs.Empty);
     }
 
     private void MicrophoneGain_OnPropertyChanged(
         object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (!_uiReady || _syncingPreviewControls ||
+            !_audioReady || _audioSessionLocked ||
             e.Property != Slider.ValueProperty ||
             sender is not Slider slider) return;
         _preview.SetMixLevel(true, (int)Math.Round(slider.Value));
         MicrophoneGainLabel.Text = $"{_preview.MicrophoneMixPercent}%";
+        AudioPreviewTimer_OnTick(this, EventArgs.Empty);
     }
 
     private void SystemMute_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (!_audioReady) return;
+        if (!_audioReady || _audioSessionLocked ||
+            !_preview.SystemAudioEnabled) return;
         _preview.SetMixMuted(false, !_preview.SystemMixMuted);
-        RefreshAudioMixerButtons();
+        RefreshAudioControlState();
+        AudioPreviewTimer_OnTick(this, EventArgs.Empty);
     }
 
     private void MicrophoneMute_OnClick(object? sender, RoutedEventArgs e)
     {
-        if (!_audioReady) return;
+        if (!_audioReady || _audioSessionLocked ||
+            !_preview.MicrophoneEnabled) return;
         _preview.SetMixMuted(true, !_preview.MicrophoneMixMuted);
-        RefreshAudioMixerButtons();
+        RefreshAudioControlState();
+        AudioPreviewTimer_OnTick(this, EventArgs.Empty);
     }
 
-    private void RefreshAudioMixerButtons()
+    private void RefreshAudioControlState()
     {
+        // The shared persisted state is the single source of truth.
+        var available = _audioReady && !_audioSessionLocked;
+        SettingsSystemAudioToggle.IsEnabled = available;
+        SettingsMicrophoneToggle.IsEnabled = available;
+        SettingsSystemAudioToggle.IsChecked = _preview.SystemAudioEnabled;
+        SettingsMicrophoneToggle.IsChecked = _preview.MicrophoneEnabled;
+        SystemGainSlider.IsEnabled = available && _preview.SystemAudioEnabled;
+        MicrophoneGainSlider.IsEnabled = available && _preview.MicrophoneEnabled;
+        SystemMuteButton.IsEnabled = SystemGainSlider.IsEnabled;
+        MicrophoneMuteButton.IsEnabled = MicrophoneGainSlider.IsEnabled;
         SystemMuteButton.Content = _preview.SystemMixMuted ? "Unmute" : "Mute";
         MicrophoneMuteButton.Content =
             _preview.MicrophoneMixMuted ? "Unmute" : "Mute";
+        AudioStatusText.Text = !_audioReady
+            ? "Audio recording unavailable in this build."
+            : _audioSessionLocked
+                ? "Recording active; mixer controls are locked."
+                : "Changes apply to the next recording.";
     }
 
     private void ResetPreview_OnClick(
@@ -1048,14 +1103,7 @@ public sealed partial class SettingsWindow : Window
             MicrophoneGainSlider.Value = _preview.MicrophoneMixPercent;
             SystemGainLabel.Text = $"{_preview.SystemMixPercent}%";
             MicrophoneGainLabel.Text = $"{_preview.MicrophoneMixPercent}%";
-            SystemGainSlider.IsEnabled = _audioReady;
-            MicrophoneGainSlider.IsEnabled = _audioReady;
-            SystemMuteButton.IsEnabled = _audioReady;
-            MicrophoneMuteButton.IsEnabled = _audioReady;
-            AudioStatusText.Text = _audioReady
-                ? "Changes apply to the next recording."
-                : "Audio recording unavailable in this build.";
-            RefreshAudioMixerButtons();
+            RefreshAudioControlState();
 
             SmartZoomToggle.IsChecked =
                 _preview.SmartZoom;

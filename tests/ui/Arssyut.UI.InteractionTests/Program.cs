@@ -144,6 +144,45 @@ Expect(
         canonicalDuplicateError),
     "duplicate detection compares canonical chord identity, not display spelling");
 
+// Post-fader stereo meters must follow the EXACT configured linear gain
+// used by the existing canonical per-source PCM mixer. No fake meter data.
+var audioChanged = 0;
+var audioPersisted = 0;
+var sharedAudio = new SettingsPreviewState();
+sharedAudio.Changed += (_, _) => ++audioChanged;
+sharedAudio.PersistentSettingsChanged += (_, _) => ++audioPersisted;
+sharedAudio.SetAudioPreferences(true, false);
+Expect(sharedAudio.SystemAudioEnabled && !sharedAudio.MicrophoneEnabled &&
+       audioChanged == 1 && audioPersisted == 1,
+    "Settings audio toggle publishes one shared state change for main GUI");
+sharedAudio.SetAudioPreferences(true, false);
+Expect(audioChanged == 1 && audioPersisted == 1,
+    "setting the same audio toggle value does not duplicate persistence");
+sharedAudio.SetAudioPreferences(true, true);
+Expect(sharedAudio.SystemAudioEnabled && sharedAudio.MicrophoneEnabled &&
+       audioChanged == 2 && audioPersisted == 2,
+    "System and Mic toggles can be enabled independently");
+Expect(Math.Abs(RecordedAudioMeter.PostFaderPeak(1f, true, 100, false) - 1f)
+       < 0.000001f &&
+       Math.Abs(RecordedAudioMeter.PostFaderPeak(1f, true, 50, false) - .5f)
+       < 0.000001f &&
+       RecordedAudioMeter.DbLabel(.5f) == "-6 dB",
+    "post-fader peak honors unity and 50 percent linear attenuation");
+Expect(RecordedAudioMeter.PostFaderPeak(.7f, true, 80, true) == 0 &&
+       RecordedAudioMeter.PostFaderPeak(.7f, false, 80, false) == 0 &&
+       RecordedAudioMeter.PostFaderPeak(.7f, true, 0, false) == 0 &&
+       RecordedAudioMeter.PostFaderPeak(float.NaN, true, 100, false) == 0 &&
+       RecordedAudioMeter.DbLabel(0f) == "−∞ dB",
+    "mute, disabled source, zero volume and invalid endpoint peak are silence");
+Expect(RecordedAudioMeter.DisplayPercent(.5f) <
+       RecordedAudioMeter.DisplayPercent(1f) &&
+       RecordedAudioMeter.DisplayPercent(.1f) <
+       RecordedAudioMeter.DisplayPercent(.5f),
+    "post-volume meter declines monotonically with gain");
+sharedAudio.SetAudioPreferences(false, true);
+Expect(!sharedAudio.SystemAudioEnabled && sharedAudio.MicrophoneEnabled,
+    "disabling System keeps Microphone enabled");
+
 var persistenceRoot =
     Path.Combine(
         Path.GetTempPath(),

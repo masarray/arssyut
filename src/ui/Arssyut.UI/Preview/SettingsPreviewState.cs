@@ -253,6 +253,7 @@ public sealed class SettingsPreviewState
         SystemAudioEnabled = systemAudio;
         MicrophoneEnabled = microphone;
         PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetFrameRate(
