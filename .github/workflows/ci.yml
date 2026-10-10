@@ -340,6 +340,7 @@ jobs:
             # P7A6 sole RecorderSession product audio owner (opt-in).
             # Quality regression forensic counters only: no changes to mixer/DSP.
             "src/app/audio_product_runtime.hpp" = "2de68414999cd24257e92d1e52c9feaa52784322"
+            "src/app/recording_audio_health.hpp" = "6cd6fb9a91b330e5a796219cc64143eef69b6703"
             # Fixed 48k recorded click/keycap cues, no second clock or audio source.
             "src/app/recorded_input_sounds.hpp" = "ee7c4aba077b7133b0156f6f7d61fddd48673026"
             # Experimental-only bridge approval: default/release still
