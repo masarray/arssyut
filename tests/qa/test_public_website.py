@@ -107,6 +107,38 @@ class PublicSiteContracts(unittest.TestCase):
         self.assertIn("src=\"assets/favicon/android-chrome-192x192.png\"", readme)
         self.assertIn("Arssyut.UI.exe", download)
 
+    def test_latest_release_two_executables_are_locked_to_one_tag(self):
+        source = JS.read_text(encoding="utf-8")
+        release = (ROOT / ".github/workflows/release-windows.yml").read_text(encoding="utf-8")
+        home = HOME.read_text(encoding="utf-8")
+        download = DOWNLOAD.read_text(encoding="utf-8")
+        self.assertIn('releaseListUrl', source)
+        self.assertIn('sort((a,b)', source)
+        self.assertIn('cache: "no-store"', source)
+        self.assertIn('releaseAssetPrefix + tag + "/" + filename', source)
+        self.assertIn('"Arssyut-Setup-" + tag + "-win-x64.exe"', source)
+        self.assertIn('"Arssyut-" + tag + "-portable-win-x64.exe"', source)
+        self.assertIn('if (!setup || !portable)', source)
+        self.assertIn('id="home-installer-link"', home)
+        self.assertIn('id="home-portable-link"', home)
+        self.assertIn('id="installer-link"', download)
+        self.assertIn('id="portable-link"', download)
+        self.assertNotIn("Portable ZIP", download)
+        self.assertIn("Portable single EXE", download)
+        for expect in ('workflow_run:', "workflows: [\"CI\"]",
+                       "'[publish-release:v0.1.0]'", "gh release create",
+                       "--prerelease", "PublishSingleFile=true",
+                       "IncludeNativeLibrariesForSelfExtract=true",
+                       "Arssyut.UI.exe", "Arssyut-Setup-",
+                       "-portable-win-x64.exe", "Silent installer acceptance",
+                       "Standlone"):
+            if expect == "Standlone":
+                expect = "Standalone portable GUI launch smoke"
+            self.assertIn(expect, release)
+        self.assertIn("github.event_name != 'pull_request'", release)
+        self.assertIn("refusing overwrite", release.lower())
+        self.assertNotIn("ARSSYUT_ENABLE_PRODUCT_AUDIO=ON", release)
+
     def test_mobile_accessibility_and_static_pages_deployment(self):
         css = CSS.read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")

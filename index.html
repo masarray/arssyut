@@ -17,6 +17,7 @@
   <link rel="apple-touch-icon" href="assets/favicon/apple-touch-icon.png">
   <link rel="manifest" href="assets/favicon/site.webmanifest">
   <link rel="stylesheet" href="assets/site.css">
+  <script defer src="assets/releases.js"></script>
 </head>
 <body>
   <a class="sr-only" href="#main">Skip to content</a>
@@ -43,10 +44,11 @@
           <h1>Capture your screen.<br>Stay in the flow.</h1>
           <p class="lead">Arssyut puts screen recording where it belongs: a compact interface that helps you capture the moment, explain an idea, and get back to work.</p>
           <div class="hero-actions">
-            <a class="button primary" href="download/">Get Arssyut <span aria-hidden="true">→</span></a>
+            <a class="button primary" id="home-installer-link" href="download/">See Windows downloads →</a>
+            <a class="button subtle" id="home-portable-link" href="download/" hidden>Portable EXE ↓</a>
             <a class="button subtle" href="#features">Explore features</a>
           </div>
-          <p class="hero-under">Windows x64 · Launch Arssyut.UI.exe · MP4 output</p>
+          <p class="hero-under" id="home-release-label" aria-live="polite">Windows x64 · Launch Arssyut.UI.exe · MP4 output</p>
         </div>
         <div class="mock" role="img" aria-label="Illustration of Arssyut's compact recorder layout, with capture choices and recording controls">
           <div class="mock-top"><div class="mock-brand"><img src="assets/favicon/android-chrome-192x192.png" width="17" height="17" alt="">Arssyut</div><div class="mock-top-right">Enhanced Screen Recorder</div></div>

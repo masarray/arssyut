@@ -1,0 +1,195 @@
+name: Windows EXE Release
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release-windows.yml"
+      - "packaging/windows/Arssyut.iss"
+      - "assets/releases.js"
+      - "download/index.html"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag, e.g. v0.1.1 (main only)"
+        required: true
+        type: string
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-${{ inputs.version || github.event.workflow_run.head_sha || github.head_ref || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  package-and-release:
+    if: >-
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       contains(github.event.workflow_run.head_commit.message, '[publish-release:v0.1.0]'))
+    runs-on: windows-latest
+    timeout-minutes: 45
+    name: Validate Windows installer and single EXE
+    steps:
+      - name: Checkout exact CI-tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Select release tag and verify source SHA
+        shell: pwsh
+        env:
+          REQUESTED_TAG: ${{ inputs.version || 'v0.1.0' }}
+          RELEASE_COMMIT: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          $tag = $env:REQUESTED_TAG.Trim()
+          if ($tag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "Invalid version: $tag" }
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:RELEASE_COMMIT) { throw "Checkout SHA is not the verified source commit" }
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "APP_VERSION=$($tag.Substring(1))" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_COMMIT=$actual" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Compile safe video-only native bridge
+        shell: pwsh
+        run: |
+          cmake --preset windows-x64
+          if ($LASTEXITCODE -ne 0) { throw "Native CMake configure failed" }
+          cmake --build --preset windows-release --target arssyut_native_bridge --parallel
+          if ($LASTEXITCODE -ne 0) { throw "Native bridge build failed" }
+          $dll = "build/windows-x64/Release/arssyut_native_bridge.dll"
+          if (-not (Test-Path $dll)) { throw "Native bridge was not produced" }
+          New-Item -ItemType Directory -Force src/ui/Arssyut.UI/Native | Out-Null
+          Copy-Item $dll src/ui/Arssyut.UI/Native/arssyut_native_bridge.dll -Force
+
+      - name: Publish actual single-file portable GUI
+        shell: pwsh
+        run: |
+          dotnet publish src/ui/Arssyut.UI/Arssyut.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o dist/published-gui
+          if ($LASTEXITCODE -ne 0) { throw "Windows publish failed" }
+          $exe = "dist/published-gui/Arssyut.UI.exe"
+          if (-not (Test-Path $exe)) { throw "Single-file EXE not found" }
+          if ((Get-Item $exe).Length -lt 1000000) { throw "Portable EXE is unexpectedly small" }
+          $unexpected = @(Get-ChildItem dist/published-gui -File | Where-Object { $_.Name -ne "Arssyut.UI.exe" })
+          if ($unexpected.Count -gt 0) { throw "Portable publish requires extra files: $($unexpected.Name -join ', ')" }
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $exe))
+          if ($null -eq $icon) { throw "EXE has no Windows icon" }
+          $icon.Dispose()
+          New-Item -ItemType Directory -Force dist/release | Out-Null
+          Copy-Item $exe "dist/release/Arssyut-$env:RELEASE_TAG-portable-win-x64.exe"
+
+      - name: Standalone portable GUI launch smoke
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "dist/release/Arssyut-$env:RELEASE_TAG-portable-win-x64.exe").Path
+          $process = Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) -PassThru
+          try {
+            Start-Sleep -Seconds 4
+            $process.Refresh()
+            if ($process.HasExited) { throw "Portable GUI exited on startup" }
+          } finally {
+            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw "Inno compiler install failed" }
+
+      - name: Build Windows Setup from the same GUI publish
+        shell: pwsh
+        run: |
+          $compiler = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Inno Setup 6/ISCC.exe'
+          if (-not (Test-Path $compiler)) { throw "Missing ISCC.exe" }
+          $publish = (Resolve-Path dist/published-gui).Path
+          & $compiler '/Qp' "/DAppVersion=$env:APP_VERSION" "/DAppPublishDir=$publish" packaging/windows/Arssyut.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno compilation failed" }
+          $setup = "dist/installer/Arssyut-Setup-$env:APP_VERSION-win-x64.exe"
+          if (-not (Test-Path $setup)) { throw "Setup EXE missing" }
+          Copy-Item $setup "dist/release/Arssyut-Setup-$env:RELEASE_TAG-win-x64.exe"
+
+      - name: Silent installer acceptance and installed GUI smoke
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path "dist/release/Arssyut-Setup-$env:RELEASE_TAG-win-x64.exe").Path
+          $directory = Join-Path $env:RUNNER_TEMP "ArssyutReleaseSmoke"
+          $p = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$directory") -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Setup failed: $($p.ExitCode)" }
+          $exe = Join-Path $directory 'Arssyut.UI.exe'
+          if (-not (Test-Path $exe)) { throw "Installed GUI EXE missing" }
+          if (-not (Test-Path (Join-Path $directory 'unins000.exe'))) { throw "Uninstaller missing" }
+          $app = Start-Process -FilePath $exe -WorkingDirectory $directory -PassThru
+          try {
+            Start-Sleep -Seconds 4
+            $app.Refresh()
+            if ($app.HasExited) { throw "Installed GUI failed launch smoke" }
+          } finally {
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+          }
+
+      - name: Produce two-file manifest and release notes
+        shell: pwsh
+        run: |
+          $files = @(Get-ChildItem dist/release -File -Filter '*.exe')
+          if ($files.Count -ne 2) { throw "Expected two EXE files, found $($files.Count)" }
+          $lines = @($files | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Path $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          })
+          $lines | Set-Content dist/release/SHA256SUMS.txt -Encoding ascii
+          @"
+          Arssyut $env:RELEASE_TAG — Windows Video-only Preview
+
+          This PUBLIC PREVIEW includes two options:
+          - Arssyut-Setup-$env:RELEASE_TAG-win-x64.exe : installs Arssyut with a Start menu shortcut.
+          - Arssyut-$env:RELEASE_TAG-portable-win-x64.exe : standalone portable GUI, single EXE.
+
+          IMPORTANT: This release records VIDEO ONLY. System Audio and
+          Microphone switches are unavailable. It is NOT an audio-enabled
+          recording build. Audio continues separate real-hardware testing.
+
+          Both artifacts use the same source ($env:RELEASE_COMMIT)
+          and the same GUI publish. CI verifies portable launch, silent
+          installation and installed GUI launch. Windows x64 only.
+          This package is not code-signed; Windows may display a warning.
+
+          Support: https://github.com/masarray/arssyut/issues
+          "@ | Set-Content dist/release/RELEASE_NOTES.txt -Encoding utf8
+
+      - name: Upload verified Windows EXEs
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-windows-two-exes
+          path: |
+            dist/release/*.exe
+            dist/release/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish on GitHub Releases only after main CI success
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw "Release already exists; refusing overwrite" }
+          $setup = "dist/release/Arssyut-Setup-$env:RELEASE_TAG-win-x64.exe"
+          $portable = "dist/release/Arssyut-$env:RELEASE_TAG-portable-win-x64.exe"
+          gh release create $env:RELEASE_TAG $setup $portable "dist/release/SHA256SUMS.txt" --repo $env:GITHUB_REPOSITORY --target $env:RELEASE_COMMIT --title "Arssyut $env:RELEASE_TAG — Video-only Preview" --notes-file "dist/release/RELEASE_NOTES.txt" --prerelease
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release publication failed" }

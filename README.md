@@ -9,7 +9,7 @@
 Arssyut is a focused Windows screen recorder for tutorials, software demos, walkthroughs, and everyday captures. Choose what to record, start capturing, and save an MP4—without a crowded workspace.
 
 > [!IMPORTANT]
-> **Public release status:** Arssyut is in release preparation. Check [GitHub Releases](https://github.com/masarray/arssyut/releases) for officially published versions; **no stable public release has been published yet**. Audio-enabled builds are for Windows hardware testing, not a finished public release.
+> **Release status:** Arssyut is preparing a public **video-only preview** with separate Windows Setup EXE and portable single-file EXE. Check [GitHub Releases](https://github.com/masarray/arssyut/releases) for availability. **Audio-enabled recording is not part of the public preview**: hardware acceptance remains outstanding.
 
 ## What can Arssyut do?
 
@@ -29,11 +29,11 @@ The application you launch is **Arssyut.UI.exe**, the compact Windows GUI. It do
 ## Download & get started
 
 1. Visit the **[download page](https://masarray.github.io/arssyut/download/)** or [GitHub Releases](https://github.com/masarray/arssyut/releases). Only releases published there should be considered public downloads.
-2. When available, choose a **Windows installer** for Start menu integration, or a **portable ZIP** to extract and run yourself.
-3. Open **Arssyut.UI.exe**, select **Display**, **Window**, or **Region**, and click **Start**.
+2. Choose a **Setup EXE** for Start menu integration or a **Portable EXE** for a single-file application with no installation or ZIP.
+3. Open installed **Arssyut.UI.exe**, or double-click the portable downloaded `.exe`, then select **Display**, **Window**, or **Region**, and click **Start**.
 4. Click **Stop** to finalize your MP4, then choose **Open** or **Folder** to review it.
 
-**No public download showing?** That means no eligible release has been published yet. Please do not confuse a source-code ZIP or an internal GitHub Actions artifact with a finished installer.
+**No public download showing?** The release might not yet be published or GitHub might be temporarily unavailable. The website checks official GitHub Releases for the latest published version each visit, and never substitutes internal Actions artifacts.
 
 ### About audio
 
@@ -45,7 +45,7 @@ If you open **arssyut-VIDEO-ONLY-avalonia-win-x64**, its audio toggles are inten
 
 **Does it work on Windows 10 and 11?** Arssyut targets Windows x64. Hardware capabilities and Windows capture support can affect device compatibility.
 
-**Do I need to install it?** When an official portable ZIP is published, you can extract and run the app directly. The installer is a separate download option.
+**Do I need to install it?** No. The portable EXE runs directly; the Setup EXE adds a Windows Start menu shortcut.
 
 **Where are bugs reported?** Open a [GitHub Issue](https://github.com/masarray/arssyut/issues) and include your Windows version, capture mode, reproduction steps, and relevant diagnostics.
 
