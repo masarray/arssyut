@@ -117,6 +117,10 @@ Start/Stop, and output MP4 synchronization is still required before publishing
 an audio-enabled stable installer.
 
 For the latest verified artifacts see [GitHub Actions](https://github.com/masarray/arssyut/actions).
-The portable GUI runs by double-clicking `Arssyut.UI.exe` (no CMD).
+**For Mic/System recording tests, choose `arssyut-AUDIO-ENABLED-TEST-win-x64`.**
+The similarly named `arssyut-VIDEO-ONLY-avalonia-win-x64` is only a
+reference GUI; its audio switches are intentionally disabled. Both are
+portable: extract and double-click `Arssyut.UI.exe` (no CMD).
+The audio artifact is experimental until Windows hardware MP4 acceptance passes.
 Windows installer candidate packaging is **manual only** until those release
 gates pass. See [Windows packaging](packaging/windows/README.md).

@@ -85,7 +85,10 @@ jobs:
     name: P7A5 libswresample adapter evidence
     # Only explicitly requested product integration compiles against pinned
     # static FFmpeg. Normal UI/portable CI stays cheap and dependency-free.
-    if: github.event_name == 'pull_request' && (github.head_ref == 'feat/p7a5-swresample-adapter-v1' || github.head_ref == 'feat/p7-product-audio-integration-v1')
+    # Audio-enabled acceptance artifact must continue to exist AFTER merge.
+    # Build it on main and on explicitly tagged audio PRs; all other PRs
+    # still run the cheap video-only GUI and native regression jobs.
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && contains(github.event.pull_request.title, '[audio]'))
     runs-on: windows-latest
     timeout-minutes: 35
 
@@ -177,13 +180,11 @@ jobs:
           }
 
       - name: Setup .NET 10 for internal hardware-audio preview
-        if: github.head_ref == 'feat/p7-product-audio-integration-v1'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
 
       - name: Publish INTERNAL FFmpeg-enabled Avalonia recorder
-        if: github.head_ref == 'feat/p7-product-audio-integration-v1'
         shell: pwsh
         run: |
           $package = Join-Path $PWD "dist/arssyut-audio-acceptance"
@@ -240,7 +241,6 @@ jobs:
           '@ | Set-Content (Join-Path $package "README_AUDIO_ACCEPTANCE.txt")
 
       - name: Internal preview launch smoke (no device requested)
-        if: github.head_ref == 'feat/p7-product-audio-integration-v1'
         shell: pwsh
         run: |
           # Acceptance symbol in the single-file EXE enables audio itself.
@@ -258,10 +258,9 @@ jobs:
           }
 
       - name: Upload INTERNAL audio hardware acceptance package
-        if: github.head_ref == 'feat/p7-product-audio-integration-v1'
         uses: actions/upload-artifact@v4
         with:
-          name: arssyut-INTERNAL-audio-acceptance-win-x64
+          name: arssyut-AUDIO-ENABLED-TEST-win-x64
           path: dist/arssyut-audio-acceptance/*
           if-no-files-found: error
           retention-days: 30
@@ -492,6 +491,16 @@ jobs:
 
           Get-ChildItem "dist/arssyut-p6ui" -Filter "*.pdb" -ErrorAction SilentlyContinue | Remove-Item -Force
           Copy-Item "docs/P6UI_THIRD_PARTY_NOTICES.md" (Join-Path "dist/arssyut-p6ui" "THIRD_PARTY_NOTICES.md")
+          @'
+          ARSSYUT - VIDEO-ONLY REFERENCE GUI
+          This package deliberately has no WASAPI audio recording capability.
+          Disabled System Audio/Microphone switches are EXPECTED in this build.
+
+          To test working audio, select artifact:
+            arssyut-AUDIO-ENABLED-TEST-win-x64
+          from the SAME Actions run and launch its Arssyut.UI.exe directly.
+          Hardware audio is still pending public release acceptance.
+          '@ | Set-Content (Join-Path "dist/arssyut-p6ui" "README_VIDEO_ONLY.txt")
 
       - name: Verify single-file native-engine package
         shell: pwsh
@@ -662,7 +671,7 @@ jobs:
       - name: Upload Avalonia preview
         uses: actions/upload-artifact@v4
         with:
-          name: arssyut-p6ui-avalonia-windows-x64
+          name: arssyut-VIDEO-ONLY-avalonia-win-x64
           path: dist/arssyut-p6ui/*
           if-no-files-found: error
           retention-days: 90
