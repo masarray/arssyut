@@ -85,7 +85,10 @@ public:
             discard(loopback_);
     }
 
-    [[nodiscard]] core::Status begin(std::int64_t media_zero_100ns) noexcept
+    [[nodiscard]] core::Status begin(
+        std::int64_t media_zero_100ns,
+        float mic_gain = 1.0f, bool mic_muted = false,
+        float system_gain = 1.0f, bool system_muted = false) noexcept
     {
         if (!sources_started_ ||
             gate_.state() != AudioStartupState::Ready ||
@@ -96,6 +99,11 @@ public:
         // Every recording uses exactly the RecorderSession QPC media zero.
         program_.reset(media_zero_100ns,
                        pinned_.microphone, pinned_.system_audio);
+        // Existing canonical per-source mixer; unity defaults are unchanged.
+        program_.mixer().set_source_config(
+            core::audio::AudioSourceId::Microphone, {mic_gain, mic_muted});
+        program_.mixer().set_source_config(
+            core::audio::AudioSourceId::SystemAudio, {system_gain, system_muted});
         adapter_.reset(media_zero_100ns);
         recorded_cues_.reset(media_zero_100ns);
         if (pinned_.microphone &&

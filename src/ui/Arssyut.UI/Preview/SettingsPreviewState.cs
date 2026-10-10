@@ -79,6 +79,45 @@ public sealed class SettingsPreviewState
     public bool SystemAudioEnabled { get; private set; }
     public bool MicrophoneEnabled { get; private set; }
 
+    // Output attenuation, not Windows device volume. Unity preserves fidelity.
+    public int SystemMixPercent { get; private set; } = 100;
+    public int MicrophoneMixPercent { get; private set; } = 100;
+    public bool SystemMixMuted { get; private set; }
+    public bool MicrophoneMixMuted { get; private set; }
+
+    public void SetMixLevel(bool microphone, int percent)
+    {
+        if (percent is < 0 or > 100) return;
+        if (microphone)
+        {
+            if (MicrophoneMixPercent == percent) return;
+            MicrophoneMixPercent = percent;
+        }
+        else
+        {
+            if (SystemMixPercent == percent) return;
+            SystemMixPercent = percent;
+        }
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetMixMuted(bool microphone, bool muted)
+    {
+        if (microphone)
+        {
+            if (MicrophoneMixMuted == muted) return;
+            MicrophoneMixMuted = muted;
+        }
+        else
+        {
+            if (SystemMixMuted == muted) return;
+            SystemMixMuted = muted;
+        }
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
 
     public uint FrameRate { get; private set; } =
         60;
@@ -452,7 +491,9 @@ public sealed class SettingsPreviewState
             snapshot.MicrophoneDevice.Length > 512 ||
             !Enum.IsDefined(snapshot.CameraPlacement) ||
             string.IsNullOrWhiteSpace(snapshot.CameraDevice) ||
-            snapshot.CameraDevice.Length > 512)
+            snapshot.CameraDevice.Length > 512 ||
+            snapshot.SystemMixPercent is < 0 or > 100 ||
+            snapshot.MicrophoneMixPercent is < 0 or > 100)
         {
             error = "Invalid persisted recording preferences.";
             return false;
@@ -491,6 +532,10 @@ public sealed class SettingsPreviewState
         CaptureSourceId = snapshot.CaptureSourceId;
         SystemAudioEnabled = snapshot.SystemAudioEnabled;
         MicrophoneEnabled = snapshot.MicrophoneEnabled;
+        SystemMixPercent = snapshot.SystemMixPercent;
+        MicrophoneMixPercent = snapshot.MicrophoneMixPercent;
+        SystemMixMuted = snapshot.SystemMixMuted;
+        MicrophoneMixMuted = snapshot.MicrophoneMixMuted;
         _microphoneDevice = snapshot.MicrophoneDevice;
         CameraPlacement = snapshot.CameraPlacement;
         _cameraDevice = snapshot.CameraDevice;
@@ -587,6 +632,10 @@ public sealed class SettingsPreviewState
         CaptureSourceId = string.Empty;
         SystemAudioEnabled = false;
         MicrophoneEnabled = false;
+        SystemMixPercent = 100;
+        MicrophoneMixPercent = 100;
+        SystemMixMuted = false;
+        MicrophoneMixMuted = false;
         FrameRate =
             60;
         VisualStyle =

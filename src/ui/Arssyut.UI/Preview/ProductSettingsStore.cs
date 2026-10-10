@@ -28,7 +28,11 @@ public sealed record ProductSettingsSnapshot(
     bool MicrophoneEnabled = false,
     string MicrophoneDevice = "Hi-Fi Cable Output (VB-Audio Virtual Cable)",
     CameraPlacement CameraPlacement = CameraPlacement.BottomRight,
-    string CameraDevice = "USB2.0 HD UVC Webcam");
+    string CameraDevice = "USB2.0 HD UVC Webcam",
+    int SystemMixPercent = 100,
+    int MicrophoneMixPercent = 100,
+    bool SystemMixMuted = false,
+    bool MicrophoneMixMuted = false);
 
 public sealed class ProductSettingsStore
 {
@@ -36,7 +40,8 @@ public sealed class ProductSettingsStore
     private const int PresenterZoomSchemaVersion = 2;
     private const int FreezeHotkeySchemaVersion = 3;
     private const int SpotlightSchemaVersion = 4;
-    private const int CurrentSchemaVersion = 5;
+    private const int ProductSchemaVersion = 5;
+    private const int CurrentSchemaVersion = 6;
 
     private readonly string _path;
 
@@ -115,6 +120,8 @@ public sealed class ProductSettingsStore
                      FreezeHotkeySchemaVersion &&
                  document.SchemaVersion !=
                      SpotlightSchemaVersion &&
+                 document.SchemaVersion !=
+                     ProductSchemaVersion &&
                  document.SchemaVersion !=
                      CurrentSchemaVersion))
             {
@@ -200,7 +207,9 @@ public sealed class ProductSettingsStore
             }
 
             var latest =
-                document.SchemaVersion == CurrentSchemaVersion;
+                document.SchemaVersion >= ProductSchemaVersion;
+            var hasMixer =
+                document.SchemaVersion >= CurrentSchemaVersion;
             var outputFolder = latest
                 ? document.OutputFolder
                 : SettingsPreviewState.DefaultOutputFolder;
@@ -234,7 +243,12 @@ public sealed class ProductSettingsStore
             var cameraDevice = latest && !string.IsNullOrWhiteSpace(document.CameraDevice)
                 ? document.CameraDevice! : "USB2.0 HD UVC Webcam";
             if (!Enum.IsDefined(cameraPlacement) ||
-                cameraDevice.Length > 512)
+                cameraDevice.Length > 512 ||
+                (hasMixer &&
+                 (document.SystemMixPercent is null or < 0 or > 100 ||
+                  document.MicrophoneMixPercent is null or < 0 or > 100 ||
+                  document.SystemMixMuted is null ||
+                  document.MicrophoneMixMuted is null)))
                 throw new InvalidDataException("Invalid camera preferences.");
 
             settings =
@@ -258,7 +272,11 @@ public sealed class ProductSettingsStore
                     latest && document.MicrophoneEnabled!.Value,
                     micDevice!,
                     cameraPlacement,
-                    cameraDevice);
+                    cameraDevice,
+                    hasMixer ? document.SystemMixPercent ?? 100 : 100,
+                    hasMixer ? document.MicrophoneMixPercent ?? 100 : 100,
+                    hasMixer && document.SystemMixMuted == true,
+                    hasMixer && document.MicrophoneMixMuted == true);
             return true;
         }
         catch (Exception exception)
@@ -323,7 +341,9 @@ public sealed class ProductSettingsStore
                 settings.OutputFolder.Length > 1024 ||
                 settings.CaptureMode is not ("Display" or "Window" or "Region") ||
                 settings.CaptureSourceId.Length > 1024 ||
-                settings.MicrophoneDevice.Length > 512)
+                settings.MicrophoneDevice.Length > 512 ||
+                settings.SystemMixPercent is < 0 or > 100 ||
+                settings.MicrophoneMixPercent is < 0 or > 100)
                 throw new InvalidDataException("Invalid recording preferences.");
 
             var document =
@@ -342,6 +362,10 @@ public sealed class ProductSettingsStore
                     SystemAudioEnabled = settings.SystemAudioEnabled,
                     MicrophoneEnabled = settings.MicrophoneEnabled,
                     MicrophoneDevice = settings.MicrophoneDevice,
+                    SystemMixPercent = settings.SystemMixPercent,
+                    MicrophoneMixPercent = settings.MicrophoneMixPercent,
+                    SystemMixMuted = settings.SystemMixMuted,
+                    MicrophoneMixMuted = settings.MicrophoneMixMuted,
                     CameraPlacement = (int)settings.CameraPlacement,
                     CameraDevice = settings.CameraDevice,
                     PresenterZoom =
@@ -565,6 +589,10 @@ public sealed class ProductSettingsStore
         public bool? SystemAudioEnabled { get; set; }
         public bool? MicrophoneEnabled { get; set; }
         public string? MicrophoneDevice { get; set; }
+        public int? SystemMixPercent { get; set; }
+        public int? MicrophoneMixPercent { get; set; }
+        public bool? SystemMixMuted { get; set; }
+        public bool? MicrophoneMixMuted { get; set; }
         public int? CameraPlacement { get; set; }
         public string? CameraDevice { get; set; }
 

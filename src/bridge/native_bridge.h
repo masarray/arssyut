@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 10;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 11;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -186,6 +186,11 @@ struct ArssyutBridgeStartRequestV1 {
     std::uint32_t spotlight_motion;
     float spotlight_dim_strength;
     std::uint32_t reserved2;
+    // ABI v11 attenuation/mute snapshot, applied to the NEXT session.
+    float system_gain;
+    float microphone_gain;
+    std::uint32_t system_muted;
+    std::uint32_t microphone_muted;
 };
 
 // Additive ABI v10 endpoint-level peak monitor. Read-only; never records,

@@ -1663,6 +1663,13 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
     }
 
+    if (!std::isfinite(request->system_gain) ||
+        !std::isfinite(request->microphone_gain) ||
+        request->system_gain < 0.0f || request->system_gain > 1.0f ||
+        request->microphone_gain < 0.0f || request->microphone_gain > 1.0f ||
+        request->system_muted > 1 || request->microphone_muted > 1)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
     if (request->capture_mode ==
         ARSSYUT_BRIDGE_CAPTURE_GAME) {
         return ARSSYUT_BRIDGE_UNSUPPORTED;
@@ -1820,6 +1827,10 @@ arssyut_bridge_recorder_start(
         config.audio_system =
             (request->flags & ARSSYUT_BRIDGE_START_SYSTEM_AUDIO) != 0;
         config.audio_microphone_id = std::move(microphone_id);
+        config.audio_system_gain = request->system_gain;
+        config.audio_microphone_gain = request->microphone_gain;
+        config.audio_system_muted = request->system_muted != 0;
+        config.audio_microphone_muted = request->microphone_muted != 0;
         // The eConsole render endpoint is pinned once during Preparing.
         // Current bridge V1 intentionally has no render-device token field.
 #endif

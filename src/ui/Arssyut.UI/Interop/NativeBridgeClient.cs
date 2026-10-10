@@ -188,7 +188,11 @@ public sealed record NativeStartRequest(
     float PresenterZoom,
     NativeSpotlightSize SpotlightSize,
     NativeSpotlightMotion SpotlightMotion,
-    float SpotlightDimStrength);
+    float SpotlightDimStrength,
+    float SystemGain = 1.0f,
+    float MicrophoneGain = 1.0f,
+    bool SystemMuted = false,
+    bool MicrophoneMuted = false);
 
 public sealed class NativeBridgeClient : IDisposable
 {
@@ -196,7 +200,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 10;
+    private const uint ExpectedAbi = 11;
 
     private static readonly object NativeLoadGate =
         new();
@@ -700,6 +704,15 @@ public sealed class NativeBridgeClient : IDisposable
         return (NativeHotkeyEvents)events;
     }
 
+    // Does not invalidate tokens already owned by the main recorder.
+    public NativeDeviceSnapshot SnapshotDevices()
+    {
+        ThrowIfDisposed();
+        return new NativeDeviceSnapshot(
+            ReadDevices(NativeDeviceKind.Microphone),
+            ReadDevices(NativeDeviceKind.Camera));
+    }
+
     public NativeDeviceSnapshot RefreshDevices()
     {
         ThrowIfDisposed();
@@ -865,7 +878,11 @@ public sealed class NativeBridgeClient : IDisposable
                     (uint)request.SpotlightMotion,
                 SpotlightDimStrength =
                     request.SpotlightDimStrength,
-                Reserved2 = 0
+                Reserved2 = 0,
+                SystemGain = request.SystemGain,
+                MicrophoneGain = request.MicrophoneGain,
+                SystemMuted = request.SystemMuted ? 1U : 0U,
+                MicrophoneMuted = request.MicrophoneMuted ? 1U : 0U
             };
 
         return (NativeBridgeStatus)
@@ -1087,6 +1104,10 @@ public sealed class NativeBridgeClient : IDisposable
         public uint SpotlightMotion;
         public float SpotlightDimStrength;
         public uint Reserved2;
+        public float SystemGain;
+        public float MicrophoneGain;
+        public uint SystemMuted;
+        public uint MicrophoneMuted;
     }
 
     [StructLayout(

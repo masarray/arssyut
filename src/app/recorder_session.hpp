@@ -88,6 +88,10 @@ struct RecorderConfig {
     bool audio_system = false;
     std::wstring audio_microphone_id;
     std::wstring audio_system_id;
+    float audio_system_gain = 1.0f;
+    float audio_microphone_gain = 1.0f;
+    bool audio_system_muted = false;
+    bool audio_microphone_muted = false;
     arssyut::presentation::PresentationSettings presentation{};
     PresenterMomentaryBinding hold_zoom_hotkey{};
     PresenterMomentaryBinding overview_peek_hotkey{};

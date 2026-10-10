@@ -116,12 +116,7 @@
                   <PathIcon Data="{StaticResource MsCapture}" Width="14" Height="14" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   <TextBlock Text="Capture" Classes="context-title" VerticalAlignment="Center" />
                 </StackPanel>
-                <Button Grid.Column="1" Classes="icon"
-                        Click="RefreshSources_OnClick"
-                        AutomationProperties.Name="Refresh capture sources"
-                        ToolTip.Tip="Refresh sources">
-                  <PathIcon Data="{StaticResource MsRefresh}" Width="14" Height="14" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
-                </Button>
+
               </Grid>
 
               <Grid Grid.Row="1" VerticalAlignment="Center"
@@ -256,7 +251,7 @@
           <Border Grid.Column="1" Classes="context-card">
             <Grid RowDefinitions="Auto,*,*" RowSpacing="8">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                <PathIcon Data="{StaticResource MsAudio}" Width="14" Height="14" Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                <PathIcon Data="{StaticResource MsSpeaker}" Width="14" Height="14" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                 <TextBlock Text="Audio" Classes="context-title" />
               </StackPanel>
 

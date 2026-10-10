@@ -119,7 +119,7 @@ int main()
     require(
         arssyut_bridge_abi_version() ==
             ARSSYUT_BRIDGE_ABI_VERSION &&
-            ARSSYUT_BRIDGE_ABI_VERSION == 10,
+            ARSSYUT_BRIDGE_ABI_VERSION == 11,
         "bridge ABI version mismatch");
 
     require(
@@ -654,6 +654,8 @@ int main()
         ARSSYUT_BRIDGE_START_SHORTCUT_KEYS;
     invalid_start.presenter_zoom =
         2.0f;
+    invalid_start.system_gain = 1.0f;
+    invalid_start.microphone_gain = 1.0f;
 
     invalid_start.hold_zoom_modifiers =
         0x80000000U;
@@ -726,6 +728,21 @@ int main()
         "Spotlight dim strength above the bounded product range must be rejected");
 
     invalid_start.spotlight_dim_strength = 0.38f;
+    invalid_start.microphone_gain = -0.1f;
+    require(arssyut_bridge_recorder_start(bridge, &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+            "negative microphone attenuation must fail closed");
+    invalid_start.microphone_gain = 1.0f;
+    invalid_start.system_gain = 1.01f;
+    require(arssyut_bridge_recorder_start(bridge, &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+            "system gain above unity must fail closed");
+    invalid_start.system_gain = 1.0f;
+    invalid_start.microphone_muted = 2;
+    require(arssyut_bridge_recorder_start(bridge, &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+            "invalid mute flag must fail closed");
+    invalid_start.microphone_muted = 0;
     require(
         arssyut_bridge_recorder_start(
             bridge,

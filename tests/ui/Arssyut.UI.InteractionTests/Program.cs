@@ -191,6 +191,9 @@ try
     saved.SetCaptureChoice("Window", "capture-device-id-123");
     saved.SetAudioPreferences(true, true);
     saved.MicrophoneDevice = "CABLE Output (VB-Audio Virtual Cable)";
+    saved.SetMixLevel(false, 74);
+    saved.SetMixLevel(true, 63);
+    saved.SetMixMuted(true, true);
     saved.SetCameraPlacement(CameraPlacement.TopRight);
     saved.CameraDevice = "USB UVC Camera";
 
@@ -267,6 +270,9 @@ try
         loadedSettings.SystemAudioEnabled &&
         loadedSettings.MicrophoneEnabled &&
         loadedSettings.MicrophoneDevice == "CABLE Output (VB-Audio Virtual Cable)" &&
+        loadedSettings.SystemMixPercent == 74 &&
+        loadedSettings.MicrophoneMixPercent == 63 &&
+        !loadedSettings.SystemMixMuted && loadedSettings.MicrophoneMixMuted &&
         loadedSettings.CameraPlacement == CameraPlacement.TopRight &&
         loadedSettings.CameraDevice == "USB UVC Camera" &&
         loadedSettings.SpotlightEnabled &&
@@ -307,6 +313,9 @@ try
         restored.SystemAudioEnabled &&
         restored.MicrophoneEnabled &&
         restored.MicrophoneDevice == "CABLE Output (VB-Audio Virtual Cable)" &&
+        restored.SystemMixPercent == 74 &&
+        restored.MicrophoneMixPercent == 63 &&
+        !restored.SystemMixMuted && restored.MicrophoneMixMuted &&
         restored.CameraPlacement == CameraPlacement.TopRight &&
         restored.CameraDevice == "USB UVC Camera" &&
         restored.SpotlightEnabled &&
@@ -320,14 +329,14 @@ try
             0.46f) < 0.0005f,
         "restored startup state preserves canonical presenter and Spotlight settings");
 
-    var schemaV5Lines =
+    var schemaV6Lines =
         File.ReadAllLines(
             persistencePath);
 
     // Schema v3 predates Spotlight product settings. Migration must keep all
     // existing hotkeys/zoom and introduce inert Spotlight defaults.
     var schemaV3Lines =
-        schemaV5Lines
+        schemaV6Lines
             .Where(
                 line =>
                     !line.Contains(
@@ -348,7 +357,7 @@ try
             .Select(
                 line =>
                     line.Replace(
-                        "\"SchemaVersion\": 5",
+                        "\"SchemaVersion\": 6",
                         "\"SchemaVersion\": 3",
                         StringComparison.Ordinal))
             .ToArray();

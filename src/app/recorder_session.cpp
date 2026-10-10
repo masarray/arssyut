@@ -1059,7 +1059,9 @@ void RecorderSession::worker_main() noexcept
         config_.frame_rate);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     if (status.ok() && audio_runtime)
-        status = audio_runtime->begin(start.ticks_100ns);
+        status = audio_runtime->begin(start.ticks_100ns,
+            config_.audio_microphone_gain, config_.audio_microphone_muted,
+            config_.audio_system_gain, config_.audio_system_muted);
 #endif
     if (!status.ok()) {
         fail(status);

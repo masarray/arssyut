@@ -308,6 +308,9 @@ public sealed partial class MainWindow : Window
                 };
 
             await settings.ShowDialog(this);
+            // Rebind persisted choice by CURRENT token generation after
+            // dialog; it must not refresh devices or create stale tokens.
+            RebindSettingsMicrophone();
         }
         finally
         {
@@ -710,6 +713,32 @@ public sealed partial class MainWindow : Window
 
         UpdateRecordAvailability();
         UpdateReadyDetail();
+    }
+
+    private void RebindSettingsMicrophone()
+    {
+        if (_nativeBridge is null) return;
+        try
+        {
+            var available = _nativeBridge.SnapshotDevices().Microphones;
+            var matched = available
+                .Where(d => string.Equals(d.Name,
+                    _settings.MicrophoneDevice, StringComparison.Ordinal))
+                .ToArray();
+            if (matched.Length != 1) return;
+            _microphoneDevice = matched[0].Name;
+            _microphoneDeviceToken = matched[0].Token;
+            var index = available
+                .Select((device, position) => (device, position))
+                .Where(item => item.device.Token == matched[0].Token)
+                .Select(item => item.position).First();
+            MicrophoneDeviceComboMain.SelectedIndex = index;
+            if (index < _microphoneOptions.Length)
+                SelectDeviceOption(_microphoneOptions,
+                    _microphoneOptions[index]);
+            RefreshInputLabels();
+        }
+        catch (Exception) { /* Keep the last verified device. */ }
     }
 
     private void RefreshNativeDevices()
@@ -1470,7 +1499,11 @@ public sealed partial class MainWindow : Window
                         _settings.PresenterZoom,
                         _settings.SpotlightSize,
                         _settings.SpotlightMotion,
-                        _settings.SpotlightDimStrength));
+                        _settings.SpotlightDimStrength,
+                        _settings.SystemMixPercent / 100.0f,
+                        _settings.MicrophoneMixPercent / 100.0f,
+                        _settings.SystemMixMuted,
+                        _settings.MicrophoneMixMuted));
         }
         catch (Exception)
         {

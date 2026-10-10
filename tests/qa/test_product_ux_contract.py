@@ -102,10 +102,13 @@ class UXContract(unittest.TestCase):
             self.assertIn(f'Source="/Design/{file}"', (
                 UI / "App.axaml").read_text(encoding="utf-8-sig"))
         for key in ("MsDisplay", "MsWindow", "MsRegion", "MsGame",
-                    "MsSettings", "MsRefresh", "MsPlay", "MsFolder",
-                    "MsCamera", "MsVideo", "MsMic", "MsAudio"):
+                    "MsSettings", "MsPlay", "MsFolder",
+                    "MsCamera", "MsVideo", "MsMic", "MsAudio",
+                    "MsSpeaker", "MsMouse", "MsKeyboard", "MsAdvanced"):
             self.assertIn(f'x:Key="{key}"', registry)
-            self.assertIn(f'StaticResource {key}', self.xaml)
+            if key not in ("MsMouse", "MsKeyboard", "MsAdvanced"):
+                self.assertIn(f'StaticResource {key}', self.xaml if key != "MsSpeaker" else
+                              (UI / "MainWindow.axaml").read_text(encoding="utf-8-sig"))
         self.assertIn("Apache License", (
             ROOT / "third_party/material_symbols/LICENSE").read_text(encoding="utf-8-sig"))
         self.assertNotIn("M488.188,41.797", self.xaml)
@@ -121,15 +124,33 @@ class UXContract(unittest.TestCase):
             UI / "Design/ArControls.axaml").read_text(encoding="utf-8-sig"))
 
     def test_material_icons_preserve_command_handlers_and_dynamic_record_icon(self):
-        for key in ("MsSettings", "MsRefresh", "MsPlay", "MsFolder"):
+        for key in ("MsSettings", "MsPlay", "MsFolder"):
             self.assertIn(f'Data="{{StaticResource {key}}}"', self.xaml)
-        for handler in ("Settings_OnClick", "RefreshSources_OnClick",
+        for handler in ("Settings_OnClick",
                         "OpenSaved_OnClick", "ShowFolder_OnClick"):
             self.assertIn(f'Click="{handler}"', self.xaml)
         self.assertIn('x:Name="CameraPreviewPlaceholder"', self.xaml)
         # The source icon and record/stop icon are still dynamic in the code.
         self.assertIn('x:Name="SourceIcon"', self.xaml)
         self.assertIn('x:Name="RecordIcon"', self.xaml)
+        self.assertNotIn('Click="RefreshSources_OnClick"', self.xaml)
+
+    def test_settings_audio_mixer_is_real_and_persisted(self):
+        settings = (UI / "SettingsWindow.axaml").read_text(encoding="utf-8-sig")
+        state = (UI / "Preview/SettingsPreviewState.cs").read_text(encoding="utf-8-sig")
+        runtime = (ROOT / "src/app/audio_product_runtime.hpp").read_text(encoding="utf-8-sig")
+        bridge = (ROOT / "src/bridge/native_bridge.cpp").read_text(encoding="utf-8-sig")
+        for name in ("SystemGainSlider", "MicrophoneGainSlider",
+                     "SystemMuteButton", "MicrophoneMuteButton",
+                     "SystemMeterR", "MicMeterR"):
+            self.assertIn(f'x:Name="{name}"', settings)
+        self.assertIn("AudioMeter(", (UI / "SettingsWindow.axaml.cs").read_text(encoding="utf-8-sig"))
+        self.assertNotIn("SystemLevelPattern", (UI / "SettingsWindow.axaml.cs").read_text(encoding="utf-8-sig"))
+        self.assertIn("SetMixLevel(", state)
+        self.assertIn("SetMixMuted(", state)
+        self.assertIn("program_.mixer().set_source_config(", runtime)
+        self.assertIn("config.audio_system_gain = request->system_gain;", bridge)
+        self.assertIn('SnapshotDevices()', (UI / "SettingsWindow.axaml.cs").read_text(encoding="utf-8-sig"))
 
     def test_audio_meter_tracks_are_bounded_inside_cards(self):
         self.assertNotIn('ProgressBar x:Name="SystemLevelL"', self.xaml)
@@ -153,7 +174,8 @@ class UXContract(unittest.TestCase):
         state = (UI / "Preview/SettingsPreviewState.cs").read_text(encoding="utf-8-sig")
         store = (UI / "Preview/ProductSettingsStore.cs").read_text(encoding="utf-8-sig")
         app = (UI / "App.axaml.cs").read_text(encoding="utf-8-sig")
-        self.assertIn("private const int CurrentSchemaVersion = 5;", store)
+        self.assertIn("private const int CurrentSchemaVersion = 6;", store)
+        self.assertIn("private const int ProductSchemaVersion = 5;", store)
         self.assertIn("private const int SpotlightSchemaVersion = 4;", store)
         for field in ("CaptureMode", "CaptureSourceId", "SystemAudioEnabled",
                       "MicrophoneEnabled", "MicrophoneDevice", "FrameRate",
