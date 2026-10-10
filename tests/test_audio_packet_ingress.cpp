@@ -347,7 +347,7 @@ void test_real_discontinuity_softens_onset_only(Test &t) {
     // then ramp only the resumed 2ms island, not the entire song.
     auto restart=packet(AudioSourceId::SystemAudio,
         kFloatStereo,1024,kZero+1'000'000,1024);
-    restart.flags=AudioPacketFlag::Discontinuity;
+    restart.flags=AudioPacketFlag::Discontinuity | AudioPacketFlag::TimestampError;
     restart.timing.quality=AudioTimestampQuality::Discontinuous;
     const auto b=input->process_packet(restart,bytes(data),*assembler);
     t.check(b.status==PacketIngressStatus::Applied &&
