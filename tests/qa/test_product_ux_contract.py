@@ -128,6 +128,12 @@ class UXContract(unittest.TestCase):
                       "native engine ready ·"):
             self.assertNotIn(noise, self.xaml)
         self.assertIn("StatusDetail.IsVisible = false;", self.code)
+        # Even failed native sessions may finalize a playable MP4.
+        # Do not strand the user without Open / Folder recovery.
+        self.assertIn("case NativeRecorderState.Failed:", self.code)
+        failed = self.code.split("case NativeRecorderState.Failed:", 1)[1].split("default:", 1)[0]
+        self.assertIn("File.Exists(_nativeResult.OutputPath)", failed)
+        self.assertIn("SavedActions.IsVisible =", failed)
 
     def test_mic_meter_reads_wasapi_packets_and_stops_before_recorder(self):
         bridge = (ROOT / "src/bridge/native_bridge.cpp").read_text(encoding="utf-8-sig")

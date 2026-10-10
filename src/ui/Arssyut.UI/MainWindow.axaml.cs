@@ -2138,8 +2138,13 @@ public sealed partial class MainWindow : Window
                     "Recording failed";
                 StatusDetail.Text =
                     $"Native error {snapshot.ErrorCode} · detail 0x{snapshot.ErrorDetail:X8}";
+                // The native finalizer can recover a valid playable MP4 even
+                // when a capture source failed. Never hide Open/Folder if the
+                // recovered recording actually exists on disk.
                 SavedActions.IsVisible =
-                    false;
+                    _nativeResult is not null &&
+                    !string.IsNullOrWhiteSpace(_nativeResult.OutputPath) &&
+                    File.Exists(_nativeResult.OutputPath);
                 break;
 
             default:
