@@ -98,6 +98,57 @@ jobs:
           $exeFiles = @(Get-ChildItem dist/release -File)
           if ($exeFiles.Count -ne 2 -or @($exeFiles | Where-Object Extension -ne '.exe').Count -ne 0) { throw 'Expected exactly two EXEs' }
           $exeFiles | ForEach-Object { "$($_.Name) $((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" } | Set-Content dist/SHA256SUMS.txt
+      - name: Smoke test EXACT portable and installed Setup EXE on Windows
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version || '0.1.0-rc.1' }}
+        run: |
+          $portable = (Resolve-Path "dist/release/Arssyut-$env:VERSION-portable-win-x64.exe").Path
+          $setup = (Resolve-Path "dist/release/Arssyut-Setup-$env:VERSION-win-x64.exe").Path
+          $sourceHash = (Get-FileHash dist/publish/Arssyut.UI.exe -Algorithm SHA256).Hash
+          if ((Get-FileHash $portable -Algorithm SHA256).Hash -ne $sourceHash) {
+            throw 'Portable differs from verified audio-enabled CI executable'
+          }
+
+          function Assert-GuiLaunch([string]$exe) {
+            $process = Start-Process -FilePath $exe -ArgumentList '--bridge-required' -PassThru
+            try {
+              Start-Sleep -Seconds 5
+              $process.Refresh()
+              if ($process.HasExited) {
+                throw "Audio-enabled GUI exited during launch smoke: $exe, exit $($process.ExitCode)"
+              }
+            } finally {
+              if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+            }
+          }
+
+          Assert-GuiLaunch $portable
+          $installDir = Join-Path $env:TEMP "ArssyutSetupSmoke-$env:GITHUB_RUN_ID"
+          $install = Start-Process -FilePath $setup -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
+            "/DIR=$installDir"
+          ) -PassThru -Wait
+          if ($install.ExitCode -ne 0) { throw "Setup failed: $($install.ExitCode)" }
+
+          $installedExe = Join-Path $installDir 'Arssyut.UI.exe'
+          if (-not (Test-Path $installedExe)) { throw 'Installed Arssyut.UI.exe is missing' }
+          if ((Get-FileHash $installedExe -Algorithm SHA256).Hash -ne $sourceHash) {
+            throw 'Installer did not deploy the exact verified audio-enabled GUI'
+          }
+          Assert-GuiLaunch $installedExe
+
+          $uninstallExe = Join-Path $installDir 'unins000.exe'
+          if (-not (Test-Path $uninstallExe)) { throw 'Inno uninstaller is missing' }
+          $uninstall = Start-Process -FilePath $uninstallExe -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          ) -PassThru -Wait
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstall failed: $($uninstall.ExitCode)" }
+          if (Test-Path $installedExe) { throw 'Uninstall left the installed application executable behind' }
+
+          Write-Host 'PASS: portable GUI, Setup install, exact binary, installed GUI, Inno uninstall.'
+          Write-Host 'NOTE: Windows runner smoke cannot certify physical Mic/System Audio, A/V sync or captured MP4.'
+
       - uses: actions/upload-artifact@v4
         with:
           name: arssyut-RELEASE-CANDIDATE-EXEs
