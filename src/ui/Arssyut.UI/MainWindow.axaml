@@ -200,7 +200,7 @@
                     <Viewbox Width="24" Height="24" Stretch="Uniform"><Canvas Width="24" Height="24">
                       <Ellipse Canvas.Left="9" Canvas.Top="9" Width="6" Height="6" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
                       <Path Data="M21,9V4a1,1,0,0,0-1-1H15 M15,21h5a1,1,0,0,0,1-1V15 M9,3H4A1,1,0,0,0,3,4V9 M3,15v5a1,1,0,0,0,1,1H9"
-                            Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="2" StrokeLineCap="Round" StrokeLineJoin="Round" />
+                            Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="2" StrokeLineCap="Round" />
                     </Canvas></Viewbox>
                     <TextBlock Text="Region" FontSize="10.5"
                                HorizontalAlignment="Center" TextAlignment="Center" />
