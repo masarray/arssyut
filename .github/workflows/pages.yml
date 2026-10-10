@@ -1,0 +1,55 @@
+name: Public Website (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "index.html"
+      - "download/**"
+      - "assets/site.css"
+      - "assets/releases.js"
+      - "assets/favicon/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: public-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy static public website
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage only public website files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site/download _site/assets
+          cp index.html _site/index.html
+          cp download/index.html _site/download/index.html
+          cp assets/site.css assets/releases.js _site/assets/
+          cp -R assets/favicon _site/assets/favicon
+          touch _site/.nojekyll
+          test -f _site/assets/favicon/favicon.ico
+          test -f _site/download/index.html
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload public site only
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Publish GitHub Pages site
+        uses: actions/deploy-pages@v4
