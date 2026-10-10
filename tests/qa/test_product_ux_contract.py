@@ -78,6 +78,45 @@ class UXContract(unittest.TestCase):
         self.assertIn("opts.queue_capacity = 32;", bridge)
         self.assertNotIn("meter->microphone_channels,\n                meter->microphone_left", bridge)
 
+
+    def test_compact_capture_original_svg_geometry_and_vertical_meters(self):
+        import re
+        from xml.etree import ElementTree
+        ElementTree.fromstring(self.xaml)
+        for mode in ("Display", "Window", "Region", "Game"):
+            block = re.search(
+                rf'<ToggleButton x:Name="Mode{mode}"[\\s\\S]*?</ToggleButton>',
+                self.xaml)
+            self.assertIsNotNone(block, mode)
+            self.assertIn('Orientation="Vertical"', block.group())
+            self.assertIn(f'Text="{mode}"', block.group())
+            self.assertIn("<Path Data=", block.group())
+        # Geometry provenance: original SVG path anchors, not substitute Lucide icons.
+        for anchor in ("M488.188,41.797", "M462.387,0H49.612",
+                       "M21,9V4", "M510.002,309.835"):
+            self.assertIn(anchor, self.xaml)
+        for name in ("SystemLevelL", "SystemLevelR",
+                     "MicrophoneLevelL", "MicrophoneLevelR"):
+            meter = re.search(
+                rf'<ProgressBar x:Name="{name}"[^>]*>', self.xaml)
+            self.assertIsNotNone(meter, name)
+            self.assertIn('Orientation="Vertical"', meter.group())
+            self.assertIn('Height="49"', meter.group())
+        self.assertIn('Grid.Column="1" Grid.RowSpan="2"', self.xaml)
+        self.assertIn('Height" Value="65"', (
+            UI / "Design/ArControls.axaml").read_text(encoding="utf-8-sig"))
+
+    def test_webcam_preview_is_centered_and_does_not_fake_capture(self):
+        from xml.etree import ElementTree
+        ElementTree.fromstring(self.xaml)
+        self.assertIn('x:Name="CameraPreviewFrame"', self.xaml)
+        self.assertIn('Width="148" Height="83.25"', self.xaml)
+        self.assertIn('x:Name="CameraPreviewPlaceholder"', self.xaml)
+        self.assertIn('HorizontalAlignment="Center" VerticalAlignment="Center"', self.xaml)
+        self.assertIn('x:Name="CameraPreviewImage" IsVisible="False"', self.xaml)
+        self.assertIn('x:Name="CameraToggle"', self.xaml)
+        self.assertIn('IsEnabled="False"', self.xaml)
+
     def test_preview_is_internal_only_and_launches_directly(self):
         self.assertIn("<OutputType>WinExe</OutputType>", self.project)
         self.assertIn("'$(InternalAudioPreview)' == 'true'", self.project)
