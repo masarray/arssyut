@@ -1,0 +1,83 @@
+name: Windows Release Candidate EXEs
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful audio-enabled CI run ID for exact main SHA"
+        required: true
+        type: string
+      version:
+        description: "Release candidate version (0.1.0-rc.1)"
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact-head audio CI provenance
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.source_run_id }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/main' -or
+              $env:VERSION -notmatch '^0[.]\d+[.]\d+-rc[.]\d+$' -or
+              $env:RUN_ID -notmatch '^\d+$') { throw 'Invalid candidate parameters' }
+          $source = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:RUN_ID" | ConvertFrom-Json
+          if ($source.head_sha -ne $env:GITHUB_SHA -or
+              $source.conclusion -ne 'success' -or
+              $source.head_branch -ne 'main' -or
+              $source.name -ne 'CI') { throw 'Source is not successful exact-head main CI' }
+      - name: Download verified audio-capable portable
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          New-Item -ItemType Directory -Force dist/publish | Out-Null
+          gh run download $env:RUN_ID --repo $env:GITHUB_REPOSITORY --name arssyut-AUDIO-ENABLED-TEST-win-x64 --dir dist/publish
+          if ($LASTEXITCODE -ne 0) { throw 'Missing audio-enabled artifact' }
+          $exe = 'dist/publish/Arssyut.UI.exe'
+          if (-not (Test-Path $exe) -or (Get-Item $exe).Length -lt 5000000) { throw 'Standalone GUI missing or too small' }
+          if (Test-Path dist/publish/arssyut_native_bridge.dll) { throw 'Portable DLL is not embedded' }
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $exe).Path)
+          if ($null -eq $icon) { throw 'PE icon missing' }
+          $icon.Dispose()
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'Inno install failed' }
+      - name: Build two EXE release assets from identical binary
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'ISCC missing' }
+          $publish = (Resolve-Path dist/publish).Path
+          & $iscc '/Qp' "/DAppVersion=$env:VERSION" "/DAppPublishDir=$publish" packaging/windows/Arssyut.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno compilation failed' }
+          New-Item -ItemType Directory -Force dist/release | Out-Null
+          $setup = "dist/installer/Arssyut-Setup-$env:VERSION-win-x64.exe"
+          if (-not (Test-Path $setup)) { throw 'Setup output missing' }
+          Copy-Item $setup dist/release/
+          Copy-Item dist/publish/Arssyut.UI.exe "dist/release/Arssyut-$env:VERSION-portable-win-x64.exe"
+          $exeFiles = @(Get-ChildItem dist/release -File)
+          if ($exeFiles.Count -ne 2 -or @($exeFiles | Where-Object Extension -ne '.exe').Count -ne 0) { throw 'Expected exactly two EXEs' }
+          $exeFiles | ForEach-Object { "$($_.Name) $((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" } | Set-Content dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-RELEASE-CANDIDATE-EXEs
+          path: |
+            dist/release/*.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30

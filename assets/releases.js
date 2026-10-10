@@ -1,5 +1,5 @@
-/* Arssyut: public downloads come ONLY from non-prerelease GitHub Releases.
-   No hard-coded asset URLs, drafts, Actions ZIPs, or pre-release binaries. */
+/* Arssyut: show the newest published release, clearly labeling previews.
+   Downloads always use original GitHub Release asset URLs, never Actions artifacts. */
 (() => {
   "use strict";
   const status = document.getElementById("release-status");
@@ -9,7 +9,7 @@
   const assetList = document.getElementById("release-assets");
   const version = document.getElementById("release-version");
   const repoPath = "/masarray/arssyut/releases/download/";
-  const endpoint = "https://api.github.com/repos/masarray/arssyut/releases/latest";
+  const endpoint = "https://api.github.com/repos/masarray/arssyut/releases?per_page=20";
 
   function showStatus(message, available) {
     status.textContent = message;
@@ -56,22 +56,27 @@
     signal: controller.signal,
     headers: { "Accept": "application/vnd.github+json" }
   }).then(async response => {
-    if (response.status === 404) {
-      showStatus("No stable public release yet", false);
+    if (!response.ok) throw new Error("GitHub API returned " + response.status);
+    const releases = await response.json();
+    if (!Array.isArray(releases)) throw new Error("Unexpected releases metadata");
+    // Newest published release with the exact approved Windows binary assets,
+    // including explicitly labeled preview releases; never use Actions artifacts.
+    const release = releases.find(item =>
+      item && !item.draft && Array.isArray(item.assets) &&
+      item.assets.some(asset => officialAsset(asset) &&
+        (/^arssyut.*(setup|installer).*\.exe$/i.test(asset.name) ||
+         /^arssyut.*portable.*win[-_.]?x64\.exe$/i.test(asset.name))));
+    if (!release) {
+      showStatus("No published Windows release yet", false);
       showEmpty("Public release coming soon",
-        "There are no published stable downloads yet. When the first release is ready, the installer and portable links will appear here automatically.");
+        "There are no published Windows downloads yet. Installer and standalone portable EXE links will appear as soon as a verified release is published.");
       return;
     }
-    if (!response.ok) throw new Error("GitHub API returned " + response.status);
-    const release = await response.json();
-    if (!release || release.draft || release.prerelease ||
-        typeof release.tag_name !== "string" || !Array.isArray(release.assets))
-      throw new Error("Unexpected release metadata");
     const assets = release.assets.filter(officialAsset);
     const installer = best(assets, /arssyut.*(setup|installer).*\.exe$/i);
-    const portable = best(assets, /arssyut.*(portable|windows|win[-_.]?x64|x64).*\.zip$/i);
+    const portable = best(assets, /^arssyut.*portable.*win[-_.]?x64\.exe$/i);
     const hasInstaller = enableRow("installer-row", "installer-link", installer, "Download Arssyut installer");
-    const hasPortable = enableRow("portable-row", "portable-link", portable, "Download Arssyut portable ZIP");
+    const hasPortable = enableRow("portable-row", "portable-link", portable, "Download Arssyut portable EXE");
     if (!hasInstaller && !hasPortable) {
       showStatus("Latest public release has no Windows packages", false);
       showEmpty("Windows packages not available",
@@ -81,8 +86,8 @@
     empty.hidden = true;
     assetList.hidden = false;
     version.hidden = false;
-    version.textContent = "Latest stable version: " + release.tag_name;
-    showStatus("Official public download available", true);
+    version.textContent = (release.prerelease ? "Preview release: " : "Latest release: ") + release.tag_name;
+    showStatus(release.prerelease ? "Preview release — testing build" : "Official public download available", true);
   }).catch(() => {
     showStatus("Unable to check public releases", false);
     showEmpty("Please check GitHub Releases",

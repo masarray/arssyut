@@ -29,7 +29,7 @@ The application you launch is **Arssyut.UI.exe**, the compact Windows GUI. It do
 ## Download & get started
 
 1. Visit the **[download page](https://masarray.github.io/arssyut/download/)** or [GitHub Releases](https://github.com/masarray/arssyut/releases). Only releases published there should be considered public downloads.
-2. When available, choose a **Windows installer** for Start menu integration, or a **portable ZIP** to extract and run yourself.
+2. When available, choose a **Windows installer** for Start menu integration, or a **portable EXE** that runs directly.
 3. Open **Arssyut.UI.exe**, select **Display**, **Window**, or **Region**, and click **Start**.
 4. Click **Stop** to finalize your MP4, then choose **Open** or **Folder** to review it.
 
@@ -45,7 +45,7 @@ If you open **arssyut-VIDEO-ONLY-avalonia-win-x64**, its audio toggles are inten
 
 **Does it work on Windows 10 and 11?** Arssyut targets Windows x64. Hardware capabilities and Windows capture support can affect device compatibility.
 
-**Do I need to install it?** When an official portable ZIP is published, you can extract and run the app directly. The installer is a separate download option.
+**Do I need to install it?** When an official portable EXE is published, you can run it without extraction. The installer is a separate download option.
 
 **Where are bugs reported?** Open a [GitHub Issue](https://github.com/masarray/arssyut/issues) and include your Windows version, capture mode, reproduction steps, and relevant diagnostics.
 
