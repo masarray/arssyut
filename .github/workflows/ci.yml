@@ -377,7 +377,12 @@ jobs:
             "src/core/audio/audio_input_peak.hpp" = "9650eee59de7c0fa63603f02ce1a5df5746afc12"
             # P7A5 fixed canonical staging retains already-produced future SRC
             # suffixes without unbounded growth or a second timing authority.
-            "src/core/audio/audio_canonical_staging.hpp" = "64d57912a54977a526e19ea4d18f5a62299cc16b"
+            # P7A6R verified real-Windows YouTube onset StageGap (4/9):
+            # preserve fixed staging, PTS and all prior samples across an
+            # explicitly signalled WASAPI discontinuity. Regression coverage:
+            # tests/test_audio_canonical_staging.cpp and
+            # tests/test_audio_canonical_program_assembler.cpp.
+            "src/core/audio/audio_canonical_staging.hpp" = "7de1b230f91186e3f9eb857de44070cc030fd129"
             # P7A5 closed-program assembly: vetted exact blob composes the
             # existing staging/windows/mixer; no replacement clock or backend.
             "src/core/audio/audio_canonical_program_assembler.hpp" = "506256245d20ffa0efb487d27f4d63077782aa28"
