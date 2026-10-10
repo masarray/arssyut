@@ -45,13 +45,7 @@
               Background="{DynamicResource ArBrush.Selection}"
               BorderBrush="{DynamicResource ArBrush.RecordStroke}"
               BorderThickness="1">
-            <LucideIcon
-                Kind="Video"
-                Size="13"
-                StrokeWidth="1.9"
-                Foreground="{DynamicResource ArBrush.Record}"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center" />
+            <PathIcon Data="{StaticResource MsVideo}" Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.Record}" />
           </Border>
 
           <StackPanel Spacing="0" VerticalAlignment="Center">
@@ -78,12 +72,7 @@
                 Orientation="Horizontal"
                 Spacing="7"
                 VerticalAlignment="Center">
-              <LucideIcon
-                  Kind="Settings2"
-                  Size="15"
-                  StrokeWidth="1.8"
-                  VerticalAlignment="Center"
-                  Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+              <PathIcon Data="{StaticResource MsSettings}" Width="15" Height="15" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
               <TextBlock
                   Text="Settings"
                   FontSize="11.5"
@@ -96,13 +85,7 @@
               Click="Minimize_OnClick"
               AutomationProperties.Name="Minimize Arssyut"
               ToolTip.Tip="Minimize">
-            <LucideIcon
-                Kind="Minus"
-                Size="15"
-                StrokeWidth="1.8"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+            <PathIcon Data="{StaticResource MsMinimize}" Width="15" Height="15" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
           </Button>
 
           <Button
@@ -110,13 +93,7 @@
               Click="Close_OnClick"
               AutomationProperties.Name="Close Arssyut"
               ToolTip.Tip="Close">
-            <LucideIcon
-                Kind="X"
-                Size="15"
-                StrokeWidth="1.8"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+            <PathIcon Data="{StaticResource MsClose}" Width="15" Height="15" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
           </Button>
         </StackPanel>
       </Grid>
@@ -136,16 +113,14 @@
             <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
               <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                  <LucideIcon Kind="ScanLine" Size="14" StrokeWidth="1.8"
-                              Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                  <PathIcon Data="{StaticResource MsCapture}" Width="14" Height="14" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   <TextBlock Text="Capture" Classes="context-title" VerticalAlignment="Center" />
                 </StackPanel>
                 <Button Grid.Column="1" Classes="icon"
                         Click="RefreshSources_OnClick"
                         AutomationProperties.Name="Refresh capture sources"
                         ToolTip.Tip="Refresh sources">
-                  <LucideIcon Kind="RefreshCw" Size="14" StrokeWidth="1.8"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsRefresh}" Width="14" Height="14" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                 </Button>
               </Grid>
 
@@ -161,9 +136,8 @@
                               AutomationProperties.Name="Capture Display">
                   <StackPanel Orientation="Vertical" Spacing="3"
                               HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Viewbox Width="23" Height="24" Stretch="Uniform"><Canvas Width="512" Height="512">
-                      <Path Data="M488.188,41.797H23.813C10.719,41.797,0,52.516,0,65.609v311.969c0,13.094,10.719,23.813,23.813,23.813 h152.375v46.016h-31.031v22.797h221.688v-22.797h-31.031v-46.016h152.375c13.094,0,23.813-10.719,23.813-23.813V65.609 C512,52.516,501.281,41.797,488.188,41.797z M481.031,360.922H30.953V72.766h450.078V360.922z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                    </Canvas></Viewbox>
+                    <PathIcon Data="{StaticResource MsDisplay}" Width="24" Height="24"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
                     <TextBlock Text="Display" FontSize="10.5"
                                HorizontalAlignment="Center" TextAlignment="Center" />
                   </StackPanel>
@@ -177,13 +151,8 @@
                               AutomationProperties.Name="Capture Window">
                   <StackPanel Orientation="Vertical" Spacing="3"
                               HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Viewbox Width="24" Height="24" Stretch="Uniform"><Canvas Width="512" Height="512">
-                      <Path Data="M462.387,0H49.612C23.31,0,1.985,21.325,1.985,47.628v349.271c0,26.302,21.325,47.628,47.628,47.628h247.14 l-4.116-39.69H49.612c-4.38,0-7.938-3.566-7.938-7.938V103.194h428.651v293.706c0,4.372-3.558,7.938-7.938,7.938h-24.527 l26.333,39.597c25.458-0.954,45.822-21.846,45.822-47.535V47.628C510.015,21.325,488.69,0,462.387,0z M303.295,72.434 c-10.411,0-18.853-8.442-18.853-18.853c0-10.41,8.442-18.852,18.853-18.852c10.41,0,18.852,8.442,18.852,18.852 C322.147,63.992,313.705,72.434,303.295,72.434z M373.248,72.434c-10.41,0-18.853-8.442-18.853-18.853 c0-10.41,8.442-18.852,18.853-18.852c10.411,0,18.853,8.442,18.853,18.852C392.101,63.992,383.659,72.434,373.248,72.434z M443.201,72.434c-10.411,0-18.853-8.442-18.853-18.853c0-10.41,8.442-18.852,18.853-18.852c10.411,0,18.853,8.442,18.853,18.852 C462.054,63.992,453.612,72.434,443.201,72.434z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M113.116,174.636 h285.768 v31.752 h-285.768 z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M113.116,238.14 h285.768 v31.752 h-285.768 z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M113.116,301.644 h150.822 v31.752 h-150.822 z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M444.558,379.387 L315.535,305.612 L331.232,461.675 L361.512,425.038 L418.729,512 L461.581,483.799 L404.372,396.837 Z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                    </Canvas></Viewbox>
+                    <PathIcon Data="{StaticResource MsWindow}" Width="24" Height="24"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
                     <TextBlock Text="Window" FontSize="10.5"
                                HorizontalAlignment="Center" TextAlignment="Center" />
                   </StackPanel>
@@ -197,11 +166,8 @@
                               AutomationProperties.Name="Capture Region">
                   <StackPanel Orientation="Vertical" Spacing="3"
                               HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Viewbox Width="24" Height="24" Stretch="Uniform"><Canvas Width="24" Height="24">
-                      <Ellipse Canvas.Left="9" Canvas.Top="9" Width="6" Height="6" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M21,9V4a1,1,0,0,0-1-1H15 M15,21h5a1,1,0,0,0,1-1V15 M9,3H4A1,1,0,0,0,3,4V9 M3,15v5a1,1,0,0,0,1,1H9"
-                            Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="2" StrokeLineCap="Round" />
-                    </Canvas></Viewbox>
+                    <PathIcon Data="{StaticResource MsRegion}" Width="24" Height="24"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
                     <TextBlock Text="Region" FontSize="10.5"
                                HorizontalAlignment="Center" TextAlignment="Center" />
                   </StackPanel>
@@ -216,14 +182,8 @@
                               AutomationProperties.Name="Game capture pending">
                   <StackPanel Orientation="Vertical" Spacing="3"
                               HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Viewbox Width="27" Height="24" Stretch="Uniform"><Canvas Width="512" Height="512">
-                      <Path Data="M510.002,309.835l-0.068-0.326l-0.076-0.334l-26.508-112.721l-0.106-0.417l-0.106-0.418 c-16.668-62.217-73.294-105.666-137.712-105.666H166.579c-64.418,0-121.045,43.449-137.712,105.666l-0.114,0.418l-0.099,0.417 L2.147,309.174l-0.076,0.326l-0.068,0.326c-9.749,46.43,16.926,92.496,62.036,107.168l1.586,0.509 c9.24,3.012,18.89,4.544,28.624,4.544c32.668,0,63.128-17.404,79.758-45.489l22.556-33.343l0.561-0.835l0.509-0.872 c0.796-1.388,2.276-2.253,3.861-2.253h109.02c1.586,0,3.066,0.865,3.862,2.253l0.508,0.872l0.562,0.835l22.555,33.343 c16.63,28.085,47.09,45.489,79.766,45.489c9.734,0,19.384-1.532,28.67-4.56l1.533-0.493 C493.07,402.331,519.737,356.257,510.002,309.835z M439.318,390.397l-1.54,0.501c-6.608,2.154-13.353,3.186-20.014,3.186 c-22.646,0-44.283-11.949-56.088-32.433l-23.064-34.101c-5.788-10.053-16.508-16.258-28.101-16.258h-109.02 c-11.592,0-22.312,6.206-28.101,16.258l-23.063,34.101c-11.804,20.484-33.434,32.433-56.081,32.433 c-6.661,0-13.405-1.032-20.013-3.186l-1.548-0.501c-31.431-10.219-50.102-42.485-43.311-74.819l26.508-112.722 c13.42-50.102,58.826-84.94,110.696-84.94h178.847c51.869,0,97.276,34.838,110.696,84.94l26.508,112.722 C489.413,347.912,470.75,380.178,439.318,390.397z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M157.453,172.061 L123.912,172.061 L123.912,210.579 L85.387,210.579 L85.387,244.105 L123.912,244.105 L123.912,282.637 L157.453,282.637 L157.453,244.105 L195.978,244.105 L195.978,210.579 L157.453,210.579 Z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M365.721,206.247c11.668,0,21.113-9.445,21.113-21.098c0-11.669-9.445-21.114-21.113-21.114 c-11.653,0-21.098,9.445-21.098,21.114C344.622,196.802,354.068,206.247,365.721,206.247z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M323.509,206.247c-11.653,0-21.106,9.453-21.106,21.098c0,11.669,9.453,21.122,21.106,21.122 c11.661,0,21.106-9.453,21.106-21.122C344.615,215.7,335.17,206.247,323.509,206.247z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M365.721,248.459c-11.653,0-21.098,9.445-21.098,21.114c0,11.653,9.445,21.098,21.098,21.098 c11.668,0,21.113-9.445,21.113-21.098C386.834,257.904,377.388,248.459,365.721,248.459z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                      <Path Data="M407.933,206.247c-11.653,0-21.099,9.453-21.099,21.098c0,11.669,9.446,21.122,21.099,21.122 c11.66,0,21.113-9.453,21.113-21.122C429.046,215.7,419.593,206.247,407.933,206.247z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
-                    </Canvas></Viewbox>
+                    <PathIcon Data="{StaticResource MsGame}" Width="24" Height="24"
+                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" />
                     <TextBlock Text="Game" FontSize="10.5"
                                HorizontalAlignment="Center" TextAlignment="Center" />
                   </StackPanel>
@@ -296,8 +256,7 @@
           <Border Grid.Column="1" Classes="context-card">
             <Grid RowDefinitions="Auto,*,*" RowSpacing="8">
               <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                <LucideIcon Kind="Volume2" Size="14" StrokeWidth="1.8"
-                            Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                <PathIcon Data="{StaticResource MsAudio}" Width="14" Height="14" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                 <TextBlock Text="Audio" Classes="context-title" />
               </StackPanel>
 
@@ -309,9 +268,7 @@
                 <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
                   <Border Width="27" Height="27" CornerRadius="8"
                           Background="{DynamicResource ArBrush.Surface3}">
-                    <LucideIcon Kind="Volume2" Size="14" StrokeWidth="1.8"
-                                Foreground="{DynamicResource ArBrush.TextSecondary}"
-                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <PathIcon Data="{StaticResource MsAudio}" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   </Border>
                   <TextBlock Grid.Column="1" Text="System audio" FontWeight="SemiBold"
                              FontSize="10.8" VerticalAlignment="Center" />
@@ -361,9 +318,7 @@
                 <Grid Grid.Column="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="6">
                   <Border Width="27" Height="27" CornerRadius="8"
                           Background="{DynamicResource ArBrush.Surface3}">
-                    <LucideIcon Kind="Mic" Size="14" StrokeWidth="1.8"
-                                Foreground="{DynamicResource ArBrush.TextSecondary}"
-                                HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <PathIcon Data="{StaticResource MsMic}" Width="14" Height="14" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   </Border>
                   <TextBlock Grid.Column="1" Text="Microphone" FontWeight="SemiBold"
                              FontSize="10.8" VerticalAlignment="Center" />
@@ -411,8 +366,7 @@
             <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
               <Grid ColumnDefinitions="*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                  <LucideIcon Kind="Video" Size="14" StrokeWidth="1.8"
-                              Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                  <PathIcon Data="{StaticResource MsVideo}" Width="14" Height="14" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                   <TextBlock Text="Webcam" Classes="context-title" />
                 </StackPanel>
                 <ToggleSwitch x:Name="CameraToggle"
@@ -431,10 +385,7 @@
                 <Grid>
                   <Image x:Name="CameraPreviewImage" IsVisible="False"
                          Stretch="UniformToFill" />
-                  <LucideIcon x:Name="CameraPreviewPlaceholder"
-                              Kind="Camera" Size="26" StrokeWidth="1.5"
-                              Foreground="{DynamicResource ArBrush.TextSecondary}"
-                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  <PathIcon Data="{StaticResource MsCamera}" Width="26" Height="26" x:Name="CameraPreviewPlaceholder" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                 </Grid>
               </Border>
               <ComboBox x:Name="CameraDeviceComboMain" Grid.Row="2"
@@ -539,18 +490,14 @@
               <Button Classes="saved-action" Click="OpenSaved_OnClick"
                       AutomationProperties.Name="Open saved recording">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                  <LucideIcon Kind="ExternalLink" Size="13" StrokeWidth="1.8"
-                              VerticalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsPlay}" Width="13" Height="13" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Open" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
               <Button Classes="saved-action" Click="ShowFolder_OnClick"
                       AutomationProperties.Name="Show saved recording in folder">
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                  <LucideIcon Kind="FolderOpen" Size="13" StrokeWidth="1.8"
-                              VerticalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsFolder}" Width="13" Height="13" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Text="Folder" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>

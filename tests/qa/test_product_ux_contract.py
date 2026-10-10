@@ -90,11 +90,25 @@ class UXContract(unittest.TestCase):
             self.assertIsNotNone(block, mode)
             self.assertIn('Orientation="Vertical"', block.group())
             self.assertIn(f'Text="{mode}"', block.group())
-            self.assertIn("<Path Data=", block.group())
-        # Geometry provenance: original SVG path anchors, not substitute Lucide icons.
-        for anchor in ("M488.188,41.797", "M462.387,0H49.612",
-                       "M21,9V4", "M510.002,309.835"):
-            self.assertIn(anchor, self.xaml)
+            self.assertIn(f'Data="{{StaticResource Ms{mode}}}"', block.group())
+            self.assertIn('Width="24" Height="24"', block.group())
+        # The icon system uses locally bundled official 24px Google
+        # Material Symbols, instead of SVG-Repo tiles plus Lucide actions.
+        sources = ("MaterialSymbolsCapture.axaml", "MaterialSymbolsActions.axaml")
+        registry = "".join((UI / "Design" / file).read_text(encoding="utf-8-sig")
+                           for file in sources)
+        for file in sources:
+            ElementTree.fromstring((UI / "Design" / file).read_text(encoding="utf-8-sig"))
+            self.assertIn(f'Source="/Design/{file}"', (
+                UI / "App.axaml").read_text(encoding="utf-8-sig"))
+        for key in ("MsDisplay", "MsWindow", "MsRegion", "MsGame",
+                    "MsSettings", "MsRefresh", "MsPlay", "MsFolder",
+                    "MsCamera", "MsVideo", "MsMic", "MsAudio"):
+            self.assertIn(f'x:Key="{key}"', registry)
+            self.assertIn(f'StaticResource {key}', self.xaml)
+        self.assertIn("Apache License", (
+            ROOT / "third_party/material_symbols/LICENSE").read_text(encoding="utf-8-sig"))
+        self.assertNotIn("M488.188,41.797", self.xaml)
         for name in ("SystemLevelL", "SystemLevelR",
                      "MicrophoneLevelL", "MicrophoneLevelR"):
             meter = re.search(
@@ -105,6 +119,17 @@ class UXContract(unittest.TestCase):
         self.assertIn('Grid.Column="1" Grid.RowSpan="2"', self.xaml)
         self.assertIn('Height" Value="72"', (
             UI / "Design/ArControls.axaml").read_text(encoding="utf-8-sig"))
+
+    def test_material_icons_preserve_command_handlers_and_dynamic_record_icon(self):
+        for key in ("MsSettings", "MsRefresh", "MsPlay", "MsFolder"):
+            self.assertIn(f'Data="{{StaticResource {key}}}"', self.xaml)
+        for handler in ("Settings_OnClick", "RefreshSources_OnClick",
+                        "OpenSaved_OnClick", "ShowFolder_OnClick"):
+            self.assertIn(f'Click="{handler}"', self.xaml)
+        self.assertIn('x:Name="CameraPreviewPlaceholder"', self.xaml)
+        # The source icon and record/stop icon are still dynamic in the code.
+        self.assertIn('x:Name="SourceIcon"', self.xaml)
+        self.assertIn('x:Name="RecordIcon"', self.xaml)
 
     def test_audio_meter_tracks_are_bounded_inside_cards(self):
         self.assertNotIn('ProgressBar x:Name="SystemLevelL"', self.xaml)
