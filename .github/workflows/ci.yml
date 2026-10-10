@@ -338,7 +338,7 @@ jobs:
             # P7A6 sole RecorderSession product audio owner (opt-in).
             "src/app/audio_product_runtime.hpp" = "b88c31bba89fee4971b35ec7a9f52caacbd19076"
             # Fixed 48k recorded click/keycap cues, no second clock or audio source.
-            "src/app/recorded_input_sounds.hpp" = "cb255091595f84741cb5e048887040abb6270f2b"
+            "src/app/recorded_input_sounds.hpp" = "ee7c4aba077b7133b0156f6f7d61fddd48673026"
             # Experimental-only bridge approval: default/release still
             # rejects audio. Mic tokens are generation checked.
             "src/bridge/native_bridge.cpp" = "a938bfd908f781ed55a9c6f083fc5937630c40c8"

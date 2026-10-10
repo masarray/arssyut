@@ -58,7 +58,7 @@ public:
                 const auto &wave=waves_[static_cast<std::size_t>(voice.cue)];
                 for(auto frame=from;frame<end;++frame) {
                     const auto offset=static_cast<std::size_t>(frame-first_frame)*2U;
-                    const auto amount=wave_[index(frame,voice.first_frame,wave)];
+                    const auto amount=wave[static_cast<std::size_t>(frame-voice.first_frame)];
                     for(std::size_t c=0;c<2;++c) {
                         const auto original=block.audio.samples[offset+c];
                         // Preserve original microphone/system samples; constrain
@@ -82,10 +82,6 @@ private:
         RecordedCue cue=RecordedCue::LeftClick;
         std::uint64_t first_frame=0;
     };
-    static std::size_t index(std::uint64_t frame,std::uint64_t beginning,
-                             const std::array<float,kWaveFrames>&) noexcept {
-        return static_cast<std::size_t>(frame-beginning);
-    }
     void generate() noexcept {
         constexpr double pi=3.14159265358979323846;
         for(std::size_t kind=0;kind<3;++kind) {
