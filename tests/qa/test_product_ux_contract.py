@@ -150,6 +150,18 @@ class UXContract(unittest.TestCase):
         self.assertIn('ToolTip.SetTip(MicrophoneDeviceComboMain, _microphoneDevice);', self.code)
         self.assertIn('SourceSubtitle.IsVisible = true;', self.code)
 
+    def test_sfx_is_mixed_on_the_existing_aac_timeline(self):
+        src=(ROOT/"src/app/recorder_session.cpp").read_text(encoding="utf-8-sig")
+        runtime=(ROOT/"src/app/audio_product_runtime.hpp").read_text(encoding="utf-8-sig")
+        effects=(ROOT/"src/app/recorded_input_sounds.hpp").read_text(encoding="utf-8-sig")
+        self.assertIn("record_click(",src)
+        self.assertIn("record_keycap(",src)
+        self.assertIn("recorded_cues_.reset(media_zero_100ns)",runtime)
+        self.assertIn("recorded_cues_.apply(out, first_frame)",runtime)
+        self.assertIn("kVoices = 24",effects)
+        self.assertNotIn("PlaySound",effects)
+        self.assertNotIn("waveOut",effects)
+
     def test_preview_is_internal_only_and_launches_directly(self):
         self.assertIn("<OutputType>WinExe</OutputType>", self.project)
         self.assertIn("'$(InternalAudioPreview)' == 'true'", self.project)

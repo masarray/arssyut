@@ -9,6 +9,8 @@
 #include "app/audio_endpoint_preflight.hpp"
 #include "app/audio_source_preparation.hpp"
 #include "app/audio_pcm16_submission_adapter.hpp"
+#include "app/recorded_input_sounds.hpp"
+#include "presentation/presentation_state.hpp"
 #include "core/audio/audio_packet_ingress.hpp"
 #include "platform/windows/audio/libswresample_audio_resampler.hpp"
 #include "platform/windows/audio/wasapi_microphone_source.hpp"
@@ -95,6 +97,7 @@ public:
         program_.reset(media_zero_100ns,
                        pinned_.microphone, pinned_.system_audio);
         adapter_.reset(media_zero_100ns);
+        recorded_cues_.reset(media_zero_100ns);
         if (pinned_.microphone &&
             !mic_ingress_.configure(
                 core::audio::AudioSourceId::Microphone,
@@ -110,6 +113,20 @@ public:
 
         recording_ = true;
         return core::Status::success();
+    }
+
+    void record_click(presentation::ClickKind kind, std::int64_t timestamp) noexcept
+    {
+        if (!recording_) return;
+        if (kind == presentation::ClickKind::Left)
+            recorded_cues_.push(RecordedCue::LeftClick, timestamp);
+        else if (kind == presentation::ClickKind::Right)
+            recorded_cues_.push(RecordedCue::RightClick, timestamp);
+    }
+    void record_keycap(std::int64_t timestamp) noexcept
+    {
+        if (recording_)
+            recorded_cues_.push(RecordedCue::Keycap, timestamp);
     }
 
     // Run before video submission on RecorderSession's sole writer worker:
@@ -307,7 +324,10 @@ private:
             writer,
             [this](core::audio::AudioProgramBlock &out,
                    std::uint64_t &first_frame) noexcept {
-                return program_.try_take(out, first_frame);
+                if (!program_.try_take(out, first_frame))
+                    return false;
+                recorded_cues_.apply(out, first_frame);
+                return true;
             },
             scratch_, 2, stop_100ns);
         // Never discard all subsequent audio while still reporting Saved.
@@ -325,6 +345,7 @@ private:
     core::audio::CanonicalPacketIngress sys_ingress_{};
     core::audio::CanonicalProgramAssembler program_{};
     AacPcm16SubmissionAdapter adapter_{};
+    RecordedInputSounds recorded_cues_{};
     core::audio::AudioProgramBlock scratch_{};
     bool sources_started_ = false;
     bool recording_ = false;

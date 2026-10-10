@@ -1272,6 +1272,11 @@ void RecorderSession::worker_main() noexcept
                         click_x,
                         click_y,
                         click_event.time);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+                    if (audio_runtime && config_.presentation.click_visual)
+                        audio_runtime->record_click(
+                            click_event.kind, click_event.time.ticks_100ns);
+#endif
                 }
             }
 
@@ -1281,6 +1286,11 @@ void RecorderSession::worker_main() noexcept
                 presentation_controller.on_shortcut(
                     shortcut_event.chord,
                     shortcut_event.time);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+                if (audio_runtime && config_.presentation.shortcut_keys)
+                    audio_runtime->record_keycap(
+                        shortcut_event.time.ticks_100ns);
+#endif
             }
 
             const auto pointer =

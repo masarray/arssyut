@@ -408,6 +408,19 @@ if(ARSSYUT_BUILD_TESTS)
 
     find_package(Threads REQUIRED)
 
+    add_executable(arssyut_recorded_input_sounds_tests
+        tests/test_recorded_input_sounds.cpp)
+    target_link_libraries(arssyut_recorded_input_sounds_tests PRIVATE arssyut_core)
+    if(MSVC)
+        target_compile_options(arssyut_recorded_input_sounds_tests PRIVATE
+            /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(arssyut_recorded_input_sounds_tests PRIVATE
+            -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME arssyut_recorded_input_sounds_tests
+             COMMAND arssyut_recorded_input_sounds_tests)
+
     add_executable(arssyut_audio_input_peak_tests
         tests/test_audio_input_peak.cpp)
     target_link_libraries(arssyut_audio_input_peak_tests PRIVATE arssyut_core)
