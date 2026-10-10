@@ -9,6 +9,12 @@ project(
 
 option(ARSSYUT_BUILD_TESTS "Build Arssyut deterministic unit tests" ON)
 option(
+    ARSSYUT_ENABLE_PRODUCT_AUDIO
+    "Link pinned FFmpeg libswresample and enable native RecorderSession A/V (requires vcpkg/static FFmpeg)"
+    OFF
+)
+
+option(
     ARSSYUT_BUILD_P7A1R_SWRESAMPLE_PROBE
     "Build isolated P7A1R libswresample benchmark"
     OFF
@@ -110,6 +116,25 @@ if(WIN32)
             avrt
     )
 
+    if(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        # Product build MUST own a real selected SRC. Explicitly configured
+        # pinned FFmpeg 9.0.2 x64-windows-static is required; never silently
+        # switch to the test-only SRC or an unrelated installed DLL.
+        find_package(FFMPEG REQUIRED)
+        target_sources(arssyut_windows PRIVATE
+            src/platform/windows/audio/libswresample_audio_resampler.cpp
+        )
+        target_include_directories(arssyut_windows PRIVATE
+            ${FFMPEG_INCLUDE_DIRS}
+        )
+        target_link_directories(arssyut_windows PUBLIC
+            ${FFMPEG_LIBRARY_DIRS}
+        )
+        target_link_libraries(arssyut_windows PUBLIC
+            ${FFMPEG_LIBRARIES}
+        )
+    endif()
+
     add_library(arssyut_native_bridge SHARED
         src/bridge/native_bridge.cpp
         src/app/device_catalog.cpp
@@ -188,6 +213,15 @@ if(WIN32)
             /permissive-
             /utf-8
             /Zc:__cplusplus
+        )
+    endif()
+
+    if(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        target_compile_definitions(arssyut_native_bridge PRIVATE
+            ARSSYUT_ENABLE_PRODUCT_AUDIO=1
+        )
+        target_compile_definitions(arssyut PRIVATE
+            ARSSYUT_ENABLE_PRODUCT_AUDIO=1
         )
     endif()
 
@@ -373,6 +407,29 @@ if(ARSSYUT_BUILD_TESTS)
     )
 
     find_package(Threads REQUIRED)
+
+    add_executable(arssyut_recorded_input_sounds_tests
+        tests/test_recorded_input_sounds.cpp)
+    target_link_libraries(arssyut_recorded_input_sounds_tests PRIVATE arssyut_core)
+    if(MSVC)
+        target_compile_options(arssyut_recorded_input_sounds_tests PRIVATE
+            /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(arssyut_recorded_input_sounds_tests PRIVATE
+            -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME arssyut_recorded_input_sounds_tests
+             COMMAND arssyut_recorded_input_sounds_tests)
+
+    add_executable(arssyut_audio_input_peak_tests
+        tests/test_audio_input_peak.cpp)
+    target_link_libraries(arssyut_audio_input_peak_tests PRIVATE arssyut_core)
+    if(MSVC)
+        target_compile_options(arssyut_audio_input_peak_tests PRIVATE /W4 /permissive- /utf-8)
+    else()
+        target_compile_options(arssyut_audio_input_peak_tests PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME arssyut_audio_input_peak_tests COMMAND arssyut_audio_input_peak_tests)
 
     add_executable(arssyut_audio_program_mixer_tests
         tests/test_audio_program_mixer.cpp
@@ -745,6 +802,32 @@ if(ARSSYUT_BUILD_TESTS)
             )
         endif()
         add_test(NAME arssyut_windows_tests COMMAND arssyut_windows_tests)
+
+        # P7A6 Preparing boundary: endpoint role/default/pinned ID checks.
+        # Single existing Windows CI lane, no independent workflow.
+        add_executable(arssyut_audio_endpoint_preflight_tests
+            tests/test_audio_endpoint_preflight.cpp
+        )
+        target_link_libraries(
+            arssyut_audio_endpoint_preflight_tests
+            PRIVATE
+                arssyut_core
+                ole32
+        )
+        if(MSVC)
+            target_compile_options(
+                arssyut_audio_endpoint_preflight_tests
+                PRIVATE
+                    /W4
+                    /permissive-
+                    /utf-8
+                    /Zc:__cplusplus
+            )
+        endif()
+        add_test(
+            NAME arssyut_audio_endpoint_preflight_tests
+            COMMAND arssyut_audio_endpoint_preflight_tests
+        )
 
         add_executable(arssyut_wasapi_microphone_tests
             tests/windows/test_wasapi_microphone_source.cpp

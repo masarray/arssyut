@@ -80,6 +80,18 @@ struct RecorderConfig {
     // waits in Armed until request_start_commit() defines frame zero.
     bool start_armed = false;
     std::uint32_t bitrate_bps = 18'000'000;
+
+    // Product audio is opt-in and fail-closed. Explicit endpoint IDs must be
+    // concrete Windows MMDevice IDs, never GUI display names or stale tokens.
+    // The existing bridge still rejects audio until real-device MP4 acceptance.
+    bool audio_microphone = false;
+    bool audio_system = false;
+    std::wstring audio_microphone_id;
+    std::wstring audio_system_id;
+    float audio_system_gain = 1.0f;
+    float audio_microphone_gain = 1.0f;
+    bool audio_system_muted = false;
+    bool audio_microphone_muted = false;
     arssyut::presentation::PresentationSettings presentation{};
     PresenterMomentaryBinding hold_zoom_hotkey{};
     PresenterMomentaryBinding overview_peek_hotkey{};
@@ -208,6 +220,9 @@ private:
     std::atomic<std::int64_t> armed_at_ticks_{0};
     std::atomic<std::int64_t> first_frame_submitted_at_ticks_{0};
     std::atomic<std::uint64_t> capture_preroll_received_{0};
+    std::atomic<bool> audio_writer_enabled_{false};
+    std::atomic<std::uint64_t> audio_samples_submitted_{0};
+    std::atomic<std::uint64_t> audio_frames_submitted_{0};
     std::atomic<std::int64_t> started_at_ticks_{0};
     std::atomic<std::int64_t> stopped_at_ticks_{0};
 

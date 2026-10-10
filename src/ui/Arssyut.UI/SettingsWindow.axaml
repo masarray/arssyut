@@ -3,6 +3,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     x:Class="Arssyut.UI.SettingsWindow"
     Title="Arssyut Settings"
+    Icon="avares://Arssyut.UI/Assets/favicon.ico"
     Width="800"
     Height="560"
     MinWidth="760"
@@ -36,11 +37,7 @@
             Orientation="Horizontal"
             Spacing="8"
             VerticalAlignment="Center">
-          <LucideIcon
-              Kind="Settings2"
-              Size="15"
-              StrokeWidth="1.8"
-              Foreground="{DynamicResource ArBrush.TextSecondary}" />
+          <PathIcon Data="{StaticResource MsSettings}" Width="15" Height="15" Foreground="{DynamicResource ArBrush.TextSecondary}" />
           <TextBlock
               Text="Settings"
               FontSize="12.5"
@@ -52,11 +49,7 @@
             Classes="window-control danger"
             Click="Close_OnClick"
             AutomationProperties.Name="Close Settings">
-          <LucideIcon
-              Kind="X"
-              Size="15"
-              StrokeWidth="1.8"
-              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+          <PathIcon Data="{StaticResource MsClose}" Width="15" Height="15" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
         </Button>
       </Grid>
 
@@ -80,81 +73,62 @@
             <StackPanel Grid.Row="1" Margin="4,0" Spacing="3">
               <Button x:Name="NavGeneral" AutomationProperties.Name="General settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="General">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <LucideIcon Grid.Column="0" Kind="Settings2" Size="15" StrokeWidth="1.8"
-                              HorizontalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsSettings}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Grid.Column="1" Text="General" VerticalAlignment="Center" />
                 </Grid>
               </Button>
 
               <Button x:Name="NavRecording" AutomationProperties.Name="Recording settings" Classes="nav settings-nav selected" Click="Nav_OnClick" Tag="Recording">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <LucideIcon Grid.Column="0" Kind="Video" Size="15" StrokeWidth="1.8"
-                              HorizontalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsVideo}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Grid.Column="1" Text="Recording" VerticalAlignment="Center" />
                 </Grid>
               </Button>
 
               <Button x:Name="NavOutput" AutomationProperties.Name="Output settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Output">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <LucideIcon Grid.Column="0" Kind="FolderOpen" Size="15" StrokeWidth="1.8"
-                              HorizontalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsFolder}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Grid.Column="1" Text="Output" VerticalAlignment="Center" />
                 </Grid>
               </Button>
 
               <Button x:Name="NavAudio" AutomationProperties.Name="Audio settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Audio">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <LucideIcon Grid.Column="0" Kind="Volume2" Size="15" StrokeWidth="1.8"
-                              HorizontalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsAudio}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Grid.Column="1" Text="Audio" VerticalAlignment="Center" />
                 </Grid>
               </Button>
 
               <Button x:Name="NavCamera" AutomationProperties.Name="Camera settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Camera">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <LucideIcon Grid.Column="0" Kind="Camera" Size="15" StrokeWidth="1.8"
-                              HorizontalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsCamera}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Grid.Column="1" Text="Camera" VerticalAlignment="Center" />
                 </Grid>
               </Button>
 
               <Button x:Name="NavMouse" AutomationProperties.Name="Mouse and keystroke settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Mouse">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <LucideIcon Grid.Column="0" Kind="MousePointer2" Size="15" StrokeWidth="1.8"
-                              HorizontalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsMouse}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Grid.Column="1" Text="Mouse &amp; Keys" VerticalAlignment="Center" />
                 </Grid>
               </Button>
 
               <Button x:Name="NavHotkeys" AutomationProperties.Name="Hotkey settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Hotkeys">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <LucideIcon Grid.Column="0" Kind="Keyboard" Size="15" StrokeWidth="1.8"
-                              HorizontalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsKeyboard}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Grid.Column="1" Text="Hotkeys" VerticalAlignment="Center" />
                 </Grid>
               </Button>
 
               <Button x:Name="NavAdvanced" AutomationProperties.Name="Advanced settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Advanced">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <LucideIcon Grid.Column="0" Kind="Wrench" Size="15" StrokeWidth="1.8"
-                              HorizontalAlignment="Center"
-                              Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <PathIcon Data="{StaticResource MsAdvanced}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                   <TextBlock Grid.Column="1" Text="Advanced" VerticalAlignment="Center" />
                 </Grid>
               </Button>
             </StackPanel>
 
-            <StackPanel Grid.Row="2" Margin="16,10,8,4" Spacing="2">
-              <TextBlock Text="Native product shell" Classes="micro" />
-              <TextBlock Text="Unavailable features stay locked" FontSize="9.5" Foreground="{DynamicResource ArBrush.TextDim}" />
-            </StackPanel>
+            <!-- No redundant status copy in sidebar. -->
           </Grid>
         </Border>
 
@@ -326,8 +300,7 @@
                           Click="OutputFolder_OnClick"
                           AutomationProperties.Name="Choose output folder">
                         <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                          <LucideIcon Kind="FolderOpen" Size="15" StrokeWidth="1.8"
-                                      Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                          <PathIcon Data="{StaticResource MsFolder}" Width="15" Height="15" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                           <TextBlock Text="Browse" />
                         </StackPanel>
                       </Button>
@@ -371,31 +344,99 @@
                   </Border>
                 </StackPanel>
 
-                <!-- Audio -->
-                <StackPanel x:Name="PageAudio" IsVisible="False">
-                  <Border Classes="capability-lock">
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                      <Border Width="34" Height="34" CornerRadius="9"
-                              Background="{DynamicResource ArBrush.Surface3}">
-                        <LucideIcon Kind="Volume2" Size="17" StrokeWidth="1.8"
-                                    Foreground="{DynamicResource ArBrush.TextSecondary}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
-                      </Border>
-                      <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-                        <TextBlock Text="Native audio recording is not connected yet" FontWeight="SemiBold" />
-                        <TextBlock Text="Arssyut will not show simulated meters or selectable fake devices in product mode. System audio and microphone stay unavailable until the real WASAPI/AAC path is bound." Classes="micro" TextWrapping="Wrap" />
-                      </StackPanel>
-                    </Grid>
+
+                <!-- Functional MP4 audio mixer: native input meters, persisted
+                     per-source attenuation/mute, no simulated level data. -->
+                <StackPanel x:Name="PageAudio" IsVisible="False" Spacing="10">
+                  <Border Classes="setting-row" Padding="14,12">
+                    <StackPanel Spacing="9">
+                      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                        <PathIcon Data="{StaticResource MsAudio}" Width="18" Height="18"
+                                  VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                        <TextBlock Grid.Column="1" Text="System audio" FontWeight="Medium"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="Stereo" Classes="micro"
+                                   VerticalAlignment="Center" Margin="0,0,9,0" />
+                        <ToggleSwitch x:Name="SettingsSystemAudioToggle" Grid.Column="3"
+                                      Classes="ar-toggle" IsChecked="False"
+                                      OnContent="" OffContent="" Click="SettingsSystemAudio_OnClick"
+                                      AutomationProperties.Name="Enable system audio recording"
+                                      ToolTip.Tip="Enable system audio for the next recording." />
+                      </Grid>
+                      <TextBlock Text="Windows default playback" Classes="micro" />
+                      <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                        <Grid ColumnDefinitions="14,*,50" ColumnSpacing="6">
+                          <TextBlock Text="L" Classes="micro" />
+                          <ProgressBar x:Name="SystemMeter" Grid.Column="1" Height="5"
+                                       Minimum="0" Maximum="100" Foreground="{DynamicResource ArBrush.Success}" />
+                          <TextBlock x:Name="SystemDbText" Grid.Column="2" Text="−∞ dB"
+                                     TextAlignment="Right" Classes="micro" />
+                        </Grid>
+                        <Grid Grid.Row="1" ColumnDefinitions="14,*,50" ColumnSpacing="6">
+                          <TextBlock Text="R" Classes="micro" />
+                          <ProgressBar x:Name="SystemMeterR" Grid.Column="1" Height="5"
+                                       Minimum="0" Maximum="100" Foreground="{DynamicResource ArBrush.Success}" />
+                        </Grid>
+                      </Grid>
+                      <Grid ColumnDefinitions="*,42,65" ColumnSpacing="10">
+                        <Slider x:Name="SystemGainSlider" Minimum="0" Maximum="100" Value="100"
+                                PropertyChanged="SystemGain_OnPropertyChanged"
+                                AutomationProperties.Name="System recording volume" />
+                        <TextBlock x:Name="SystemGainLabel" Grid.Column="1" Text="100%"
+                                   TextAlignment="Right" VerticalAlignment="Center" />
+                        <Button x:Name="SystemMuteButton" Grid.Column="2" Content="Mute"
+                                Click="SystemMute_OnClick"
+                                AutomationProperties.Name="Mute system audio in recording" />
+                      </Grid>
+                    </StackPanel>
                   </Border>
 
-                  <Grid IsVisible="False">
-                    <ComboBox x:Name="SystemAudioDeviceCombo" />
-                    <ProgressBar x:Name="SystemMeter" />
-                    <TextBlock x:Name="SystemDbText" />
-                    <ComboBox x:Name="MicrophoneDeviceCombo" SelectionChanged="MicrophoneDevice_OnSelectionChanged" />
-                    <ProgressBar x:Name="MicMeter" />
-                    <TextBlock x:Name="MicDbText" />
-                  </Grid>
+                  <Border Classes="setting-row" Padding="14,12">
+                    <StackPanel Spacing="9">
+                      <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="10">
+                        <PathIcon Data="{StaticResource MsMic}" Width="18" Height="18"
+                                  VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                        <TextBlock Grid.Column="1" Text="Microphone" FontWeight="Medium"
+                                   VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="Stereo" Classes="micro"
+                                   VerticalAlignment="Center" Margin="0,0,9,0" />
+                        <ToggleSwitch x:Name="SettingsMicrophoneToggle" Grid.Column="3"
+                                      Classes="ar-toggle" IsChecked="False"
+                                      OnContent="" OffContent="" Click="SettingsMicrophone_OnClick"
+                                      AutomationProperties.Name="Enable microphone recording"
+                                      ToolTip.Tip="Enable selected microphone for the next recording." />
+                      </Grid>
+                      <ComboBox x:Name="MicrophoneDeviceCombo" Classes="ar-select"
+                                SelectionChanged="MicrophoneDevice_OnSelectionChanged"
+                                AutomationProperties.Name="Recording microphone device" />
+                      <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                        <Grid ColumnDefinitions="14,*,50" ColumnSpacing="6">
+                          <TextBlock Text="L" Classes="micro" />
+                          <ProgressBar x:Name="MicMeter" Grid.Column="1" Height="5"
+                                       Minimum="0" Maximum="100" Foreground="{DynamicResource ArBrush.Success}" />
+                          <TextBlock x:Name="MicDbText" Grid.Column="2" Text="−∞ dB"
+                                     TextAlignment="Right" Classes="micro" />
+                        </Grid>
+                        <Grid Grid.Row="1" ColumnDefinitions="14,*,50" ColumnSpacing="6">
+                          <TextBlock Text="R" Classes="micro" />
+                          <ProgressBar x:Name="MicMeterR" Grid.Column="1" Height="5"
+                                       Minimum="0" Maximum="100" Foreground="{DynamicResource ArBrush.Success}" />
+                        </Grid>
+                      </Grid>
+                      <Grid ColumnDefinitions="*,42,65" ColumnSpacing="10">
+                        <Slider x:Name="MicrophoneGainSlider" Minimum="0" Maximum="100" Value="100"
+                                PropertyChanged="MicrophoneGain_OnPropertyChanged"
+                                AutomationProperties.Name="Microphone recording volume" />
+                        <TextBlock x:Name="MicrophoneGainLabel" Grid.Column="1" Text="100%"
+                                   TextAlignment="Right" VerticalAlignment="Center" />
+                        <Button x:Name="MicrophoneMuteButton" Grid.Column="2" Content="Mute"
+                                Click="MicrophoneMute_OnClick"
+                                AutomationProperties.Name="Mute microphone in recording" />
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                  <TextBlock x:Name="AudioStatusText" Text="Changes apply to the next recording."
+                             Margin="2,0,0,0" Classes="micro" />
                 </StackPanel>
 
                 <!-- Camera -->
@@ -404,9 +445,7 @@
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                       <Border Width="34" Height="34" CornerRadius="9"
                               Background="{DynamicResource ArBrush.Surface3}">
-                        <LucideIcon Kind="Camera" Size="17" StrokeWidth="1.8"
-                                    Foreground="{DynamicResource ArBrush.TextSecondary}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <PathIcon Data="{StaticResource MsCamera}" Width="17" Height="17" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                       </Border>
                       <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
                         <TextBlock Text="Camera compositor backend is not connected yet" FontWeight="SemiBold" />
@@ -484,8 +523,7 @@
                   </Border>
 
                   <Grid Margin="0,14,0,2" ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                    <LucideIcon Kind="ScanLine" Size="14" StrokeWidth="1.8"
-                                Foreground="{DynamicResource ArBrush.Record}" />
+                    <PathIcon Data="{StaticResource MsCapture}" Width="14" Height="14" Foreground="{DynamicResource ArBrush.Record}" />
                     <StackPanel Grid.Column="1" Spacing="1">
                       <TextBlock Text="Presenter" FontSize="11" FontWeight="SemiBold" />
                       <TextBlock Text="Camera framing and focus controls for presentations." Classes="micro" />
@@ -759,8 +797,7 @@
                   </Border>
                   <Border Margin="0,12,0,0" Classes="capability-lock">
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
-                      <LucideIcon Kind="Keyboard" Size="15" StrokeWidth="1.8"
-                                  Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                      <PathIcon Data="{StaticResource MsKeyboard}" Width="15" Height="15" Foreground="{DynamicResource ArBrush.TextSecondary}" />
                       <TextBlock x:Name="HotkeyFeedbackText" Grid.Column="1"
                                  Text="Click a shortcut and press one chord. OEM symbols, Numpad, navigation keys, F1–F24, and Ctrl/Shift/Alt/Win combinations are supported."
                                  Classes="micro" TextWrapping="Wrap" />
@@ -803,7 +840,8 @@
                 Margin="0,10,0,0"
                 ColumnDefinitions="*,Auto">
               <TextBlock
-                  Text="Changes apply to the next recording. Unavailable capabilities remain visibly locked."
+                  x:Name="SettingsFooterHint"
+                  Text="Changes apply to the next recording."
                   Classes="micro"
                   VerticalAlignment="Center" />
               <TextBlock

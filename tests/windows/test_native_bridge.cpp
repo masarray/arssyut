@@ -119,7 +119,7 @@ int main()
     require(
         arssyut_bridge_abi_version() ==
             ARSSYUT_BRIDGE_ABI_VERSION &&
-            ARSSYUT_BRIDGE_ABI_VERSION == 10,
+            ARSSYUT_BRIDGE_ABI_VERSION == 11,
         "bridge ABI version mismatch");
 
     require(
@@ -624,6 +624,16 @@ int main()
         snapshot.camera_zoom >= 1.0f,
         "default camera zoom must be valid");
 
+    ArssyutBridgeAudioMeterV1 meter{};
+    meter.struct_size = sizeof(meter);
+    require(arssyut_bridge_audio_meter(bridge, 0, 0, &meter) ==
+            ARSSYUT_BRIDGE_OK, "inactive meter fails");
+    require(meter.microphone_left == 0 && meter.system_left == 0,
+            "inactive meter not zero");
+    require(arssyut_bridge_audio_meter(bridge, 0, 4U, &meter) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT, "unknown meter flags accepted");
+    require(arssyut_bridge_audio_meter(bridge, 0, 2U, &meter) !=
+            ARSSYUT_BRIDGE_OK, "invalid mic token accepted");
     // P6UI.4B command semantics: stale tokens and unsupported inputs must
     // fail before the recorder starts, rather than silently selecting another
     // source or pretending an unavailable media stream was recorded.
@@ -644,6 +654,8 @@ int main()
         ARSSYUT_BRIDGE_START_SHORTCUT_KEYS;
     invalid_start.presenter_zoom =
         2.0f;
+    invalid_start.system_gain = 1.0f;
+    invalid_start.microphone_gain = 1.0f;
 
     invalid_start.hold_zoom_modifiers =
         0x80000000U;
@@ -716,6 +728,21 @@ int main()
         "Spotlight dim strength above the bounded product range must be rejected");
 
     invalid_start.spotlight_dim_strength = 0.38f;
+    invalid_start.microphone_gain = -0.1f;
+    require(arssyut_bridge_recorder_start(bridge, &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+            "negative microphone attenuation must fail closed");
+    invalid_start.microphone_gain = 1.0f;
+    invalid_start.system_gain = 1.01f;
+    require(arssyut_bridge_recorder_start(bridge, &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+            "system gain above unity must fail closed");
+    invalid_start.system_gain = 1.0f;
+    invalid_start.microphone_muted = 2;
+    require(arssyut_bridge_recorder_start(bridge, &invalid_start) ==
+            ARSSYUT_BRIDGE_INVALID_ARGUMENT,
+            "invalid mute flag must fail closed");
+    invalid_start.microphone_muted = 0;
     require(
         arssyut_bridge_recorder_start(
             bridge,

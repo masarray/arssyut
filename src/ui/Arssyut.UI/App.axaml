@@ -10,6 +10,8 @@
         <ResourceInclude Source="/Design/ArColors.axaml" />
         <ResourceInclude Source="/Design/ArTokens.axaml" />
         <ResourceInclude Source="/Design/ArTypography.axaml" />
+        <ResourceInclude Source="/Design/MaterialSymbolsCapture.axaml" />
+        <ResourceInclude Source="/Design/MaterialSymbolsActions.axaml" />
       </ResourceDictionary.MergedDictionaries>
 
       <!-- Override Fluent's default blue state layer with Arssyut recording red. -->

@@ -1,4 +1,12 @@
-# Arssyut
+<p align="center">
+  <img src="assets/favicon/android-chrome-192x192.png" alt="Arssyut product logo" width="76" height="76" />
+</p>
+
+<h1 align="center">Arssyut</h1>
+
+<p align="center">Windows screen recorder · Native capture · Precision presentation</p>
+
+<p align="center"><a href="https://github.com/masarray/arssyut/releases">Downloads</a> · <a href="index.html">Product landing</a> · <a href="docs/ROADMAP.md">Engineering roadmap</a></p>
 
 Arssyut is a Windows-first, lightweight screen recorder designed for polished tutorials, software demonstrations, engineering walkthroughs, and product presentations.
 
@@ -94,17 +102,21 @@ Implemented on the production path:
 
 See `docs/P0_FOUNDATION.md` for ownership and acceptance gates.
 
-## Status
+## Current release readiness
 
-**P0 accepted. P1 implementation is in validation.**
+The Avalonia Windows GUI (`Arssyut.UI.exe`) is the active product, not the
+earlier native probe or the legacy Win32 shell. Display/Window/Region capture,
+presentation controls, persistent Settings, and the video-only portable build
+have native Windows CI coverage.
 
-P1 adds the real Windows Graphics Capture path, a fixed three-slot latest-frame
-handoff, canonical 30/60 FPS scheduling, GPU-only crop/scale compositing,
-non-blocking CPU/GPU latency instrumentation, and the recoverable session
-manifest boundary.
+Microphone/System Audio stereo capture, 48 kHz canonical mixing, A/V timeline
+integration, and click/keycap sounds are available only in the **internal
+hardware acceptance** build. This is not yet a public audio-enabled release.
+Real-device acceptance for concurrent Mic + System, long sessions, repeated
+Start/Stop, and output MP4 synchronization is still required before publishing
+an audio-enabled stable installer.
 
-CI also publishes `arssyut_p1_probe.exe` for direct desktop validation. See
-`docs/P1_NATIVE_CAPTURE.md`.
-
-P2 (audio/encoder/MP4) begins only after the P1 capture path is accepted on a
-real interactive Windows desktop.
+For the latest verified artifacts see [GitHub Actions](https://github.com/masarray/arssyut/actions).
+The portable GUI runs by double-clicking `Arssyut.UI.exe` (no CMD).
+Windows installer candidate packaging is **manual only** until those release
+gates pass. See [Windows packaging](packaging/windows/README.md).

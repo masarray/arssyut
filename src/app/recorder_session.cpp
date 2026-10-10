@@ -2,6 +2,10 @@
 
 #ifdef _WIN32
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+#include "app/audio_product_runtime.hpp"
+#endif
+
 #include "core/result/status.hpp"
 #include "platform/windows/capture/latest_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
@@ -18,6 +22,8 @@
 #include <chrono>
 #include <fstream>
 #include <iomanip>
+#include <memory>
+#include <new>
 #include <sstream>
 #include <system_error>
 #include <utility>
@@ -252,6 +258,11 @@ Status RecorderSession::start(
         return Status::failure(
             StatusCode::InvalidArgument);
     }
+
+#if !defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    if (config.audio_microphone || config.audio_system)
+        return Status::failure(StatusCode::Unsupported);
+#endif
 
     // Product mode is the single public visual authority. Always rebuild the
     // internal P5A/P5B grade from the mode so UI/config callers cannot drift
@@ -662,10 +673,46 @@ void RecorderSession::worker_main() noexcept
     writer_config.bitrate_bps =
         config_.bitrate_bps;
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    // This is the SAME RecorderSession worker as video/MF. Preparing pins
+    // default/explicit devices once, starts the existing WASAPI wrappers and
+    // checks readiness before opening the one AV Sink Writer.
+    std::unique_ptr<audio::ProductAudioRuntime> audio_runtime;
+    if (config_.audio_microphone || config_.audio_system) {
+        audio_runtime.reset(new (std::nothrow) audio::ProductAudioRuntime);
+        if (!audio_runtime) {
+            fail(Status::failure(StatusCode::InternalError));
+            state_.store(RecorderState::Failed, std::memory_order_release);
+            return;
+        }
+        const audio::AudioEndpointRequest request{
+            .microphone = config_.audio_microphone,
+            .system_audio = config_.audio_system,
+            .microphone_id = config_.audio_microphone_id,
+            .system_audio_id = config_.audio_system_id,
+        };
+        const auto preflight = audio_runtime->prepare(request);
+        if (!preflight.ok()) {
+            fail(preflight);
+            state_.store(RecorderState::Failed, std::memory_order_release);
+            return;
+        }
+    }
+#endif
+
     Status status = writer.open(
         device->device(),
         config_.output_path,
-        writer_config);
+        writer_config
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        , arssyut::windows::MfAudioWriterConfig{
+              .enabled = static_cast<bool>(audio_runtime),
+              .sample_rate = 48'000,
+              .channels = 2,
+              .bitrate_bps = 192'000
+          }
+#endif
+    );
     if (!status.ok()) {
         encoder_failure_stage_.store(
             writer.failure_stage(),
@@ -710,6 +757,20 @@ void RecorderSession::worker_main() noexcept
             std::memory_order_release);
         return;
     }
+
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    if (audio_runtime) {
+        audio_writer_enabled_.store(
+            writer.audio_enabled(), std::memory_order_relaxed);
+        status = audio_runtime->writer_opened();
+        if (!status.ok()) {
+            fail(status);
+            (void)writer.finalize();
+            state_.store(RecorderState::Failed, std::memory_order_release);
+            return;
+        }
+    }
+#endif
 
     const bool presentation_enabled =
         config_.presentation.needs_presentation_frames();
@@ -939,6 +1000,10 @@ void RecorderSession::worker_main() noexcept
                !stop_requested_.load(
                    std::memory_order_acquire) &&
                !capture.source_closed()) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime)
+                audio_runtime->discard_preroll();
+#endif
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(1));
         }
@@ -992,6 +1057,12 @@ void RecorderSession::worker_main() noexcept
     status = pipeline->reset_timeline(
         start,
         config_.frame_rate);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    if (status.ok() && audio_runtime)
+        status = audio_runtime->begin(start.ticks_100ns,
+            config_.audio_microphone_gain, config_.audio_microphone_muted,
+            config_.audio_system_gain, config_.audio_system_muted);
+#endif
     if (!status.ok()) {
         fail(status);
         presentation_input.stop();
@@ -1091,9 +1162,24 @@ void RecorderSession::worker_main() noexcept
         overview_gate;
 
     bool failed = false;
+    std::uint32_t consecutive_video_backpressure = 0;
 
     while (!stop_requested_.load(
         std::memory_order_acquire)) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        // Keep the AAC mux timeline fed BEFORE reserving another MF video
+        // surface. Audio-only work is bounded; video-only retains its
+        // existing due-work and timing path unchanged.
+        if (audio_runtime) {
+            const auto audio_status =
+                audio_runtime->service(MonotonicClock::now(), writer);
+            if (!audio_status.ok()) {
+                fail(audio_status);
+                failed = true;
+                break;
+            }
+        }
+#endif
         const TimePoint now =
             MonotonicClock::now();
 
@@ -1188,6 +1274,11 @@ void RecorderSession::worker_main() noexcept
                         click_x,
                         click_y,
                         click_event.time);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+                    if (audio_runtime && config_.presentation.click_visual)
+                        audio_runtime->record_click(
+                            click_event.kind, click_event.time.ticks_100ns);
+#endif
                 }
             }
 
@@ -1197,6 +1288,11 @@ void RecorderSession::worker_main() noexcept
                 presentation_controller.on_shortcut(
                     shortcut_event.chord,
                     shortcut_event.time);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+                if (audio_runtime && config_.presentation.shortcut_keys)
+                    audio_runtime->record_keycap(
+                        shortcut_event.time.ticks_100ns);
+#endif
             }
 
             const auto pointer =
@@ -1299,6 +1395,14 @@ void RecorderSession::worker_main() noexcept
                 diagnostics_.increment(
                     DiagnosticMetric::
                         EncoderFramesBackpressured);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+                if (audio_runtime && ++consecutive_video_backpressure >= 30) {
+                    fail(Status::failure(
+                        StatusCode::EncoderBackpressure, 0xA002));
+                    failed = true;
+                    break;
+                }
+#endif
             } else if (!write_status.ok()) {
                 diagnostics_.increment(
                     DiagnosticMetric::
@@ -1310,6 +1414,7 @@ void RecorderSession::worker_main() noexcept
                 failed = true;
                 break;
             } else {
+                consecutive_video_backpressure = 0;
                 diagnostics_.increment(
                     DiagnosticMetric::
                         EncoderFramesSubmitted);
@@ -1439,9 +1544,55 @@ void RecorderSession::worker_main() noexcept
     presentation_input.stop();
     capture.stop();
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    if (audio_runtime) {
+        const auto audio_status =
+            audio_runtime->finish(recording_stopped, writer);
+        if (!audio_status.ok() && !failed) {
+            fail(audio_status);
+            failed = true;
+        }
+    }
+#endif
+
     state_.store(
         RecorderState::Finalizing,
         std::memory_order_release);
+
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    // A successful video MP4 is NOT a successful audio recording.
+    // Fail the session if Mic/System was selected but the sole writer
+    // never accepted a single AAC input sample.
+    if (audio_runtime) {
+        const auto audio_samples = writer.submitted_audio_samples();
+        audio_samples_submitted_.store(
+            audio_samples, std::memory_order_relaxed);
+        audio_frames_submitted_.store(
+            writer.submitted_audio_frames(), std::memory_order_relaxed);
+        const auto captured_span = static_cast<std::uint64_t>(
+            (std::max)(std::int64_t{0},
+                recording_stopped.ticks_100ns - start.ticks_100ns));
+        const auto audio_span = core::audio::frames_to_ticks_floor(
+            writer.submitted_audio_frames(), 48'000);
+        // A 170 ms AAC fragment does not qualify as a successful
+        // 22-second recording. A/V must cover the real session.
+        if ((!writer.audio_enabled() || audio_samples == 0 ||
+             (captured_span > 20'000'000ULL &&
+              audio_span < (captured_span * 8ULL) / 10ULL)) &&
+            !failed) {
+            fail(Status::failure(StatusCode::PlatformFailure, 0xA001));
+            failed = true;
+        }
+        const auto expected_video =
+            (captured_span * config_.frame_rate.numerator) /
+            (10'000'000ULL * config_.frame_rate.denominator);
+        if (!failed && captured_span > 20'000'000ULL &&
+            writer.submitted_frames() < (expected_video * 8ULL) / 10ULL) {
+            fail(Status::failure(StatusCode::EncoderBackpressure, 0xA003));
+            failed = true;
+        }
+    }
+#endif
 
     const std::uint64_t writer_submitted =
         writer.submitted_frames();
@@ -1597,6 +1748,19 @@ void RecorderSession::write_diagnostics(
             << "  \"fps_num\": " << config_.frame_rate.numerator << ",\n"
             << "  \"fps_den\": " << config_.frame_rate.denominator << ",\n"
             << "  \"bitrate_bps\": " << config_.bitrate_bps << ",\n"
+            << "  \"audio_microphone_requested\": "
+            << (config_.audio_microphone ? "true" : "false") << ",\n"
+            << "  \"audio_system_requested\": "
+            << (config_.audio_system ? "true" : "false") << ",\n"
+            << "  \"audio_writer_enabled\": "
+            << (audio_writer_enabled_.load(std::memory_order_relaxed)
+                ? "true" : "false") << ",\n"
+            << "  \"audio_samples_submitted\": "
+            << audio_samples_submitted_.load(std::memory_order_relaxed)
+            << ",\n"
+            << "  \"audio_frames_submitted\": "
+            << audio_frames_submitted_.load(std::memory_order_relaxed)
+            << ",\n"
             << "  \"encoder_h264_profile\": \""
             << arssyut::windows::mf_h264_profile_name(
                    encoder_profile)

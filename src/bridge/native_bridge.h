@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 10;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 11;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -186,6 +186,29 @@ struct ArssyutBridgeStartRequestV1 {
     std::uint32_t spotlight_motion;
     float spotlight_dim_strength;
     std::uint32_t reserved2;
+    // ABI v11 attenuation/mute snapshot, applied to the NEXT session.
+    float system_gain;
+    float microphone_gain;
+    std::uint32_t system_muted;
+    std::uint32_t microphone_muted;
+};
+
+// Additive ABI v10 endpoint-level peak monitor. Read-only; never records,
+// remixes, processes or intercepts PCM. A mono endpoint reports 1 channel.
+struct ArssyutBridgeAudioMeterV1 {
+    std::uint32_t struct_size;
+    std::uint32_t system_channels;
+    std::uint32_t microphone_channels;
+    std::uint32_t reserved;
+    float system_left;
+    float system_right;
+    float microphone_left;
+    float microphone_right;
+};
+
+enum ArssyutBridgeAudioMeterFlags : std::uint32_t {
+    ARSSYUT_BRIDGE_METER_SYSTEM = 1U << 0U,
+    ARSSYUT_BRIDGE_METER_MICROPHONE = 1U << 1U,
 };
 
 struct ArssyutBridgeRecorderResultV1 {
@@ -333,6 +356,14 @@ std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_snapshot(
     ArssyutBridgeHandle handle,
     ArssyutBridgeRecorderSnapshotV1 *snapshot) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_audio_meter(
+    ArssyutBridgeHandle handle,
+    std::uint64_t microphone_device_token,
+    std::uint32_t flags,
+    ArssyutBridgeAudioMeterV1 *meter) noexcept;
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL

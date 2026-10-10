@@ -8,8 +8,15 @@
 #include "app/recorder_ui_model.hpp"
 #include "app/region_geometry.hpp"
 #include "app/source_catalog.hpp"
+#include "core/audio/audio_input_peak.hpp"
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+#include "platform/windows/audio/wasapi_microphone_source.hpp"
+#endif
 
 #include <Windows.h>
+#include <endpointvolume.h>
+#include <mmdeviceapi.h>
+#include <wrl/client.h>
 #include <ShlObj.h>
 
 #include <algorithm>
@@ -46,6 +53,12 @@ struct NativeBridgeContext final {
     std::vector<DeviceChoice> cameras;
     std::uint32_t source_generation = 0;
     std::uint32_t device_generation = 0;
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    // Preview only: never owns or supplies RecorderSession audio.
+    std::mutex preview_mutex;
+    arssyut::windows::WasapiMicrophoneSource preview_mic;
+    std::uint64_t preview_token = 0;
+#endif
 
     // Exactly one native recorder authority for the Avalonia application
     // lifetime. Finished sessions are joined and replaced before a later start.
@@ -396,6 +409,43 @@ to_visual_mode(
                 ArVisualProductMode::
                     PixelAccurate;
     }
+}
+
+
+[[nodiscard]] bool read_endpoint_peak(
+    IMMDevice *device,
+    std::uint32_t &channels,
+    float &left,
+    float &right) noexcept
+{
+    channels = 0;
+    left = 0.0f;
+    right = 0.0f;
+    if (!device)
+        return false;
+
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IAudioMeterInformation> meter;
+    const HRESULT activate = device->Activate(
+        __uuidof(IAudioMeterInformation), CLSCTX_ALL,
+        nullptr, reinterpret_cast<void **>(meter.GetAddressOf()));
+    if (FAILED(activate) || !meter)
+        return false;
+
+    UINT count = 0;
+    if (FAILED(meter->GetMeteringChannelCount(&count)) ||
+        count == 0 || count > 32)
+        return false;
+
+    float peaks[32]{};
+    if (FAILED(meter->GetChannelsPeakValues(count, peaks)))
+        return false;
+    channels = count;
+    left = std::clamp(peaks[0], 0.0f, 1.0f);
+    // A mono device has no right-hand input channel. Never synthesize a
+    // stereo channel or alter the independent recorder's sample format.
+    right = count > 1 ? std::clamp(peaks[1], 0.0f, 1.0f) : 0.0f;
+    return true;
 }
 
 void fill_snapshot(
@@ -1019,6 +1069,10 @@ arssyut_bridge_destroy(
 
     shutdown_overlay_context(
         *context);
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    { std::lock_guard lock(context->preview_mutex);
+      context->preview_mic.stop(); context->preview_token = 0; }
+#endif
     delete context;
 }
 
@@ -1443,6 +1497,11 @@ arssyut_bridge_refresh_devices(
     if (!context)
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    // All device tokens change generation on refresh.
+    { std::lock_guard lock(context->preview_mutex);
+      context->preview_mic.stop(); context->preview_token = 0; }
+#endif
     try {
         auto microphones =
             arssyut::app::
@@ -1604,26 +1663,46 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
     }
 
+    if (!std::isfinite(request->system_gain) ||
+        !std::isfinite(request->microphone_gain) ||
+        request->system_gain < 0.0f || request->system_gain > 1.0f ||
+        request->microphone_gain < 0.0f || request->microphone_gain > 1.0f ||
+        request->system_muted > 1 || request->microphone_muted > 1)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
     if (request->capture_mode ==
         ARSSYUT_BRIDGE_CAPTURE_GAME) {
         return ARSSYUT_BRIDGE_UNSUPPORTED;
     }
 
-    constexpr std::uint32_t unsupported_input_flags =
+    // Only an explicitly marked INTERNAL product-on build permits real
+    // hardware audio acceptance. Public/default video-only builds still
+    // reject Mic/System requests and Camera is never silently accepted.
+    constexpr std::uint32_t audio_flags =
         ARSSYUT_BRIDGE_START_SYSTEM_AUDIO |
-        ARSSYUT_BRIDGE_START_MICROPHONE |
-        ARSSYUT_BRIDGE_START_CAMERA;
-
-    if ((request->flags &
-         unsupported_input_flags) != 0) {
-        // P6R.3/P6R.4 own these media backends. Never silently claim they were
-        // recorded while only the video recorder is active.
+        ARSSYUT_BRIDGE_START_MICROPHONE;
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    wchar_t preview_value[2]{};
+    const bool audio_preview_allowed =
+        GetEnvironmentVariableW(
+            L"ARSSYUT_AUDIO_PREVIEW", preview_value, 2) == 1 &&
+        preview_value[0] == L'1';
+    const std::uint32_t unsupported_input_flags =
+        ARSSYUT_BRIDGE_START_CAMERA |
+        (audio_preview_allowed ? 0U : audio_flags);
+#else
+    constexpr std::uint32_t unsupported_input_flags =
+        ARSSYUT_BRIDGE_START_CAMERA | audio_flags;
+#endif
+    if ((request->flags & unsupported_input_flags) != 0)
         return ARSSYUT_BRIDGE_UNSUPPORTED;
-    }
 
     try {
         std::unique_ptr<RecorderSession> previous;
         RecorderTarget target;
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        std::wstring microphone_id;
+#endif
         RegionCropMapping region_mapping{};
         bool have_region_mapping = false;
 
@@ -1648,6 +1727,23 @@ arssyut_bridge_recorder_start(
             target =
                 *resolved;
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if ((request->flags & ARSSYUT_BRIDGE_START_MICROPHONE) != 0 &&
+                request->microphone_device_token != 0) {
+                std::uint32_t generation = 0;
+                std::uint32_t index = 0;
+                if (!decode_token(request->microphone_device_token,
+                                  generation, index) ||
+                    generation != context->device_generation ||
+                    index >= context->microphones.size())
+                    return ARSSYUT_BRIDGE_STALE_TOKEN;
+
+                // Resolve to the concrete IMMDevice ID, never the UI label.
+                microphone_id = context->microphones[index].id;
+                if (microphone_id.empty())
+                    return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+            }
+#endif
             if (request->capture_mode ==
                 ARSSYUT_BRIDGE_CAPTURE_REGION) {
                 if (!ensure_region_mapping_locked(
@@ -1725,6 +1821,20 @@ arssyut_bridge_recorder_start(
             to_visual_mode(
                 request->visual_mode);
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        config.audio_microphone =
+            (request->flags & ARSSYUT_BRIDGE_START_MICROPHONE) != 0;
+        config.audio_system =
+            (request->flags & ARSSYUT_BRIDGE_START_SYSTEM_AUDIO) != 0;
+        config.audio_microphone_id = std::move(microphone_id);
+        config.audio_system_gain = request->system_gain;
+        config.audio_microphone_gain = request->microphone_gain;
+        config.audio_system_muted = request->system_muted != 0;
+        config.audio_microphone_muted = request->microphone_muted != 0;
+        // The eConsole render endpoint is pinned once during Preparing.
+        // Current bridge V1 intentionally has no render-device token field.
+#endif
+
         config.presentation.smart_zoom =
             (request->flags &
              ARSSYUT_BRIDGE_START_SMART_ZOOM) != 0;
@@ -1777,6 +1887,11 @@ arssyut_bridge_recorder_start(
             static_cast<std::uint8_t>(
                 request->overview_peek_modifiers);
 
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        // Never compete with the authoritative recording capture client.
+        { std::lock_guard lock(context->preview_mutex);
+          context->preview_mic.stop(); context->preview_token = 0; }
+#endif
         auto recorder =
             std::make_unique<
                 RecorderSession>();
@@ -1958,6 +2073,121 @@ arssyut_bridge_recorder_snapshot(
         *snapshot);
 
     return ARSSYUT_BRIDGE_OK;
+}
+
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_audio_meter(
+    ArssyutBridgeHandle handle,
+    std::uint64_t microphone_device_token,
+    std::uint32_t flags,
+    ArssyutBridgeAudioMeterV1 *meter) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !meter ||
+        meter->struct_size < sizeof(ArssyutBridgeAudioMeterV1) ||
+        (flags & ~(ARSSYUT_BRIDGE_METER_SYSTEM |
+                   ARSSYUT_BRIDGE_METER_MICROPHONE)) != 0)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    *meter = ArssyutBridgeAudioMeterV1{};
+    meter->struct_size = sizeof(ArssyutBridgeAudioMeterV1);
+#if !defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+    return flags == 0 ? ARSSYUT_BRIDGE_OK : ARSSYUT_BRIDGE_UNSUPPORTED;
+#else
+    bool active = false;
+    {
+        std::lock_guard lock(context->mutex);
+        active = context->recorder &&
+            active_state(context->recorder->snapshot().state);
+    }
+    if ((flags & ARSSYUT_BRIDGE_METER_MICROPHONE) == 0 || active) {
+        std::lock_guard lock(context->preview_mutex);
+        context->preview_mic.stop();
+        context->preview_token = 0;
+    }
+    if (flags == 0)
+        return ARSSYUT_BRIDGE_OK;
+
+    // Render endpoint peak API remains authoritative for System Audio:
+    // unlike many eCapture virtual endpoints, this works before recording.
+    if ((flags & ARSSYUT_BRIDGE_METER_SYSTEM) != 0) {
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        if (SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE) {
+            struct ComGuard {
+                bool owns;
+                ~ComGuard() { if (owns) CoUninitialize(); }
+            } guard{SUCCEEDED(hr)};
+            using Microsoft::WRL::ComPtr;
+            ComPtr<IMMDeviceEnumerator> en;
+            if (SUCCEEDED(CoCreateInstance(
+                    __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                    IID_PPV_ARGS(en.GetAddressOf())))) {
+                ComPtr<IMMDevice> device;
+                if (SUCCEEDED(en->GetDefaultAudioEndpoint(
+                        eRender, eConsole, device.GetAddressOf()))) {
+                    (void)read_endpoint_peak(device.Get(),
+                        meter->system_channels,
+                        meter->system_left, meter->system_right);
+                }
+            }
+        }
+    }
+
+    if (active || (flags & ARSSYUT_BRIDGE_METER_MICROPHONE) == 0)
+        return ARSSYUT_BRIDGE_OK;
+
+    std::wstring id;
+    {
+        std::lock_guard lock(context->mutex);
+        std::uint32_t generation = 0, index = 0;
+        if (!decode_token(microphone_device_token, generation, index) ||
+            generation != context->device_generation ||
+            index >= context->microphones.size())
+            return ARSSYUT_BRIDGE_STALE_TOKEN;
+        try {
+            id = context->microphones[index].id;
+        } catch (...) {
+            return ARSSYUT_BRIDGE_INTERNAL_ERROR;
+        }
+    }
+    if (id.empty())
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
+    // eCapture IAudioMeterInformation can be permanently zero for VB-Cable.
+    // A bounded shared-mode preview uses exactly the accepted WASAPI source
+    // and reads raw native PCM packets. No channel mixing, gain or filters.
+    std::lock_guard lock(context->preview_mutex);
+    if (context->preview_token != microphone_device_token) {
+        context->preview_mic.stop();
+        context->preview_token = 0;
+        arssyut::windows::WasapiMicrophoneOptions opts{};
+        opts.queue_capacity = 32;
+        opts.packet_pool_capacity = 32;
+        if (!context->preview_mic.start(std::move(id), opts).ok())
+            return ARSSYUT_BRIDGE_OK;
+        context->preview_token = microphone_device_token;
+    }
+
+    const auto snapshot = context->preview_mic.snapshot();
+    if (snapshot.state != arssyut::windows::WasapiMicrophoneState::Running) {
+        context->preview_mic.stop();
+        context->preview_token = 0;
+        return ARSSYUT_BRIDGE_OK;
+    }
+    arssyut::core::audio::AudioInputPeak peak{};
+    for (std::uint32_t i = 0; i < 32; ++i) {
+        arssyut::windows::WasapiPacketLease lease;
+        if (!context->preview_mic.try_pop(lease))
+            break;
+        (void)arssyut::core::audio::accumulate_input_peak(
+            lease.packet(), lease.payload(), peak);
+    }
+    meter->microphone_channels = peak.channels;
+    meter->microphone_left = peak.left;
+    meter->microphone_right = peak.right;
+    return ARSSYUT_BRIDGE_OK;
+#endif
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL

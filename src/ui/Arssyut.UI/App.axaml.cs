@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using Arssyut.UI.Interop;
 using Arssyut.UI.Preview;
 
@@ -95,17 +96,31 @@ public sealed partial class App : Application
                         loadError);
                 }
 
-                previewSettings.PersistentSettingsChanged +=
-                    (_, _) =>
-                    {
-                        if (!hotkeyStore.TrySave(
-                                previewSettings,
-                                out var saveError))
-                        {
-                            Debug.WriteLine(
-                                saveError);
-                        }
-                    };
+                // Debounce bursty Settings UI changes into one atomic JSON
+                // write, flush once more at graceful application exit.
+                var persistTimer = new DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(450)
+                };
+                var pendingChanges = false;
+                void Persist()
+                {
+                    persistTimer.Stop();
+                    if (!pendingChanges)
+                        return;
+                    if (hotkeyStore.TrySave(previewSettings, out var error))
+                        pendingChanges = false;
+                    else
+                        Debug.WriteLine(error);
+                }
+                persistTimer.Tick += (_, _) => Persist();
+                previewSettings.PersistentSettingsChanged += (_, _) =>
+                {
+                    pendingChanges = true;
+                    persistTimer.Stop();
+                    persistTimer.Start();
+                };
+                desktop.Exit += (_, _) => Persist();
             }
 
             var bridgeRequired =

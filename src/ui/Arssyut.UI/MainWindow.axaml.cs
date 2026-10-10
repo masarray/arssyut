@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly NativeBridgeAvailability _bridgeAvailability;
     private readonly bool _stressLongNames;
     private readonly bool _allowInteractionPreview;
+    private readonly bool _audioHardwarePreview;
     private readonly DispatcherTimer _hotkeyTimer;
     private readonly IBrush _recordBrush;
     private readonly IBrush _recordHoverBrush;
@@ -75,8 +76,48 @@ public sealed partial class MainWindow : Window
         _stressLongNames = stressLongNames;
         _allowInteractionPreview =
             allowInteractionPreview;
+        // This never enables audio in the public/default artifact.
+        // The native bridge independently enforces product-on + opt-in.
+        _audioHardwarePreview =
+            nativeBridge is not null &&
+            !allowInteractionPreview &&
+            string.Equals(
+                Environment.GetEnvironmentVariable("ARSSYUT_AUDIO_PREVIEW"),
+                "1", StringComparison.Ordinal);
+
+        _microphoneDevice = _settings.MicrophoneDevice;
+        _cameraDevice = _settings.CameraDevice;
+        if (Enum.TryParse<PreviewCaptureMode>(
+                _settings.CaptureMode, out var previousMode) &&
+            previousMode != PreviewCaptureMode.Game)
+            _captureMode = previousMode;
+
+        if (_audioHardwarePreview)
+        {
+            _systemAudioEnabled = _settings.SystemAudioEnabled;
+            _session.MicrophoneEnabled = _settings.MicrophoneEnabled;
+        }
 
         InitializeComponent();
+
+        ModeDisplay.IsChecked = _captureMode == PreviewCaptureMode.Display;
+        ModeWindow.IsChecked = _captureMode == PreviewCaptureMode.Window;
+        ModeRegion.IsChecked = _captureMode == PreviewCaptureMode.Region;
+
+        MicrophoneDeviceComboMain.SelectionChanged += (_, _) =>
+        {
+            if (!_audioHardwarePreview ||
+                MicrophoneDeviceComboMain.SelectedItem is not ComboBoxItem
+                {
+                    Tag: NativeDeviceItem selected
+                })
+                return;
+
+            _microphoneDevice = selected.Name;
+            _microphoneDeviceToken = selected.Token;
+            _settings.MicrophoneDevice = selected.Name;
+            RefreshInputLabels();
+        };
 
         _recordBrush =
             ArBrushResolver.Require(
@@ -244,6 +285,16 @@ public sealed partial class MainWindow : Window
         object? sender,
         EventArgs e)
     {
+        if (_audioHardwarePreview && !_allowInteractionPreview)
+        {
+            // Shared persisted source authority: Settings toggles and main
+            // toolbar toggles always reflect the same next-session flags.
+            _systemAudioEnabled = _settings.SystemAudioEnabled;
+            _session.MicrophoneEnabled = _settings.MicrophoneEnabled;
+            RefreshInputLabels();
+            UpdateAudioMeters();
+        }
+
         RefreshSettingsSurface();
         SyncGlobalHotkeys();
     }
@@ -260,13 +311,20 @@ public sealed partial class MainWindow : Window
             var settings =
                 new SettingsWindow(
                     _settings,
-                    _nativeBridge)
+                    _nativeBridge,
+                    audioSessionLocked: _lastNativeSnapshot?.State is
+                        NativeRecorderState.Preparing or NativeRecorderState.Armed or
+                        NativeRecorderState.Recording or NativeRecorderState.Stopping or
+                        NativeRecorderState.Finalizing)
                 {
                     WindowStartupLocation =
                         WindowStartupLocation.CenterOwner
                 };
 
             await settings.ShowDialog(this);
+            // Rebind persisted choice by CURRENT token generation after
+            // dialog; it must not refresh devices or create stale tokens.
+            RebindSettingsMicrophone();
         }
         finally
         {
@@ -331,7 +389,10 @@ public sealed partial class MainWindow : Window
         var previousId =
             keepCurrentSelection
                 ? _selectedSource?.Id
-                : null;
+                : _selectedSource is null &&
+                  string.Equals(_settings.CaptureMode,
+                      _captureMode.ToString(), StringComparison.Ordinal)
+                    ? _settings.CaptureSourceId : null;
 
         _sources.Clear();
 
@@ -372,6 +433,14 @@ public sealed partial class MainWindow : Window
 
         RebuildSourceFlyout();
         ApplySelectedSource();
+        SaveCapturePreference();
+    }
+
+    private void SaveCapturePreference()
+    {
+        if (!_allowInteractionPreview)
+            _settings.SetCaptureChoice(_captureMode.ToString(),
+                _selectedSource?.Id);
     }
 
     private void RebuildSourceFlyout()
@@ -562,6 +631,7 @@ public sealed partial class MainWindow : Window
 
         RebuildSourceFlyout();
         ApplySelectedSource();
+        SaveCapturePreference();
         SourcePickerButton.Flyout?.Hide();
     }
 
@@ -586,6 +656,8 @@ public sealed partial class MainWindow : Window
                 "Native source unavailable";
             SourceSubtitle.Text =
                 BridgeUnavailableMessage();
+            SourceSubtitle.IsVisible = true;
+            ToolTip.SetTip(SourcePickerButton, BridgeUnavailableMessage());
             SourceIcon.Kind =
                 LucideIconKind.Monitor;
             UpdateRecordAvailability();
@@ -609,11 +681,16 @@ public sealed partial class MainWindow : Window
         SourceTitle.Text =
             _selectedSource.Title;
 
+        // The Display title already carries monitor/resolution/primary.
+        // Keep the technical descriptor discoverable, not duplicated.
         SourceSubtitle.Text =
-            _captureMode ==
-                    PreviewCaptureMode.Region
+            _captureMode == PreviewCaptureMode.Region
                 ? $"{_selectedSource.Subtitle} · native area editor active"
                 : _selectedSource.Subtitle;
+        SourceSubtitle.IsVisible =
+            _captureMode != PreviewCaptureMode.Display;
+        ToolTip.SetTip(SourcePickerButton,
+            $"{_selectedSource.Title}\n{_selectedSource.Subtitle}");
 
         if (_nativeBridge is not null)
         {
@@ -637,17 +714,45 @@ public sealed partial class MainWindow : Window
                 {
                     SourceSubtitle.Text =
                         $"{_selectedSource.Subtitle} · overlay status {overlayStatus}";
+                    SourceSubtitle.IsVisible = true;
                 }
             }
             catch (Exception)
             {
                 SourceSubtitle.Text =
                     $"{_selectedSource.Subtitle} · native overlay unavailable";
+                SourceSubtitle.IsVisible = true;
             }
         }
 
         UpdateRecordAvailability();
         UpdateReadyDetail();
+    }
+
+    private void RebindSettingsMicrophone()
+    {
+        if (_nativeBridge is null) return;
+        try
+        {
+            var available = _nativeBridge.SnapshotDevices().Microphones;
+            var matched = available
+                .Where(d => string.Equals(d.Name,
+                    _settings.MicrophoneDevice, StringComparison.Ordinal))
+                .ToArray();
+            if (matched.Length != 1) return;
+            _microphoneDevice = matched[0].Name;
+            _microphoneDeviceToken = matched[0].Token;
+            var index = available
+                .Select((device, position) => (device, position))
+                .Where(item => item.device.Token == matched[0].Token)
+                .Select(item => item.position).First();
+            MicrophoneDeviceComboMain.SelectedIndex = index;
+            if (index < _microphoneOptions.Length)
+                SelectDeviceOption(_microphoneOptions,
+                    _microphoneOptions[index]);
+            RefreshInputLabels();
+        }
+        catch (Exception) { /* Keep the last verified device. */ }
     }
 
     private void RefreshNativeDevices()
@@ -668,30 +773,54 @@ public sealed partial class MainWindow : Window
                 _cameraOptions,
                 devices.Cameras);
 
+            // Preserve the user's selection across an MMDevice refresh.
+            // Tokens have a new generation after refresh, so pin the new
+            // token by a uniquely matched displayed device name.
+            var selectedMicIndex = 0;
+            if (!string.IsNullOrEmpty(_microphoneDevice))
+            {
+                var matches = devices.Microphones
+                    .Select((device, index) => (device, index))
+                    .Where(item => string.Equals(
+                        item.device.Name, _microphoneDevice,
+                        StringComparison.Ordinal))
+                    .ToArray();
+                if (matches.Length == 1)
+                    selectedMicIndex = matches[0].index;
+            }
             ApplyReadOnlyDeviceCombo(
                 MicrophoneDeviceComboMain,
                 devices.Microphones,
-                "No microphone detected");
+                "No microphone detected",
+                selectedMicIndex);
 
             if (devices.Microphones.Count > 0)
             {
                 _microphoneDevice =
-                    devices.Microphones[0].Name;
+                    devices.Microphones[selectedMicIndex].Name;
                 _microphoneDeviceToken =
-                    devices.Microphones[0].Token;
+                    devices.Microphones[selectedMicIndex].Token;
+            }
+            else
+            {
+                _microphoneDeviceToken = 0;
             }
 
+            var cameraIndex = devices.Cameras
+                .Select((device, index) => (device, index))
+                .Where(item => string.Equals(item.device.Name,
+                    _cameraDevice, StringComparison.Ordinal))
+                .Select(item => item.index)
+                .DefaultIfEmpty(0).First();
             ApplyReadOnlyDeviceCombo(
                 CameraDeviceComboMain,
                 devices.Cameras,
-                "No camera detected");
+                "No camera detected", cameraIndex);
 
             if (devices.Cameras.Count > 0)
             {
-                _cameraDevice =
-                    devices.Cameras[0].Name;
-                _cameraDeviceToken =
-                    devices.Cameras[0].Token;
+                _cameraDevice = devices.Cameras[cameraIndex].Name;
+                _cameraDeviceToken = devices.Cameras[cameraIndex].Token;
             }
         }
         catch (Exception)
@@ -704,7 +833,8 @@ public sealed partial class MainWindow : Window
     private static void ApplyReadOnlyDeviceCombo(
         ComboBox combo,
         IReadOnlyList<NativeDeviceItem> devices,
-        string emptyText)
+        string emptyText,
+        int selectedIndex = 0)
     {
         combo.Items.Clear();
 
@@ -724,11 +854,15 @@ public sealed partial class MainWindow : Window
             combo.Items.Add(
                 new ComboBoxItem
                 {
-                    Content = device.Name
+                    Content = device.Name,
+                    Tag = device
                 });
         }
 
-        combo.SelectedIndex = 0;
+        combo.SelectedIndex = selectedIndex >= 0 &&
+            selectedIndex < devices.Count
+                ? selectedIndex
+                : 0;
     }
 
     private static void ApplyNativeDeviceButtons(
@@ -815,6 +949,8 @@ public sealed partial class MainWindow : Window
         _microphoneDevice = name;
         _microphoneDeviceToken =
             device?.Token ?? 0;
+        if (!_allowInteractionPreview)
+            _settings.MicrophoneDevice = name;
         SelectDeviceOption(
             _microphoneOptions,
             selected);
@@ -854,8 +990,15 @@ public sealed partial class MainWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
+        if (!_allowInteractionPreview && !_audioHardwarePreview)
+            return;
+
         _systemAudioEnabled =
             SystemAudioToggle.IsChecked == true;
+        if (!_allowInteractionPreview)
+            _settings.SetAudioPreferences(
+                _systemAudioEnabled, _session.MicrophoneEnabled);
+        RefreshInputLabels();
         UpdateReadyDetail();
     }
 
@@ -863,9 +1006,16 @@ public sealed partial class MainWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
+        if (!_allowInteractionPreview && !_audioHardwarePreview)
+            return;
+
         _session.MicrophoneEnabled =
             MicToggle.IsChecked == true;
+        if (!_allowInteractionPreview)
+            _settings.SetAudioPreferences(
+                _systemAudioEnabled, _session.MicrophoneEnabled);
         RefreshInputLabels();
+        UpdateReadyDetail();
     }
 
     private void CameraToggle_OnClick(
@@ -891,7 +1041,7 @@ public sealed partial class MainWindow : Window
 
     private void RefreshInputLabels()
     {
-        if (!_allowInteractionPreview)
+        if (!_allowInteractionPreview && !_audioHardwarePreview)
         {
             SystemAudioToggle.IsChecked =
                 false;
@@ -938,6 +1088,9 @@ public sealed partial class MainWindow : Window
             _session.MicrophoneEnabled;
         CameraToggle.IsChecked =
             _session.CameraEnabled;
+        // ComboBox truncation is intentional in the compact audio card.
+        // The full native device name must remain accessible on hover.
+        ToolTip.SetTip(MicrophoneDeviceComboMain, _microphoneDevice);
     }
 
     private void RefreshSettingsSurface()
@@ -952,10 +1105,53 @@ public sealed partial class MainWindow : Window
         UpdateReadyDetail();
     }
 
+
+    // Main and Settings use the exact same per-source post-fader mapping.
+    // Input peaks come from native WASAPI; gain/mute are applied by the
+    // existing canonical PCM mixer when the next session starts.
+    private void UpdateAudioMeters()
+    {
+        if (!_audioHardwarePreview || _nativeBridge is null || !IsVisible)
+            return;
+
+        try
+        {
+            var meter = _nativeBridge.AudioMeter(
+                _microphoneDeviceToken, _systemAudioEnabled,
+                _session.MicrophoneEnabled);
+            var systemL = RecordedAudioMeter.PostFaderPeak(
+                meter.SystemLeft, _systemAudioEnabled,
+                _settings.SystemMixPercent, _settings.SystemMixMuted);
+            var systemR = RecordedAudioMeter.PostFaderPeak(
+                meter.SystemRight, _systemAudioEnabled && meter.SystemChannels > 1,
+                _settings.SystemMixPercent, _settings.SystemMixMuted);
+            var micL = RecordedAudioMeter.PostFaderPeak(
+                meter.MicrophoneLeft, _session.MicrophoneEnabled,
+                _settings.MicrophoneMixPercent, _settings.MicrophoneMixMuted);
+            var micR = RecordedAudioMeter.PostFaderPeak(
+                meter.MicrophoneRight, _session.MicrophoneEnabled &&
+                meter.MicrophoneChannels > 1,
+                _settings.MicrophoneMixPercent, _settings.MicrophoneMixMuted);
+
+            SystemLevelL.Height = 0.55 * RecordedAudioMeter.DisplayPercent(systemL);
+            SystemLevelR.Height = 0.55 * RecordedAudioMeter.DisplayPercent(systemR);
+            MicrophoneLevelL.Height = 0.55 * RecordedAudioMeter.DisplayPercent(micL);
+            MicrophoneLevelR.Height = 0.55 * RecordedAudioMeter.DisplayPercent(micR);
+        }
+        catch (Exception)
+        {
+            // No fake activity or stale levels when endpoint disconnects.
+            SystemLevelL.Height = SystemLevelR.Height = 0;
+            MicrophoneLevelL.Height = MicrophoneLevelR.Height = 0;
+        }
+    }
+
     private void GlobalHotkeyTimer_OnTick(
         object? sender,
         EventArgs e)
     {
+        // The meter is useful before any recording or hotkey registration.
+        UpdateAudioMeters();
         if (_nativeBridge is null ||
             _registeredHotkeys.Count == 0 ||
             _settingsOpen)
@@ -1316,7 +1512,11 @@ public sealed partial class MainWindow : Window
                         _settings.PresenterZoom,
                         _settings.SpotlightSize,
                         _settings.SpotlightMotion,
-                        _settings.SpotlightDimStrength));
+                        _settings.SpotlightDimStrength,
+                        _settings.SystemMixPercent / 100.0f,
+                        _settings.MicrophoneMixPercent / 100.0f,
+                        _settings.SystemMixMuted,
+                        _settings.MicrophoneMixMuted));
         }
         catch (Exception)
         {
@@ -1580,8 +1780,10 @@ public sealed partial class MainWindow : Window
                 else
                 {
                     ShowCommandFeedback(
-                        "Input backend pending",
-                        "Disable System audio, Microphone and Camera to record video now. Their real backends remain scheduled work.");
+                        "Audio unavailable",
+                        _audioHardwarePreview
+                            ? "Selected audio device is unavailable or the native bridge is not an experimental FFmpeg build."
+                            : "System audio, Microphone and Camera require the experimental audio build; public release remains video-only.");
                 }
                 break;
 
@@ -1617,6 +1819,7 @@ public sealed partial class MainWindow : Window
         string title,
         string detail)
     {
+        StatusDetail.IsVisible = true;
         StatusDot.Fill =
             _warningBrush;
         StatusText.Foreground =
@@ -1756,6 +1959,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        StatusDetail.IsVisible = true;
         RefreshInputLabels();
 
         switch (_session.Phase)
@@ -1815,6 +2019,7 @@ public sealed partial class MainWindow : Window
     private void ApplyNativeSessionState(
         NativeRecorderSnapshot snapshot)
     {
+        StatusDetail.IsVisible = true;
         _lastNativeSnapshot =
             snapshot;
 
@@ -1945,6 +2150,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyNativeReadyState()
     {
+        StatusDetail.IsVisible = false;
         StatusDot.Fill =
             _successBrush;
         StatusText.Foreground =
@@ -1966,6 +2172,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyEngineUnavailableState()
     {
+        StatusDetail.IsVisible = true;
         StatusDot.Fill =
             _warningBrush;
         StatusText.Foreground =
@@ -2000,8 +2207,63 @@ public sealed partial class MainWindow : Window
 
     private void ApplyProductCapabilitySurface()
     {
+        // The public build is deliberately video-only. Hardware acceptance
+        // binaries, however, record real WASAPI audio, so a static
+        // "backend pending" tooltip is misleading and is NOT acceptable.
+        // Keep this capability-derived instead of relying on XAML defaults.
+        if (_audioHardwarePreview)
+        {
+            ToolTip.SetTip(SystemAudioToggle,
+                "Record sound from the Windows default playback device.");
+            ToolTip.SetTip(MicToggle,
+                "Record audio from the selected microphone.");
+            ToolTip.SetTip(MicrophoneDeviceComboMain,
+                "Choose the microphone to use for the recording.");
+        }
+        else if (_allowInteractionPreview)
+        {
+            ToolTip.SetTip(SystemAudioToggle,
+                "Audio controls are a visual preview; no audio is recorded.");
+            ToolTip.SetTip(MicToggle,
+                "Audio controls are a visual preview; no audio is recorded.");
+            ToolTip.SetTip(MicrophoneDeviceComboMain,
+                "Device selection is simulated in interaction preview.");
+        }
+        else
+        {
+            ToolTip.SetTip(SystemAudioToggle,
+                "System audio recording is unavailable in this build.");
+            ToolTip.SetTip(MicToggle,
+                "Microphone recording is unavailable in this build.");
+            ToolTip.SetTip(MicrophoneDeviceComboMain,
+                "Microphone selection is unavailable in this build.");
+        }
+
         if (_allowInteractionPreview)
             return;
+
+        if (_audioHardwarePreview)
+        {
+            // Deliberate hardware acceptance only, not a default release.
+            // Mic selection is the actual MMDevice token, not fake examples.
+            SystemAudioToggle.IsEnabled = true;
+            MicToggle.IsEnabled = true;
+            MicrophoneDeviceComboMain.IsEnabled =
+                _microphoneDeviceToken != 0;
+            // Once chosen, preserve these flags until the user changes them
+            // (never rewrite them on Ready/Saved UI refresh).
+            RefreshInputLabels();
+            SystemAudioDeviceComboMain.IsEnabled = false;
+            CameraToggle.IsChecked = false;
+            CameraToggle.IsEnabled = false;
+            CameraDeviceButton.IsEnabled = false;
+            CameraDeviceComboMain.IsEnabled = false;
+            CameraDeviceChevron.IsVisible = false;
+            foreach (var option in _cameraOptions)
+                option.IsVisible = false;
+            UpdateRecordAvailability();
+            return;
+        }
 
         _systemAudioEnabled =
             false;
@@ -2082,51 +2344,19 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var source =
-            _captureMode switch
-            {
-                PreviewCaptureMode.Window =>
-                    "Window",
-                PreviewCaptureMode.Region =>
-                    "Region",
-                PreviewCaptureMode.Game =>
-                    "Game",
-                _ =>
-                    "Display"
-            };
-
-        if (_nativeBridge is null &&
-            !_allowInteractionPreview)
+        // Ready is self-explanatory; source, quality and hotkeys already
+        // have their own controls. Preserve detail only for actual errors,
+        // progress and saved-file outcomes, never repetitive static prose.
+        if (_nativeBridge is null && !_allowInteractionPreview)
         {
-            StatusDetail.Text =
-                BridgeUnavailableMessage();
-            return;
+            StatusDetail.Text = BridgeUnavailableMessage();
+            StatusDetail.IsVisible = true;
         }
-
-        var bridge =
-            _nativeBridge is null
-                ? "UI preview only"
-                : "native engine ready";
-
-        var inputState =
-            _allowInteractionPreview &&
-            (_systemAudioEnabled ||
-             _session.MicrophoneEnabled ||
-             _session.CameraEnabled)
-                ? "preview inputs"
-                : "video ready";
-
-        var hotkey =
-            _nativeBridge is not null &&
-            !_allowInteractionPreview
-                ? IsHotkeyRegistered(
-                      NativeHotkeyAction.ToggleRecord)
-                    ? $"global {_settings.RecordHotkey}"
-                    : $"{_settings.RecordHotkey} unavailable"
-                : _settings.RecordHotkey;
-
-        StatusDetail.Text =
-            $"{source} · {bridge} · {inputState} · {_settings.FrameRate} fps · {VisualStyleLabel()} · Zoom {(_settings.SmartZoom ? "on" : "off")} · {hotkey}";
+        else
+        {
+            StatusDetail.Text = string.Empty;
+            StatusDetail.IsVisible = false;
+        }
     }
 
     private static string FormatNativeElapsed(

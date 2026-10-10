@@ -138,6 +138,22 @@ inline constexpr GUID kArssyutAudioSlot = {
 
 } // namespace
 
+HRESULT configure_mf_audio_sample_discontinuity(
+    IMFSample *sample,
+    bool discontinuity) noexcept
+{
+    if (!sample)
+        return E_POINTER;
+
+    // A fresh sample is created for every attempt. Do not turn this into
+    // a sticky writer state; only a requested boundary carries the flag.
+    if (!discontinuity)
+        return S_OK;
+
+    return sample->SetUINT32(
+        MFSampleExtension_Discontinuity, TRUE);
+}
+
 Status configure_mf_aac_output_type(
     IMFMediaType *type,
     MfAudioWriterConfig config) noexcept
@@ -851,12 +867,9 @@ Status MfH264Mp4Writer::open(
             MfWriterStage::CreateSurfacePool,
             status);
 
-    status = create_audio_pool();
-    if (!status.ok())
-        return fail_status(
-            MfWriterStage::CreateAudioSample,
-            status);
-
+    // PCM16 samples have independent COM buffers: an AAC encoder may
+    // retain more than eight inputs for codec lookahead/interleaving.
+    // Permanent shared PCM buffers must not be recycled prematurely.
     auto *callback =
         new (std::nothrow) ReleaseCallback(this);
     if (!callback)
@@ -873,6 +886,7 @@ Status MfH264Mp4Writer::open(
 
     submitted_frames_.store(0, std::memory_order_release);
     submitted_audio_samples_.store(0, std::memory_order_release);
+    dynamic_audio_in_flight_.store(0, std::memory_order_release);
     submitted_audio_frames_.store(0, std::memory_order_release);
     audio_backpressure_events_.store(0, std::memory_order_release);
     backpressure_events_.store(0, std::memory_order_release);
@@ -1379,14 +1393,19 @@ void MfH264Mp4Writer::release_audio_slot(
 void MfH264Mp4Writer::on_audio_sample_released(
     std::uint32_t slot) noexcept
 {
-    release_audio_slot(
-        static_cast<std::size_t>(slot));
+    if (slot == (std::numeric_limits<std::uint32_t>::max)()) {
+        dynamic_audio_in_flight_.fetch_sub(
+            1, std::memory_order_acq_rel);
+        return;
+    }
+    release_audio_slot(static_cast<std::size_t>(slot));
 }
 
 std::uint32_t
 MfH264Mp4Writer::in_flight_audio_samples() const noexcept
 {
-    std::uint32_t count = 0;
+    std::uint32_t count = dynamic_audio_in_flight_.load(
+        std::memory_order_acquire);
     for (std::size_t i = 0;
          i < audio_config_.sample_pool_count;
          ++i) {
@@ -1608,7 +1627,8 @@ Status MfH264Mp4Writer::write_frame(
 Status MfH264Mp4Writer::write_audio_pcm16(
     std::span<const std::int16_t> interleaved,
     arssyut::core::TimePoint relative_pts,
-    std::int64_t duration_ticks) noexcept
+    std::int64_t duration_ticks,
+    bool discontinuity) noexcept
 {
     if (!open_ ||
         !audio_enabled_ ||
@@ -1669,39 +1689,35 @@ Status MfH264Mp4Writer::write_audio_pcm16(
         return Status::failure(StatusCode::InvalidArgument);
     }
 
-    const std::size_t slot =
-        acquire_audio_slot();
-    if (slot >= max_audio_slot_count) {
+    // Bounded dynamic ownership: default max 8*16=128 independent
+    // 1024-frame samples (<512 KiB PCM); never reuse a buffer that
+    // Media Foundation still owns. Fail explicitly if the MFT stalls.
+    const std::uint32_t max_queued = audio_config_.sample_pool_count * 16U;
+    if (dynamic_audio_in_flight_.load(
+            std::memory_order_acquire) >= max_queued) {
         audio_backpressure_events_.fetch_add(
-            1,
-            std::memory_order_relaxed);
-        return Status::failure(
-            StatusCode::EncoderBackpressure);
+            1, std::memory_order_relaxed);
+        return Status::failure(StatusCode::EncoderBackpressure);
     }
-
-    auto fail_slot =
-        [this, slot](
-            MfWriterStage stage,
-            HRESULT hr) noexcept -> Status {
-            failure_stage_.store(
-                stage,
-                std::memory_order_release);
-            release_audio_slot(slot);
-            return mf_failure(hr);
-        };
-
-    auto &buffer =
-        audio_slots_[slot].buffer;
-    if (!buffer) {
-        return fail_slot(
+    Microsoft::WRL::ComPtr<IMFMediaBuffer> buffer;
+    HRESULT hr = MFCreateMemoryBuffer(
+        static_cast<DWORD>(byte_count), buffer.GetAddressOf());
+    if (FAILED(hr) || !buffer) {
+        failure_stage_.store(
             MfWriterStage::CreateAudioSample,
-            E_UNEXPECTED);
+            std::memory_order_release);
+        return mf_failure(FAILED(hr) ? hr : E_OUTOFMEMORY);
     }
+    const auto fail_sample =
+        [this](MfWriterStage stage, HRESULT error) noexcept -> Status {
+            failure_stage_.store(stage, std::memory_order_release);
+            return mf_failure(error);
+        };
 
     BYTE *destination = nullptr;
     DWORD max_length = 0;
     DWORD current_length = 0;
-    HRESULT hr =
+    hr =
         buffer->Lock(
             &destination,
             &max_length,
@@ -1711,7 +1727,7 @@ Status MfH264Mp4Writer::write_audio_pcm16(
         max_length < byte_count) {
         if (SUCCEEDED(hr))
             (void)buffer->Unlock();
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             FAILED(hr) ? hr : E_UNEXPECTED);
     }
@@ -1723,7 +1739,7 @@ Status MfH264Mp4Writer::write_audio_pcm16(
 
     hr = buffer->Unlock();
     if (FAILED(hr)) {
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             hr);
     }
@@ -1731,7 +1747,7 @@ Status MfH264Mp4Writer::write_audio_pcm16(
     hr = buffer->SetCurrentLength(
         static_cast<DWORD>(byte_count));
     if (FAILED(hr)) {
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             hr);
     }
@@ -1740,7 +1756,7 @@ Status MfH264Mp4Writer::write_audio_pcm16(
     hr = MFCreateTrackedSample(
         tracked.GetAddressOf());
     if (FAILED(hr)) {
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             hr);
     }
@@ -1748,7 +1764,7 @@ Status MfH264Mp4Writer::write_audio_pcm16(
     Microsoft::WRL::ComPtr<IMFSample> sample;
     hr = tracked.As(&sample);
     if (FAILED(hr) || !sample) {
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             FAILED(hr) ? hr : E_NOINTERFACE);
     }
@@ -1756,16 +1772,16 @@ Status MfH264Mp4Writer::write_audio_pcm16(
     hr = sample->AddBuffer(
         buffer.Get());
     if (FAILED(hr)) {
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             hr);
     }
 
     hr = sample->SetUINT32(
         kArssyutAudioSlot,
-        static_cast<UINT32>(slot));
+        (std::numeric_limits<UINT32>::max)());
     if (FAILED(hr)) {
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             hr);
     }
@@ -1773,7 +1789,7 @@ Status MfH264Mp4Writer::write_audio_pcm16(
     hr = sample->SetSampleTime(
         relative_pts.ticks_100ns);
     if (FAILED(hr)) {
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             hr);
     }
@@ -1781,7 +1797,17 @@ Status MfH264Mp4Writer::write_audio_pcm16(
     hr = sample->SetSampleDuration(
         duration_ticks);
     if (FAILED(hr)) {
-        return fail_slot(
+        return fail_sample(
+            MfWriterStage::CreateAudioSample,
+            hr);
+    }
+
+    // Canonical gaps (writer drop, endpoint loss or source discontinuity)
+    // must be visible to the AAC transform. Never rebase media timestamps.
+    hr = configure_mf_audio_sample_discontinuity(
+        sample.Get(), discontinuity);
+    if (FAILED(hr)) {
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             hr);
     }
@@ -1790,11 +1816,13 @@ Status MfH264Mp4Writer::write_audio_pcm16(
         release_callback_.Get(),
         nullptr);
     if (FAILED(hr)) {
-        return fail_slot(
+        return fail_sample(
             MfWriterStage::CreateAudioSample,
             hr);
     }
 
+    dynamic_audio_in_flight_.fetch_add(
+        1, std::memory_order_acq_rel);
     hr = writer_->WriteSample(
         audio_stream_index_,
         sample.Get());

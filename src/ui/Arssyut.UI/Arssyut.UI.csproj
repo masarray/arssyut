@@ -10,7 +10,13 @@
     <PublishTrimmed>false</PublishTrimmed>
     <InvariantGlobalization>false</InvariantGlobalization>
     <AssemblyName>Arssyut.UI</AssemblyName>
+    <!-- One canonical icon source, identical for normal portable and internal audio builds. -->
+    <ApplicationIcon>..\..\..\assets\favicon\favicon.ico</ApplicationIcon>
     <RootNamespace>Arssyut.UI</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(InternalAudioPreview)' == 'true'">
+    <DefineConstants>$(DefineConstants);ARSSYUT_INTERNAL_AUDIO_PREVIEW</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +24,14 @@
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.3" />
     <PackageReference Include="Lucide.Avalonia" Version="0.2.23" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Avalonia title/window icons and product logo derive from canonical repo assets. -->
+    <AvaloniaResource Include="..\..\..\assets\favicon\favicon.ico"
+                     Link="Assets\favicon.ico" />
+    <AvaloniaResource Include="..\..\..\assets\favicon\android-chrome-192x192.png"
+                     Link="Assets\ArssyutLogo.png" />
   </ItemGroup>
 
   <ItemGroup Condition="Exists('Native\arssyut_native_bridge.dll')">
