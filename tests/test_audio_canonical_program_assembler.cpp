@@ -153,6 +153,52 @@ void stale_silent_and_reset(Test &t)
             "new recording generation discards old output and telemetry");
 }
 
+
+void loopback_resume_after_silence(Test &t)
+{
+    auto assembler = std::make_unique<CanonicalProgramAssembler>();
+    assembler->reset(kZero, true, true);
+    std::array<float, 2 * 256> microphone{};
+    std::array<float, 2 * 1024> initial_system{};
+    std::array<float, 2 * 1024> resumed_system{};
+    microphone.fill(0.10F);
+    initial_system.fill(0.20F);
+    resumed_system.fill(0.30F);
+
+    // Audio source is initially buffered, then Windows loopback can jump
+    // forward when YouTube starts playback after several seconds of silence.
+    t.check(assembler->offer(AudioSourceId::SystemAudio, 0, initial_system,
+                             1024) == CanonicalProgramOfferStatus::Applied &&
+            assembler->offer(AudioSourceId::SystemAudio, 192000, resumed_system,
+                             1024, true) == CanonicalProgramOfferStatus::Applied,
+            "Loopback QPC gap is accepted without a fabricated PCM bridge");
+
+    AudioProgramBlock block{};
+    std::uint64_t first = 0;
+    for (std::uint64_t n = 0; n < 188; ++n) {
+        t.check(assembler->close_one_due(due(n)) &&
+                assembler->try_take(block, first) &&
+                first == n * 1024,
+                "Canonical video/audio interval remains monotonically timed");
+        if (n == 0) {
+            t.check(block.audio.samples[0] == 0.20F,
+                    "Initial system audio still renders");
+        } else if (n == 1) {
+            t.check(block.audio.source_presence_mask == 0 &&
+                    block.audio.samples[0] == 0.0F,
+                    "Actual loopback silence is not filled with replayed audio");
+        } else if (n == 187) {
+            // Block 187 begins at frame 191488; resumed frame 192000 is
+            // exactly 512 frames into this canonical interval.
+            t.check(block.audio.samples[511 * 2] == 0.0F &&
+                    block.audio.samples[512 * 2] == 0.30F &&
+                    (block.audio.discontinuity_mask &
+                        source_presence_bit(AudioSourceId::SystemAudio)) != 0,
+                    "YouTube onset is mixed at exact QPC frame and marked");
+        }
+    }
+}
+
 void invalid_and_noncontiguous(Test &t)
 {
     auto a = std::make_unique<CanonicalProgramAssembler>();
@@ -184,6 +230,7 @@ int main()
     mixed_dual_source(t);
     queue_pressure_discontinuity(t);
     stale_silent_and_reset(t);
+    loopback_resume_after_silence(t);
     invalid_and_noncontiguous(t);
     if (t.failures != 0) {
         std::cerr << "FAIL: " << t.failures << '/' << t.checks
