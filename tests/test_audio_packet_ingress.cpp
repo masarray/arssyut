@@ -358,7 +358,7 @@ void test_real_discontinuity_softens_onset_only(Test &t) {
             frames_to_ticks_floor(static_cast<std::uint64_t>(i+1)*1024,48'000))) &&
             assembler->try_take(out,absolute),
             "Future sparse audio island eventually closes");
-        if (i==3) {
+        if (i==4) {
             t.check(out.audio.samples[704*2] > 0.0F &&
                     out.audio.samples[704*2] < 0.02F &&
                     out.audio.samples[(704+95)*2]==0.75F,
