@@ -3,6 +3,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     x:Class="Arssyut.UI.MainWindow"
     Title="Arssyut"
+    Icon="avares://Arssyut.UI/Assets/favicon.ico"
     Width="1000"
     Height="334"
     MinWidth="920"
@@ -45,7 +46,10 @@
               Background="{DynamicResource ArBrush.Selection}"
               BorderBrush="{DynamicResource ArBrush.RecordStroke}"
               BorderThickness="1">
-            <PathIcon Data="{StaticResource MsVideo}" Width="13" Height="13" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.Record}" />
+            <Image Source="avares://Arssyut.UI/Assets/ArssyutLogo.png"
+                   Width="19" Height="19" Stretch="Uniform"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   AutomationProperties.Name="Arssyut product logo" />
           </Border>
 
           <StackPanel Spacing="0" VerticalAlignment="Center">

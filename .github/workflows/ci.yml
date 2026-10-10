@@ -498,6 +498,13 @@ jobs:
         run: |
           $package = Join-Path $PWD "dist/arssyut-p6ui"
           $exe = Join-Path $package "Arssyut.UI.exe"
+          # The portable EXE must carry the official Windows icon resource.
+          Add-Type -AssemblyName System.Drawing
+          $peIcon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
+          if ($null -eq $peIcon) {
+            throw "Portable Arssyut.UI.exe has no embedded application icon."
+          }
+          $peIcon.Dispose()
           $externalBridge = Join-Path $package "arssyut_native_bridge.dll"
 
           if (-not (Test-Path $exe)) {

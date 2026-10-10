@@ -1,0 +1,85 @@
+name: Windows Installer Candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-installer-candidate:
+    name: Portable and Inno candidate (video-only release contract)
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exactly the selected commit
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Configure and compile safe default native bridge
+        shell: pwsh
+        run: |
+          cmake --preset windows-x64
+          cmake --build --preset windows-release --target arssyut_native_bridge --parallel
+
+      - name: Stage one native bridge for the same portable binary
+        shell: pwsh
+        run: |
+          $native = Join-Path $PWD 'src/ui/Arssyut.UI/Native'
+          New-Item -ItemType Directory -Force -Path $native | Out-Null
+          Copy-Item 'build/windows-x64/Release/arssyut_native_bridge.dll' (Join-Path $native 'arssyut_native_bridge.dll') -Force
+
+      - name: Publish signed-icon portable GUI (video-only capability)
+        shell: pwsh
+        run: |
+          dotnet publish src/ui/Arssyut.UI/Arssyut.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o dist/arssyut-portable
+          if ($LASTEXITCODE -ne 0) { throw 'Portable publish failed.' }
+          $exe = Join-Path $PWD 'dist/arssyut-portable/Arssyut.UI.exe'
+          if (-not (Test-Path $exe)) { throw 'Main Windows GUI executable missing.' }
+          if (Test-Path (Join-Path $PWD 'dist/arssyut-portable/arssyut_native_bridge.dll')) {
+            throw 'Native bridge escaped single-file package.'
+          }
+          Add-Type -AssemblyName System.Drawing
+          $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
+          if ($null -eq $icon) { throw 'Missing embedded Windows executable icon.' }
+          $icon.Dispose()
+          Get-ChildItem 'dist/arssyut-portable' -Filter '*.pdb' -ErrorAction SilentlyContinue | Remove-Item -Force
+          Copy-Item docs/P6UI_THIRD_PARTY_NOTICES.md dist/arssyut-portable/THIRD_PARTY_NOTICES.md
+
+      - name: Install Inno Setup compiler (candidate packaging only)
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed.' }
+
+      - name: Package the SAME portable directory as Inno installer
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'Inno ISCC.exe not found.' }
+          $publish = (Resolve-Path 'dist/arssyut-portable').Path
+          & $iscc '/Qp' '/DAppVersion=0.1.0-preview' "/DAppPublishDir=$publish" packaging/windows/Arssyut.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno candidate compilation failed.' }
+          if (-not (Get-ChildItem dist/installer -Filter 'Arssyut-Setup-*.exe' -ErrorAction SilentlyContinue)) {
+            throw 'Installer output missing.'
+          }
+
+      - name: Upload portable Windows GUI
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-portable-video-only-win-x64
+          path: dist/arssyut-portable/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload unpromoted installer candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-inno-candidate-video-only-win-x64
+          path: dist/installer/Arssyut-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30

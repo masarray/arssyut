@@ -3,6 +3,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     x:Class="Arssyut.UI.SettingsWindow"
     Title="Arssyut Settings"
+    Icon="avares://Arssyut.UI/Assets/favicon.ico"
     Width="800"
     Height="560"
     MinWidth="760"

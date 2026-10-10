@@ -16,6 +16,46 @@ class UXContract(unittest.TestCase):
         cls.project = (UI / "Arssyut.UI.csproj").read_text(encoding="utf-8-sig")
         cls.workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8-sig")
 
+    def test_official_favicon_branding_and_release_gates(self):
+        import json
+        from xml.etree import ElementTree
+        favicon = ROOT / "assets/favicon"
+        for name in ("favicon.ico", "favicon-16x16.png", "favicon-32x32.png",
+                     "apple-touch-icon.png", "android-chrome-192x192.png",
+                     "android-chrome-512x512.png", "site.webmanifest"):
+            self.assertTrue((favicon / name).is_file(), name)
+        manifest = json.loads((favicon / "site.webmanifest").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["name"], "Arssyut")
+        self.assertTrue(all(not icon["src"].startswith("/")
+                            for icon in manifest["icons"]))
+        self.assertIn("<ApplicationIcon>", self.project)
+        self.assertIn("assets\\favicon\\favicon.ico", self.project)
+        self.assertIn('Link="Assets\\ArssyutLogo.png"', self.project)
+        self.assertIn('Icon="avares://Arssyut.UI/Assets/favicon.ico"', self.xaml)
+        self.assertIn('Source="avares://Arssyut.UI/Assets/ArssyutLogo.png"',
+                      self.xaml)
+        self.assertIn('Icon="avares://Arssyut.UI/Assets/favicon.ico"',
+                      (UI / "SettingsWindow.axaml").read_text(encoding="utf-8"))
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn('src="assets/favicon/android-chrome-192x192.png"', readme)
+        landing = (ROOT / "index.html").read_text(encoding="utf-8")
+        for url in ("assets/favicon/favicon.ico",
+                    "assets/favicon/favicon-32x32.png",
+                    "assets/favicon/apple-touch-icon.png",
+                    "assets/favicon/site.webmanifest",
+                    "assets/favicon/android-chrome-512x512.png"):
+            self.assertIn(url, landing)
+        self.assertIn("Arssyut.UI.exe", landing)
+        installer = (ROOT / "packaging/windows/Arssyut.iss").read_text(encoding="utf-8")
+        self.assertIn("SetupIconFile=", installer)
+        self.assertIn("assets\\favicon\\favicon.ico", installer)
+        self.assertIn('"{app}\\Arssyut.UI.exe"', installer)
+        candidate = (ROOT / ".github/workflows/windows-installer-candidate.yml").read_text(encoding="utf-8")
+        self.assertIn("workflow_dispatch:", candidate)
+        self.assertNotIn("release: published", candidate)
+        self.assertIn("ExtractAssociatedIcon", self.workflow)
+        ElementTree.fromstring(self.project)
+
     def test_capture_workflow_and_saved_actions_preserved(self):
         for name in ("RecordButton", "SavedActions", "SystemAudioToggle",
                      "MicToggle", "MicrophoneDeviceComboMain", "CameraToggle"):
