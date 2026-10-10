@@ -36,8 +36,9 @@
   <main id="main">
     <div class="wrap page-intro">
       <p class="eyebrow">Official downloads · Windows x64</p>
+      <p class="fineprint">Portable launches Arssyut.UI.exe without a ZIP.</p>
       <h1>Get Arssyut.</h1>
-      <p>Choose a Setup EXE for installation or a Portable EXE that launches the Arssyut.UI.exe application directly, without extracting ZIP files. Webcam recording is not implemented yet.</p>
+      <p>Choose the Windows <strong>Setup EXE</strong> to install or the <strong>Portable EXE</strong> to run standalone, without extracting a ZIP. System audio and microphone recording are implemented; webcam recording is coming later.</p>
     </div>
     <section class="wrap download-layout" aria-label="Windows download options">
       <div class="download-panel">
@@ -50,13 +51,13 @@
             <a class="button primary" id="installer-link" href="https://github.com/masarray/arssyut/releases" rel="noopener noreferrer">Download installer ↗</a>
           </div>
           <div class="release-row" id="portable-row" hidden>
-            <div><h3>Portable ZIP</h3><p>Extract the ZIP, then double-click <strong>Arssyut.UI.exe</strong>. No Command Prompt needed.</p></div>
-            <a class="button subtle" id="portable-link" href="https://github.com/masarray/arssyut/releases" rel="noopener noreferrer">Download ZIP ↗</a>
+            <div><h3>Portable EXE</h3><p>A single standalone Windows executable. Download and run it directly—no ZIP or Command Prompt.</p></div>
+            <a class="button subtle" id="portable-link" href="https://github.com/masarray/arssyut/releases" rel="noopener noreferrer">Download portable EXE ↗</a>
           </div>
         </div>
         <div id="no-release">
-          <h3>Public release coming soon</h3>
-          <p>There is no published Windows download yet. We are validating the Windows recorder before publishing the first release. This page will show the installer and portable downloads automatically once they are officially published.</p>
+          <h3>Checking published Windows downloads</h3>
+          <p>Windows release assets are loaded from GitHub Releases. If the service cannot be reached, use the official GitHub Releases link below.</p>
           <a class="button subtle" href="https://github.com/masarray/arssyut/releases">View GitHub Releases ↗</a>
         </div>
         <p class="fineprint">Downloads are linked directly to official <a class="text-link" href="https://github.com/masarray/arssyut/releases">GitHub Releases</a>. No third-party download mirrors.</p>
@@ -65,14 +66,14 @@
         <div class="hint">
           <h3>Getting started</h3>
           <div class="steps">
-            <div class="step">Download a public installer or portable ZIP when available.</div>
-            <div class="step">Install or extract the files, then open <strong>Arssyut.UI.exe</strong>.</div>
+            <div class="step">Download the current Windows Setup EXE or standalone Portable EXE.</div>
+            <div class="step">Install the setup package or run the portable EXE directly.</div>
             <div class="step">Choose Display, Window or Region. Press <strong>Start</strong>, then stop to save your MP4.</div>
           </div>
         </div>
         <div class="hint">
-          <h3>Need audio?</h3>
-          <p>Microphone and system audio are still undergoing real-device testing. Audio-enabled builds are <strong>test builds</strong>, not stable public downloads. For testing information, see <a href="https://github.com/masarray/arssyut/actions">GitHub Actions</a>.</p>
+          <h3>Audio is included</h3>
+          <p>Record <strong>System Audio</strong> and <strong>Microphone</strong> with independent source controls and stereo level meters. <strong>Webcam recording is not implemented yet.</strong> Current downloads are clearly labeled as preview or stable by GitHub Releases.</p>
         </div>
         <div class="hint">
           <h3>Feedback &amp; help</h3>
@@ -84,9 +85,9 @@
       <div class="wrap">
         <h2>Common questions</h2>
         <details><summary>Which Windows versions are supported?</summary><p>Arssyut is built for Windows x64 and is being tested on Windows 10 and Windows 11. Hardware and Windows graphics capabilities can affect capture support.</p></details>
-        <details><summary>Should I choose the installer or portable ZIP?</summary><p>Choose the installer if you want Start menu integration. Choose the portable ZIP if you prefer to extract and run the app yourself. Both point to the official project releases when published.</p></details>
-        <details><summary>Can I record my microphone and system audio?</summary><p>Those features exist in a separate audio-enabled testing build, but have not yet completed public release acceptance. We will not label them stable before real-device validation is complete.</p></details>
-        <details><summary>Why are there no download buttons yet?</summary><p>We display official published GitHub Release files only. Preview releases are clearly labeled, while internal CI artifacts and drafts are never presented as public downloads.</p></details>
+        <details><summary>Should I choose Installer or Portable EXE?</summary><p>Choose the Setup EXE for Start menu integration, or the standalone Portable EXE to launch without installing. Both must come from the same official GitHub Release.</p></details>
+        <details><summary>Can I record my microphone and system audio?</summary><p>Yes. System audio and microphone recording are implemented in the audio-enabled Windows application, with source toggles and volume/mute controls. Webcam recording is not implemented yet.</p></details>
+        <details><summary>How do download buttons stay up to date?</summary><p>The page reads published GitHub Releases and links to the newest eligible Setup and Portable EXE files. Previews are labeled, and draft releases and internal CI artifacts are never represented as stable downloads.</p></details>
       </div>
     </section>
   </main>
