@@ -63,6 +63,7 @@ public:
         next_frame_ = 0;
         have_next_ = false;
         marked_discontinuity_ = false;
+        seam_ramp_remaining_ = 0;
         if (recorder_qpc_zero_100ns <= 0 ||
             !format.valid() || format.channels > kMaxNativeChannels ||
             format.sample_rate < 8'000 ||
@@ -130,14 +131,16 @@ public:
             normalized_.data() + first_sample,
             static_cast<std::size_t>(remaining) * input_format_.channels);
 
-        bool boundary =
-            mapped.discontinuity ||
-            has_flag(packet.flags, AudioPacketFlag::TimestampError);
-        // A real QPC jump is not permission to concatenate unrelated
-        // device samples on the old SRC cursor. Keep the mapper authoritative
-        // for the next anchor instead of hiding source stalls as continuity.
+        // TimestampError / host-QPC fallback means the absolute clock
+        // observation is UNTRUSTED, not that the PCM samples are missing.
+        // Hard-resetting the SRC on every degraded observation breaks filter
+        // continuity and creates broadband clicks in recorded system audio.
+        // While quality is degraded, retain the existing sample cursor.
+        // A real WASAPI discontinuity remains authoritative even when its
+        // packet also carries TimestampError.
+        bool boundary = mapped.discontinuity;
         constexpr std::int64_t kGapToleranceFrames = 960; // 20 ms
-        if (!boundary && have_next_) {
+        if (!boundary && have_next_ && mapped.drift_eligible) {
             const auto distance =
                 mapped.canonical_start_frame - next_frame_;
             if (distance > kGapToleranceFrames ||
@@ -150,6 +153,10 @@ public:
             drift_controller_.reset_for_discontinuity();
             have_next_ = false;
             marked_discontinuity_ = true;
+            // Apply only to the newly resumed source island, never normal
+            // PCM. A short fixed 2 ms fade suppresses the discontinuous
+            // zero->sample edge without allocating, stretching, or retiming.
+            seam_ramp_remaining_ = kSeamRampFrames;
         }
 
         double ppm = drift_controller_.snapshot().requested_resampler_ppm;
@@ -198,6 +205,24 @@ public:
         const std::int64_t first = next_frame_ + negative_trim;
         result.first_canonical_frame = first;
         result.discontinuity = marked_discontinuity_;
+        // De-click only the discontinuity island. Preserve the exact sample
+        // stream for steady-state mic/loopback and fully trusted timestamps.
+        // The ramp is carried across small source packets and committed only
+        // after a successful bounded-stage offer.
+        auto next_ramp = seam_ramp_remaining_;
+        if (next_ramp != 0) {
+            const auto count = (std::min)(emitted, next_ramp);
+            for (std::uint32_t i = 0; i < count; ++i) {
+                const float gain = static_cast<float>(
+                    kSeamRampFrames - next_ramp + i + 1U) /
+                    static_cast<float>(kSeamRampFrames);
+                const auto at = static_cast<std::size_t>(
+                    negative_trim + i) * 2U;
+                canonical_[at] *= gain;
+                canonical_[at + 1U] *= gain;
+            }
+            next_ramp -= count;
+        }
         const auto offer = assembler.offer(
             source_, first,
             std::span<const float>(
@@ -207,6 +232,7 @@ public:
         switch (offer) {
         case CanonicalProgramOfferStatus::Applied:
             next_frame_ += produced;
+            seam_ramp_remaining_ = next_ramp;
             marked_discontinuity_ = false;
             result.status = PacketIngressStatus::Applied;
             result.canonical_frames_emitted = emitted;
@@ -469,6 +495,9 @@ private:
     IAudioResampler *resampler_ = nullptr;
     AudioFormat input_format_{};
     AudioSourceId source_ = AudioSourceId::Microphone;
+    // 48 kHz * 2 ms. No filtering of otherwise contiguous program audio.
+    static constexpr std::uint32_t kSeamRampFrames = 96;
+    std::uint32_t seam_ramp_remaining_ = 0;
     std::int64_t next_frame_ = 0;
     bool have_next_ = false;
     bool marked_discontinuity_ = false;

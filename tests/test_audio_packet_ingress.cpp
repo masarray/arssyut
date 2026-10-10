@@ -272,6 +272,101 @@ void test_invalid_and_pre_zero(Test &t) {
     t.check(!input->ready(), "failed SRC consumes state and cannot be retried");
 }
 
+void test_untrusted_qpc_does_not_reset_continuous_system_audio(Test &t) {
+    auto assembler=std::make_unique<CanonicalProgramAssembler>();
+    auto input=std::make_unique<CanonicalPacketIngress>();
+    FakeResampler src;
+    assembler->reset(kZero,false,true);
+    t.check(input->configure(AudioSourceId::SystemAudio,kFloatStereo,kZero,src),
+        "Loopback source starts with one SRC and canonical clock");
+    std::array<float,2048> samples{};
+    samples.fill(0.25F);
+    const auto first=input->process_packet(packet(
+        AudioSourceId::SystemAudio,kFloatStereo,1024,kZero,0),
+        bytes(samples),*assembler);
+    t.check(first.status==PacketIngressStatus::Applied &&
+            first.first_canonical_frame==0,
+        "Initial loopback packet offered without reanchor");
+
+    // Device/QPC timestamp is explicitly unreliable. A 200ms host clock
+    // approximation is NOT proof of 200ms lost PCM or permission to reset
+    // the resampler while successive source packets remain available.
+    auto degraded=packet(AudioSourceId::SystemAudio,kFloatStereo,1024,
+        kZero+2'000'000,1024);
+    degraded.flags=AudioPacketFlag::TimestampError;
+    degraded.timing.quality=AudioTimestampQuality::HostQpcFallback;
+    const auto fallback=input->process_packet(degraded,bytes(samples),*assembler);
+    t.check(fallback.status==PacketIngressStatus::Applied &&
+            fallback.first_canonical_frame==1024 &&
+            !fallback.discontinuity && src.resets==0,
+        "TimestampError does not cause a 200ms playback jump or SRC reset");
+
+    const auto trusted=input->process_packet(packet(
+        AudioSourceId::SystemAudio,kFloatStereo,1024,
+        kZero+static_cast<std::int64_t>(frames_to_ticks_floor(2048,48'000)),
+        2048),bytes(samples),*assembler);
+    t.check(trusted.status==PacketIngressStatus::Applied &&
+            trusted.first_canonical_frame==2048 && src.resets==0,
+        "Clean device clock relock preserves continuous resampler state");
+
+    AudioProgramBlock output{};
+    std::uint64_t absolute=0;
+    for (std::uint64_t frame=0;frame<3072;frame+=1024) {
+        const auto due=kZero+static_cast<std::int64_t>(
+            frames_to_ticks_floor(frame+1024,48'000));
+        t.check(assembler->close_one_due(due) &&
+                assembler->try_take(output,absolute) &&
+                absolute==frame &&
+                output.audio.samples[0]==0.25F &&
+                output.audio.samples[2047]==0.25F,
+            "Normal PCM remains bit-exact across degraded timestamp recovery");
+    }
+}
+void test_real_discontinuity_softens_onset_only(Test &t) {
+    auto assembler=std::make_unique<CanonicalProgramAssembler>();
+    auto input=std::make_unique<CanonicalPacketIngress>();
+    FakeResampler src;
+    assembler->reset(kZero,false,true);
+    t.check(input->configure(AudioSourceId::SystemAudio,kFloatStereo,kZero,src),
+        "Gap source configured");
+    std::array<float,2048> data{};
+    data.fill(0.75F);
+    const auto a=input->process_packet(packet(AudioSourceId::SystemAudio,
+        kFloatStereo,1024,kZero),bytes(data),*assembler);
+    t.check(a.status==PacketIngressStatus::Applied && src.resets==0,
+        "Valid initial audio is unchanged");
+    t.check(assembler->close_one_due(kZero+static_cast<std::int64_t>(
+        frames_to_ticks_floor(1024,48'000))),"Initial interval closes");
+    AudioProgramBlock out{};
+    std::uint64_t absolute=0;
+    t.check(assembler->try_take(out,absolute) &&
+            out.audio.samples[0]==0.75F &&
+            out.audio.samples[2047]==0.75F,
+        "Normal system audio has no unintended ramp");
+    // WASAPI explicitly reports a real epoch break. Preserve the QPC gap,
+    // then ramp only the resumed 2ms island, not the entire song.
+    auto restart=packet(AudioSourceId::SystemAudio,
+        kFloatStereo,1024,kZero+1'000'000,1024);
+    restart.flags=AudioPacketFlag::Discontinuity;
+    restart.timing.quality=AudioTimestampQuality::Discontinuous;
+    const auto b=input->process_packet(restart,bytes(data),*assembler);
+    t.check(b.status==PacketIngressStatus::Applied &&
+            b.discontinuity && b.first_canonical_frame==4800 &&
+            src.resets==1,"True WASAPI clock break retains single QPC epoch");
+    for (int i=1;i<=4;++i) {
+        t.check(assembler->close_one_due(kZero+static_cast<std::int64_t>(
+            frames_to_ticks_floor(static_cast<std::uint64_t>(i+1)*1024,48'000))) &&
+            assembler->try_take(out,absolute),
+            "Future sparse audio island eventually closes");
+        if (i==3) {
+            t.check(out.audio.samples[704*2] > 0.0F &&
+                    out.audio.samples[704*2] < 0.02F &&
+                    out.audio.samples[(704+95)*2]==0.75F,
+                "Two-millisecond resumed PCM fade removes abrupt click");
+        }
+    }
+}
+
 void test_detect_trusted_qpc_gap(Test &t) {
     auto assembler=std::make_unique<CanonicalProgramAssembler>();
     auto input=std::make_unique<CanonicalPacketIngress>();
@@ -433,6 +528,8 @@ int main() {
     test_pcm16_mono_44100(t);
     test_invalid_and_pre_zero(t);
     test_detect_trusted_qpc_gap(t);
+    test_untrusted_qpc_does_not_reset_continuous_system_audio(t);
+    test_real_discontinuity_softens_onset_only(t);
 #ifdef _WIN32
     test_real_wasapi_lease_pipeline(t);
 #endif
