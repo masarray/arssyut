@@ -88,6 +88,12 @@ class PublicSiteContracts(unittest.TestCase):
         self.assertIn('aria-live="polite"', html)
         self.assertIn("releases?per_page=20", script)
         self.assertIn("browser_download_url", script)
+        self.assertIn("approvedAsset", script)
+        self.assertIn("encodeURIComponent(release.tag_name)", script)
+        self.assertIn('asset.state !== "uploaded"', script)
+        self.assertTrue((ROOT / "tests/qa/public_releases.test.cjs").is_file())
+        self.assertIn("node --test tests/qa/public_releases.test.cjs",
+                      (ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))
         home = HOME.read_text(encoding="utf-8")
         self.assertIn('id="home-installer-download"', home)
         self.assertIn('src="assets/releases.js"', home)

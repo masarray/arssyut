@@ -63,6 +63,14 @@ jobs:
           $exe = 'dist/publish/Arssyut.UI.exe'
           if (-not (Test-Path $exe) -or (Get-Item $exe).Length -lt 5000000) { throw 'Standalone GUI missing or too small' }
           if (Test-Path dist/publish/arssyut_native_bridge.dll) { throw 'Portable DLL is not embedded' }
+          # The CI artifact is an internal hardware-acceptance ZIP.
+          # Do not copy its INTERNAL-only instructions into public Setup files.
+          Remove-Item dist/publish/README_AUDIO_ACCEPTANCE.txt -Force -ErrorAction SilentlyContinue
+          foreach ($notice in @('FFMPEG_COPYRIGHT.txt', 'THIRD_PARTY_NOTICES.md', 'DEPENDENCY_PIN.txt')) {
+            if (-not (Test-Path (Join-Path dist/publish $notice))) {
+              throw "Required audio redistribution notice missing: $notice"
+            }
+          }
           Add-Type -AssemblyName System.Drawing
           $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Resolve-Path $exe).Path)
           if ($null -eq $icon) { throw 'PE icon missing' }
