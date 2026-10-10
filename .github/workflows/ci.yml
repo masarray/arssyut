@@ -368,6 +368,9 @@ jobs:
             # P7A5 native-container normalizer converts retained endpoint PCM/float
             # into allocation-free float32 without creating rate/timeline authority.
             "src/core/audio/audio_sample_normalizer.hpp" = "4fcb7e54bb7a36235b578c8b8fdcfb497da2f144"
+            # P7 read-only microphone preview L/R peak helper. Exact blob;
+            # never changes canonical mixer, resampler or capture timeline.
+            "src/core/audio/audio_input_peak.hpp" = "9650eee59de7c0fa63603f02ce1a5df5746afc12"
             # P7A5 fixed canonical staging retains already-produced future SRC
             # suffixes without unbounded growth or a second timing authority.
             "src/core/audio/audio_canonical_staging.hpp" = "64d57912a54977a526e19ea4d18f5a62299cc16b"
