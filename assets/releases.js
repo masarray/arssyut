@@ -77,7 +77,7 @@
     if (!Array.isArray(releases)) throw new Error("Unexpected releases metadata");
     // GitHub's listing order is not a reliable published-date ordering.
     // A newer incomplete release must never split Installer and Portable.
-    const matched = releases.map(item => (!item.draft ? eligibleRelease(item) : null))
+    const matched = releases.map(item => (item && !item.draft ? eligibleRelease(item) : null))
       .filter(Boolean).sort((a, b) => b.published - a.published)[0];
     if (!matched) {
       showStatus("No complete public Windows release available", false);
