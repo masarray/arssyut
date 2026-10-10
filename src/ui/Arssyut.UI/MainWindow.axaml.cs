@@ -1068,7 +1068,7 @@ public sealed partial class MainWindow : Window
             CameraDeviceText.Text =
                 _nativeBridge is null
                     ? "Engine unavailable"
-                    : "Video-only build";
+                    : "Backend pending";
             return;
         }
 
@@ -2301,7 +2301,7 @@ public sealed partial class MainWindow : Window
         CameraDeviceText.Text =
             _nativeBridge is null
                 ? "Engine unavailable"
-                : "Video-only build";
+                : "Backend pending";
 
         foreach (var option in
                  _microphoneOptions)
