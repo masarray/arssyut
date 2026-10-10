@@ -85,7 +85,23 @@ public sealed partial class MainWindow : Window
                 Environment.GetEnvironmentVariable("ARSSYUT_AUDIO_PREVIEW"),
                 "1", StringComparison.Ordinal);
 
+        _microphoneDevice = _settings.MicrophoneDevice;
+        if (Enum.TryParse<PreviewCaptureMode>(
+                _settings.CaptureMode, out var previousMode) &&
+            previousMode != PreviewCaptureMode.Game)
+            _captureMode = previousMode;
+
+        if (_audioHardwarePreview)
+        {
+            _systemAudioEnabled = _settings.SystemAudioEnabled;
+            _session.MicrophoneEnabled = _settings.MicrophoneEnabled;
+        }
+
         InitializeComponent();
+
+        ModeDisplay.IsChecked = _captureMode == PreviewCaptureMode.Display;
+        ModeWindow.IsChecked = _captureMode == PreviewCaptureMode.Window;
+        ModeRegion.IsChecked = _captureMode == PreviewCaptureMode.Region;
 
         MicrophoneDeviceComboMain.SelectionChanged += (_, _) =>
         {
@@ -98,6 +114,7 @@ public sealed partial class MainWindow : Window
 
             _microphoneDevice = selected.Name;
             _microphoneDeviceToken = selected.Token;
+            _settings.MicrophoneDevice = selected.Name;
             RefreshInputLabels();
         };
 
@@ -354,7 +371,10 @@ public sealed partial class MainWindow : Window
         var previousId =
             keepCurrentSelection
                 ? _selectedSource?.Id
-                : null;
+                : _selectedSource is null &&
+                  string.Equals(_settings.CaptureMode,
+                      _captureMode.ToString(), StringComparison.Ordinal)
+                    ? _settings.CaptureSourceId : null;
 
         _sources.Clear();
 
@@ -395,6 +415,14 @@ public sealed partial class MainWindow : Window
 
         RebuildSourceFlyout();
         ApplySelectedSource();
+        SaveCapturePreference();
+    }
+
+    private void SaveCapturePreference()
+    {
+        if (!_allowInteractionPreview)
+            _settings.SetCaptureChoice(_captureMode.ToString(),
+                _selectedSource?.Id);
     }
 
     private void RebuildSourceFlyout()
@@ -585,6 +613,7 @@ public sealed partial class MainWindow : Window
 
         RebuildSourceFlyout();
         ApplySelectedSource();
+        SaveCapturePreference();
         SourcePickerButton.Flyout?.Hide();
     }
 
@@ -863,6 +892,8 @@ public sealed partial class MainWindow : Window
         _microphoneDevice = name;
         _microphoneDeviceToken =
             device?.Token ?? 0;
+        if (!_allowInteractionPreview)
+            _settings.MicrophoneDevice = name;
         SelectDeviceOption(
             _microphoneOptions,
             selected);
@@ -907,6 +938,9 @@ public sealed partial class MainWindow : Window
 
         _systemAudioEnabled =
             SystemAudioToggle.IsChecked == true;
+        if (!_allowInteractionPreview)
+            _settings.SetAudioPreferences(
+                _systemAudioEnabled, _session.MicrophoneEnabled);
         RefreshInputLabels();
         UpdateReadyDetail();
     }
@@ -920,6 +954,9 @@ public sealed partial class MainWindow : Window
 
         _session.MicrophoneEnabled =
             MicToggle.IsChecked == true;
+        if (!_allowInteractionPreview)
+            _settings.SetAudioPreferences(
+                _systemAudioEnabled, _session.MicrophoneEnabled);
         RefreshInputLabels();
         UpdateReadyDetail();
     }

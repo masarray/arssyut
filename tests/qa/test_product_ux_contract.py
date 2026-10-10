@@ -124,6 +124,25 @@ class UXContract(unittest.TestCase):
         self.assertIn('x:Name="CameraToggle"', self.xaml)
         self.assertIn('IsEnabled="False"', self.xaml)
 
+    def test_persistent_preferences_are_restored_without_native_token_replay(self):
+        state = (UI / "Preview/SettingsPreviewState.cs").read_text(encoding="utf-8-sig")
+        store = (UI / "Preview/ProductSettingsStore.cs").read_text(encoding="utf-8-sig")
+        app = (UI / "App.axaml.cs").read_text(encoding="utf-8-sig")
+        self.assertIn("private const int CurrentSchemaVersion = 5;", store)
+        self.assertIn("private const int SpotlightSchemaVersion = 4;", store)
+        for field in ("CaptureMode", "CaptureSourceId", "SystemAudioEnabled",
+                      "MicrophoneEnabled", "MicrophoneDevice", "FrameRate",
+                      "VisualStyle", "SmartZoom", "ClickHighlight",
+                      "ShortcutKeys", "OutputFolder"):
+            self.assertIn(field, store)
+        self.assertIn("SetCaptureChoice(", state)
+        self.assertIn("SetAudioPreferences(", state)
+        self.assertIn("TimeSpan.FromMilliseconds(450)", app)
+        self.assertIn("desktop.Exit += (_, _) => Persist();", app)
+        self.assertIn("_settings.CaptureSourceId", self.code)
+        self.assertIn("selected.Token", self.code)
+        self.assertNotIn("MicrophoneDeviceToken { get;", state)
+
     def test_preview_is_internal_only_and_launches_directly(self):
         self.assertIn("<OutputType>WinExe</OutputType>", self.project)
         self.assertIn("'$(InternalAudioPreview)' == 'true'", self.project)

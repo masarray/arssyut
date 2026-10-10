@@ -182,6 +182,16 @@ try
         "unsupported presenter zoom is rejected without mutating the configured value");
 
 
+    saved.SetFrameRate(30);
+    saved.SetVisualStyle(RecordingVisualStyle.CleanScreen);
+    saved.SetSmartZoom(false);
+    saved.SetClickHighlight(false);
+    saved.SetShortcutKeys(false);
+    saved.SetOutputFolder(@"D:\Recordings\Arssyut");
+    saved.SetCaptureChoice("Window", "capture-device-id-123");
+    saved.SetAudioPreferences(true, true);
+    saved.MicrophoneDevice = "CABLE Output (VB-Audio Virtual Cable)";
+
     saved.SetSpotlightEnabled(
         true);
     saved.SetSpotlightLinkToZoom(
@@ -244,6 +254,17 @@ try
         string.IsNullOrEmpty(
             loadError) &&
         loadedSettings.PresenterZoom == 3.00f &&
+        loadedSettings.FrameRate == 30 &&
+        loadedSettings.VisualStyle == RecordingVisualStyle.CleanScreen &&
+        !loadedSettings.SmartZoom &&
+        !loadedSettings.ClickHighlight &&
+        !loadedSettings.ShortcutKeys &&
+        loadedSettings.OutputFolder == @"D:\Recordings\Arssyut" &&
+        loadedSettings.CaptureMode == "Window" &&
+        loadedSettings.CaptureSourceId == "capture-device-id-123" &&
+        loadedSettings.SystemAudioEnabled &&
+        loadedSettings.MicrophoneEnabled &&
+        loadedSettings.MicrophoneDevice == "CABLE Output (VB-Audio Virtual Cable)" &&
         loadedSettings.SpotlightEnabled &&
         !loadedSettings.SpotlightLinkToZoom &&
         loadedSettings.SpotlightSize ==
@@ -272,6 +293,16 @@ try
         restored.OverviewPeekHotkey == "Numpad+" &&
         restored.FreezeCameraHotkey == "Shift+F12" &&
         restored.PresenterZoom == 3.00f &&
+        restored.FrameRate == 30 &&
+        restored.VisualStyle == RecordingVisualStyle.CleanScreen &&
+        !restored.SmartZoom &&
+        !restored.ClickHighlight &&
+        !restored.ShortcutKeys &&
+        restored.CaptureMode == "Window" &&
+        restored.CaptureSourceId == "capture-device-id-123" &&
+        restored.SystemAudioEnabled &&
+        restored.MicrophoneEnabled &&
+        restored.MicrophoneDevice == "CABLE Output (VB-Audio Virtual Cable)" &&
         restored.SpotlightEnabled &&
         !restored.SpotlightLinkToZoom &&
         restored.SpotlightSize ==

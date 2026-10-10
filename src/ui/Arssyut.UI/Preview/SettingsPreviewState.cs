@@ -67,8 +67,18 @@ public sealed class SettingsPreviewState
     public event EventHandler? Changed;
     public event EventHandler? PersistentSettingsChanged;
 
+    public const string DefaultOutputFolder = @"Videos\Arssyut";
+
     public string OutputFolder { get; private set; } =
-        @"Videos\Arssyut";
+        DefaultOutputFolder;
+
+    // Only user intent is persisted: device tokens and native capture
+    // generations are always refreshed on launch.
+    public string CaptureMode { get; private set; } = "Display";
+    public string CaptureSourceId { get; private set; } = string.Empty;
+    public bool SystemAudioEnabled { get; private set; }
+    public bool MicrophoneEnabled { get; private set; }
+
 
     public uint FrameRate { get; private set; } =
         60;
@@ -150,11 +160,49 @@ public sealed class SettingsPreviewState
     public CameraPlacement CameraPlacement { get; private set; } =
         CameraPlacement.BottomRight;
 
-    public string MicrophoneDevice { get; set; } =
+    private string _microphoneDevice =
         "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
+
+    public string MicrophoneDevice
+    {
+        get => _microphoneDevice;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value) ||
+                value.Length > 512 || _microphoneDevice == value)
+                return;
+            _microphoneDevice = value;
+            PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
 
     public string CameraDevice { get; set; } =
         "USB2.0 HD UVC Webcam";
+
+    public void SetCaptureChoice(string mode, string? sourceId)
+    {
+        if (mode is not ("Display" or "Window" or "Region") ||
+            (sourceId?.Length ?? 0) > 1024)
+            return;
+        sourceId ??= string.Empty;
+        if (CaptureMode == mode && CaptureSourceId == sourceId)
+            return;
+        CaptureMode = mode;
+        CaptureSourceId = sourceId;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetAudioPreferences(bool systemAudio, bool microphone)
+    {
+        if (SystemAudioEnabled == systemAudio &&
+            MicrophoneEnabled == microphone)
+            return;
+        SystemAudioEnabled = systemAudio;
+        MicrophoneEnabled = microphone;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public void SetFrameRate(
         uint frameRate)
@@ -164,6 +212,7 @@ public sealed class SettingsPreviewState
             return;
 
         FrameRate = frameRate;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -174,6 +223,7 @@ public sealed class SettingsPreviewState
             return;
 
         VisualStyle = style;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -184,6 +234,7 @@ public sealed class SettingsPreviewState
             return;
 
         SmartZoom = enabled;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -194,6 +245,7 @@ public sealed class SettingsPreviewState
             return;
 
         ClickHighlight = enabled;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -204,6 +256,7 @@ public sealed class SettingsPreviewState
             return;
 
         ShortcutKeys = enabled;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -325,11 +378,14 @@ public sealed class SettingsPreviewState
     public void SetOutputFolder(
         string path)
     {
-        if (!string.IsNullOrWhiteSpace(path))
-        {
-            OutputFolder = path.Trim();
-            Changed?.Invoke(this, EventArgs.Empty);
-        }
+        if (string.IsNullOrWhiteSpace(path) ||
+            path.Length > 1024 ||
+            string.Equals(OutputFolder, path.Trim(), StringComparison.Ordinal))
+            return;
+
+        OutputFolder = path.Trim();
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public bool TryGetHotkeyChord(
@@ -374,6 +430,19 @@ public sealed class SettingsPreviewState
             return false;
         }
 
+        if (snapshot.FrameRate is not (30 or 60) ||
+            !Enum.IsDefined(snapshot.VisualStyle) ||
+            string.IsNullOrWhiteSpace(snapshot.OutputFolder) ||
+            snapshot.OutputFolder.Length > 1024 ||
+            snapshot.CaptureMode is not ("Display" or "Window" or "Region") ||
+            snapshot.CaptureSourceId.Length > 1024 ||
+            string.IsNullOrWhiteSpace(snapshot.MicrophoneDevice) ||
+            snapshot.MicrophoneDevice.Length > 512)
+        {
+            error = "Invalid persisted recording preferences.";
+            return false;
+        }
+
         if (!TryBuildHotkeyCandidate(
                 snapshot.Hotkeys,
                 out var candidate,
@@ -397,6 +466,17 @@ public sealed class SettingsPreviewState
             snapshot.SpotlightMotion;
         SpotlightDimStrength =
             snapshot.SpotlightDimStrength;
+        OutputFolder = snapshot.OutputFolder;
+        FrameRate = snapshot.FrameRate;
+        VisualStyle = snapshot.VisualStyle;
+        SmartZoom = snapshot.SmartZoom;
+        ClickHighlight = snapshot.ClickHighlight;
+        ShortcutKeys = snapshot.ShortcutKeys;
+        CaptureMode = snapshot.CaptureMode;
+        CaptureSourceId = snapshot.CaptureSourceId;
+        SystemAudioEnabled = snapshot.SystemAudioEnabled;
+        MicrophoneEnabled = snapshot.MicrophoneEnabled;
+        _microphoneDevice = snapshot.MicrophoneDevice;
         return true;
     }
 
@@ -476,14 +556,20 @@ public sealed class SettingsPreviewState
     public void SetCameraPlacement(
         CameraPlacement placement)
     {
+        if (CameraPlacement == placement)
+            return;
         CameraPlacement = placement;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void Reset()
     {
-        OutputFolder =
-            @"Videos\Arssyut";
+        OutputFolder = DefaultOutputFolder;
+        CaptureMode = "Display";
+        CaptureSourceId = string.Empty;
+        SystemAudioEnabled = false;
+        MicrophoneEnabled = false;
         FrameRate =
             60;
         VisualStyle =
@@ -517,7 +603,7 @@ public sealed class SettingsPreviewState
 
         CameraPlacement =
             CameraPlacement.BottomRight;
-        MicrophoneDevice =
+        _microphoneDevice =
             "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
         CameraDevice =
             "USB2.0 HD UVC Webcam";
