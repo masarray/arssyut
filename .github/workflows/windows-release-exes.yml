@@ -11,7 +11,7 @@ on:
         required: true
         type: string
       version:
-        description: "Release candidate version (0.1.0-rc.1)"
+        description: "Release candidate version (e.g. 0.1.0-rc.2)"
         required: true
         type: string
       publish_prerelease:
@@ -31,7 +31,7 @@ jobs:
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_branch == 'main' &&
-       contains(github.event.workflow_run.head_commit.message, '[release-preview-v0.1.0-rc.1]'))
+       contains(github.event.workflow_run.head_commit.message, '[release-preview-v0.1.0-rc.2]'))
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -41,7 +41,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.source_run_id || github.event.workflow_run.id }}
-          VERSION: ${{ inputs.version || '0.1.0-rc.1' }}
+          VERSION: ${{ inputs.version || '0.1.0-rc.2' }}
         run: |
           if ($env:GITHUB_REF -ne 'refs/heads/main' -or
               $env:VERSION -notmatch '^0[.]\d+[.]\d+-rc[.]\d+$' -or
@@ -83,7 +83,7 @@ jobs:
       - name: Build two EXE release assets from identical binary
         shell: pwsh
         env:
-          VERSION: ${{ inputs.version || '0.1.0-rc.1' }}
+          VERSION: ${{ inputs.version || '0.1.0-rc.2' }}
         run: |
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
           if (-not (Test-Path $iscc)) { throw 'ISCC missing' }
@@ -101,7 +101,7 @@ jobs:
       - name: Smoke test EXACT portable and installed Setup EXE on Windows
         shell: pwsh
         env:
-          VERSION: ${{ inputs.version || '0.1.0-rc.1' }}
+          VERSION: ${{ inputs.version || '0.1.0-rc.2' }}
         run: |
           $portable = (Resolve-Path "dist/release/Arssyut-$env:VERSION-portable-win-x64.exe").Path
           $setup = (Resolve-Path "dist/release/Arssyut-Setup-$env:VERSION-win-x64.exe").Path
@@ -163,12 +163,12 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version || '0.1.0-rc.1' }}
+          VERSION: ${{ inputs.version || '0.1.0-rc.2' }}
         run: |
           $tag = "v$env:VERSION"
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) { throw 'Tag already exists; refusing overwrite' }
-          $notes = 'Windows preview: NOT stable. Includes audio-enabled test build. Real-device stereo, A/V sync, long captures and Stop/Finalize require acceptance. No commercial code signature; SmartScreen may appear.'
+          $notes = "Windows $tag PREVIEW, NOT stable. Two direct Windows EXEs are packaged from the same exact-commit audio-enabled engine. Fix: restore bounded WASAPI loopback timeline discontinuity handling when audio playback (e.g. YouTube) starts; retain Open/Folder for recovered MP4s on failed sessions. CI exercises native/audio contracts, portable GUI launch, Inno install/launch/uninstall and byte-identity. Real-hardware playback-onset, mic/system stereo and long MP4 recording still require user acceptance. No commercial code signature; SmartScreen may appear."
           $assets = @(Get-ChildItem dist/release -Filter '*.exe' | ForEach-Object FullName)
           $assets += (Resolve-Path dist/SHA256SUMS.txt).Path
           if ($assets.Count -ne 3) { throw 'Expected exactly two executables plus SHA256SUMS' }

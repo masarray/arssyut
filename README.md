@@ -9,7 +9,7 @@
 Arssyut is a focused Windows screen recorder for tutorials, software demos, walkthroughs, and everyday captures. Choose what to record, start capturing, and save an MP4—without a crowded workspace.
 
 > [!IMPORTANT]
-> **Download status:** Windows preview **[v0.1.0-rc.1](https://github.com/masarray/arssyut/releases/tag/v0.1.0-rc.1)** is published with real **Setup EXE** and **portable single EXE** assets. It is a prerelease, not a stable release. **System audio and microphone recording are implemented**, including the recording mixer. **Webcam recording is not yet implemented.**
+> **Download status:** A Windows **preview** is available through the [Download page](https://masarray.github.io/arssyut/download/) and [GitHub Releases](https://github.com/masarray/arssyut/releases). The Download page selects the newest complete **Setup EXE + portable single EXE** pair from the same official release automatically. A preview is not a stable release. **System audio and microphone recording are implemented**, including the recording mixer; **webcam is not implemented**.
 
 ## What can Arssyut do?
 
@@ -30,12 +30,12 @@ The application you launch is **Arssyut.UI.exe**, the compact Windows GUI. It do
 
 ## Download & get started
 
-1. Visit the **[download page](https://masarray.github.io/arssyut/download/)** or the official **[v0.1.0-rc.1 release](https://github.com/masarray/arssyut/releases/tag/v0.1.0-rc.1)**.
-2. Choose **[Setup EXE](https://github.com/masarray/arssyut/releases/download/v0.1.0-rc.1/Arssyut-Setup-0.1.0-rc.1-win-x64.exe)** to install, or **[Portable EXE](https://github.com/masarray/arssyut/releases/download/v0.1.0-rc.1/Arssyut-0.1.0-rc.1-portable-win-x64.exe)** to run standalone without extracting a ZIP.
+1. Visit the **[Download page](https://masarray.github.io/arssyut/download/)**, which selects the newest complete matching official Windows release; or inspect [GitHub Releases](https://github.com/masarray/arssyut/releases).
+2. Choose **Setup EXE** for the Inno installer, or **Portable EXE** to run one standalone binary without extracting a ZIP. Both buttons always reference the same GitHub Release.
 3. Launch Arssyut, select **Display**, **Window** or **Region**, enable **System audio** and/or **Microphone** as needed, and press **Start**.
 4. Click **Stop** to finalize the MP4, then choose **Open** or **Folder** to review it.
 
-These links identify the published preview. The website's download buttons resolve the **latest published GitHub Release assets dynamically**, so they should not be hardcoded to this preview version.
+The Download page resolves the **latest complete published GitHub Release asset pair dynamically**. If GitHub API metadata is unavailable, follow the official GitHub Releases link rather than downloading an unverified file.
 
 ### Audio and webcam
 
