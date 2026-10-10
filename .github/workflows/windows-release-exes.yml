@@ -1,5 +1,9 @@
 name: Windows Release Candidate EXEs
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -20,6 +24,14 @@ permissions:
   actions: read
 jobs:
   package:
+    # Only a successful exact-main CI run on a specially marked release
+    # merge may publish this one release candidate automatically.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       contains(github.event.workflow_run.head_commit.message, '[release-preview-v0.1.0-rc.1]'))
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -28,8 +40,8 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.source_run_id }}
-          VERSION: ${{ inputs.version }}
+          RUN_ID: ${{ inputs.source_run_id || github.event.workflow_run.id }}
+          VERSION: ${{ inputs.version || '0.1.0-rc.1' }}
         run: |
           if ($env:GITHUB_REF -ne 'refs/heads/main' -or
               $env:VERSION -notmatch '^0[.]\d+[.]\d+-rc[.]\d+$' -or
@@ -43,7 +55,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.source_run_id }}
+          RUN_ID: ${{ inputs.source_run_id || github.event.workflow_run.id }}
         run: |
           New-Item -ItemType Directory -Force dist/publish | Out-Null
           gh run download $env:RUN_ID --repo $env:GITHUB_REPOSITORY --name arssyut-AUDIO-ENABLED-TEST-win-x64 --dir dist/publish
@@ -63,7 +75,7 @@ jobs:
       - name: Build two EXE release assets from identical binary
         shell: pwsh
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version || '0.1.0-rc.1' }}
         run: |
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
           if (-not (Test-Path $iscc)) { throw 'ISCC missing' }
@@ -88,11 +100,11 @@ jobs:
           retention-days: 30
 
       - name: Publish GitHub preview (manual opt-in only)
-        if: ${{ inputs.publish_prerelease }}
+        if: ${{ inputs.publish_prerelease || github.event_name == 'workflow_run' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ inputs.version || '0.1.0-rc.1' }}
         run: |
           $tag = "v$env:VERSION"
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null

@@ -3,7 +3,8 @@
 (() => {
   "use strict";
   const status = document.getElementById("release-status");
-  if (!status) return;
+  const homeInstaller = document.getElementById("home-installer-download");
+  if (!status && !homeInstaller) return;
   const dot = document.getElementById("release-dot");
   const empty = document.getElementById("no-release");
   const assetList = document.getElementById("release-assets");
@@ -12,10 +13,12 @@
   const endpoint = "https://api.github.com/repos/masarray/arssyut/releases?per_page=20";
 
   function showStatus(message, available) {
+    if (!status) return;
     status.textContent = message;
     dot.classList.toggle("available", available);
   }
   function showEmpty(title, message) {
+    if (!empty || !assetList) return;
     assetList.hidden = true;
     empty.hidden = false;
     const heading = empty.querySelector("h3");
@@ -76,6 +79,13 @@
     const assets = release.assets.filter(officialAsset);
     const installer = best(assets, /arssyut.*(setup|installer).*\.exe$/i);
     const portable = best(assets, /^arssyut.*portable.*win[-_.]?x64\.exe$/i);
+    if (homeInstaller && installer) {
+      homeInstaller.href = installer.browser_download_url;
+      homeInstaller.textContent = release.prerelease
+        ? "Download preview installer ↗" : "Download latest installer ↗";
+      homeInstaller.setAttribute("aria-label", "Download latest Arssyut Setup EXE");
+    }
+    if (!status) return;
     const hasInstaller = enableRow("installer-row", "installer-link", installer, "Download Arssyut installer");
     const hasPortable = enableRow("portable-row", "portable-link", portable, "Download Arssyut portable EXE");
     if (!hasInstaller && !hasPortable) {
