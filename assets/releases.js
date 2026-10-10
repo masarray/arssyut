@@ -91,7 +91,7 @@
     if (!hasInstaller && !hasPortable) {
       showStatus("Latest public release has no Windows packages", false);
       showEmpty("Windows packages not available",
-        "An official release exists, but there is no eligible Windows installer or portable ZIP attached yet. Check GitHub Releases for details.");
+        "An official release exists, but there is no eligible Windows installer or standalone portable EXE attached yet. Check GitHub Releases for details.");
       return;
     }
     empty.hidden = true;

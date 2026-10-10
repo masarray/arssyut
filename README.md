@@ -9,43 +9,45 @@
 Arssyut is a focused Windows screen recorder for tutorials, software demos, walkthroughs, and everyday captures. Choose what to record, start capturing, and save an MP4—without a crowded workspace.
 
 > [!IMPORTANT]
-> **Public release status:** Arssyut is in release preparation. Check [GitHub Releases](https://github.com/masarray/arssyut/releases) for officially published versions; **no stable public release has been published yet**. Audio-enabled builds are for Windows hardware testing, not a finished public release.
+> **Download status:** Windows preview **[v0.1.0-rc.1](https://github.com/masarray/arssyut/releases/tag/v0.1.0-rc.1)** is published with real **Setup EXE** and **portable single EXE** assets. It is a prerelease, not a stable release. **System audio and microphone recording are implemented**, including the recording mixer. **Webcam recording is not yet implemented.**
 
 ## What can Arssyut do?
 
 | Feature | Current status |
 | --- | --- |
-| Record an entire display | Available in the Windows video recorder |
+| Record an entire display | Available |
 | Capture a window or selected region | Available |
 | Save and open MP4 recordings | Available |
 | Mouse click highlighting and shortcut visualization | Available |
 | Zoom/presentation controls | Available, subject to capture mode |
 | Remember user preferences | Available |
-| System audio and microphone recording | Internal audio-enabled testing build only |
-| Game capture and webcam recording | Not yet available as finished features |
+| System audio and microphone recording | Implemented in the audio-enabled Windows preview |
+| Audio mixer, volume, mute and stereo level meters | Implemented |
+| Webcam recording and preview | **Not implemented yet** |
+| Game capture | Not yet available as a finished feature |
 
 The application you launch is **Arssyut.UI.exe**, the compact Windows GUI. It does not require opening a Command Prompt.
 
 ## Download & get started
 
-1. Visit the **[download page](https://masarray.github.io/arssyut/download/)** or [GitHub Releases](https://github.com/masarray/arssyut/releases). Only releases published there should be considered public downloads.
-2. When available, choose a **Windows installer** for Start menu integration, or a **portable EXE** that runs directly.
-3. Open **Arssyut.UI.exe**, select **Display**, **Window**, or **Region**, and click **Start**.
-4. Click **Stop** to finalize your MP4, then choose **Open** or **Folder** to review it.
+1. Visit the **[download page](https://masarray.github.io/arssyut/download/)** or the official **[v0.1.0-rc.1 release](https://github.com/masarray/arssyut/releases/tag/v0.1.0-rc.1)**.
+2. Choose **[Setup EXE](https://github.com/masarray/arssyut/releases/download/v0.1.0-rc.1/Arssyut-Setup-0.1.0-rc.1-win-x64.exe)** to install, or **[Portable EXE](https://github.com/masarray/arssyut/releases/download/v0.1.0-rc.1/Arssyut-0.1.0-rc.1-portable-win-x64.exe)** to run standalone without extracting a ZIP.
+3. Launch Arssyut, select **Display**, **Window** or **Region**, enable **System audio** and/or **Microphone** as needed, and press **Start**.
+4. Click **Stop** to finalize the MP4, then choose **Open** or **Folder** to review it.
 
-**No public download showing?** That means no eligible release has been published yet. Please do not confuse a source-code ZIP or an internal GitHub Actions artifact with a finished installer.
+These links identify the published preview. The website's download buttons resolve the **latest published GitHub Release assets dynamically**, so they should not be hardcoded to this preview version.
 
-### About audio
+### Audio and webcam
 
-The native system-audio and microphone pipeline is under acceptance testing for stereo capture, recorded volume/mute, synchronization, long sessions, and repeated Start/Stop. Audio testing uses a **separate build** named **arssyut-AUDIO-ENABLED-TEST-win-x64** in [GitHub Actions](https://github.com/masarray/arssyut/actions). These builds may require a GitHub login and are not stable public downloads.
+**System audio and microphone recording are implemented.** The Windows audio-enabled recorder supports source toggles, recorded gain/mute controls, stereo input meters, and device selection. The earlier video-only CI artifact is only a regression/reference build; **do not distribute it as the audio-capable public application**.
 
-If you open **arssyut-VIDEO-ONLY-avalonia-win-x64**, its audio toggles are intentionally unavailable. This is a different build, **not** a microphone configuration problem.
+**Webcam recording and its live preview have not been implemented.** The webcam panel may appear in the GUI as a placeholder, but it is not a finished recording feature.
 
 ## Questions and support
 
 **Does it work on Windows 10 and 11?** Arssyut targets Windows x64. Hardware capabilities and Windows capture support can affect device compatibility.
 
-**Do I need to install it?** When an official portable EXE is published, you can run it without extraction. The installer is a separate download option.
+**Do I need to install it?** No. The published Windows **portable .exe** can launch directly. The **Setup .exe** installs Start-menu shortcuts instead.
 
 **Where are bugs reported?** Open a [GitHub Issue](https://github.com/masarray/arssyut/issues) and include your Windows version, capture mode, reproduction steps, and relevant diagnostics.
 
@@ -67,7 +69,7 @@ To run the native regression suite on a compatible Windows development machine:
 cmake --build --preset windows-release --parallel
 ctest --preset windows-release</code></pre>
 
-The default video-only reference build and experimental audio-enabled package have **different native capabilities** and must not be substituted for each other.
+The video-only CI package remains a regression reference, **not** the public audio-enabled application. Keep future installer and portable release assets sourced from the same verified audio-enabled binary.
 
 ### Branding
 
