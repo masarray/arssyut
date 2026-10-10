@@ -191,6 +191,8 @@ try
     saved.SetCaptureChoice("Window", "capture-device-id-123");
     saved.SetAudioPreferences(true, true);
     saved.MicrophoneDevice = "CABLE Output (VB-Audio Virtual Cable)";
+    saved.SetCameraPlacement(CameraPlacement.TopRight);
+    saved.CameraDevice = "USB UVC Camera";
 
     saved.SetSpotlightEnabled(
         true);
@@ -265,6 +267,8 @@ try
         loadedSettings.SystemAudioEnabled &&
         loadedSettings.MicrophoneEnabled &&
         loadedSettings.MicrophoneDevice == "CABLE Output (VB-Audio Virtual Cable)" &&
+        loadedSettings.CameraPlacement == CameraPlacement.TopRight &&
+        loadedSettings.CameraDevice == "USB UVC Camera" &&
         loadedSettings.SpotlightEnabled &&
         !loadedSettings.SpotlightLinkToZoom &&
         loadedSettings.SpotlightSize ==
@@ -303,6 +307,8 @@ try
         restored.SystemAudioEnabled &&
         restored.MicrophoneEnabled &&
         restored.MicrophoneDevice == "CABLE Output (VB-Audio Virtual Cable)" &&
+        restored.CameraPlacement == CameraPlacement.TopRight &&
+        restored.CameraDevice == "USB UVC Camera" &&
         restored.SpotlightEnabled &&
         !restored.SpotlightLinkToZoom &&
         restored.SpotlightSize ==
@@ -314,14 +320,14 @@ try
             0.46f) < 0.0005f,
         "restored startup state preserves canonical presenter and Spotlight settings");
 
-    var schemaV4Lines =
+    var schemaV5Lines =
         File.ReadAllLines(
             persistencePath);
 
     // Schema v3 predates Spotlight product settings. Migration must keep all
     // existing hotkeys/zoom and introduce inert Spotlight defaults.
     var schemaV3Lines =
-        schemaV4Lines
+        schemaV5Lines
             .Where(
                 line =>
                     !line.Contains(
@@ -342,7 +348,7 @@ try
             .Select(
                 line =>
                     line.Replace(
-                        "\"SchemaVersion\": 4",
+                        "\"SchemaVersion\": 5",
                         "\"SchemaVersion\": 3",
                         StringComparison.Ordinal))
             .ToArray();

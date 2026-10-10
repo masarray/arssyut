@@ -86,6 +86,7 @@ public sealed partial class MainWindow : Window
                 "1", StringComparison.Ordinal);
 
         _microphoneDevice = _settings.MicrophoneDevice;
+        _cameraDevice = _settings.CameraDevice;
         if (Enum.TryParse<PreviewCaptureMode>(
                 _settings.CaptureMode, out var previousMode) &&
             previousMode != PreviewCaptureMode.Game)
@@ -753,17 +754,21 @@ public sealed partial class MainWindow : Window
                 _microphoneDeviceToken = 0;
             }
 
+            var cameraIndex = devices.Cameras
+                .Select((device, index) => (device, index))
+                .Where(item => string.Equals(item.device.Name,
+                    _cameraDevice, StringComparison.Ordinal))
+                .Select(item => item.index)
+                .DefaultIfEmpty(0).First();
             ApplyReadOnlyDeviceCombo(
                 CameraDeviceComboMain,
                 devices.Cameras,
-                "No camera detected");
+                "No camera detected", cameraIndex);
 
             if (devices.Cameras.Count > 0)
             {
-                _cameraDevice =
-                    devices.Cameras[0].Name;
-                _cameraDeviceToken =
-                    devices.Cameras[0].Token;
+                _cameraDevice = devices.Cameras[cameraIndex].Name;
+                _cameraDeviceToken = devices.Cameras[cameraIndex].Token;
             }
         }
         catch (Exception)

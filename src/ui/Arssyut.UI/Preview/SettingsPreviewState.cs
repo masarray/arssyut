@@ -178,8 +178,20 @@ public sealed class SettingsPreviewState
     }
 
 
-    public string CameraDevice { get; set; } =
-        "USB2.0 HD UVC Webcam";
+    private string _cameraDevice = "USB2.0 HD UVC Webcam";
+    public string CameraDevice
+    {
+        get => _cameraDevice;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value) ||
+                value.Length > 512 || _cameraDevice == value)
+                return;
+            _cameraDevice = value;
+            PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     public void SetCaptureChoice(string mode, string? sourceId)
     {
@@ -437,7 +449,10 @@ public sealed class SettingsPreviewState
             snapshot.CaptureMode is not ("Display" or "Window" or "Region") ||
             snapshot.CaptureSourceId.Length > 1024 ||
             string.IsNullOrWhiteSpace(snapshot.MicrophoneDevice) ||
-            snapshot.MicrophoneDevice.Length > 512)
+            snapshot.MicrophoneDevice.Length > 512 ||
+            !Enum.IsDefined(snapshot.CameraPlacement) ||
+            string.IsNullOrWhiteSpace(snapshot.CameraDevice) ||
+            snapshot.CameraDevice.Length > 512)
         {
             error = "Invalid persisted recording preferences.";
             return false;
@@ -477,6 +492,8 @@ public sealed class SettingsPreviewState
         SystemAudioEnabled = snapshot.SystemAudioEnabled;
         MicrophoneEnabled = snapshot.MicrophoneEnabled;
         _microphoneDevice = snapshot.MicrophoneDevice;
+        CameraPlacement = snapshot.CameraPlacement;
+        _cameraDevice = snapshot.CameraDevice;
         return true;
     }
 
@@ -605,7 +622,7 @@ public sealed class SettingsPreviewState
             CameraPlacement.BottomRight;
         _microphoneDevice =
             "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
-        CameraDevice =
+        _cameraDevice =
             "USB2.0 HD UVC Webcam";
 
         PersistentSettingsChanged?.Invoke(

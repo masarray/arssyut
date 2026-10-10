@@ -102,15 +102,21 @@ public sealed partial class App : Application
                 {
                     Interval = TimeSpan.FromMilliseconds(450)
                 };
+                var pendingChanges = false;
                 void Persist()
                 {
                     persistTimer.Stop();
-                    if (!hotkeyStore.TrySave(previewSettings, out var error))
+                    if (!pendingChanges)
+                        return;
+                    if (hotkeyStore.TrySave(previewSettings, out var error))
+                        pendingChanges = false;
+                    else
                         Debug.WriteLine(error);
                 }
                 persistTimer.Tick += (_, _) => Persist();
                 previewSettings.PersistentSettingsChanged += (_, _) =>
                 {
+                    pendingChanges = true;
                     persistTimer.Stop();
                     persistTimer.Start();
                 };

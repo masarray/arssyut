@@ -26,7 +26,9 @@ public sealed record ProductSettingsSnapshot(
     string CaptureSourceId = "",
     bool SystemAudioEnabled = false,
     bool MicrophoneEnabled = false,
-    string MicrophoneDevice = "Hi-Fi Cable Output (VB-Audio Virtual Cable)");
+    string MicrophoneDevice = "Hi-Fi Cable Output (VB-Audio Virtual Cable)",
+    CameraPlacement CameraPlacement = CameraPlacement.BottomRight,
+    string CameraDevice = "USB2.0 HD UVC Webcam");
 
 public sealed class ProductSettingsStore
 {
@@ -226,6 +228,15 @@ public sealed class ProductSettingsStore
                  document.MicrophoneEnabled is null))
                 throw new InvalidDataException("Invalid recording preferences.");
 
+            var cameraPlacement = latest && document.CameraPlacement is not null
+                ? (CameraPlacement)document.CameraPlacement.Value
+                : CameraPlacement.BottomRight;
+            var cameraDevice = latest && !string.IsNullOrWhiteSpace(document.CameraDevice)
+                ? document.CameraDevice! : "USB2.0 HD UVC Webcam";
+            if (!Enum.IsDefined(cameraPlacement) ||
+                cameraDevice.Length > 512)
+                throw new InvalidDataException("Invalid camera preferences.");
+
             settings =
                 new ProductSettingsSnapshot(
                     loaded,
@@ -245,7 +256,9 @@ public sealed class ProductSettingsStore
                     sourceId!,
                     latest && document.SystemAudioEnabled!.Value,
                     latest && document.MicrophoneEnabled!.Value,
-                    micDevice!);
+                    micDevice!,
+                    cameraPlacement,
+                    cameraDevice);
             return true;
         }
         catch (Exception exception)
@@ -329,6 +342,8 @@ public sealed class ProductSettingsStore
                     SystemAudioEnabled = settings.SystemAudioEnabled,
                     MicrophoneEnabled = settings.MicrophoneEnabled,
                     MicrophoneDevice = settings.MicrophoneDevice,
+                    CameraPlacement = (int)settings.CameraPlacement,
+                    CameraDevice = settings.CameraDevice,
                     PresenterZoom =
                         settings.PresenterZoom,
                     SpotlightEnabled =
@@ -550,6 +565,8 @@ public sealed class ProductSettingsStore
         public bool? SystemAudioEnabled { get; set; }
         public bool? MicrophoneEnabled { get; set; }
         public string? MicrophoneDevice { get; set; }
+        public int? CameraPlacement { get; set; }
+        public string? CameraDevice { get; set; }
 
         public float? PresenterZoom { get; set; }
 
