@@ -639,6 +639,8 @@ public sealed partial class MainWindow : Window
                 "Native source unavailable";
             SourceSubtitle.Text =
                 BridgeUnavailableMessage();
+            SourceSubtitle.IsVisible = true;
+            ToolTip.SetTip(SourcePickerButton, BridgeUnavailableMessage());
             SourceIcon.Kind =
                 LucideIconKind.Monitor;
             UpdateRecordAvailability();
@@ -662,11 +664,16 @@ public sealed partial class MainWindow : Window
         SourceTitle.Text =
             _selectedSource.Title;
 
+        // The Display title already carries monitor/resolution/primary.
+        // Keep the technical descriptor discoverable, not duplicated.
         SourceSubtitle.Text =
-            _captureMode ==
-                    PreviewCaptureMode.Region
+            _captureMode == PreviewCaptureMode.Region
                 ? $"{_selectedSource.Subtitle} · native area editor active"
                 : _selectedSource.Subtitle;
+        SourceSubtitle.IsVisible =
+            _captureMode != PreviewCaptureMode.Display;
+        ToolTip.SetTip(SourcePickerButton,
+            $"{_selectedSource.Title}\n{_selectedSource.Subtitle}");
 
         if (_nativeBridge is not null)
         {
@@ -690,12 +697,14 @@ public sealed partial class MainWindow : Window
                 {
                     SourceSubtitle.Text =
                         $"{_selectedSource.Subtitle} · overlay status {overlayStatus}";
+                    SourceSubtitle.IsVisible = true;
                 }
             }
             catch (Exception)
             {
                 SourceSubtitle.Text =
                     $"{_selectedSource.Subtitle} · native overlay unavailable";
+                SourceSubtitle.IsVisible = true;
             }
         }
 
@@ -1036,6 +1045,9 @@ public sealed partial class MainWindow : Window
             _session.MicrophoneEnabled;
         CameraToggle.IsChecked =
             _session.CameraEnabled;
+        // ComboBox truncation is intentional in the compact audio card.
+        // The full native device name must remain accessible on hover.
+        ToolTip.SetTip(MicrophoneDeviceComboMain, _microphoneDevice);
     }
 
     private void RefreshSettingsSurface()

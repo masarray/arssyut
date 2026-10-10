@@ -143,6 +143,13 @@ class UXContract(unittest.TestCase):
         self.assertIn("selected.Token", self.code)
         self.assertNotIn("MicrophoneDeviceToken { get;", state)
 
+    def test_compact_source_and_device_details_stay_discoverable(self):
+        self.assertIn('SourceSubtitle.IsVisible =', self.code)
+        self.assertIn('_captureMode != PreviewCaptureMode.Display;', self.code)
+        self.assertIn('ToolTip.SetTip(SourcePickerButton,', self.code)
+        self.assertIn('ToolTip.SetTip(MicrophoneDeviceComboMain, _microphoneDevice);', self.code)
+        self.assertIn('SourceSubtitle.IsVisible = true;', self.code)
+
     def test_preview_is_internal_only_and_launches_directly(self):
         self.assertIn("<OutputType>WinExe</OutputType>", self.project)
         self.assertIn("'$(InternalAudioPreview)' == 'true'", self.project)
