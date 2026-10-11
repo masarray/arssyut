@@ -333,5 +333,14 @@ class UXContract(unittest.TestCase):
         self.assertIn("constexpr std::uint32_t kMaxRounds = 4;", runtime)
         self.assertIn("program_.close_one_due(program_.next_due_100ns())", runtime)
 
+    def test_integrated_av_has_real_decoded_aac_fidelity_gate(self):
+        writer = (ROOT / "tests/windows/test_mf_av_writer.cpp").read_text(encoding="utf-8")
+        self.assertIn("verify_sustained_product_aac_quality(test, path)", writer)
+        self.assertIn("low_energy_windows == 0", writer)
+        self.assertIn("ratio < 4.0", writer)
+        self.assertIn("kCheckLast = 400'000", writer)
+        self.assertIn("MFAudioFormat_PCM", writer)
+        self.assertIn("test_product_native_av_writer_with_canonical_audio", writer)
+
 if __name__ == "__main__":
     unittest.main()
