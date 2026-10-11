@@ -336,7 +336,8 @@ jobs:
             "src/app/audio_startup_gate.hpp" = "453a2fe2b1beea85d093244c77b68df2dff35771"
             "src/app/audio_source_preparation.hpp" = "5f64b96540f5a98d319c5af793cc5cbe868f8b21"
             "src/app/audio_endpoint_preflight.hpp" = "859170accf6351963fa51326ebcad6170293a148"
-            "src/app/audio_pcm16_submission_adapter.hpp" = "d69fdccb252f6ba6c0dd0cef6d9dc444a81cff52"
+            # AAC transport correctness: one source seam is not a whole program gap.
+            "src/app/audio_pcm16_submission_adapter.hpp" = "acf610b6309a8ae4e668325e38408e7ae6089e22"
             # P7A6 sole RecorderSession product audio owner (opt-in).
             # Quality regression forensic counters only: no changes to mixer/DSP.
             "src/app/audio_product_runtime.hpp" = "2de68414999cd24257e92d1e52c9feaa52784322"
