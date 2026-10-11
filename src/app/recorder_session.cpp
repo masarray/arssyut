@@ -1,4 +1,5 @@
 #include "app/recorder_session.hpp"
+#include "app/recording_pause_clock.hpp"
 
 #ifdef _WIN32
 
@@ -272,6 +273,10 @@ Status RecorderSession::start(
             config.visual_mode);
 
     config_ = std::move(config);
+    pause_requested_.store(false, std::memory_order_release);
+    pause_began_at_ticks_.store(0, std::memory_order_release);
+    pause_excluded_ticks_.store(0, std::memory_order_release);
+    pause_count_.store(0, std::memory_order_release);
     microphone_mute_requested_.store(
         config_.audio_microphone_muted, std::memory_order_release);
     microphone_mute_applied_.store(
@@ -408,6 +413,20 @@ bool RecorderSession::request_toggle_microphone_mute() noexcept
     return true;
 }
 
+bool RecorderSession::request_toggle_pause() noexcept
+{
+    const auto state = state_.load(std::memory_order_acquire);
+    if ((state != RecorderState::Recording &&
+         state != RecorderState::Paused) ||
+        stop_requested_.load(std::memory_order_acquire))
+        return false;
+    bool value = pause_requested_.load(std::memory_order_acquire);
+    while (!pause_requested_.compare_exchange_weak(
+        value, !value, std::memory_order_acq_rel,
+        std::memory_order_acquire)) {}
+    return true;
+}
+
 bool RecorderSession::request_start_commit() noexcept
 {
     if (state_.load(
@@ -495,13 +514,16 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
 
     if (started > 0) {
         if (stopped <= 0) {
-            stopped =
-                MonotonicClock::now().ticks_100ns;
+            stopped = MonotonicClock::now().ticks_100ns;
+            const auto pause_start = pause_began_at_ticks_.load(
+                std::memory_order_acquire);
+            if (pause_start > 0)
+                stopped = (std::min)(stopped, pause_start);
+            stopped -= pause_excluded_ticks_.load(std::memory_order_acquire);
         }
+        // Completed recording uses already-translated media stop QPC.
         result.elapsed_ticks =
-            std::max<std::int64_t>(
-                0,
-                stopped - started);
+            std::max<std::int64_t>(0, stopped - started);
     }
 
     result.capture_received =
@@ -1129,6 +1151,8 @@ void RecorderSession::worker_main() noexcept
         return;
     }
 
+    arssyut::app::RecordingPauseClock pause_clock;
+    pause_clock.reset(start.ticks_100ns);
     started_at_ticks_.store(
         start.ticks_100ns,
         std::memory_order_release);
@@ -1187,6 +1211,50 @@ void RecorderSession::worker_main() noexcept
 
     while (!stop_requested_.load(
         std::memory_order_acquire)) {
+        const TimePoint physical_now = MonotonicClock::now();
+        const bool want_pause = pause_requested_.load(std::memory_order_acquire);
+        if (want_pause && !pause_clock.paused()) {
+            if (!pause_clock.pause(physical_now.ticks_100ns)) {
+                fail(Status::failure(StatusCode::InvalidStateTransition));
+                failed = true;
+                break;
+            }
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->pause();
+#endif
+            pause_began_at_ticks_.store(
+                physical_now.ticks_100ns, std::memory_order_release);
+            pause_count_.fetch_add(1, std::memory_order_release);
+            state_.store(RecorderState::Paused, std::memory_order_release);
+        } else if (!want_pause && pause_clock.paused()) {
+            if (!pause_clock.resume(physical_now.ticks_100ns)) {
+                fail(Status::failure(StatusCode::InvalidStateTransition));
+                failed = true;
+                break;
+            }
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->resume(
+                pause_clock.committed_excluded_ticks(),
+                physical_now.ticks_100ns);
+#endif
+            pause_excluded_ticks_.store(
+                pause_clock.committed_excluded_ticks(), std::memory_order_release);
+            pause_began_at_ticks_.store(0, std::memory_order_release);
+            previous_presentation = physical_now;
+            next_presentation = physical_now;
+            state_.store(RecorderState::Recording, std::memory_order_release);
+        }
+        if (pause_clock.paused()) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->discard_while_paused();
+#endif
+            // Existing producer threads remain live but their bounded queues
+            // cannot grow; the one writer and A/V media clock stay frozen.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        const TimePoint media_now{
+            pause_clock.media_now(physical_now.ticks_100ns)};
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
         if (audio_runtime && config_.audio_microphone) {
             const bool desired = microphone_mute_requested_.load(
@@ -1204,7 +1272,7 @@ void RecorderSession::worker_main() noexcept
         // existing due-work and timing path unchanged.
         if (audio_runtime) {
             const auto audio_status =
-                audio_runtime->service(MonotonicClock::now(), writer);
+                audio_runtime->service(media_now, writer);
             if (!audio_status.ok()) {
                 fail(audio_status);
                 failed = true;
@@ -1212,8 +1280,7 @@ void RecorderSession::worker_main() noexcept
             }
         }
 #endif
-        const TimePoint now =
-            MonotonicClock::now();
+        const TimePoint now = physical_now;
 
         if (presentation_enabled &&
             !(now < next_target_rect_refresh)) {
@@ -1382,7 +1449,7 @@ void RecorderSession::worker_main() noexcept
         auto frame_result =
             pipeline->process_due(
                 device->immediate_context(),
-                now,
+                media_now,
                 config_.crop,
                 config_.output_size,
                 presentation_enabled
@@ -1539,8 +1606,14 @@ void RecorderSession::worker_main() noexcept
 
     // Recording duration ends with the render/write loop, not after MP4
     // finalization. This keeps the user-visible duration aligned with media.
-    const TimePoint recording_stopped =
-        MonotonicClock::now();
+    const TimePoint physical_stop = MonotonicClock::now();
+    const bool stopped_during_pause = pause_clock.paused();
+    const TimePoint recording_stopped{
+        pause_clock.media_now(physical_stop.ticks_100ns)};
+    pause_began_at_ticks_.store(0, std::memory_order_release);
+    pause_excluded_ticks_.store(
+        pause_clock.excluded_ticks(physical_stop.ticks_100ns),
+        std::memory_order_release);
     stopped_at_ticks_.store(
         recording_stopped.ticks_100ns,
         std::memory_order_release);
@@ -1579,7 +1652,8 @@ void RecorderSession::worker_main() noexcept
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     if (audio_runtime) {
         const auto audio_status =
-            audio_runtime->finish(recording_stopped, writer);
+            audio_runtime->finish(recording_stopped, writer,
+                stopped_during_pause);
         audio_health_ = audio_runtime->health_snapshot();
         if (!audio_status.ok() && !failed) {
             fail(audio_status);
