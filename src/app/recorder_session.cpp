@@ -277,6 +277,8 @@ Status RecorderSession::start(
     pause_began_at_ticks_.store(0, std::memory_order_release);
     pause_excluded_ticks_.store(0, std::memory_order_release);
     pause_count_.store(0, std::memory_order_release);
+    pause_resume_events_ = 0;
+    pause_resume_seams_.fill(0);
     microphone_mute_requested_.store(
         config_.audio_microphone_muted, std::memory_order_release);
     microphone_mute_applied_.store(
@@ -1241,6 +1243,13 @@ void RecorderSession::worker_main() noexcept
             pause_excluded_ticks_.store(
                 pause_clock.committed_excluded_ticks(), std::memory_order_release);
             pause_began_at_ticks_.store(0, std::memory_order_release);
+            // Exact seek locations for post-capture per-seam waveform and
+            // packet-PTS audit. Recorder worker owns these; no heap/locks.
+            if (pause_resume_events_ < kMaxPauseResumeSeams)
+                pause_resume_seams_[static_cast<std::size_t>(
+                    pause_resume_events_)] =
+                    pause_clock.elapsed(physical_now.ticks_100ns);
+            ++pause_resume_events_;
             last_resume_physical_qpc = physical_now.ticks_100ns;
             previous_presentation = physical_now;
             next_presentation = physical_now;
@@ -2081,6 +2090,20 @@ void RecorderSession::write_diagnostics(
             << pause_count_.load(std::memory_order_relaxed) << ",\n"
             << "  \"pause_excluded_ticks_100ns\": "
             << pause_excluded_ticks_.load(std::memory_order_relaxed) << ",\n"
+            << "  \"pause_resume_events\": "
+            << pause_resume_events_ << ",\n"
+            << "  \"pause_resume_seam_overflow\": "
+            << (pause_resume_events_ > kMaxPauseResumeSeams
+                    ? pause_resume_events_ - kMaxPauseResumeSeams : 0)
+            << ",\n"
+            << "  \"pause_resume_media_ticks_100ns\": [";
+        for (std::size_t i = 0;
+             i < (std::min)(static_cast<std::size_t>(pause_resume_events_),
+                              kMaxPauseResumeSeams); ++i) {
+            if (i != 0) out << ", ";
+            out << pause_resume_seams_[i];
+        }
+        out << "],\n"
             << "  \"prepare_latency_ms\": "
             << ([&]() -> std::int64_t {
                    const auto requested =
