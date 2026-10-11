@@ -159,7 +159,9 @@ public sealed record NativeRecorderSnapshot(
     ulong EncoderSubmitted,
     ulong EncoderBackpressure,
     uint ErrorCode,
-    uint ErrorDetail);
+    uint ErrorDetail,
+    bool MicrophoneEnabled,
+    bool MicrophoneMuted);
 
 // Endpoint preview telemetry, independent of the recorded stereo PCM.
 public sealed record NativeAudioMeter(
@@ -802,7 +804,9 @@ public sealed class NativeBridgeClient : IDisposable
             snapshot.EncoderSubmitted,
             snapshot.EncoderBackpressure,
             snapshot.ErrorCode,
-            snapshot.ErrorDetail);
+            snapshot.ErrorDetail,
+            snapshot.MicrophoneEnabled != 0,
+            snapshot.MicrophoneMuted != 0);
     }
 
     public NativeAudioMeter AudioMeter(
@@ -918,6 +922,13 @@ public sealed class NativeBridgeClient : IDisposable
         return (NativeBridgeStatus)
             NativeMethods.RecorderStop(
                 _handle);
+    }
+
+    public NativeBridgeStatus ToggleMicrophoneMute()
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)
+            NativeMethods.RecorderToggleMicrophoneMute(_handle);
     }
 
     public NativeRecorderResult Result()
@@ -1060,8 +1071,8 @@ public sealed class NativeBridgeClient : IDisposable
         public uint State;
         public long ElapsedTicks;
         public byte WorkerFinished;
-        public byte Reserved0;
-        public byte Reserved1;
+        public byte MicrophoneEnabled;
+        public byte MicrophoneMuted;
         public byte Reserved2;
         public float CameraCenterX;
         public float CameraCenterY;
@@ -1291,6 +1302,13 @@ public sealed class NativeBridgeClient : IDisposable
             EntryPoint = "arssyut_bridge_recorder_stop",
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int RecorderStop(
+            IntPtr handle);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_toggle_microphone_mute",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderToggleMicrophoneMute(
             IntPtr handle);
 
         [DllImport(

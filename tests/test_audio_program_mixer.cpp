@@ -120,8 +120,9 @@ void test_silence_mute_and_meter_reset(TestContext &test)
     test.expect(
         transition.audio.samples[0] > 0.0F &&
         transition.audio.samples[0] < 0.5F &&
-        transition.audio.samples[478] > 0.0F &&
-        transition.audio.samples[478] < 0.01F &&
+        transition.audio.samples[476] > 0.0F &&
+        transition.audio.samples[476] < 0.01F &&
+        transition.audio.samples[478] == 0.0F &&
         transition.audio.samples[480] == 0.0F,
         "Mute ramps to exact silence in 240 stereo frames without a click");
 

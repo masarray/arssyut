@@ -1166,6 +1166,10 @@ public sealed partial class MainWindow : Window
                  NativeHotkeyEvents.ToggleRecord) != 0) {
                 HandleGlobalRecordHotkey();
             }
+            if ((events &
+                 NativeHotkeyEvents.ToggleMicrophone) != 0) {
+                HandleGlobalMicrophoneHotkey();
+            }
         }
         catch (Exception)
         {
@@ -1206,6 +1210,21 @@ public sealed partial class MainWindow : Window
         StartNativeRecording();
     }
 
+    private void HandleGlobalMicrophoneHotkey()
+    {
+        if (_nativeBridge is null) return;
+        try
+        {
+            // The bridge checks Recording and selected mic; never mutate a
+            // UI-only shadow state or accidentally disable WASAPI capture.
+            _nativeBridge.ToggleMicrophoneMute();
+        }
+        catch (Exception)
+        {
+            // A stale/closing session cannot be toggled by a late hotkey.
+        }
+    }
+
     private void SyncGlobalHotkeys()
     {
         if (!_mainUiReady ||
@@ -1223,6 +1242,10 @@ public sealed partial class MainWindow : Window
             desired,
             NativeHotkeyAction.ToggleRecord,
             HotkeyActionIds.Record);
+        AddHotkeyIfAssigned(
+            desired,
+            NativeHotkeyAction.ToggleMicrophone,
+            HotkeyActionIds.Microphone);
         AddHotkeyIfAssigned(
             desired,
             NativeHotkeyAction.ToggleZoom,

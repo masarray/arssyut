@@ -87,8 +87,10 @@ public sealed partial class RecordingControllerWindow : Window
         {
             PauseButton.IsEnabled =
                 false;
+            // Pause remains disabled until the single-clock native pause
+            // milestone. Mic mute is now supported by the native session.
             MicButton.IsEnabled =
-                false;
+                _nativeMicrophoneIntent;
             CameraButton.IsEnabled =
                 false;
 
@@ -97,7 +99,9 @@ public sealed partial class RecordingControllerWindow : Window
                 "Native pause/resume binds after the explicit paused-state milestone.");
             ToolTip.SetTip(
                 MicButton,
-                "Microphone capture backend is not wired yet.");
+                _nativeMicrophoneIntent
+                    ? $"Mute / Unmute recorded microphone ({_settings.MicrophoneHotkey})"
+                    : "No microphone selected for this recording.");
             ToolTip.SetTip(
                 CameraButton,
                 "Camera compositor backend is not wired yet.");
@@ -241,13 +245,23 @@ public sealed partial class RecordingControllerWindow : Window
         object? sender,
         RoutedEventArgs e)
     {
-        if (_nativeBridge is not null ||
-            _previewSession is null)
+        if (_nativeBridge is not null)
+        {
+            try
+            {
+                if (_nativeBridge.ToggleMicrophoneMute() ==
+                    NativeBridgeStatus.Ok)
+                    RefreshState();
+            }
+            catch (Exception)
+            {
+                // Recorder may be closing; never invent a muted UI state.
+            }
             return;
-
+        }
+        if (_previewSession is null) return;
         _previewSession.MicrophoneEnabled =
-            !_previewSession.
-                MicrophoneEnabled;
+            !_previewSession.MicrophoneEnabled;
         RefreshState();
     }
 
@@ -415,10 +429,20 @@ public sealed partial class RecordingControllerWindow : Window
                         0,
                         snapshot.ElapsedTicks)));
 
+        MicButton.IsEnabled =
+            snapshot.MicrophoneEnabled &&
+            snapshot.State == NativeRecorderState.Recording;
+        MicIcon.Kind = snapshot.MicrophoneMuted
+            ? LucideIconKind.MicOff
+            : LucideIconKind.Mic;
         MicButton.Opacity =
-            _nativeMicrophoneIntent
-                ? 0.70
-                : 0.42;
+            !snapshot.MicrophoneEnabled ? 0.42
+            : snapshot.MicrophoneMuted ? 0.50 : 1.0;
+        MicButton.SetValue(
+            AutomationProperties.NameProperty,
+            snapshot.MicrophoneMuted
+                ? "Unmute recorded microphone"
+                : "Mute recorded microphone");
         CameraButton.Opacity =
             _nativeCameraIntent
                 ? 0.70
