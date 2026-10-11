@@ -124,6 +124,45 @@ public:
         return core::Status::success();
     }
 
+    // Called on the sole recorder worker. While paused, the event-driven
+    // capture thread keeps publishing into the original bounded pool, which
+    // the worker drains without creating program audio or writing AAC.
+    void discard_while_paused() noexcept
+    {
+        if (!recording_) return;
+        auto drop = [](auto &source) noexcept {
+            for (int i = 0; i < 16; ++i) {
+                windows::WasapiPacketLease lease;
+                if (!source.try_pop(lease)) break;
+            }
+        };
+        if (pinned_.microphone) drop(microphone_);
+        if (pinned_.system_audio) drop(loopback_);
+    }
+
+    void pause() noexcept
+    {
+        if (!recording_) return;
+        // No source/WASAPI/MF encoder lifecycle change at pause.
+        // Unfinished pre-pause staging never leaks into resumed media.
+        program_.discard_sources_after_pause();
+        discard_while_paused();
+        paused_ = true;
+    }
+
+    void resume(std::int64_t completed_pause_ticks,
+                std::int64_t physical_resume_qpc) noexcept
+    {
+        if (!recording_ || !paused_) return;
+        discard_while_paused();
+        program_.discard_sources_after_pause();
+        if (pinned_.microphone) mic_ingress_.reanchor_after_pause(
+            completed_pause_ticks, physical_resume_qpc);
+        if (pinned_.system_audio) sys_ingress_.reanchor_after_pause(
+            completed_pause_ticks, physical_resume_qpc);
+        paused_ = false;
+    }
+
     // Worker-only transport mutation: leave WASAPI running and preserve the
     // canonical 48kHz program, AAC history and source gain. The mixer performs
     // a bounded 5ms transition only when the microphone mute bit changes.
@@ -156,7 +195,7 @@ public:
     [[nodiscard]] core::Status service(
         core::TimePoint now, windows::MfH264Mp4Writer &writer) noexcept
     {
-        if (!recording_)
+        if (!recording_ || paused_)
             return core::Status::failure(
                 core::StatusCode::InvalidStateTransition);
 
@@ -221,16 +260,18 @@ public:
     // causing an unbounded Stop. The final AAC block is whole-frame trimmed
     // to the same physical Stop instant as the video timeline.
     [[nodiscard]] core::Status finish(
-        core::TimePoint stopped, windows::MfH264Mp4Writer &writer) noexcept
+        core::TimePoint stopped, windows::MfH264Mp4Writer &writer,
+        bool stopped_during_pause = false) noexcept
     {
         if (!recording_) {
             stop_sources();
             return core::Status::success();
         }
 
-        // Captured leases were published before Stop, so consume the bounded
-        // pending handoff before retiring the capture pools.
-        for (int i = 0; i < 32; ++i) {
+        if (stopped_during_pause) discard_while_paused();
+        // Normal Stop drains audio fully; paused Stop must never import
+        // QPC packets whose capture happened during the excluded interval.
+        for (int i = 0; i < (stopped_during_pause ? 0 : 32); ++i) {
             bool got_any = false;
             if (pinned_.microphone) {
                 const auto r = mic_ingress_.pump_available(
@@ -259,7 +300,7 @@ public:
 
         // Flush the already selected and linked libswresample instances;
         // this does not invent a new SRC or a second timestamp origin.
-        for (int i = 0; i < 8; ++i) {
+        for (int i = 0; i < (stopped_during_pause ? 0 : 8); ++i) {
             bool emitted = false;
             if (pinned_.microphone && mic_ingested_) {
                 const auto r = mic_ingress_.drain_one(program_);
@@ -301,6 +342,7 @@ public:
                 return status;
         }
         recording_ = false;
+        paused_ = false;
         return program_.pending_blocks() == 0
             ? core::Status::success()
             : core::Status::failure(core::StatusCode::InvalidStateTransition);
@@ -395,6 +437,7 @@ private:
     core::audio::AudioProgramBlock scratch_{};
     bool sources_started_ = false;
     bool recording_ = false;
+    bool paused_ = false;
     bool mic_ingested_ = false;
     bool sys_ingested_ = false;
 };
