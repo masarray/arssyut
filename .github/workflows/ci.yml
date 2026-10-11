@@ -84,6 +84,28 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      # Probe uses the exact native Windows CI build. No second product job
+      # and no headless-runner camera access masquerading as real acceptance.
+      - name: Webcam GPU diagnostic CLI contract (device-free)
+        shell: pwsh
+        run: |
+          $probe = Join-Path $PWD "build/windows-x64/Release/arssyut_p8w1_webcam_gpu_probe.exe"
+          if (-not (Test-Path $probe)) {
+            throw "Webcam GPU probe missing from native Windows build."
+          }
+          & $probe --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Webcam GPU diagnostic CLI contract failed."
+          }
+
+      - name: Upload P8W1 webcam GPU diagnostic (hardware QA only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-P8W1-WEBCAM-GPU-PROBE-win-x64
+          path: build/windows-x64/Release/arssyut_p8w1_webcam_gpu_probe.exe
+          if-no-files-found: error
+          retention-days: 30
+
   p7a5-swresample-adapter:
     name: P7A5 libswresample adapter evidence
     # Only explicitly requested product integration compiles against pinned

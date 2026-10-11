@@ -238,6 +238,23 @@ if(WIN32)
         )
     endif()
 
+    # P8W1A: lightweight, diagnostic-only GPU webcam capability checker.
+    # Not a second recorder app; no realtime capture is linked into the product.
+    add_executable(arssyut_p8w1_webcam_gpu_probe
+        tools/p8w1_webcam_gpu_probe.cpp
+        src/app/device_catalog.cpp
+    )
+    target_include_directories(arssyut_p8w1_webcam_gpu_probe
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(arssyut_p8w1_webcam_gpu_probe
+        PRIVATE UNICODE _UNICODE)
+    target_link_libraries(arssyut_p8w1_webcam_gpu_probe
+        PRIVATE arssyut_windows ole32 mf mfplat mfreadwrite mfuuid propsys uuid)
+    if(MSVC)
+        target_compile_options(arssyut_p8w1_webcam_gpu_probe PRIVATE
+            /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    endif()
+
     add_executable(arssyut_p7a1r_mf_resampler_probe
         tools/p7a1r_mf_resampler_probe.cpp
     )
@@ -359,6 +376,22 @@ endif()
 
 if(ARSSYUT_BUILD_TESTS)
     enable_testing()
+
+    # P8W1A candidate selection is platform-independent and runs under
+    # the existing CTest CI lane, without opening a camera or adding a job.
+    add_executable(arssyut_webcam_capture_policy_tests
+        tests/test_webcam_capture_policy.cpp)
+    target_include_directories(arssyut_webcam_capture_policy_tests
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    if(MSVC)
+        target_compile_options(arssyut_webcam_capture_policy_tests PRIVATE
+            /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    else()
+        target_compile_options(arssyut_webcam_capture_policy_tests PRIVATE
+            -Wall -Wextra -Wpedantic)
+    endif()
+    add_test(NAME arssyut_webcam_capture_policy_tests
+        COMMAND arssyut_webcam_capture_policy_tests)
 
     add_executable(arssyut_core_tests
         tests/test_main.cpp
