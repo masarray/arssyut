@@ -187,6 +187,50 @@ void test_mic48_ingress_to_mix(Test &t) {
             "drained SRC filter tail is not lost or time shifted");
 }
 
+void test_resumed_wasapi_keeps_program_without_second_media_zero(Test &t) {
+    auto assembler=std::make_unique<CanonicalProgramAssembler>();
+    auto input=std::make_unique<CanonicalPacketIngress>();
+    FakeResampler src;
+    assembler->reset(kZero,true,false);
+    t.check(input->configure(AudioSourceId::Microphone,kFloatStereo,kZero,src),
+        "Initial ingress owns the sole RecorderSession origin");
+    std::array<float,1024*2> samples{};
+    samples.fill(0.25F);
+    auto first=packet(AudioSourceId::Microphone,kFloatStereo,1024,kZero);
+    t.check(input->process_packet(first,bytes(samples),*assembler).status==
+        PacketIngressStatus::Applied,"First mic block accepted");
+    // Simulate one second of virtual program progress without packet backlog:
+    // 46*1024=47104 frames, one second is 48000 frames. The source resumes
+    // at virtual 48000, within the next bounded canonical staging window.
+    for(int i=0;i<46;++i){
+        const auto deadline=kZero+static_cast<std::int64_t>(
+            frames_to_ticks_floor(static_cast<std::uint64_t>(i+1)*1024,48000));
+        t.check(assembler->close_one_due(deadline),
+            "AAC program advances on already-authoritative 48k ticks");
+        AudioProgramBlock out{};
+        std::uint64_t n=0;
+        t.check(assembler->try_take(out,n),
+            "Writer takes one closed block before Pause");
+    }
+    const auto due_before=assembler->next_due_100ns();
+    assembler->discard_sources_after_pause();
+    constexpr std::int64_t kPauseFiveSeconds=50'000'000;
+    const auto physical_resume=kZero+10'000'000+kPauseFiveSeconds;
+    input->reanchor_after_pause(kPauseFiveSeconds,physical_resume);
+    t.check(src.resets==1,"Only microphone SRC resets, not AAC writer");
+    auto resumed=packet(AudioSourceId::Microphone,kFloatStereo,1024,
+        physical_resume);
+    const auto out=input->process_packet(resumed,bytes(samples),*assembler);
+    t.check(out.status==PacketIngressStatus::Applied &&
+        out.first_canonical_frame==48'000 &&
+        out.discontinuity &&
+        assembler->next_due_100ns()==due_before,
+        "After five physical paused seconds, mic resumes at one second of virtual program time without advancing AAC clock");
+    t.check(assembler->stats().staging_gaps==0 &&
+        assembler->stats().dropped_program_blocks==0,
+        "Resumed PCM stays in bounded staging without lost program blocks");
+}
+
 void test_pcm16_mono_44100(Test &t) {
     auto assembler=std::make_unique<CanonicalProgramAssembler>();
     auto input=std::make_unique<CanonicalPacketIngress>();
@@ -525,6 +569,7 @@ void test_real_wasapi_lease_pipeline(Test &t)
 int main() {
     Test t;
     test_mic48_ingress_to_mix(t);
+    test_resumed_wasapi_keeps_program_without_second_media_zero(t);
     test_pcm16_mono_44100(t);
     test_invalid_and_pre_zero(t);
     test_detect_trusted_qpc_gap(t);
