@@ -1,3 +1,5 @@
+> **Implementation status update (2026-10-11):** This roadmap is milestone architecture, NOT a real-time feature completion ledger. Use **[HANDOFF_2026-10-11_PAUSE_WEBCAM.md](HANDOFF_2026-10-11_PAUSE_WEBCAM.md)** for current CI/head/checkpoints. Native System+Mic+A/V and live Mic Mute are implemented and user tested; Pause is PR #115 Draft awaiting seam-indexed hardware QA; **Webcam/face-cam overlay is not implemented** and tracked in [Issue #116](https://github.com/masarray/arssyut/issues/116). The ArZoom Smart Camera viewport is a different, already existing native feature.
+
 # Arssyut Delivery Strategy and Milestones
 
 This roadmap is deliberately gate-based. Each milestone must prove the foundation it owns before later presentation features are stacked on top.

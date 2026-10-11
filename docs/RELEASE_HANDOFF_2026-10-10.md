@@ -1,3 +1,5 @@
+> **SUPERSEDED STATUS (2026-10-11):** This 10-Oct document is archived as historical RC1-era handoff and must not be treated as the live release/engine baseline. Use **[HANDOFF_2026-10-11_PAUSE_WEBCAM.md](HANDOFF_2026-10-11_PAUSE_WEBCAM.md)** for current source/CI/Pause/Webcam truth. Earlier published RC1/RC2 are audio-defective previews and should not be promoted.
+
 # Handoff — Finish Arssyut Public Release, Download Sync & Webcam Status
 
 **Date:** 2026-10-10

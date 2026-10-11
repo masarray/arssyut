@@ -1,4 +1,7 @@
 <p align="center"><img src="assets/favicon/web-app-manifest-192x192.png" alt="Arssyut product logo" width="80" height="80"></p>
+
+**Current engineering handoff (Pause → Webcam):** [2026-10-11 canonical status / exact SHA / CI / next milestones](docs/HANDOFF_2026-10-11_PAUSE_WEBCAM.md). Microphone live mute is merged; PR #115 Pause/Resume remains unmerged Draft pending seam-by-seam Windows acceptance. Webcam recording/preview is still unimplemented (Issue #116). Avoid historic RC1/RC2 audio packages.
+
 <h1 align="center">Arssyut</h1>
 <p align="center"><strong>Enhanced Screen Recorder for Windows</strong></p>
 <p align="center">Capture your screen. Stay in the flow.</p>

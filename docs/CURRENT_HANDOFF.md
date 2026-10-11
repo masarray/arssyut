@@ -1,3 +1,5 @@
+> **CANONICAL STATUS NOTICE (2026-10-11):** This file is archived historical planning; it contains 2026-10-07 pre-audio assumptions that are **obsolete**. For current `main`, accepted Microphone/System A/V, PR #115 Pause/Resume Draft status, exact CI/checkpoints, and the upcoming Webcam roadmap, read **[HANDOFF_2026-10-11_PAUSE_WEBCAM.md](HANDOFF_2026-10-11_PAUSE_WEBCAM.md)** FIRST. Do not implement P7 audio again, restore RC1/RC2, or merge draft Pause before seam acceptance.
+
 # Current Handoff — Arssyut
 
 > **STATUS OVERRIDE — 2026-10-10:** This file preserves historical milestone notes
