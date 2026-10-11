@@ -60,7 +60,8 @@ class PauseAcceptanceTests(TestCase):
         self.assertEqual(output["status"], "PASS")
         self.assertTrue(output["release_accepted"])
         self.assertEqual(output["resume_count"], 13)
-        self.assertAlmostEqual(output["excluded_pause_s"], 232.7152073)
+        self.assertEqual(output["excluded_pause_s"],
+                         round(self.data["pause_excluded_ticks_100ns"]/10_000_000, 6))
 
     def test_real_capture_eight_mic_pool_drops_requires_review(self):
         # Sanitized counters from the user-tested 13-pause MP4.
