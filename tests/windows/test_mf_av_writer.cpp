@@ -427,6 +427,144 @@ void verify_decoded_canonical_aac(
 }
 
 
+
+// Prevent a regression where a perfectly valid H264/AAC MP4 has heavily
+// crackling encoded PCM. Exercise the SAME native Media Foundation A/V writer
+// used by the integrated product, not a separate audio-only test artifact.
+//
+// Its deterministic 440Hz stereo tone is constant between 1s and 8.3s;
+// unexpected source-program discontinuity attributes used to produce huge
+// *AAC-frame-boundary* jumps even while the encoder returned success.
+// Read back actual PCM from the finalized MP4 and check both continuity and
+// absence of entire silent 1024-frame windows. Tolerances allow lossy AAC
+// quantization; no requirement of bit-exact decoded samples.
+void verify_sustained_product_aac_quality(
+    TestContext &test, const std::filesystem::path &path)
+{
+    constexpr DWORD kStream =
+        static_cast<DWORD>(MF_SOURCE_READER_FIRST_AUDIO_STREAM);
+    ComPtr<IMFSourceReader> reader;
+    if (FAILED(MFCreateSourceReaderFromURL(
+            path.c_str(), nullptr, reader.GetAddressOf())) || !reader) {
+        test.expect(false, "A/V quality gate reopens real finalized MP4");
+        return;
+    }
+    ComPtr<IMFMediaType> pcm;
+    if (FAILED(MFCreateMediaType(pcm.GetAddressOf())) || !pcm ||
+        FAILED(pcm->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio)) ||
+        FAILED(pcm->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM)) ||
+        FAILED(pcm->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2)) ||
+        FAILED(pcm->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 48'000)) ||
+        FAILED(pcm->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16)) ||
+        FAILED(reader->SetCurrentMediaType(kStream, nullptr, pcm.Get()))) {
+        test.expect(false, "A/V quality gate opens decoded 48k stereo PCM");
+        return;
+    }
+
+    constexpr std::uint64_t kCheckFirst = 48'000; // skip test-tone switch and AAC priming
+    constexpr std::uint64_t kCheckLast = 400'000; // exclude encoder drain padding
+    constexpr std::uint32_t kAudioQuantum = 1'024;
+    std::uint64_t decoded_frames = 0;
+    std::uint64_t inside_count = 0, boundary_count = 0;
+    double inside_delta = 0.0, boundary_delta = 0.0;
+    std::uint64_t window_count = 0;
+    std::uint32_t window_frames = 0;
+    double window_square_sum = 0.0;
+    std::uint32_t low_energy_windows = 0;
+    std::int16_t last_left = 0, last_right = 0;
+    bool have_last = false;
+    bool read_ok = true;
+
+    for (std::uint32_t attempt = 0; attempt < 4'096; ++attempt) {
+        DWORD actual = 0, flags = 0;
+        LONGLONG timestamp = 0;
+        ComPtr<IMFSample> sample;
+        if (FAILED(reader->ReadSample(
+                kStream, 0, &actual, &flags, &timestamp,
+                sample.GetAddressOf())) ||
+            (flags & MF_SOURCE_READERF_ERROR) != 0) {
+            read_ok = false;
+            break;
+        }
+        if (sample) {
+            ComPtr<IMFMediaBuffer> buffer;
+            BYTE *bytes = nullptr;
+            DWORD max_length = 0, length = 0;
+            if (FAILED(sample->ConvertToContiguousBuffer(
+                    buffer.GetAddressOf())) || !buffer ||
+                FAILED(buffer->Lock(&bytes, &max_length, &length)) || !bytes) {
+                read_ok = false;
+                break;
+            }
+            if (length % (sizeof(std::int16_t) * 2U) != 0) {
+                read_ok = false;
+            } else {
+                for (DWORD i = 0; i < length; i += 4U) {
+                    std::int16_t left = 0, right = 0;
+                    std::memcpy(&left, bytes + i, sizeof(left));
+                    std::memcpy(&right, bytes + i + sizeof(left), sizeof(right));
+                    if (decoded_frames >= kCheckFirst &&
+                        decoded_frames < kCheckLast) {
+                        window_square_sum +=
+                            static_cast<double>(left) * left +
+                            static_cast<double>(right) * right;
+                        ++window_frames;
+                        if (window_frames == kAudioQuantum) {
+                            const double mean_square = window_square_sum /
+                                (static_cast<double>(kAudioQuantum) * 2.0);
+                            if (mean_square < 900.0 * 900.0)
+                                ++low_energy_windows;
+                            ++window_count;
+                            window_square_sum = 0.0;
+                            window_frames = 0;
+                        }
+                        if (have_last) {
+                            const double delta =
+                                static_cast<double>(std::abs(
+                                    static_cast<int>(left) - last_left)) +
+                                static_cast<double>(std::abs(
+                                    static_cast<int>(right) - last_right));
+                            if (decoded_frames % kAudioQuantum == 0) {
+                                boundary_delta += delta;
+                                ++boundary_count;
+                            } else {
+                                inside_delta += delta;
+                                ++inside_count;
+                            }
+                        }
+                    }
+                    last_left = left;
+                    last_right = right;
+                    have_last = true;
+                    ++decoded_frames;
+                }
+            }
+            (void)buffer->Unlock();
+            if (!read_ok) break;
+        }
+        if ((flags & MF_SOURCE_READERF_ENDOFSTREAM) != 0)
+            break;
+    }
+
+    const double mean_inside = inside_count > 0 ?
+        inside_delta / static_cast<double>(inside_count) : 0.0;
+    const double mean_boundary = boundary_count > 0 ?
+        boundary_delta / static_cast<double>(boundary_count) : 0.0;
+    const double ratio = mean_inside > 0.0 ?
+        mean_boundary / mean_inside : 0.0;
+    std::cout << "A/V decoded AAC quality gate: decoded_frames=" << decoded_frames
+              << " windows=" << window_count
+              << " low_energy_windows=" << low_energy_windows
+              << " mean_boundary_ratio=" << ratio << '\n';
+    test.expect(read_ok && decoded_frames >= kCheckLast,
+        "Integrated MP4 decodes long AAC PCM without errors/truncation");
+    test.expect(window_count >= 300 && low_energy_windows == 0,
+        "Steady integrated A/V tone has no unexplained silent AAC windows");
+    test.expect(boundary_count >= 300 && mean_inside > 0.0 &&
+                ratio < 4.0,
+        "Decoded integrated AAC has no pathological 1024-frame crackle");
+}
+
 void test_product_native_av_writer_with_canonical_audio(
     TestContext &test,
     const std::filesystem::path &path)
@@ -708,6 +846,7 @@ void test_product_native_av_writer_with_canonical_audio(
         test.expect(is_aac,
             "Product MP4 uses actual AAC codec, not a mislabeled PCM track");
         verify_decoded_canonical_aac(test, path);
+        verify_sustained_product_aac_quality(test, path);
     }
 }
 
