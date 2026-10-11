@@ -377,7 +377,7 @@ void test_quiesce_preserves_pending_packet(TestContext &test)
     auto fake = std::make_shared<FakeLoopbackCaptureClient>();
     windows::WasapiLoopbackSource source{fake};
     const auto status = source.start(
-        L"__arssyut_quiesce_test_endpoint__");
+        L"__arssyut_fake_render_endpoint__");
     test.expect(status.ok(), "F1 fake loopback source started");
     if (!status.ok()) return;
 
