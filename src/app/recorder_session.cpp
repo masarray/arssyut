@@ -2077,6 +2077,10 @@ void RecorderSession::write_diagnostics(
             << snapshot_value.visual_analysis_map_failures << ",\n"
             << "  \"elapsed_ticks_100ns\": "
             << snapshot_value.elapsed_ticks << ",\n"
+            << "  \"pause_count\": "
+            << pause_count_.load(std::memory_order_relaxed) << ",\n"
+            << "  \"pause_excluded_ticks_100ns\": "
+            << pause_excluded_ticks_.load(std::memory_order_relaxed) << ",\n"
             << "  \"prepare_latency_ms\": "
             << ([&]() -> std::int64_t {
                    const auto requested =
