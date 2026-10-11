@@ -374,14 +374,15 @@ jobs:
             # bounded 240-frame worker-owned mic gain transition; no codec reset.
             # Real-device 25.4s audio stale/pool-exhaustion regression:
             # fixed source lease headroom and bounded 35ms settle.
-            "src/app/audio_product_runtime.hpp" = "87f5ede93fea2384348321d287144a76c2cf097e"
+            "src/app/audio_product_runtime.hpp" = "f395d921382bfb1da0f1d141a1173efebc785c2a"
             "src/app/recording_audio_health.hpp" = "6cd6fb9a91b330e5a796219cc64143eef69b6703"
             # Fixed 48k recorded click/keycap cues, no second clock or audio source.
             "src/app/recorded_input_sounds.hpp" = "ee7c4aba077b7133b0156f6f7d61fddd48673026"
             # Native mic mute command is valid only while Recording and mic enabled.
+            # Native Pause state + hotkey command mapped to one recorder.
             # Experimental-only bridge approval: default/release still
             # rejects audio. Mic tokens are generation checked.
-            "src/bridge/native_bridge.cpp" = "c28115763143b89dfc75fd1e4adbc14801598c57"
+            "src/bridge/native_bridge.cpp" = "ed8813d6dbd360070a775abb378524fb64e3558e"
 
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;
@@ -404,7 +405,7 @@ jobs:
             "src/core/audio/audio_source_block_window.hpp" = "801fc8a4440f626d6220ccfec462cd6196b929e5"
             # P7A5 source mapper creates no new clock; exact reviewed blob maps
             # capture QPC into the RecorderSession media-zero domain.
-            "src/core/audio/audio_source_timeline_mapper.hpp" = "65e4aa33179c65b690a6fce6a7769b8836ecc73d"
+            "src/core/audio/audio_source_timeline_mapper.hpp" = "15c1009dfe56ab76287df4c815a6c5e40d0b9ba7"
             # P7A5 drift policy consumes only accepted trusted drift estimates;
             # exact blob keeps slew/deadband/reanchor semantics fail-closed.
             "src/core/audio/audio_drift_controller.hpp" = "af7c342d17126c2781ad9d15f9fe56a156c5d184"
@@ -424,12 +425,12 @@ jobs:
             "src/core/audio/audio_canonical_staging.hpp" = "7de1b230f91186e3f9eb857de44070cc030fd129"
             # P7A5 closed-program assembly: vetted exact blob composes the
             # existing staging/windows/mixer; no replacement clock or backend.
-            "src/core/audio/audio_canonical_program_assembler.hpp" = "506256245d20ffa0efb487d27f4d63077782aa28"
+            "src/core/audio/audio_canonical_program_assembler.hpp" = "6617fbc6b60a683c554cfe0b7abb5a9ab335f4f3"
             # P7A5 typed packet lease -> native normalization -> mapped
             # canonical SRC ingress, exact blob; no unreviewed core drift.
             # P7 audio quality: QPC trust gating and 2ms bounded seam declick;
             # deterministic normal-PCM and discontinuity regressions.
-            "src/core/audio/audio_packet_ingress.hpp" = "4769990b5804370847467c6d35a8786770e89d8c"
+            "src/core/audio/audio_packet_ingress.hpp" = "4f7017caec2377a14690e691196d2d795c33a120"
 
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
