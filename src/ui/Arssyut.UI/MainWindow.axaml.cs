@@ -2414,8 +2414,14 @@ public sealed partial class MainWindow : Window
                     _recordHoverBrush;
                 StatusText.Text =
                     "Recording failed";
+                // PlatformFailure(4) + StageFull(8) is a real incomplete
+                // audio program, even when the recovered MP4 can be opened.
                 StatusDetail.Text =
-                    $"Native error {snapshot.ErrorCode} · detail 0x{snapshot.ErrorDetail:X8}";
+                    snapshot.ErrorCode == 4 && snapshot.ErrorDetail == 8
+                        ? "Audio buffer overflow during recording/finalizing. " +
+                          "MP4 may be recoverable; see audio_failure_phase " +
+                          "in the diagnostics JSON."
+                        : $"Native error {snapshot.ErrorCode} · detail 0x{snapshot.ErrorDetail:X8}";
                 // The native finalizer can recover a valid playable MP4 even
                 // when a capture source failed. Never hide Open/Folder if the
                 // recovered recording actually exists on disk.

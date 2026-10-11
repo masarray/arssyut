@@ -202,6 +202,22 @@ public:
         return true;
     }
 
+    [[nodiscard]] std::size_t source_stage_frames(
+        AudioSourceId source) const noexcept
+    {
+        const auto index = source_index(source);
+        return index < source_staging_.size()
+            ? source_staging_[index].size_frames() : 0U;
+    }
+
+    [[nodiscard]] std::size_t source_stage_peak(
+        AudioSourceId source) const noexcept
+    {
+        const auto index = source_index(source);
+        return index < source_staging_.size()
+            ? source_staging_[index].high_water_frames() : 0U;
+    }
+
     [[nodiscard]] std::uint32_t pending_blocks() const noexcept
     {
         return pending_count_;

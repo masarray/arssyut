@@ -13,6 +13,7 @@
 #include "app/recorded_input_sounds.hpp"
 #include "presentation/presentation_state.hpp"
 #include "core/audio/audio_packet_ingress.hpp"
+#include "core/audio/audio_stop_drain_schedule.hpp"
 #include "platform/windows/audio/libswresample_audio_resampler.hpp"
 #include "platform/windows/audio/wasapi_microphone_source.hpp"
 #include "platform/windows/audio/wasapi_loopback_source.hpp"
@@ -120,6 +121,12 @@ public:
                 media_zero_100ns, sys_src_))
             return core::Status::failure(core::StatusCode::Unsupported);
 
+        mic_ingested_ = false;
+        sys_ingested_ = false;
+        first_error_phase_ = 0;
+        first_error_source_ = 0;
+        first_packet_status_ = 0;
+        first_native_hresult_ = 0;
         recording_ = true;
         return core::Status::success();
     }
@@ -176,25 +183,23 @@ public:
                 const auto r = mic_ingress_.pump_available(
                     microphone_, program_, kPacketsPerRound);
                 if (!acceptable(r.status))
-                    return ingress_failure(r.status);
+                    return ingress_failure_recorded(1, 1, r.status);
                 mic_ingested_ = mic_ingested_ || r.packets_popped != 0;
                 const auto state = microphone_.snapshot();
                 if (state.state == windows::WasapiCaptureState::Failed ||
                     state.state == windows::WasapiCaptureState::DeviceInvalidated)
-                    return core::Status::failure(
-                        core::StatusCode::PlatformFailure, state.last_hresult);
+                    return native_failure_recorded(1, 1, state.last_hresult);
             }
             if (pinned_.system_audio) {
                 const auto r = sys_ingress_.pump_available(
                     loopback_, program_, kPacketsPerRound);
                 if (!acceptable(r.status))
-                    return ingress_failure(r.status);
+                    return ingress_failure_recorded(1, 2, r.status);
                 sys_ingested_ = sys_ingested_ || r.packets_popped != 0;
                 const auto state = loopback_.snapshot();
                 if (state.state == windows::WasapiCaptureState::Failed ||
                     state.state == windows::WasapiCaptureState::DeviceInvalidated)
-                    return core::Status::failure(
-                        core::StatusCode::PlatformFailure, state.last_hresult);
+                    return native_failure_recorded(1, 2, state.last_hresult);
             }
 
             // Drain EACH completed interval before closing the next one.
@@ -204,11 +209,11 @@ public:
                 if (program_.next_due_100ns() > due_through)
                     break;
                 if (!program_.close_one_due(program_.next_due_100ns()))
-                    return core::Status::failure(
+                    return program_failure_recorded(4,
                         core::StatusCode::InvalidStateTransition);
                 const auto status = submit(writer, -1);
                 if (!status.ok())
-                    return status;
+                    return submitted_failure_recorded(status);
             }
             if (program_.next_due_100ns() > due_through)
                 break;
@@ -228,82 +233,146 @@ public:
             return core::Status::success();
         }
 
-        // Captured leases were published before Stop, so consume the bounded
-        // pending handoff before retiring the capture pools.
-        for (int i = 0; i < 32; ++i) {
-            bool got_any = false;
-            if (pinned_.microphone) {
+        // First quiesce the producers, but retain their bounded WASAPI
+        // handoffs and pool generations. WasapiCaptureSource::stop() retires
+        // queued packets, so using stop() here would lose audible tail data.
+        // This is a Stop control-plane operation, never a capture callback.
+        if (pinned_.microphone)
+            microphone_.quiesce();
+        if (pinned_.system_audio)
+            loopback_.quiesce();
+
+        const auto fail_stop = [this](core::Status error) noexcept {
+            stop_sources();  // retire pool only after last lease released
+            recording_ = false;
+            return error;
+        };
+
+        // Exactly one owner drives all pending source leases, SRC state and
+        // the existing MF writer. Each iteration services at most one
+        // captured packet per source, then closes/submits only program blocks
+        // BOTH sources have already reached. No batch-first overflow and no
+        // false synthetic silence ahead of delayed microphone packets.
+        bool mic_empty = !pinned_.microphone;
+        bool sys_empty = !pinned_.system_audio;
+        bool mic_done = !pinned_.microphone;
+        bool sys_done = !pinned_.system_audio;
+        constexpr int kMaxStopRounds = 512;
+        constexpr int kMaxClosesPerRound = 4;
+        bool completed = false;
+        for (int round = 0; round < kMaxStopRounds; ++round) {
+            if (!mic_empty) {
                 const auto r = mic_ingress_.pump_available(
-                    microphone_, program_, 2);
-                if (!acceptable(r.status)) {
-                    stop_sources();
-                    return ingress_failure(r.status);
-                }
-                got_any = got_any || r.packets_popped != 0;
+                    microphone_, program_, 1);
+                if (!acceptable(r.status))
+                    return fail_stop(
+                        ingress_failure_recorded(2, 1, r.status));
                 mic_ingested_ = mic_ingested_ || r.packets_popped != 0;
+                mic_empty = r.source_empty;
             }
-            if (pinned_.system_audio) {
+            if (!sys_empty) {
                 const auto r = sys_ingress_.pump_available(
-                    loopback_, program_, 2);
-                if (!acceptable(r.status)) {
-                    stop_sources();
-                    return ingress_failure(r.status);
-                }
-                got_any = got_any || r.packets_popped != 0;
+                    loopback_, program_, 1);
+                if (!acceptable(r.status))
+                    return fail_stop(
+                        ingress_failure_recorded(2, 2, r.status));
                 sys_ingested_ = sys_ingested_ || r.packets_popped != 0;
+                sys_empty = r.source_empty;
             }
-            if (!got_any)
-                break;
-        }
-        stop_sources();
 
-        // Flush the already selected and linked libswresample instances;
-        // this does not invent a new SRC or a second timestamp origin.
-        for (int i = 0; i < 8; ++i) {
-            bool emitted = false;
-            if (pinned_.microphone && mic_ingested_) {
-                const auto r = mic_ingress_.drain_one(program_);
-                if (!acceptable(r.status))
-                    return ingress_failure(r.status);
-                emitted = emitted || r.canonical_frames_emitted != 0;
+            // SRC tails belong to the same already-configured resamplers.
+            // A source is "complete" only after its last lease AND its
+            // resampler delay have both been consumed. This also handles
+            // 44.1->48kHz without moving the canonical audio media zero.
+            if (mic_empty && !mic_done) {
+                if (!mic_ingress_.has_canonical_cursor()) {
+                    mic_done = true;
+                } else {
+                    const auto r = mic_ingress_.drain_one(program_);
+                    if (!acceptable(r.status))
+                        return fail_stop(
+                            ingress_failure_recorded(3, 1, r.status));
+                    mic_done = r.canonical_frames_emitted == 0;
+                }
             }
-            if (pinned_.system_audio && sys_ingested_) {
-                const auto r = sys_ingress_.drain_one(program_);
-                if (!acceptable(r.status))
-                    return ingress_failure(r.status);
-                emitted = emitted || r.canonical_frames_emitted != 0;
+            if (sys_empty && !sys_done) {
+                if (!sys_ingress_.has_canonical_cursor()) {
+                    sys_done = true;
+                } else {
+                    const auto r = sys_ingress_.drain_one(program_);
+                    if (!acceptable(r.status))
+                        return fail_stop(
+                            ingress_failure_recorded(3, 2, r.status));
+                    sys_done = r.canonical_frames_emitted == 0;
+                }
             }
-            if (!emitted)
-                break;
-        }
 
-        // Close only the intervals containing the physical recording span,
-        // then let the existing AAC adapter trim the last block at Stop.
-        for (int i = 0; i < 512; ++i) {
-            if (program_.next_due_100ns() > stopped.ticks_100ns)
+            const core::audio::AudioStopDrainFrontier frontier{
+                .microphone_enabled = pinned_.microphone,
+                .system_enabled = pinned_.system_audio,
+                .microphone_complete = mic_done,
+                .system_complete = sys_done,
+                .microphone_next_frame =
+                    mic_ingress_.canonical_next_frame(),
+                .system_next_frame =
+                    sys_ingress_.canonical_next_frame(),
+                .stop_ticks_100ns = stopped.ticks_100ns
+            };
+            for (int n = 0; n < kMaxClosesPerRound &&
+                 core::audio::audio_stop_block_safe(
+                     program_, frontier); ++n) {
+                if (!program_.close_one_due(program_.next_due_100ns()))
+                    return fail_stop(program_failure_recorded(
+                        4, core::StatusCode::InvalidStateTransition));
+                const auto status = submit(writer, stopped.ticks_100ns);
+                if (!status.ok())
+                    return fail_stop(submitted_failure_recorded(status));
+            }
+            if (mic_done && sys_done) {
+                completed = true;
                 break;
+            }
+        }
+        if (!completed)
+            return fail_stop(program_failure_recorded(
+                2, core::StatusCode::InvalidStateTransition));
+
+        // Both packet handoffs and SRC tails are exhausted. It is NOW safe
+        // to close remaining physical-time intervals as silence if a WASAPI
+        // endpoint was quiet; no delayed audio from that endpoint can arrive.
+        constexpr int kMaxFinalBlocks = 512;
+        for (int i = 0; i < kMaxFinalBlocks &&
+             program_.next_due_100ns() <= stopped.ticks_100ns; ++i) {
             if (!program_.close_one_due(program_.next_due_100ns()))
-                return core::Status::failure(
-                    core::StatusCode::InvalidStateTransition);
+                return fail_stop(program_failure_recorded(
+                    4, core::StatusCode::InvalidStateTransition));
             const auto status = submit(writer, stopped.ticks_100ns);
             if (!status.ok())
-                return status;
+                return fail_stop(submitted_failure_recorded(status));
         }
-        // The final partial 1024-frame block is explicitly trimmed by
-        // submit_to(stop), never dropped merely because its end is after Stop.
-        if (program_.next_due_100ns() > stopped.ticks_100ns &&
-            program_.pending_blocks() == 0) {
-            (void)program_.close_one_due(program_.next_due_100ns());
-        }
-        for (int i = 0; i < 8 && program_.pending_blocks() != 0; ++i) {
+        if (program_.next_due_100ns() <= stopped.ticks_100ns)
+            return fail_stop(program_failure_recorded(
+                4, core::StatusCode::InvalidStateTransition));
+
+        // Explicitly close ONE final partial AAC interval and submit with
+        // the original captured Stop timestamp; adapter truncates it.
+        if (program_.pending_blocks() == 0)
+            if (!program_.close_one_due(program_.next_due_100ns()))
+                return fail_stop(program_failure_recorded(
+                    4, core::StatusCode::InvalidStateTransition));
+        for (int i = 0; i < 8 &&
+             program_.pending_blocks() != 0; ++i) {
             const auto status = submit(writer, stopped.ticks_100ns);
             if (!status.ok())
-                return status;
+                return fail_stop(submitted_failure_recorded(status));
         }
+        const bool emptied = program_.pending_blocks() == 0 &&
+            program_.stats().dropped_program_blocks == 0;
+        stop_sources();
         recording_ = false;
-        return program_.pending_blocks() == 0
-            ? core::Status::success()
-            : core::Status::failure(core::StatusCode::InvalidStateTransition);
+        return emptied ? core::Status::success()
+            : program_failure_recorded(
+                4, core::StatusCode::InvalidStateTransition);
     }
 
     // Snapshot the actual capture evidence on the existing recorder worker.
@@ -328,6 +397,19 @@ public:
         v.staging_gaps=stats.staging_gaps;
         v.staging_overflows=stats.staging_overflows;
         v.dropped_program_blocks=stats.dropped_program_blocks;
+        v.failure_phase=first_error_phase_;
+        v.failure_source=first_error_source_;
+        v.failure_packet_ingress_status=first_packet_status_;
+        v.failure_native_hresult=first_native_hresult_;
+        v.mic_stage_frames=static_cast<std::uint32_t>(
+            program_.source_stage_frames(core::audio::AudioSourceId::Microphone));
+        v.system_stage_frames=static_cast<std::uint32_t>(
+            program_.source_stage_frames(core::audio::AudioSourceId::SystemAudio));
+        v.mic_stage_peak=static_cast<std::uint32_t>(
+            program_.source_stage_peak(core::audio::AudioSourceId::Microphone));
+        v.system_stage_peak=static_cast<std::uint32_t>(
+            program_.source_stage_peak(core::audio::AudioSourceId::SystemAudio));
+        v.pending_audio_program_blocks=program_.pending_blocks();
         return v;
     }
 
@@ -354,12 +436,49 @@ private:
                status == PacketIngressStatus::BeforeMediaZero;
     }
 
-    [[nodiscard]] static core::Status ingress_failure(
+    void note_error(std::uint32_t phase, std::uint32_t source,
+                    std::uint32_t packet_status = 0,
+                    std::uint32_t hresult = 0) noexcept
+    {
+        if (first_error_phase_ != 0)
+            return; // Preserve first origin; finalizer must not overwrite.
+        first_error_phase_ = phase;
+        first_error_source_ = source;
+        first_packet_status_ = packet_status;
+        first_native_hresult_ = hresult;
+    }
+
+    [[nodiscard]] core::Status ingress_failure_recorded(
+        std::uint32_t phase, std::uint32_t source,
         core::audio::PacketIngressStatus status) noexcept
     {
+        note_error(phase, source, static_cast<std::uint32_t>(status));
         return core::Status::failure(
             core::StatusCode::PlatformFailure,
             static_cast<std::uint32_t>(status));
+    }
+
+    [[nodiscard]] core::Status native_failure_recorded(
+        std::uint32_t phase, std::uint32_t source,
+        std::uint32_t hresult) noexcept
+    {
+        note_error(phase, source, 0, hresult);
+        return core::Status::failure(
+            core::StatusCode::PlatformFailure, hresult);
+    }
+
+    [[nodiscard]] core::Status program_failure_recorded(
+        std::uint32_t phase, core::StatusCode code) noexcept
+    {
+        note_error(phase, 3);
+        return core::Status::failure(code);
+    }
+
+    [[nodiscard]] core::Status submitted_failure_recorded(
+        core::Status status) noexcept
+    {
+        note_error(5, 3);
+        return status;
     }
 
     [[nodiscard]] core::Status submit(
@@ -397,6 +516,8 @@ private:
     bool recording_ = false;
     bool mic_ingested_ = false;
     bool sys_ingested_ = false;
+    std::uint32_t first_error_phase_ = 0, first_error_source_ = 0;
+    std::uint32_t first_packet_status_ = 0, first_native_hresult_ = 0;
 };
 
 } // namespace arssyut::app::audio

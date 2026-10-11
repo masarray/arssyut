@@ -369,6 +369,41 @@ void test_running_loopback_worker(
         "Retained loopback lease releases into its original pool generation");
 }
 
+void test_quiesce_preserves_pending_packet(TestContext &test)
+{
+    using namespace arssyut;
+    // F1: unlike Stop(), quiesce() MUST stop the producer without retiring
+    // its bounded packet handoff. This protects final recorded AAC audio.
+    auto fake = std::make_shared<FakeLoopbackCaptureClient>();
+    windows::WasapiLoopbackSource source{fake};
+    const auto status = source.start(
+        L"__arssyut_quiesce_test_endpoint__");
+    test.expect(status.ok(), "F1 fake loopback source started");
+    if (!status.ok()) return;
+
+    test.expect(fake->wait_until_packet_released(),
+        "F1 known packet is published before producer shutdown");
+    source.quiesce();
+    const auto snap = source.snapshot();
+    test.expect(fake->stop_called() &&
+                    snap.state == windows::WasapiLoopbackState::Stopped &&
+                    snap.queue_depth == 1,
+        "F1 quiesce joins producer but retains one published packet");
+    windows::WasapiPacketLease packet;
+    test.expect(source.try_pop(packet) && packet.valid() &&
+                    packet.packet().frame_count == 480,
+        "F1 stopped-producer packet remains readable exactly once");
+    test.expect(packet.release(),
+        "F1 stop-drain lease returns pool storage deterministically");
+    windows::WasapiPacketLease duplicate;
+    test.expect(!source.try_pop(duplicate),
+        "F1 no replay or duplicate packet after draining");
+    source.stop();
+    test.expect(source.snapshot().queue_depth == 0 &&
+                    !source.try_pop(duplicate),
+        "F1 stop retires handoff only after drained lease was released");
+}
+
 void test_loopback_lifetime_without_hardware(TestContext &test)
 {
     using namespace arssyut;
@@ -425,6 +460,7 @@ int main()
 
     test_mode_source_contract(test);
     test_running_loopback_worker(test);
+    test_quiesce_preserves_pending_packet(test);
     test_loopback_lifetime_without_hardware(test);
 
     if (test.failures != 0) {

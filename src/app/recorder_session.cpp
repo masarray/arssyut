@@ -1679,6 +1679,15 @@ void RecorderSession::worker_main() noexcept
         writer.finalize();
 
     if (!finalize_status.ok() && !failed) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        // Distinguish MF finalization from audio ingress errors in
+        // the optional product-A/V build, without breaking video-only CI.
+        if (audio_runtime && audio_health_.failure_phase == 0) {
+            audio_health_.failure_phase = 6;
+            audio_health_.failure_source = 3;
+            audio_health_.failure_native_hresult = finalize_status.detail;
+        }
+#endif
         encoder_failure_stage_.store(
             writer.failure_stage(),
             std::memory_order_release);
@@ -1847,6 +1856,15 @@ void RecorderSession::write_diagnostics(
             << "  \"audio_staging_gaps\": " << audio_health_.staging_gaps << ",\n"
             << "  \"audio_staging_overflows\": " << audio_health_.staging_overflows << ",\n"
             << "  \"audio_dropped_program_blocks\": " << audio_health_.dropped_program_blocks << ",\n"
+            << "  \"audio_failure_phase\": " << audio_health_.failure_phase << ",\n"
+            << "  \"audio_failure_source\": " << audio_health_.failure_source << ",\n"
+            << "  \"audio_failure_packet_ingress_status\": " << audio_health_.failure_packet_ingress_status << ",\n"
+            << "  \"audio_failure_native_hresult\": " << audio_health_.failure_native_hresult << ",\n"
+            << "  \"audio_stage_mic_frames\": " << audio_health_.mic_stage_frames << ",\n"
+            << "  \"audio_stage_system_frames\": " << audio_health_.system_stage_frames << ",\n"
+            << "  \"audio_stage_mic_peak\": " << audio_health_.mic_stage_peak << ",\n"
+            << "  \"audio_stage_system_peak\": " << audio_health_.system_stage_peak << ",\n"
+            << "  \"audio_pending_program_blocks\": " << audio_health_.pending_audio_program_blocks << ",\n"
             << "  \"encoder_h264_profile\": \""
             << arssyut::windows::mf_h264_profile_name(
                    encoder_profile)

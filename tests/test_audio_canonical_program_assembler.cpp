@@ -1,4 +1,5 @@
 #include "core/audio/audio_canonical_program_assembler.hpp"
+#include "core/audio/audio_stop_drain_schedule.hpp"
 
 #include <array>
 #include <cstdint>
@@ -199,6 +200,122 @@ void loopback_resume_after_silence(Test &t)
     }
 }
 
+
+void stop_drain_regression(Test &t)
+{
+    // Reproduce the REAL failure mechanism deterministically: an old
+    // finish() batches 32x2 source packets before submitting one AAC block.
+    // 40 x 480-frame 10ms packets overflow a 16384-frame fixed stage.
+    constexpr std::uint32_t packet_frames = 480;
+    constexpr int packets = 60;
+    constexpr std::uint64_t total_frames = packet_frames * packets;
+    const auto physical_stop = kZero +
+        static_cast<std::int64_t>(
+            frames_to_ticks_floor(total_frames, 48'000));
+    std::array<float, packet_frames * 2> mic{}, sys{};
+    mic.fill(0.20F);
+    sys.fill(0.30F);
+    auto old = std::make_unique<CanonicalProgramAssembler>();
+    old->reset(kZero, true, true);
+    bool reproduced_overflow = false;
+    for (int i = 0; i < packets; ++i) {
+        const auto pos = static_cast<std::int64_t>(i * packet_frames);
+        if (old->offer(AudioSourceId::Microphone,
+                      pos, mic, packet_frames) ==
+               CanonicalProgramOfferStatus::Overflow) {
+            reproduced_overflow = true;
+            break;
+        }
+        if (old->offer(AudioSourceId::SystemAudio,
+                      pos, sys, packet_frames) ==
+               CanonicalProgramOfferStatus::Overflow) {
+            reproduced_overflow = true;
+            break;
+        }
+    }
+    t.check(reproduced_overflow &&
+            old->stats().staging_overflows == 1,
+            "old batch-first Stop reliably reproduces real StageFull(8)");
+
+    auto a = std::make_unique<CanonicalProgramAssembler>();
+    a->reset(kZero, true, true);
+    AudioStopDrainFrontier f{};
+    f.microphone_enabled = true;
+    f.system_enabled = true;
+    f.stop_ticks_100ns = physical_stop;
+
+    std::uint64_t count = 0;
+    std::uint64_t next_frame = 0;
+    bool ordered = true, exact_audio = true;
+    AudioProgramBlock out{};
+    const auto submit = [&]() {
+        std::uint64_t first = 0;
+        if (!a->try_take(out, first)) return false;
+        ordered = ordered && first == next_frame &&
+            out.audio.media_start_100ns ==
+                kZero + static_cast<std::int64_t>(
+                    frames_to_ticks_floor(first, 48'000));
+        exact_audio = exact_audio &&
+            out.audio.source_presence_mask == 3 &&
+            out.audio.samples[0] > 0.49F &&
+            out.audio.samples[0] < 0.51F;
+        next_frame += 1024;
+        ++count;
+        return true;
+    };
+    for (int i = 0; i < packets; ++i) {
+        const auto pos = static_cast<std::int64_t>(i * packet_frames);
+        t.check(a->offer(AudioSourceId::Microphone, pos, mic,
+                         packet_frames) == CanonicalProgramOfferStatus::Applied &&
+                a->offer(AudioSourceId::SystemAudio, pos, sys,
+                         packet_frames) == CanonicalProgramOfferStatus::Applied,
+                "bounded interleaved source step accepts both PCM packets");
+        f.microphone_next_frame = pos + packet_frames;
+        f.system_next_frame = pos + packet_frames;
+        for (int n = 0; n < 4 && audio_stop_block_safe(*a, f); ++n)
+            t.check(a->close_one_due(a->next_due_100ns()) && submit(),
+                    "frontier-safe program close immediately submits one AAC block");
+    }
+    t.check(!audio_stop_block_safe(*a, f),
+            "no premature full-block close beyond known source frontier");
+    f.microphone_complete = true;
+    f.system_complete = true;
+    for (int i = 0; i < 4 && audio_stop_block_safe(*a, f); ++i)
+        t.check(a->close_one_due(a->next_due_100ns()) && submit(),
+                "fully drained sources may safely close remaining due blocks");
+    // Only the last partial program interval is allowed to pass Stop;
+    // production's existing adapter trims it with the physical Stop tick.
+    t.check(a->next_due_100ns() > physical_stop &&
+            a->close_one_due(a->next_due_100ns()) && submit(),
+            "last AAC block is closed once for exact-Stop trimming");
+    t.check(count == (total_frames + 1023) / 1024 &&
+            ordered && exact_audio &&
+            a->stats().staging_overflows == 0 &&
+            a->stats().dropped_program_blocks == 0 &&
+            a->source_stage_peak(AudioSourceId::Microphone) <
+               CanonicalProgramAssembler::kStageCapacityFrames &&
+            a->source_stage_peak(AudioSourceId::SystemAudio) <
+               CanonicalProgramAssembler::kStageCapacityFrames,
+            "interleaved dual-source Stop has monotonic PTS, zero loss and bounded stage");
+
+    // A completed, truly silent source may be treated as absent. A source
+    // still draining its libswresample tail is NOT complete and must block
+    // premature closure of that future block.
+    auto one = std::make_unique<CanonicalProgramAssembler>();
+    one->reset(kZero, true, true);
+    AudioStopDrainFrontier g{};
+    g.microphone_enabled = true;
+    g.system_enabled = true;
+    g.stop_ticks_100ns = physical_stop;
+    g.microphone_next_frame = 2 * 1024;
+    g.system_next_frame = 0;
+    t.check(!audio_stop_block_safe(*one, g),
+            "slow system SRC prevents premature silence ahead of its tail");
+    g.system_complete = true;
+    t.check(audio_stop_block_safe(*one, g),
+            "fully exhausted silent system source permits bounded final closure");
+}
+
 void invalid_and_noncontiguous(Test &t)
 {
     auto a = std::make_unique<CanonicalProgramAssembler>();
@@ -232,6 +349,7 @@ int main()
     stale_silent_and_reset(t);
     loopback_resume_after_silence(t);
     invalid_and_noncontiguous(t);
+    stop_drain_regression(t);
     if (t.failures != 0) {
         std::cerr << "FAIL: " << t.failures << '/' << t.checks
                   << " assembler checks\n";

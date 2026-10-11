@@ -15,6 +15,11 @@ core::Status WasapiMicrophoneSource::start(
         options);
 }
 
+void WasapiMicrophoneSource::quiesce() noexcept
+{
+    source_.quiesce();
+}
+
 void WasapiMicrophoneSource::stop() noexcept
 {
     source_.stop();

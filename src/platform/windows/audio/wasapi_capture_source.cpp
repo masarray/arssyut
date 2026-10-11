@@ -721,7 +721,17 @@ Status WasapiCaptureSource::start(
     return status;
 }
 
+void WasapiCaptureSource::quiesce() noexcept
+{
+    stop_worker(false);
+}
+
 void WasapiCaptureSource::stop() noexcept
+{
+    stop_worker(true);
+}
+
+void WasapiCaptureSource::stop_worker(bool retire) noexcept
 {
     std::unique_lock lifecycle_lock(
         lifecycle_mutex_);
@@ -743,7 +753,7 @@ void WasapiCaptureSource::stop() noexcept
             stop_event_ = nullptr;
         }
 
-        retire_handoff();
+        if (retire) retire_handoff();
         return;
     }
 
@@ -783,7 +793,7 @@ void WasapiCaptureSource::stop() noexcept
     // Stop completes producer shutdown before retiring the published
     // generation. Already-popped packet leases keep their exact old pool alive,
     // while queued stale media and the source-owned pool are released now.
-    retire_handoff();
+    if (retire) retire_handoff();
 }
 
 void WasapiCaptureSource::request_stop() noexcept

@@ -144,6 +144,9 @@ public:
         WasapiCaptureMode mode,
         WasapiCaptureOptions options = {});
 
+    // Quiesce producer and join worker while retaining all queued packets.
+    // Stop-only drain can then consume leases before retiring their pool.
+    void quiesce() noexcept;
     void stop() noexcept;
 
     [[nodiscard]] bool try_pop(
@@ -167,6 +170,7 @@ private:
     [[nodiscard]] bool signal_startup(
         core::Status status) noexcept;
 
+    void stop_worker(bool retire) noexcept;
     void request_stop() noexcept;
 
     [[nodiscard]] bool stop_requested() const noexcept;

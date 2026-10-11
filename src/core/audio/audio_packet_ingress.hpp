@@ -466,6 +466,17 @@ public:
     }
 #endif
 
+    // Canonical source frontier: the first frame not yet emitted to the
+    // assembler, authoritative only once initial SRC output was positioned.
+    // It is not a second media clock or a predictor of future samples.
+    [[nodiscard]] std::int64_t canonical_next_frame() const noexcept
+    {
+        return have_next_ ? next_frame_ : 0;
+    }
+    [[nodiscard]] bool has_canonical_cursor() const noexcept
+    {
+        return have_next_;
+    }
     [[nodiscard]] bool ready() const noexcept { return ready_; }
     [[nodiscard]] AudioDriftControllerSnapshot drift() const noexcept
     {
