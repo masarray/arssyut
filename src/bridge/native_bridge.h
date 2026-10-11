@@ -122,6 +122,7 @@ enum ArssyutBridgeRecorderState : std::uint32_t {
     ARSSYUT_BRIDGE_RECORDER_FINALIZING = 5,
     ARSSYUT_BRIDGE_RECORDER_READY = 6,
     ARSSYUT_BRIDGE_RECORDER_FAILED = 7,
+    ARSSYUT_BRIDGE_RECORDER_PAUSED = 8, // stable v1 enum append
 };
 
 struct ArssyutBridgeRectV1 {
@@ -358,6 +359,13 @@ arssyut_bridge_recorder_stop(
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_toggle_microphone_mute(
+    ArssyutBridgeHandle handle) noexcept;
+
+// Toggles the authoritative RecorderSession Pause/Resume intent; the sole
+// worker owns the QPC transition. No writer close or second output file.
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_toggle_pause(
     ArssyutBridgeHandle handle) noexcept;
 
 ARSSYUT_BRIDGE_API

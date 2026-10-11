@@ -58,6 +58,23 @@ class UXContract(unittest.TestCase):
         self.assertIn("ExtractAssociatedIcon", self.workflow)
         ElementTree.fromstring(self.project)
 
+    def test_native_pause_resume_uses_one_session_and_real_hotkey(self):
+        clock = (ROOT / "src/app/recording_pause_clock.hpp").read_text(encoding="utf-8")
+        session = (ROOT / "src/app/recorder_session.cpp").read_text(encoding="utf-8")
+        runtime = (ROOT / "src/app/audio_product_runtime.hpp").read_text(encoding="utf-8")
+        bridge = (ROOT / "src/bridge/native_bridge.cpp").read_text(encoding="utf-8")
+        control = (UI / "RecordingControllerWindow.axaml.cs").read_text(encoding="utf-8")
+        win = (UI / "MainWindow.axaml.cs").read_text(encoding="utf-8")
+        self.assertIn("RecordingPauseClock", clock)
+        self.assertIn("pause_clock.media_now(", session)
+        self.assertIn("audio_runtime->discard_while_paused()", session)
+        self.assertIn("program_.discard_sources_after_pause()", runtime)
+        self.assertIn("request_toggle_pause()", bridge)
+        self.assertIn("_nativeBridge.TogglePause()", control)
+        self.assertIn("NativeHotkeyEvents.TogglePause", win)
+        self.assertIn("NativeHotkeyAction.TogglePause", win)
+        self.assertIn("NativeRecorderState.Paused", control)
+
     def test_live_native_microphone_mute_command_owns_ui_and_hotkey(self):
         bridge = (ROOT / "src/bridge/native_bridge.cpp").read_text(encoding="utf-8")
         runtime = (ROOT / "src/app/audio_product_runtime.hpp").read_text(encoding="utf-8")

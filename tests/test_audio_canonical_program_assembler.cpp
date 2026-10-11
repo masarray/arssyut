@@ -63,6 +63,49 @@ void suffix_and_deadline(Test &t)
             "close/dequeue counts agree with existing program clock");
 }
 
+void pause_discards_future_source_not_program_clock(Test &t)
+{
+    auto a = std::make_unique<CanonicalProgramAssembler>();
+    a->reset(kZero, true, true);
+    std::array<float, 2*1024> mic{}, sys{};
+    mic.fill(0.25F); sys.fill(0.125F);
+    t.check(a->offer(AudioSourceId::Microphone, 0, mic, 1024) ==
+        CanonicalProgramOfferStatus::Applied &&
+        a->offer(AudioSourceId::SystemAudio, 0, sys, 1024) ==
+        CanonicalProgramOfferStatus::Applied,
+        "Canonical program takes both live sources before Pause");
+    t.check(a->close_one_due(due(0)),
+        "Pre-Pause 1024-frame AAC program block closes");
+    AudioProgramBlock block{};
+    std::uint64_t first=0;
+    t.check(a->try_take(block,first) && first==0,
+        "First block leaves program buffer without resetting writer");
+
+    t.check(a->offer(AudioSourceId::SystemAudio, 1024, sys, 1024) ==
+        CanonicalProgramOfferStatus::Applied,
+        "Source capture can get ahead of the Pause boundary");
+    const auto due_before = a->next_due_100ns();
+    a->discard_sources_after_pause();
+    t.check(a->next_due_100ns() == due_before &&
+            a->mix_stats().blocks_closed == 1 &&
+            a->stats().dequeued_program_blocks == 1,
+        "Pause discards only source PCM; never reinitializes AAC program clock");
+
+    t.check(a->offer(AudioSourceId::SystemAudio, 1024, sys, 1024, true) ==
+        CanonicalProgramOfferStatus::Applied &&
+        a->offer(AudioSourceId::Microphone, 1024, mic, 1024, true) ==
+        CanonicalProgramOfferStatus::Applied,
+        "Resumed same-frame source PCM is allowed without StageGap");
+    t.check(a->close_one_due(due(1)) &&
+            a->try_take(block,first) && first==1024 &&
+            block.audio.source_presence_mask==3 &&
+            block.audio.samples[0]==0.375F,
+        "Second AAC block has contiguous 1024-frame PTS and both sources");
+    t.check(a->stats().staging_gaps==0 &&
+            a->stats().dropped_program_blocks==0,
+        "Paused source staging never corrupts 48k output clock or ring");
+}
+
 void mixed_dual_source(Test &t)
 {
     auto a = std::make_unique<CanonicalProgramAssembler>();
@@ -228,6 +271,7 @@ int main()
     Test t;
     suffix_and_deadline(t);
     mixed_dual_source(t);
+    pause_discards_future_source_not_program_clock(t);
     queue_pressure_discontinuity(t);
     stale_silent_and_reset(t);
     loopback_resume_after_silence(t);

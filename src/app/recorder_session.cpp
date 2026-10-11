@@ -1,4 +1,5 @@
 #include "app/recorder_session.hpp"
+#include "app/recording_pause_clock.hpp"
 
 #ifdef _WIN32
 
@@ -272,6 +273,12 @@ Status RecorderSession::start(
             config.visual_mode);
 
     config_ = std::move(config);
+    pause_requested_.store(false, std::memory_order_release);
+    pause_began_at_ticks_.store(0, std::memory_order_release);
+    pause_excluded_ticks_.store(0, std::memory_order_release);
+    pause_count_.store(0, std::memory_order_release);
+    pause_resume_events_ = 0;
+    pause_resume_seams_.fill(0);
     microphone_mute_requested_.store(
         config_.audio_microphone_muted, std::memory_order_release);
     microphone_mute_applied_.store(
@@ -408,6 +415,20 @@ bool RecorderSession::request_toggle_microphone_mute() noexcept
     return true;
 }
 
+bool RecorderSession::request_toggle_pause() noexcept
+{
+    const auto state = state_.load(std::memory_order_acquire);
+    if ((state != RecorderState::Recording &&
+         state != RecorderState::Paused) ||
+        stop_requested_.load(std::memory_order_acquire))
+        return false;
+    bool value = pause_requested_.load(std::memory_order_acquire);
+    while (!pause_requested_.compare_exchange_weak(
+        value, !value, std::memory_order_acq_rel,
+        std::memory_order_acquire)) {}
+    return true;
+}
+
 bool RecorderSession::request_start_commit() noexcept
 {
     if (state_.load(
@@ -495,13 +516,16 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
 
     if (started > 0) {
         if (stopped <= 0) {
-            stopped =
-                MonotonicClock::now().ticks_100ns;
+            stopped = MonotonicClock::now().ticks_100ns;
+            const auto pause_start = pause_began_at_ticks_.load(
+                std::memory_order_acquire);
+            if (pause_start > 0)
+                stopped = (std::min)(stopped, pause_start);
+            stopped -= pause_excluded_ticks_.load(std::memory_order_acquire);
         }
+        // Completed recording uses already-translated media stop QPC.
         result.elapsed_ticks =
-            std::max<std::int64_t>(
-                0,
-                stopped - started);
+            std::max<std::int64_t>(0, stopped - started);
     }
 
     result.capture_received =
@@ -1129,6 +1153,8 @@ void RecorderSession::worker_main() noexcept
         return;
     }
 
+    arssyut::app::RecordingPauseClock pause_clock;
+    pause_clock.reset(start.ticks_100ns);
     started_at_ticks_.store(
         start.ticks_100ns,
         std::memory_order_release);
@@ -1183,10 +1209,69 @@ void RecorderSession::worker_main() noexcept
         overview_gate;
 
     bool failed = false;
+    std::int64_t last_resume_physical_qpc = start.ticks_100ns;
     std::uint32_t consecutive_video_backpressure = 0;
 
     while (!stop_requested_.load(
         std::memory_order_acquire)) {
+        const TimePoint physical_now = MonotonicClock::now();
+        const bool want_pause = pause_requested_.load(std::memory_order_acquire);
+        if (want_pause && !pause_clock.paused()) {
+            if (!pause_clock.pause(physical_now.ticks_100ns)) {
+                fail(Status::failure(StatusCode::InvalidStateTransition));
+                failed = true;
+                break;
+            }
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->pause();
+#endif
+            pause_began_at_ticks_.store(
+                physical_now.ticks_100ns, std::memory_order_release);
+            pause_count_.fetch_add(1, std::memory_order_release);
+            state_.store(RecorderState::Paused, std::memory_order_release);
+        } else if (!want_pause && pause_clock.paused()) {
+            if (!pause_clock.resume(physical_now.ticks_100ns)) {
+                fail(Status::failure(StatusCode::InvalidStateTransition));
+                failed = true;
+                break;
+            }
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->resume(
+                pause_clock.committed_excluded_ticks(),
+                physical_now.ticks_100ns);
+#endif
+            pause_excluded_ticks_.store(
+                pause_clock.committed_excluded_ticks(), std::memory_order_release);
+            pause_began_at_ticks_.store(0, std::memory_order_release);
+            // Exact seek locations for post-capture per-seam waveform and
+            // packet-PTS audit. Recorder worker owns these; no heap/locks.
+            if (pause_resume_events_ < kMaxPauseResumeSeams)
+                pause_resume_seams_[static_cast<std::size_t>(
+                    pause_resume_events_)] =
+                    pause_clock.elapsed(physical_now.ticks_100ns);
+            ++pause_resume_events_;
+            last_resume_physical_qpc = physical_now.ticks_100ns;
+            previous_presentation = physical_now;
+            next_presentation = physical_now;
+            state_.store(RecorderState::Recording, std::memory_order_release);
+        }
+        if (pause_clock.paused()) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->discard_while_paused();
+#endif
+            // Input during excluded time must never replay as post-resume
+            // clicks/keycap sounds or build an unbounded semantic backlog.
+            arssyut::windows::MouseClickEvent ignored_click{};
+            arssyut::windows::ShortcutEvent ignored_shortcut{};
+            for (int n=0; n<16 && presentation_input.try_pop_click(ignored_click); ++n) {}
+            for (int n=0; n<16 && presentation_input.try_pop_shortcut(ignored_shortcut); ++n) {}
+            // Existing producer threads remain live but their bounded queues
+            // cannot grow; the one writer and A/V media clock stay frozen.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        const TimePoint media_now{
+            pause_clock.media_now(physical_now.ticks_100ns)};
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
         if (audio_runtime && config_.audio_microphone) {
             const bool desired = microphone_mute_requested_.load(
@@ -1204,7 +1289,7 @@ void RecorderSession::worker_main() noexcept
         // existing due-work and timing path unchanged.
         if (audio_runtime) {
             const auto audio_status =
-                audio_runtime->service(MonotonicClock::now(), writer);
+                audio_runtime->service(media_now, writer);
             if (!audio_status.ok()) {
                 fail(audio_status);
                 failed = true;
@@ -1212,8 +1297,7 @@ void RecorderSession::worker_main() noexcept
             }
         }
 #endif
-        const TimePoint now =
-            MonotonicClock::now();
+        const TimePoint now = physical_now;
 
         if (presentation_enabled &&
             !(now < next_target_rect_refresh)) {
@@ -1307,9 +1391,12 @@ void RecorderSession::worker_main() noexcept
                         click_y,
                         click_event.time);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
-                    if (audio_runtime && config_.presentation.click_visual)
+                    if (audio_runtime && config_.presentation.click_visual &&
+                        click_event.time.ticks_100ns >= last_resume_physical_qpc)
                         audio_runtime->record_click(
-                            click_event.kind, click_event.time.ticks_100ns);
+                            click_event.kind,
+                            click_event.time.ticks_100ns -
+                                pause_clock.committed_excluded_ticks());
 #endif
                 }
             }
@@ -1321,9 +1408,11 @@ void RecorderSession::worker_main() noexcept
                     shortcut_event.chord,
                     shortcut_event.time);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
-                if (audio_runtime && config_.presentation.shortcut_keys)
+                if (audio_runtime && config_.presentation.shortcut_keys &&
+                    shortcut_event.time.ticks_100ns >= last_resume_physical_qpc)
                     audio_runtime->record_keycap(
-                        shortcut_event.time.ticks_100ns);
+                        shortcut_event.time.ticks_100ns -
+                            pause_clock.committed_excluded_ticks());
 #endif
             }
 
@@ -1382,7 +1471,7 @@ void RecorderSession::worker_main() noexcept
         auto frame_result =
             pipeline->process_due(
                 device->immediate_context(),
-                now,
+                media_now,
                 config_.crop,
                 config_.output_size,
                 presentation_enabled
@@ -1539,8 +1628,14 @@ void RecorderSession::worker_main() noexcept
 
     // Recording duration ends with the render/write loop, not after MP4
     // finalization. This keeps the user-visible duration aligned with media.
-    const TimePoint recording_stopped =
-        MonotonicClock::now();
+    const TimePoint physical_stop = MonotonicClock::now();
+    const bool stopped_during_pause = pause_clock.paused();
+    const TimePoint recording_stopped{
+        pause_clock.media_now(physical_stop.ticks_100ns)};
+    pause_began_at_ticks_.store(0, std::memory_order_release);
+    pause_excluded_ticks_.store(
+        pause_clock.excluded_ticks(physical_stop.ticks_100ns),
+        std::memory_order_release);
     stopped_at_ticks_.store(
         recording_stopped.ticks_100ns,
         std::memory_order_release);
@@ -1579,7 +1674,8 @@ void RecorderSession::worker_main() noexcept
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     if (audio_runtime) {
         const auto audio_status =
-            audio_runtime->finish(recording_stopped, writer);
+            audio_runtime->finish(recording_stopped, writer,
+                stopped_during_pause);
         audio_health_ = audio_runtime->health_snapshot();
         if (!audio_status.ok() && !failed) {
             fail(audio_status);
@@ -1990,6 +2086,24 @@ void RecorderSession::write_diagnostics(
             << snapshot_value.visual_analysis_map_failures << ",\n"
             << "  \"elapsed_ticks_100ns\": "
             << snapshot_value.elapsed_ticks << ",\n"
+            << "  \"pause_count\": "
+            << pause_count_.load(std::memory_order_relaxed) << ",\n"
+            << "  \"pause_excluded_ticks_100ns\": "
+            << pause_excluded_ticks_.load(std::memory_order_relaxed) << ",\n"
+            << "  \"pause_resume_events\": "
+            << pause_resume_events_ << ",\n"
+            << "  \"pause_resume_seam_overflow\": "
+            << (pause_resume_events_ > kMaxPauseResumeSeams
+                    ? pause_resume_events_ - kMaxPauseResumeSeams : 0)
+            << ",\n"
+            << "  \"pause_resume_media_ticks_100ns\": [";
+        for (std::size_t i = 0;
+             i < (std::min)(static_cast<std::size_t>(pause_resume_events_),
+                              kMaxPauseResumeSeams); ++i) {
+            if (i != 0) out << ", ";
+            out << pause_resume_seams_[i];
+        }
+        out << "],\n"
             << "  \"prepare_latency_ms\": "
             << ([&]() -> std::int64_t {
                    const auto requested =

@@ -17,6 +17,7 @@
 
 #include <Windows.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
@@ -34,6 +35,7 @@ enum class RecorderState : std::uint8_t {
     Finalizing,
     Ready,
     Failed,
+    Paused,  // append: never renumber stable Bridge state codes
 };
 
 enum class PresenterCommand : std::uint8_t {
@@ -161,6 +163,7 @@ public:
     // Only this session owns mute state. GUI button and native hotkey reach
     // the same lock-free request and existing worker; no second audio clock.
     [[nodiscard]] bool request_toggle_microphone_mute() noexcept;
+    [[nodiscard]] bool request_toggle_pause() noexcept;
 
     // One-shot Armed -> Recording gate. Returns false outside Armed or after a
     // prior commit. The worker owns the actual media-clock timestamp.
@@ -224,6 +227,17 @@ private:
     std::atomic<bool> start_commit_requested_{false};
     std::atomic<bool> microphone_mute_requested_{false};
     std::atomic<bool> microphone_mute_applied_{false};
+    std::atomic<bool> pause_requested_{false};
+    std::atomic<std::int64_t> pause_began_at_ticks_{0};
+    std::atomic<std::int64_t> pause_excluded_ticks_{0};
+    std::atomic<std::uint64_t> pause_count_{0};
+
+    // Instrumentation only. Worker-owned, fixed capacity, zero allocation.
+    // One 100ns timestamp in the COMPRESSED output-media timeline per
+    // successful Resume; old diagnostics fields remain unchanged.
+    static constexpr std::size_t kMaxPauseResumeSeams = 64;
+    std::array<std::int64_t, kMaxPauseResumeSeams> pause_resume_seams_{};
+    std::uint64_t pause_resume_events_ = 0;
 
     std::atomic<std::int64_t> start_requested_at_ticks_{0};
     std::atomic<std::int64_t> armed_at_ticks_{0};

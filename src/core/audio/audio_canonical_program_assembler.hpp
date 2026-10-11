@@ -65,6 +65,17 @@ public:
                        (microphone || system_audio);
     }
 
+    // Discard source samples already captured ahead of the Pause boundary,
+    // preserving the canonical mixer's NEXT frame index and writer FIFO.
+    // Nothing may advance the AAC PROGRAM clock while paused.
+    void discard_sources_after_pause() noexcept
+    {
+        for (auto &stage : source_staging_) stage.reset();
+        const auto first = static_cast<std::int64_t>(
+            mixer_.stats().blocks_closed * kFramesPerBlock);
+        for (auto &window : source_windows_) window.begin(first);
+    }
+
     [[nodiscard]] CanonicalProgramOfferStatus offer(
         AudioSourceId source,
         std::int64_t absolute_first_frame,
