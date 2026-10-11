@@ -375,6 +375,12 @@ jobs:
             # Lock its exact reviewed blob; do not unfreeze the old engine.
             # The actual device probe resides in tools/, not a runtime source.
             "src/core/video/webcam_capture_policy.hpp" = "468bf72bb55f0522fe7faf940361910849b507d6"
+            # P8W1B adds a new independent native camera input; these exact
+            # blobs alone are admitted. WGC/RecorderSession/compositor/audio
+            # historical locked hashes remain unchanged and fail closed.
+            "src/platform/windows/capture/webcam_gpu_frame_slot.hpp" = "e7a6232a64d8c5c02e418388da7e3968bb217626"
+            "src/platform/windows/capture/webcam_capture_source.hpp" = "b3e866f5a86209e5feef0b2aa61c7f6afacf053d"
+            "src/platform/windows/capture/webcam_capture_source.cpp" = "99a3d2a39f307a1cce6ea06799507f9a89fda545"
             # P6UI.6D/P6UI.6F retained Spotlight + keycap destination-rect path,
             # plus final Region Smart Auto crop normalization.
             "src/platform/windows/graphics/d3d11_compositor.cpp" = "97f7e203dc75620f9abd74901f4b88dac87f29b1"

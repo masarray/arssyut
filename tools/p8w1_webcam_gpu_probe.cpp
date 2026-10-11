@@ -3,6 +3,7 @@
 #include "app/device_catalog.hpp"
 #include "core/video/webcam_capture_policy.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
+#include "platform/windows/capture/webcam_capture_source.hpp"
 #include "p8w1_webcam_probe_flags.hpp"
 
 #include <Windows.h>
@@ -19,6 +20,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <chrono>
+#include <thread>
 #include <cwchar>
 #include <iostream>
 #include <mutex>
@@ -420,26 +423,108 @@ int run_capture(
     return clean_delivery ? 0 : 4;
 }
 
+
+int run_native_engine(const arssyut::app::DeviceChoice &camera,
+                      unsigned long seconds)
+{
+    auto graphics = arssyut::windows::D3D11Device::create(
+        arssyut::windows::D3D11DevicePreference::HardwareOnly);
+    if (!graphics) {
+        std::wcout << L"{\"status\":\"graphics_unavailable\"}\n";
+        return 4;
+    }
+    auto gpu = std::move(graphics).value();
+    arssyut::windows::WebcamGpuFrameSlot slot;
+    arssyut::windows::WebcamCaptureSource engine;
+    const auto result = engine.start(gpu->device(), camera.id, slot);
+    if (!result.ok()) {
+        std::wcout << L"{\"status\":\"engine_start_failed\",\"code\":"
+                   << static_cast<int>(result.code) << L"}\n";
+        return 4;
+    }
+
+    std::uint64_t consumed = 0, previous = 0, stale = 0;
+    std::uint64_t peak_slot_usage = 0;
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::seconds(seconds);
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto lease = slot.try_acquire_latest();
+        if (lease) {
+            ++consumed;
+            if (lease->sequence <= previous)
+                ++stale;
+            previous = lease->sequence;
+            peak_slot_usage = std::max<std::uint64_t>(
+                peak_slot_usage, slot.in_flight_count());
+            // No screen readback. No CPU pixel data. A renderer will consume
+            // this same leased ID3D11Texture2D in the next milestone.
+        }
+        const auto snap = engine.snapshot();
+        if (snap.state == arssyut::windows::WebcamCaptureState::Unavailable)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
+
+    // Preserve actual status before stopping; Stop transitions to Off.
+    const auto snapshot = engine.snapshot();
+    engine.stop();
+    const bool gpu_ok =
+        snapshot.received >= 3 &&
+        snapshot.adapter_mismatch == 0 &&
+        snapshot.invalid_samples == 0 &&
+        snapshot.callback_timeouts == 0 &&
+        snapshot.source_changes == 0 &&
+        stale == 0;
+    const bool clean = gpu_ok && snapshot.stream_ticks == 0 &&
+        snapshot.state == arssyut::windows::WebcamCaptureState::Active;
+    const wchar_t *status = clean ? L"engine_gpu_active" :
+        gpu_ok ? L"engine_gpu_with_gaps" : L"review";
+    std::wcout << L"{\"status\":\"" << status
+               << L"\",\"seconds\":" << seconds
+               << L",\"mode\":{"
+               << L"\"width\":" << snapshot.format.width
+               << L",\"height\":" << snapshot.format.height
+               << L",\"fps_num\":" << snapshot.format.fps_num
+               << L",\"fps_den\":" << snapshot.format.fps_den
+               << L",\"format\":" << static_cast<int>(snapshot.format.format)
+               << L"},\"received\":" << snapshot.received
+               << L",\"published\":" << snapshot.published
+               << L",\"replaced\":" << snapshot.replaced
+               << L",\"busy_drops\":" << snapshot.busy_drops
+               << L",\"stream_ticks\":" << snapshot.stream_ticks
+               << L",\"invalid_samples\":" << snapshot.invalid_samples
+               << L",\"adapter_mismatch\":" << snapshot.adapter_mismatch
+               << L",\"source_changes\":" << snapshot.source_changes
+               << L",\"callback_timeouts\":" << snapshot.callback_timeouts
+               << L",\"consumed\":" << consumed
+               << L",\"consumer_nonmonotonic\":" << stale
+               << L",\"peak_occupied_slots\":" << peak_slot_usage
+               << L",\"hr\":" << snapshot.last_hresult << L"}\n";
+    return clean ? 0 : 4;
+}
+
 } // namespace
 
 int wmain(int argc, wchar_t **argv)
 {
     if (argc >= 2 && std::wstring(argv[1]) == L"--help") {
         std::wcout << L"Arssyut P8W1 GPU webcam diagnostic (not a recorder).\n"
-                   << L"Usage: --list | --capture <zero-based-index> [frames: 3..60]\n"
+                   << L"Usage: --list | --capture <index> [frames: 3..60] | --engine <index> [seconds: 1..20]\n"
                    << L"Exit: 0=probe GPU candidate or list, 3=no device, "
                    << L"4=review/unavailable, 2=invalid/tool failure.\n";
         return 0;
     }
 
     bool capture = argc >= 2 && std::wstring(argv[1]) == L"--capture";
+    bool engine_mode = argc >= 2 && std::wstring(argv[1]) == L"--engine";
     bool list = argc == 1 || (argc == 2 && std::wstring(argv[1]) == L"--list");
     unsigned long index = 0, frames = 12;
-    if (capture) {
+    if (capture || engine_mode) {
         if ((argc != 3 && argc != 4) ||
             !parse_uint(argv[2], index) ||
             (argc == 4 && !parse_uint(argv[3], frames)) ||
-            frames < 3 || frames > 60) {
+            (engine_mode ? (frames < 1 || frames > 20)
+                         : (frames < 3 || frames > 60))) {
             return 2;
         }
     } else if (!list) {
@@ -462,5 +547,6 @@ int wmain(int argc, wchar_t **argv)
         std::wcout << L"{\"status\":\"camera_not_found\"}\n";
         return 3;
     }
-    return run_capture(devices[index], frames);
+    return engine_mode ? run_native_engine(devices[index], argc == 4 ? frames : 5)
+                       : run_capture(devices[index], frames);
 }

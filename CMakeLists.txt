@@ -67,6 +67,9 @@ if(WIN32)
         src/platform/windows/audio/wasapi_microphone_source.cpp
         src/platform/windows/audio/wasapi_loopback_source.cpp
         src/platform/windows/capture/captured_frame.cpp
+        # P8W1B GPU-only webcam source; compiled into the existing native
+        # platform library, never a second writer/recorder executable.
+        src/platform/windows/capture/webcam_capture_source.cpp
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
@@ -824,6 +827,19 @@ if(ARSSYUT_BUILD_TESTS)
 
         # P8W1A real-MF status event classifier, deterministic and
         # hardware-free; stream gaps must never look like delivered frames.
+        # P8W1B: synthetic MF sample / WARP GPU mailbox leases + 15k
+        # concurrent publishes, no physical camera on CI runner.
+        add_executable(arssyut_webcam_capture_engine_tests
+            tests/windows/test_webcam_capture_engine.cpp)
+        target_link_libraries(arssyut_webcam_capture_engine_tests PRIVATE
+            arssyut_windows mfplat ole32)
+        if(MSVC)
+            target_compile_options(arssyut_webcam_capture_engine_tests PRIVATE
+                /W4 /permissive- /utf-8 /Zc:__cplusplus)
+        endif()
+        add_test(NAME arssyut_webcam_capture_engine_tests
+            COMMAND arssyut_webcam_capture_engine_tests)
+
         add_executable(arssyut_webcam_probe_flags_tests
             tests/windows/test_webcam_probe_flags.cpp)
         target_include_directories(arssyut_webcam_probe_flags_tests PRIVATE
