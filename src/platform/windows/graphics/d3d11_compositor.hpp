@@ -9,6 +9,7 @@
 #include "core/video/frame_geometry.hpp"
 #include "presentation/presentation_state.hpp"
 #include "visual/arvisual_grade.hpp"
+#include "platform/windows/graphics/webcam_nv12_surface.hpp"
 #include "visual/arvisual_scene_analysis.hpp"
 
 #include <d3d11.h>
@@ -35,6 +36,14 @@ public:
     [[nodiscard]] arssyut::core::Status update_source(
         ID3D11DeviceContext *context,
         ID3D11Texture2D *source) noexcept;
+
+    // Optional output-space face-cam source, updated only on a *new* GPU
+    // camera frame by the one existing video worker. Never opens devices.
+    [[nodiscard]] arssyut::core::Status update_webcam(
+        ID3D11DeviceContext *context,
+        ID3D11Texture2D *sample,
+        std::uint32_t subresource) noexcept;
+    void clear_webcam() noexcept { webcam_.clear(); }
 
     [[nodiscard]] arssyut::core::Status submit_scene_analysis(
         ID3D11DeviceContext *context,
@@ -161,6 +170,7 @@ private:
     std::uint32_t keyboard_content_width_ = 1;
     std::uint32_t keyboard_content_height_ = 1;
 
+    WebcamNv12Surface webcam_;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> input_copy_;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> input_srv_;
     D3D11_TEXTURE2D_DESC input_desc_{};

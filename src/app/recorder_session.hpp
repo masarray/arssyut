@@ -85,6 +85,9 @@ struct RecorderConfig {
     // Product audio is opt-in and fail-closed. Explicit endpoint IDs must be
     // concrete Windows MMDevice IDs, never GUI display names or stale tokens.
     // The existing bridge still rejects audio until real-device MP4 acceptance.
+    // Internal P8W2 opt-in uses ONE established writer and frame clock.
+    bool webcam_enabled = false;
+    std::wstring webcam_symbolic_link;
     bool audio_microphone = false;
     bool audio_system = false;
     std::wstring audio_microphone_id;
@@ -229,6 +232,18 @@ private:
     std::atomic<std::int64_t> armed_at_ticks_{0};
     std::atomic<std::int64_t> first_frame_submitted_at_ticks_{0};
     std::atomic<std::uint64_t> capture_preroll_received_{0};
+    // Per-session real webcam evidence. Never silently represent an
+    // unrendered camera as accepted just because desktop MP4 succeeded.
+    std::atomic<std::uint64_t> webcam_received_{0};
+    std::atomic<std::uint64_t> webcam_published_{0};
+    std::atomic<std::uint64_t> webcam_ticks_startup_{0};
+    std::atomic<std::uint64_t> webcam_ticks_streaming_{0};
+    std::atomic<std::uint64_t> webcam_adapter_mismatch_{0};
+    std::atomic<std::uint64_t> webcam_foreign_device_{0};
+    std::atomic<std::uint64_t> webcam_new_gpu_frames_{0};
+    std::atomic<std::uint64_t> webcam_rendered_slots_{0};
+    std::atomic<std::uint64_t> webcam_copy_failures_{0};
+    std::atomic<std::uint32_t> webcam_hresult_{0};
     std::atomic<bool> audio_writer_enabled_{false};
     std::atomic<std::uint64_t> audio_samples_submitted_{0};
     std::atomic<std::uint64_t> audio_frames_submitted_{0};

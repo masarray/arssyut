@@ -67,9 +67,12 @@ if(WIN32)
         src/platform/windows/audio/wasapi_microphone_source.cpp
         src/platform/windows/audio/wasapi_loopback_source.cpp
         src/platform/windows/capture/captured_frame.cpp
+        src/platform/windows/capture/webcam_capture_source.cpp
+        src/platform/windows/capture/webcam_preview_session.cpp
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
+        src/platform/windows/graphics/webcam_nv12_surface.cpp
         src/platform/windows/graphics/d3d11_device.cpp
         src/platform/windows/input/presentation_input_worker.cpp
         src/platform/windows/input/shortcut_keymap.cpp
@@ -109,6 +112,7 @@ if(WIN32)
             dxgi
             gdi32
             user32
+            mf
             mfplat
             mfreadwrite
             mfuuid
@@ -359,6 +363,18 @@ endif()
 
 if(ARSSYUT_BUILD_TESTS)
     enable_testing()
+
+    # Webcam candidate/rate tests are pure C++ and hardware independent.
+    add_executable(arssyut_webcam_capture_policy_tests
+        tests/test_webcam_capture_policy.cpp)
+    target_include_directories(arssyut_webcam_capture_policy_tests
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    if(MSVC)
+        target_compile_options(arssyut_webcam_capture_policy_tests PRIVATE
+            /W4 /permissive- /utf-8 /Zc:__cplusplus)
+    endif()
+    add_test(NAME arssyut_webcam_capture_policy_tests
+        COMMAND arssyut_webcam_capture_policy_tests)
 
     add_executable(arssyut_core_tests
         tests/test_main.cpp
@@ -788,6 +804,22 @@ if(ARSSYUT_BUILD_TESTS)
                 COMMAND arssyut_p7a5_swresample_adapter_tests
             )
         endif()
+
+        # P8 integration regression: production HLSL, native preview shader,
+        # GPU NV12 frame handoff and 15,000 synthetic bounded publications.
+        foreach(testcase IN ITEMS webcam_capture_engine webcam_compositor
+                                  webcam_preview_contract)
+            add_executable(arssyut_${testcase}_tests
+                tests/windows/test_${testcase}.cpp)
+            target_link_libraries(arssyut_${testcase}_tests
+                PRIVATE arssyut_windows mfplat ole32)
+            if(MSVC)
+                target_compile_options(arssyut_${testcase}_tests PRIVATE
+                    /W4 /permissive- /utf-8 /Zc:__cplusplus)
+            endif()
+            add_test(NAME arssyut_${testcase}_tests
+                COMMAND arssyut_${testcase}_tests)
+        endforeach()
 
         add_executable(arssyut_windows_tests
             tests/windows/test_d3d11_device.cpp

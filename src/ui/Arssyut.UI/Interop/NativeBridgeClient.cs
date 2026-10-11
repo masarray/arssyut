@@ -980,6 +980,35 @@ public sealed class NativeBridgeClient : IDisposable
         }
     }
 
+    // P8W2 real 192x108 GPU-downscaled camera preview. Both device
+    // selection and recording use the same generation-checked native token.
+    public const int WebcamPreviewWidth = 192;
+    public const int WebcamPreviewHeight = 108;
+    public const int WebcamPreviewByteCount = 192 * 108 * 4;
+
+    public NativeBridgeStatus StartWebcamPreview(ulong cameraToken)
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)NativeMethods.WebcamPreviewStart(
+            _handle, cameraToken);
+    }
+
+    public NativeBridgeStatus StopWebcamPreview()
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)NativeMethods.WebcamPreviewStop(_handle);
+    }
+
+    public NativeBridgeStatus ReadWebcamPreview(byte[] bgra,
+        out ulong sequence, out uint state)
+    {
+        ThrowIfDisposed();
+        if (bgra.Length < WebcamPreviewByteCount)
+            throw new ArgumentOutOfRangeException(nameof(bgra));
+        return (NativeBridgeStatus)NativeMethods.WebcamPreviewFrame(
+            _handle, bgra, (uint)bgra.Length, out sequence, out state);
+    }
+
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(
@@ -1142,6 +1171,24 @@ public sealed class NativeBridgeClient : IDisposable
 
     private static class NativeMethods
     {
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_start",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewStart(IntPtr handle,
+            ulong cameraDeviceToken);
+
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_stop",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewStop(IntPtr handle);
+
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_frame",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewFrame(IntPtr handle,
+            [Out] byte[] pixels, uint capacity,
+            out ulong sequence, out uint state);
+
         [DllImport(
             LibraryName,
             EntryPoint = "arssyut_bridge_abi_version",

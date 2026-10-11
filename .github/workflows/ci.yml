@@ -202,6 +202,7 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:DebugType=None -p:DebugSymbols=false `
             -p:InternalAudioPreview=true `
+            -p:InternalWebcamPreview=true `
             -o $package
           if ($LASTEXITCODE -ne 0) {
             throw "Internal FFmpeg-enabled UI publish failed."
@@ -227,8 +228,11 @@ jobs:
           INTERNAL WINDOWS HARDWARE AUDIO ACCEPTANCE — NOT A PUBLIC RELEASE
 
           1. Unzip the complete artifact on Windows 10/11 x64.
-          2. Double-click Arssyut.UI.exe directly. NO CMD or console.
+          2. Double-click Arssyut.UI.exe directly. NO CMD, PowerShell,
+             environment variables, or separate diagnostic executables.
           3. In the Audio panel, enable Microphone, System audio, or both.
+             Webcam: choose the real camera and switch ON to see its preview
+             BEFORE starting the recording.
           4. Select a microphone from the detected real Windows device list.
              System audio uses the default Windows eConsole playback endpoint.
           5. Record a short display video, stop, and PLAY the resulting MP4.
@@ -238,8 +242,9 @@ jobs:
 
           CAUTION: This opt-in package has not passed real-device audio
           acceptance yet. Do not replace the stable video-only release.
-          The dedicated INTERNAL executable enables its acceptance mode
-          within its process. Public builds do not. Camera is unsupported.
+          The dedicated INTERNAL executable enables A/V plus webcam QA
+          within its process. Public builds do not. Do NOT publish camera
+          until physical MP4/preview hardware acceptance.
           FFmpeg linkage and redistribution require licensing review.
           '@ | Set-Content (Join-Path $package "README_AUDIO_ACCEPTANCE.txt")
 
@@ -286,6 +291,17 @@ jobs:
             if (-not $process.HasExited) {
               Stop-Process -Id $process.Id -Force
             }
+          }
+
+      - name: Check webcam double-click packaging contract
+        shell: pwsh
+        run: |
+          $source = Get-Content "src/ui/Arssyut.UI/Program.cs" -Raw
+          $project = Get-Content "src/ui/Arssyut.UI/Arssyut.UI.csproj" -Raw
+          if ($source -notmatch "ARSSYUT_INTERNAL_WEBCAM_PREVIEW" -or
+              $source -notmatch "ARSSYUT_WEBCAM_PREVIEW" -or
+              $project -notmatch "InternalWebcamPreview") {
+            throw "Missing self-contained webcam QA launch contract."
           }
 
       - name: Upload INTERNAL audio hardware acceptance package

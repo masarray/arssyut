@@ -104,7 +104,9 @@ public sealed partial class RecordingControllerWindow : Window
                     : "No microphone selected for this recording.");
             ToolTip.SetTip(
                 CameraButton,
-                "Camera compositor backend is not wired yet.");
+                _nativeCameraIntent
+                    ? "Camera selected for this MP4 (mid-recording toggle not enabled)."
+                    : "Camera was not selected for this recording.");
         }
 
         Opened +=
