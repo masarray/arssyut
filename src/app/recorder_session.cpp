@@ -1207,6 +1207,7 @@ void RecorderSession::worker_main() noexcept
         overview_gate;
 
     bool failed = false;
+    std::int64_t last_resume_physical_qpc = start.ticks_100ns;
     std::uint32_t consecutive_video_backpressure = 0;
 
     while (!stop_requested_.load(
@@ -1240,6 +1241,7 @@ void RecorderSession::worker_main() noexcept
             pause_excluded_ticks_.store(
                 pause_clock.committed_excluded_ticks(), std::memory_order_release);
             pause_began_at_ticks_.store(0, std::memory_order_release);
+            last_resume_physical_qpc = physical_now.ticks_100ns;
             previous_presentation = physical_now;
             next_presentation = physical_now;
             state_.store(RecorderState::Recording, std::memory_order_release);
@@ -1248,6 +1250,12 @@ void RecorderSession::worker_main() noexcept
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
             if (audio_runtime) audio_runtime->discard_while_paused();
 #endif
+            // Input during excluded time must never replay as post-resume
+            // clicks/keycap sounds or build an unbounded semantic backlog.
+            arssyut::presentation::ClickEvent ignored_click{};
+            arssyut::presentation::ShortcutEvent ignored_shortcut{};
+            for (int n=0; n<16 && presentation_input.try_pop_click(ignored_click); ++n) {}
+            for (int n=0; n<16 && presentation_input.try_pop_shortcut(ignored_shortcut); ++n) {}
             // Existing producer threads remain live but their bounded queues
             // cannot grow; the one writer and A/V media clock stay frozen.
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -1374,9 +1382,12 @@ void RecorderSession::worker_main() noexcept
                         click_y,
                         click_event.time);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
-                    if (audio_runtime && config_.presentation.click_visual)
+                    if (audio_runtime && config_.presentation.click_visual &&
+                        click_event.time.ticks_100ns >= last_resume_physical_qpc)
                         audio_runtime->record_click(
-                            click_event.kind, click_event.time.ticks_100ns);
+                            click_event.kind,
+                            click_event.time.ticks_100ns -
+                                pause_clock.committed_excluded_ticks());
 #endif
                 }
             }
@@ -1388,9 +1399,11 @@ void RecorderSession::worker_main() noexcept
                     shortcut_event.chord,
                     shortcut_event.time);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
-                if (audio_runtime && config_.presentation.shortcut_keys)
+                if (audio_runtime && config_.presentation.shortcut_keys &&
+                    shortcut_event.time.ticks_100ns >= last_resume_physical_qpc)
                     audio_runtime->record_keycap(
-                        shortcut_event.time.ticks_100ns);
+                        shortcut_event.time.ticks_100ns -
+                            pause_clock.committed_excluded_ticks());
 #endif
             }
 
