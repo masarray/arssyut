@@ -349,6 +349,9 @@ jobs:
           # These are not a broad allowlist: each path below has a documented
           # acceptance reason and deterministic regression coverage.
           $lockedNativeCorrectionBlobs = @{
+            # One authoritative zero-allocation A/V Pause clock, deterministic
+            # 10s + 5s pause + 10s = 20s media QPC regression in CTest.
+            "src/app/recording_pause_clock.hpp" = "7f3868e3d0990f0ada65d71279286e808d1ed8a0"
             # P6UI.6D/P6UI.6F retained Spotlight + keycap destination-rect path,
             # plus final Region Smart Auto crop normalization.
             "src/platform/windows/graphics/d3d11_compositor.cpp" = "97f7e203dc75620f9abd74901f4b88dac87f29b1"
