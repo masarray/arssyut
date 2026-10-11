@@ -272,6 +272,10 @@ Status RecorderSession::start(
             config.visual_mode);
 
     config_ = std::move(config);
+    microphone_mute_requested_.store(
+        config_.audio_microphone_muted, std::memory_order_release);
+    microphone_mute_applied_.store(
+        config_.audio_microphone_muted, std::memory_order_release);
     stop_requested_.store(
         false,
         std::memory_order_release);
@@ -390,6 +394,20 @@ void RecorderSession::request_stop() noexcept
         std::memory_order_release);
 }
 
+bool RecorderSession::request_toggle_microphone_mute() noexcept
+{
+    if (!config_.audio_microphone ||
+        state_.load(std::memory_order_acquire) != RecorderState::Recording ||
+        stop_requested_.load(std::memory_order_acquire))
+        return false;
+
+    bool current = microphone_mute_requested_.load(std::memory_order_acquire);
+    while (!microphone_mute_requested_.compare_exchange_weak(
+        current, !current, std::memory_order_acq_rel,
+        std::memory_order_acquire)) {}
+    return true;
+}
+
 bool RecorderSession::request_start_commit() noexcept
 {
     if (state_.load(
@@ -464,6 +482,9 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
     RecorderSnapshot result;
     result.state =
         state_.load(std::memory_order_acquire);
+    result.microphone_enabled = config_.audio_microphone;
+    result.microphone_muted = microphone_mute_requested_.load(
+        std::memory_order_acquire);
 
     const std::int64_t started =
         started_at_ticks_.load(
@@ -1167,6 +1188,17 @@ void RecorderSession::worker_main() noexcept
     while (!stop_requested_.load(
         std::memory_order_acquire)) {
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        if (audio_runtime && config_.audio_microphone) {
+            const bool desired = microphone_mute_requested_.load(
+                std::memory_order_acquire);
+            if (desired != microphone_mute_applied_.load(
+                    std::memory_order_relaxed)) {
+                audio_runtime->set_microphone_muted(
+                    desired, config_.audio_microphone_gain);
+                microphone_mute_applied_.store(
+                    desired, std::memory_order_release);
+            }
+        }
         // Keep the AAC mux timeline fed BEFORE reserving another MF video
         // surface. Audio-only work is bounded; video-only retains its
         // existing due-work and timing path unchanged.

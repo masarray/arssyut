@@ -124,6 +124,16 @@ public:
         return core::Status::success();
     }
 
+    // Worker-only transport mutation: leave WASAPI running and preserve the
+    // canonical 48kHz program, AAC history and source gain. The mixer performs
+    // a bounded 5ms transition only when the microphone mute bit changes.
+    void set_microphone_muted(bool muted, float gain) noexcept
+    {
+        if (!recording_ || !pinned_.microphone) return;
+        program_.mixer().set_source_config(
+            core::audio::AudioSourceId::Microphone, {gain, muted});
+    }
+
     void record_click(presentation::ClickKind kind, std::int64_t timestamp) noexcept
     {
         if (!recording_) return;

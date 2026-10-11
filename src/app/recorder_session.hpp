@@ -133,6 +133,8 @@ struct RecorderSnapshot {
     float presentation_camera_center_x = 0.5f;
     float presentation_camera_center_y = 0.5f;
     float presentation_camera_zoom = 1.0f;
+    bool microphone_enabled = false;
+    bool microphone_muted = false;
     bool worker_finished = true;
 
     std::uint64_t memory_private_bytes = 0;
@@ -155,6 +157,10 @@ public:
         RecorderConfig config);
 
     void request_stop() noexcept;
+
+    // Only this session owns mute state. GUI button and native hotkey reach
+    // the same lock-free request and existing worker; no second audio clock.
+    [[nodiscard]] bool request_toggle_microphone_mute() noexcept;
 
     // One-shot Armed -> Recording gate. Returns false outside Armed or after a
     // prior commit. The worker owns the actual media-clock timestamp.
@@ -216,6 +222,8 @@ private:
     std::atomic<RecorderState> state_{RecorderState::Idle};
     std::atomic<bool> stop_requested_{false};
     std::atomic<bool> start_commit_requested_{false};
+    std::atomic<bool> microphone_mute_requested_{false};
+    std::atomic<bool> microphone_mute_applied_{false};
 
     std::atomic<std::int64_t> start_requested_at_ticks_{0};
     std::atomic<std::int64_t> armed_at_ticks_{0};

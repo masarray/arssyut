@@ -623,6 +623,13 @@ int main()
     require(
         snapshot.camera_zoom >= 1.0f,
         "default camera zoom must be valid");
+    require(snapshot.microphone_enabled == 0 &&
+            snapshot.microphone_muted == 0,
+        "Idle recorder exposes no microphone intent");
+    require(
+        arssyut_bridge_recorder_toggle_microphone_mute(bridge) ==
+            ARSSYUT_BRIDGE_INVALID_STATE,
+        "Live mic toggle must reject inactive session");
 
     ArssyutBridgeAudioMeterV1 meter{};
     meter.struct_size = sizeof(meter);

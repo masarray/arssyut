@@ -113,26 +113,90 @@ void test_silence_mute_and_meter_reset(TestContext &test)
             .muted = true,
         });
 
+    auto transition = mixer.begin_block();
+    test.expect(
+        mixer.mix_source(transition, AudioSourceId::Microphone, signal),
+        "Live microphone mute is accepted without touching the media clock");
+    test.expect(
+        transition.audio.samples[0] > 0.0F &&
+        transition.audio.samples[0] < 0.5F &&
+        transition.audio.samples[476] > 0.0F &&
+        transition.audio.samples[476] < 0.01F &&
+        transition.audio.samples[478] == 0.0F &&
+        transition.audio.samples[480] == 0.0F,
+        "Mute ramps to exact silence in 240 stereo frames without a click");
+
     auto muted = mixer.begin_block();
     test.expect(
-        mixer.mix_source(
-            muted,
-            AudioSourceId::Microphone,
-            signal),
-        "Muted source is accepted without restarting or shifting time");
-
-    for (float sample : muted.audio.interleaved()) {
-        if (sample != 0.0F) {
-            test.expect(
-                false,
-                "Muted source must leave canonical block silent");
-            return;
-        }
-    }
-
+        mixer.mix_source(muted, AudioSourceId::Microphone, signal),
+        "Steady mute follows the original zero-work, zero-presence fast path");
     test.expect(
-        muted.audio.source_presence_mask == 0,
-        "Muted source does not claim audible presence");
+        muted.audio.source_presence_mask == 0 &&
+        muted.audio.samples[0] == 0.0F &&
+        muted.audio.samples[2047] == 0.0F,
+        "Muted source produces no output or program discontinuity");
+
+    mixer.set_source_config(AudioSourceId::Microphone, {1.0F, false});
+    auto restored = mixer.begin_block();
+    test.expect(mixer.mix_source(restored, AudioSourceId::Microphone, signal) &&
+        restored.audio.samples[0] > 0.0F &&
+        restored.audio.samples[0] < 0.01F &&
+        restored.audio.samples[478] == 0.5F &&
+        restored.audio.samples[480] == 0.5F,
+        "Unmute ramps from silence then restores original audio bit-exact");
+}
+
+void test_live_mic_mute_reversal_never_modifies_system_audio(TestContext &test)
+{
+    using namespace arssyut::core::audio;
+    AudioProgramMixer mixer;
+    mixer.reset(0);
+    std::array<float, CanonicalAudioBlock::kSampleCapacity> mic{};
+    std::array<float, CanonicalAudioBlock::kSampleCapacity> system{};
+    mic.fill(0.25F);
+    system.fill(0.125F);
+
+    auto initial = mixer.begin_block();
+    test.expect(mixer.mix_source(initial, AudioSourceId::Microphone, mic) &&
+                mixer.mix_source(initial, AudioSourceId::SystemAudio, system) &&
+                initial.audio.samples[0] == 0.375F,
+        "Unchanged dual-source input uses the existing bit-exact steady mix path");
+
+    // Simulate a small packet rather than a full AAC block. Gain envelope
+    // must persist across packet boundaries and a rapid reversal must not
+    // jump back to full-scale 0.25 at the start of the next chunk.
+    mixer.set_source_config(AudioSourceId::Microphone, {1.0F, true});
+    auto fading = mixer.begin_block();
+    fading.audio.clear(120);
+    test.expect(mixer.mix_source(fading, AudioSourceId::Microphone,
+        std::span<const float>(mic.data(), 240)) &&
+        mixer.mix_source(fading, AudioSourceId::SystemAudio,
+            std::span<const float>(system.data(), 240)),
+        "Partial mic fade and unmodified system source both fit same program window");
+    const float before_reversal = fading.audio.samples[238];
+
+    mixer.set_source_config(AudioSourceId::Microphone, {1.0F, false});
+    auto recovering = mixer.begin_block();
+    recovering.audio.clear(120);
+    test.expect(mixer.mix_source(recovering, AudioSourceId::Microphone,
+        std::span<const float>(mic.data(), 240)) &&
+        mixer.mix_source(recovering, AudioSourceId::SystemAudio,
+            std::span<const float>(system.data(), 240)),
+        "Reversal does not restart capture or AAC");
+    const float after_reversal = recovering.audio.samples[0];
+    test.expect(std::abs(after_reversal-before_reversal) < 0.005F &&
+                after_reversal < 0.35F && after_reversal > 0.12F &&
+                recovering.audio.samples[238] > after_reversal,
+        "Rapid mute/unmute reverses smoothly from current gain, not unity");
+
+    // Source-local muted intervals never move or attenuate System Audio.
+    mixer.set_source_config(AudioSourceId::Microphone, {1.0F, true});
+    auto silenced = mixer.begin_block();
+    test.expect(mixer.mix_source(silenced, AudioSourceId::Microphone, mic) &&
+        mixer.mix_source(silenced, AudioSourceId::SystemAudio, system) &&
+        silenced.audio.samples[480] == 0.125F &&
+        silenced.audio.samples[2047] == 0.125F,
+        "System Audio remains bit-exact once Mic fade has reached silence");
 }
 
 void test_overlap_stale_policy(TestContext &test)
@@ -554,6 +618,7 @@ int main()
 
     test_program_clock(test);
     test_silence_mute_and_meter_reset(test);
+    test_live_mic_mute_reversal_never_modifies_system_audio(test);
     test_overlap_stale_policy(test);
     test_output_overflow_preserves_timeline(test);
     test_final_block_clipping(test);

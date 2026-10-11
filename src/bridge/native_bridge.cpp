@@ -461,8 +461,8 @@ void fill_snapshot(
         native.worker_finished
             ? 1
             : 0;
-    snapshot.reserved0 = 0;
-    snapshot.reserved1 = 0;
+    snapshot.microphone_enabled = native.microphone_enabled ? 1 : 0;
+    snapshot.microphone_muted = native.microphone_muted ? 1 : 0;
     snapshot.reserved2 = 0;
     snapshot.camera_center_x =
         native.presentation_camera_center_x;
@@ -2023,6 +2023,19 @@ arssyut_bridge_recorder_stop(
     sync_overlay_locked(
         *context);
 
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_toggle_microphone_mute(
+    ArssyutBridgeHandle handle) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::scoped_lock lock(context->mutex);
+    if (!context->recorder ||
+        !context->recorder->request_toggle_microphone_mute())
+        return ARSSYUT_BRIDGE_INVALID_STATE;
     return ARSSYUT_BRIDGE_OK;
 }
 

@@ -58,6 +58,22 @@ class UXContract(unittest.TestCase):
         self.assertIn("ExtractAssociatedIcon", self.workflow)
         ElementTree.fromstring(self.project)
 
+    def test_live_native_microphone_mute_command_owns_ui_and_hotkey(self):
+        bridge = (ROOT / "src/bridge/native_bridge.cpp").read_text(encoding="utf-8")
+        runtime = (ROOT / "src/app/audio_product_runtime.hpp").read_text(encoding="utf-8")
+        session = (ROOT / "src/app/recorder_session.cpp").read_text(encoding="utf-8")
+        ctrl = (UI / "RecordingControllerWindow.axaml.cs").read_text(encoding="utf-8")
+        win = (UI / "MainWindow.axaml.cs").read_text(encoding="utf-8")
+        interop = (UI / "Interop/NativeBridgeClient.cs").read_text(encoding="utf-8")
+        self.assertIn("request_toggle_microphone_mute()", bridge)
+        self.assertIn("set_microphone_muted(", runtime)
+        self.assertIn("microphone_mute_requested_.compare_exchange_weak(", session)
+        self.assertIn("ToggleMicrophoneMute()", ctrl)
+        self.assertIn("NativeHotkeyEvents.ToggleMicrophone", win)
+        self.assertIn("NativeHotkeyAction.ToggleMicrophone", win)
+        self.assertIn("RecorderToggleMicrophoneMute(", interop)
+        self.assertIn("snapshot.MicrophoneMuted", ctrl)
+
     def test_audio_artifact_survives_merge_and_video_only_is_explicit(self):
         import re
         self.assertIn("github.ref == 'refs/heads/main'", self.workflow)
