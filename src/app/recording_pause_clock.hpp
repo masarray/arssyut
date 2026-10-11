@@ -40,13 +40,13 @@ public:
     }
     [[nodiscard]] std::int64_t media_now(std::int64_t now) const noexcept {
         const auto frozen = paused_ ? pause_start_ : now;
-        return std::max(start_, frozen - completed_);
+        return (std::max)(start_, frozen - completed_);
     }
     [[nodiscard]] std::int64_t elapsed(std::int64_t now) const noexcept {
         return media_now(now) - start_;
     }
     [[nodiscard]] std::int64_t excluded_ticks(std::int64_t now) const noexcept {
-        return completed_ + (paused_ ? std::max<std::int64_t>(0,now-pause_start_) : 0);
+        return completed_ + (paused_ ? (std::max)<std::int64_t>(0,now-pause_start_) : 0);
     }
     [[nodiscard]] std::int64_t committed_excluded_ticks() const noexcept {
         return completed_;
