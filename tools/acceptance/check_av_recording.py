@@ -105,7 +105,13 @@ def evaluate(media,diagnostics):
             for metric in ("packets_dropped","pool_exhaustions",
                            "ring_overflows","timestamp_errors"):
                 check(d.get(prefix+metric,1)==0,source+" "+metric)
-    for key in required[4:]:check(d.get(key,1)==0,key+" nonzero")
+    # The source captured/published counters above must be POSITIVE.
+    # Only encoder/staging error counters are required to be zero.
+    for key in ("audio_stale_canonical_frames", "audio_duplicate_canonical_frames",
+                "audio_staging_gaps", "audio_staging_overflows",
+                "audio_dropped_program_blocks", "encoder_backpressure",
+                "video_skipped", "capture_busy_drops"):
+        check(d.get(key,1)==0,key+" nonzero")
     num,den=(int(x) for x in v.get("avg_frame_rate","60/1").split("/"))
     video_pts=timestamps(media,"v:0",den/num)
     audio_pts=timestamps(media,"a:0",1024/48000)
