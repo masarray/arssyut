@@ -2,6 +2,10 @@
 
 // Windows-only P8W1A diagnostic event policy: classify Source Reader
 // callbacks before touching GPU resources. This file is not a product API.
+#include <Windows.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfobjects.h>
 #include <mfreadwrite.h>
 
 #include <cstdint>
