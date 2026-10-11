@@ -1675,9 +1675,13 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_UNSUPPORTED;
     }
 
-    // Only an explicitly marked INTERNAL product-on build permits real
-    // hardware audio acceptance. Public/default video-only builds still
-    // reject Mic/System requests and Camera is never silently accepted.
+    // Webcam is internal opt-in only until real recorded MP4 acceptance.
+    // No public release automatically enables camera or its privacy light.
+    wchar_t camera_value[2]{};
+    const bool camera_preview_allowed =
+        GetEnvironmentVariableW(
+            L"ARSSYUT_WEBCAM_PREVIEW", camera_value, 2) == 1 &&
+        camera_value[0] == L'1';
     constexpr std::uint32_t audio_flags =
         ARSSYUT_BRIDGE_START_SYSTEM_AUDIO |
         ARSSYUT_BRIDGE_START_MICROPHONE;
@@ -1688,11 +1692,12 @@ arssyut_bridge_recorder_start(
             L"ARSSYUT_AUDIO_PREVIEW", preview_value, 2) == 1 &&
         preview_value[0] == L'1';
     const std::uint32_t unsupported_input_flags =
-        ARSSYUT_BRIDGE_START_CAMERA |
+        (camera_preview_allowed ? 0U : ARSSYUT_BRIDGE_START_CAMERA) |
         (audio_preview_allowed ? 0U : audio_flags);
 #else
-    constexpr std::uint32_t unsupported_input_flags =
-        ARSSYUT_BRIDGE_START_CAMERA | audio_flags;
+    const std::uint32_t unsupported_input_flags =
+        (camera_preview_allowed ? 0U : ARSSYUT_BRIDGE_START_CAMERA) |
+        audio_flags;
 #endif
     if ((request->flags & unsupported_input_flags) != 0)
         return ARSSYUT_BRIDGE_UNSUPPORTED;
@@ -1700,6 +1705,7 @@ arssyut_bridge_recorder_start(
     try {
         std::unique_ptr<RecorderSession> previous;
         RecorderTarget target;
+        std::wstring camera_id;
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
         std::wstring microphone_id;
 #endif
@@ -1724,8 +1730,19 @@ arssyut_bridge_recorder_start(
                 return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
             }
 
-            target =
-                *resolved;
+            target = *resolved;
+
+            if ((request->flags & ARSSYUT_BRIDGE_START_CAMERA) != 0) {
+                std::uint32_t generation = 0, index = 0;
+                if (!decode_token(request->camera_device_token,
+                                  generation, index) ||
+                    generation != context->device_generation ||
+                    index >= context->cameras.size())
+                    return ARSSYUT_BRIDGE_STALE_TOKEN;
+                camera_id = context->cameras[index].id;
+                if (camera_id.empty())
+                    return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+            }
 
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
             if ((request->flags & ARSSYUT_BRIDGE_START_MICROPHONE) != 0 &&
@@ -1788,8 +1805,9 @@ arssyut_bridge_recorder_start(
             previous->wait();
 
         RecorderConfig config;
-        config.target =
-            std::move(target);
+        config.target = std::move(target);
+        config.webcam_enabled = !camera_id.empty();
+        config.webcam_symbolic_link = std::move(camera_id);
         config.output_path =
             build_output_path(
                 *request);

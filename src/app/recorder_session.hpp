@@ -85,6 +85,9 @@ struct RecorderConfig {
     // Product audio is opt-in and fail-closed. Explicit endpoint IDs must be
     // concrete Windows MMDevice IDs, never GUI display names or stale tokens.
     // The existing bridge still rejects audio until real-device MP4 acceptance.
+    // Internal P8W2 opt-in uses ONE established writer and frame clock.
+    bool webcam_enabled = false;
+    std::wstring webcam_symbolic_link;
     bool audio_microphone = false;
     bool audio_system = false;
     std::wstring audio_microphone_id;

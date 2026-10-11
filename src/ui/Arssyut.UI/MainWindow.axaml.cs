@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
     private readonly bool _stressLongNames;
     private readonly bool _allowInteractionPreview;
     private readonly bool _audioHardwarePreview;
+    private readonly bool _webcamHardwarePreview;
     private readonly DispatcherTimer _hotkeyTimer;
     private readonly IBrush _recordBrush;
     private readonly IBrush _recordHoverBrush;
@@ -83,6 +84,13 @@ public sealed partial class MainWindow : Window
             !allowInteractionPreview &&
             string.Equals(
                 Environment.GetEnvironmentVariable("ARSSYUT_AUDIO_PREVIEW"),
+                "1", StringComparison.Ordinal);
+
+        _webcamHardwarePreview =
+            nativeBridge is not null &&
+            !allowInteractionPreview &&
+            string.Equals(
+                Environment.GetEnvironmentVariable("ARSSYUT_WEBCAM_PREVIEW"),
                 "1", StringComparison.Ordinal);
 
         _microphoneDevice = _settings.MicrophoneDevice;
@@ -1059,16 +1067,17 @@ public sealed partial class MainWindow : Window
                     ? "Engine unavailable"
                     : "Video-only build";
 
-            CameraToggle.IsChecked =
-                false;
-            CameraToggle.IsEnabled =
-                false;
-            CameraDeviceButton.IsEnabled =
-                false;
+            CameraToggle.IsChecked = _webcamHardwarePreview &&
+                _session.CameraEnabled;
+            CameraToggle.IsEnabled = _webcamHardwarePreview &&
+                _cameraDeviceToken != 0;
+            CameraDeviceButton.IsEnabled = _webcamHardwarePreview;
             CameraDeviceText.Text =
-                _nativeBridge is null
-                    ? "Engine unavailable"
-                    : "Backend pending";
+                _webcamHardwarePreview
+                    ? (_session.CameraEnabled ? _cameraDevice
+                        : $"Off · {_cameraDevice}")
+                    : _nativeBridge is null
+                        ? "Engine unavailable" : "Backend pending";
             return;
         }
 
@@ -1077,6 +1086,12 @@ public sealed partial class MainWindow : Window
                 ? _microphoneDevice
                 : $"Off · {_microphoneDevice}";
 
+        // Internal P8W2 camera may run without enabling experimental
+        // audio. Tokens come only from the refreshed native device catalog.
+        CameraToggle.IsEnabled = _allowInteractionPreview ||
+            (_webcamHardwarePreview && _cameraDeviceToken != 0);
+        CameraDeviceButton.IsEnabled = _allowInteractionPreview ||
+            _webcamHardwarePreview;
         CameraDeviceText.Text =
             _session.CameraEnabled
                 ? _cameraDevice

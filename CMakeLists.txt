@@ -73,6 +73,7 @@ if(WIN32)
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
+        src/platform/windows/graphics/webcam_nv12_surface.cpp
         src/platform/windows/graphics/d3d11_device.cpp
         src/platform/windows/input/presentation_input_worker.cpp
         src/platform/windows/input/shortcut_keymap.cpp
@@ -830,6 +831,19 @@ if(ARSSYUT_BUILD_TESTS)
         # hardware-free; stream gaps must never look like delivered frames.
         # P8W1B: synthetic MF sample / WARP GPU mailbox leases + 15k
         # concurrent publishes, no physical camera on CI runner.
+        # One production HLSL renderer, synthetic NV12 GPU pixel and
+        # camera-off regression. No physical webcam on hosted runners.
+        add_executable(arssyut_webcam_compositor_tests
+            tests/windows/test_webcam_compositor.cpp)
+        target_link_libraries(arssyut_webcam_compositor_tests
+            PRIVATE arssyut_windows)
+        if(MSVC)
+            target_compile_options(arssyut_webcam_compositor_tests PRIVATE
+                /W4 /permissive- /utf-8 /Zc:__cplusplus)
+        endif()
+        add_test(NAME arssyut_webcam_compositor_tests
+            COMMAND arssyut_webcam_compositor_tests)
+
         add_executable(arssyut_webcam_capture_engine_tests
             tests/windows/test_webcam_capture_engine.cpp)
         target_link_libraries(arssyut_webcam_capture_engine_tests PRIVATE

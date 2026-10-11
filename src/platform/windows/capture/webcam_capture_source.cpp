@@ -224,7 +224,8 @@ struct Mode {
     ID3D11Device *expected_device,
     const LUID &expected_adapter,
     ComPtr<ID3D11Texture2D> &texture,
-    bool &foreign_device_same_adapter) noexcept
+    bool &foreign_device_same_adapter,
+    std::uint32_t &subresource) noexcept
 {
     foreign_device_same_adapter = false;
     ComPtr<IMFMediaBuffer> buffer;
@@ -232,7 +233,8 @@ struct Mode {
         return false;
     ComPtr<IMFDXGIBuffer> dxgi;
     if (FAILED(buffer.As(&dxgi)) ||
-        FAILED(dxgi->GetResource(IID_PPV_ARGS(texture.GetAddressOf()))))
+        FAILED(dxgi->GetResource(IID_PPV_ARGS(texture.GetAddressOf()))) ||
+        FAILED(dxgi->GetSubresourceIndex(&subresource)))
         return false;
     ComPtr<ID3D11Device> texture_device;
     texture->GetDevice(&texture_device);
@@ -457,9 +459,10 @@ void WebcamCaptureSource::worker(
             received_.fetch_add(1);
             ComPtr<ID3D11Texture2D> texture;
             bool foreign_device_same_adapter = false;
+            std::uint32_t subresource = 0;
             if (!gpu_texture_from_sample(
                     done.sample.Get(), device.Get(), adapter,
-                    texture, foreign_device_same_adapter)) {
+                    texture, foreign_device_same_adapter, subresource)) {
                 if (foreign_device_same_adapter)
                     frames_other_device_same_adapter_.fetch_add(1);
                 else
@@ -500,6 +503,7 @@ void WebcamCaptureSource::worker(
             frame.sequence = ++sequence;
             frame.width = desc.Width;
             frame.height = desc.Height;
+            frame.subresource = subresource;
 
             // No UI/recorder authority is advanced until GPU frame
             // validation and publication are both complete.

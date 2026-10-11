@@ -380,13 +380,19 @@ jobs:
             # P8W1B adds a new independent native camera input; these exact
             # blobs alone are admitted. WGC/RecorderSession/compositor/audio
             # historical locked hashes remain unchanged and fail closed.
-            "src/platform/windows/capture/webcam_gpu_frame_slot.hpp" = "e7a6232a64d8c5c02e418388da7e3968bb217626"
+            "src/platform/windows/capture/webcam_gpu_frame_slot.hpp" = "0e78cc1aa5e93fd8bb2943c24488ec6f505477dd"
             "src/platform/windows/capture/webcam_capture_source.hpp" = "479763798c44b4131a99f7b7ce76c770f49ba828"
-            "src/platform/windows/capture/webcam_capture_source.cpp" = "fd6367a2d4cee851b7f104071614e6c9a0be8ef6"
+            "src/platform/windows/capture/webcam_capture_source.cpp" = "03c7f1eceebfe855661e67e53af4d02cb5b4a0d8"
             # P6UI.6D/P6UI.6F retained Spotlight + keycap destination-rect path,
             # plus final Region Smart Auto crop normalization.
-            "src/platform/windows/graphics/d3d11_compositor.cpp" = "97f7e203dc75620f9abd74901f4b88dac87f29b1"
-            "src/platform/windows/graphics/d3d11_compositor.hpp" = "6810588fd42e267c26528b2b17be2e93b74e9547"
+            "src/platform/windows/graphics/d3d11_compositor.cpp" = "b72cc6888424cf52643fdbb4bfb6cc7c7bc08874"
+            "src/platform/windows/graphics/d3d11_compositor.hpp" = "65429055a431a06779fde16691126111357a4535"
+            # P8W2: same-pass GPU NV12 camera renderer, built only into
+            # existing WGC compositor. Bounded source without CPU fallback.
+            "src/platform/windows/graphics/webcam_nv12_surface.hpp" = "91812ab92b3ffa63beae7bb71e1c5cf94c09e5c2"
+            "src/platform/windows/graphics/webcam_nv12_surface.cpp" = "d3c080f002b8d574236d7def179a365244d36e72"
+            "src/platform/windows/video/native_video_pipeline.hpp" = "1c3bf050b765f4e09d5906132fb11652f5cf75e2"
+            "src/platform/windows/video/native_video_pipeline.cpp" = "0201f7ce67e2184683bcc719fe00fdac3d378129"
             # Final review gate: 64x36 async scene analyzer samples only the
             # canonical encoded Region UV rectangle.
             "src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp" = "fd8c16a4493dab3ee61a88e5c3a055a07786dcab"

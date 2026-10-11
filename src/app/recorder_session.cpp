@@ -8,6 +8,8 @@
 
 #include "core/result/status.hpp"
 #include "platform/windows/capture/latest_frame_slot.hpp"
+#include "platform/windows/capture/webcam_capture_source.hpp"
+#include "platform/windows/capture/webcam_gpu_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "platform/windows/input/presentation_input_worker.hpp"
@@ -664,6 +666,10 @@ void RecorderSession::worker_main() noexcept
         std::move(device_result).value();
 
     LatestFrameSlot frame_slot;
+    // Mailbox and camera lifetime both belong to this one recorder session;
+    // destruct camera first so the callback never sees a freed slot/device.
+    arssyut::windows::WebcamGpuFrameSlot webcam_slot;
+    arssyut::windows::WebcamCaptureSource webcam_source;
 
     auto pipeline_result =
         NativeVideoPipeline::create(
@@ -861,6 +867,15 @@ void RecorderSession::worker_main() noexcept
             RecorderState::Failed,
             std::memory_order_release);
         return;
+    }
+
+    if (config_.webcam_enabled) {
+        const auto camera_status = webcam_source.start(
+            device->device(), config_.webcam_symbolic_link, webcam_slot);
+        if (camera_status.ok())
+            pipeline->set_webcam_source(&webcam_slot);
+        // Optional source failure cannot break established desktop/audio.
+        // The internal camera QA must inspect the resulting recorded MP4.
     }
 
     PresentationInputWorker presentation_input;
@@ -1574,6 +1589,7 @@ void RecorderSession::worker_main() noexcept
         std::memory_order_relaxed);
 
     presentation_input.stop();
+    webcam_source.stop();
     capture.stop();
 
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)

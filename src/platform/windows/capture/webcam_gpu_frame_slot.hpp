@@ -24,6 +24,7 @@ struct WebcamGpuFrame {
     std::uint64_t sequence = 0;
     std::uint32_t width = 0;
     std::uint32_t height = 0;
+    std::uint32_t subresource = 0;
 
     [[nodiscard]] bool valid() const noexcept
     {
