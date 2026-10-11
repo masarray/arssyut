@@ -1252,8 +1252,8 @@ void RecorderSession::worker_main() noexcept
 #endif
             // Input during excluded time must never replay as post-resume
             // clicks/keycap sounds or build an unbounded semantic backlog.
-            arssyut::presentation::ClickEvent ignored_click{};
-            arssyut::presentation::ShortcutEvent ignored_shortcut{};
+            arssyut::windows::MouseClickEvent ignored_click{};
+            arssyut::windows::ShortcutEvent ignored_shortcut{};
             for (int n=0; n<16 && presentation_input.try_pop_click(ignored_click); ++n) {}
             for (int n=0; n<16 && presentation_input.try_pop_shortcut(ignored_shortcut); ++n) {}
             // Existing producer threads remain live but their bounded queues
