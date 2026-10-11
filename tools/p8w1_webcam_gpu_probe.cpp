@@ -3,6 +3,7 @@
 #include "app/device_catalog.hpp"
 #include "core/video/webcam_capture_policy.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
+#include "p8w1_webcam_probe_flags.hpp"
 
 #include <Windows.h>
 #include <d3d11.h>
@@ -316,7 +317,12 @@ int run_capture(
         hr = reader->SetCurrentMediaType(
             static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, type.Get());
 
-    std::uint32_t seen = 0, gpu = 0, non_gpu = 0, missed = 0;
+    std::uint32_t callbacks = 0;
+    std::uint32_t seen = 0, gpu = 0, non_gpu = 0;
+    std::uint32_t empty_samples = 0, stream_ticks = 0;
+    std::uint32_t unexpected_empty = 0, stream_changes = 0;
+    std::uint32_t reader_errors = 0, end_of_stream = 0;
+    DWORD last_flags = 0;
     bool monotonic = true;
     LONGLONG last_timestamp = -1;
     if (SUCCEEDED(hr)) {
@@ -326,43 +332,92 @@ int run_capture(
             LONGLONG timestamp = 0;
             hr = callback->next(
                 reader.Get(), sample, flags, timestamp, i == 0 ? 5000 : 2500);
-            if (FAILED(hr) || (flags & MF_SOURCE_READERF_ENDOFSTREAM))
+            if (FAILED(hr)) {
+                ++reader_errors;
                 break;
-            if (!sample) {
-                ++missed;
+            }
+            ++callbacks;
+            last_flags = flags;
+            if (!sample)
+                ++empty_samples;
+
+            // Distinguish real Source Reader stream gaps from unexpected
+            // null samples and renegotiation. Do not hide a delivery gap
+            // behind GPU eligibility, and never claim a frame for a tick.
+            using arssyut::webcam_probe::ReadEvent;
+            switch (arssyut::webcam_probe::classify_read_event(
+                sample.Get() != nullptr, flags)) {
+            case ReadEvent::StreamGap:
+                ++stream_ticks;
+                continue;
+            case ReadEvent::UnexpectedEmpty:
+                ++unexpected_empty;
+                continue;
+            case ReadEvent::StreamConfigurationChanged:
+                ++stream_changes;
+                break;
+            case ReadEvent::EndOfStream:
+                ++end_of_stream;
+                break;
+            case ReadEvent::ReaderError:
+                ++reader_errors;
+                break;
+            case ReadEvent::Frame:
+                ++seen;
+                if (last_timestamp > timestamp)
+                    monotonic = false;
+                last_timestamp = timestamp;
+                if (is_dxgi_sample_on_adapter(sample.Get(), luid))
+                    ++gpu;
+                else
+                    ++non_gpu;
                 continue;
             }
-            ++seen;
-            if (last_timestamp > timestamp) monotonic = false;
-            last_timestamp = timestamp;
-            if (is_dxgi_sample_on_adapter(sample.Get(), luid))
-                ++gpu;
-            else
-                ++non_gpu;
+            break;
         }
     }
 
     reader.Reset();
     (void)source->Shutdown();
-    const bool approved =
-        SUCCEEDED(hr) && seen >= 3 && gpu == seen && missed == 0 &&
-        monotonic;
-    std::wcout << L"{\"status\":\""
-               << (approved ? L"gpu_candidate" : L"review")
+
+    // Two separate, intentionally conservative facts:
+    // 1. GPU compatibility: delivered samples use our exact D3D adapter.
+    // 2. Delivery health: a stream tick denotes a real time gap and is NOT
+    //    a clean timing result (even though it isn't a CPU fallback).
+    const bool gpu_candidate =
+        SUCCEEDED(hr) && seen >= 3 && gpu == seen &&
+        non_gpu == 0 && unexpected_empty == 0 &&
+        stream_changes == 0 && reader_errors == 0 &&
+        end_of_stream == 0 && monotonic;
+    const bool clean_delivery = gpu_candidate && stream_ticks == 0;
+    const wchar_t *status =
+        clean_delivery ? L"gpu_candidate" :
+        gpu_candidate ? L"gpu_path_with_stream_gaps" : L"review";
+
+    std::wcout << L"{\"status\":\"" << status
                << L"\",\"mode\":{"
                << L"\"width\":" << selected.mode.width
                << L",\"height\":" << selected.mode.height
                << L",\"fps_num\":" << selected.mode.fps_num
                << L",\"fps_den\":" << selected.mode.fps_den
                << L",\"format\":" << static_cast<int>(selected.mode.format)
-               << L"},\"frames\":" << seen
+               << L"},\"requested_reads\":" << requested_frames
+               << L",\"completed_reads\":" << callbacks
+               << L",\"frames\":" << seen
                << L",\"dxgi_frames\":" << gpu
                << L",\"non_dxgi_frames\":" << non_gpu
-               << L",\"empty_samples\":" << missed
+               << L",\"empty_samples\":" << empty_samples
+               << L",\"stream_ticks\":" << stream_ticks
+               << L",\"unexpected_empty\":" << unexpected_empty
+               << L",\"stream_changes\":" << stream_changes
+               << L",\"reader_errors\":" << reader_errors
+               << L",\"end_of_stream\":" << end_of_stream
+               << L",\"last_flags\":" << last_flags
+               << L",\"gpu_compatible\":" << (gpu_candidate ? L"true" : L"false")
                << L",\"timestamps_monotonic\":" << (monotonic ? L"true" : L"false")
                << L",\"hr\":" << static_cast<std::uint32_t>(hr)
                << L"}\n";
-    return approved ? 0 : 4;
+    return clean_delivery ? 0 : 4;
 }
 
 } // namespace

@@ -41,3 +41,20 @@ Copy the JSON stdout to the issue comment; it deliberately contains **no** raw w
 4. P8W2 GPU single-pass output-space overlay, P8W3 controls/preview, P8W4 real Windows acceptance follow ADR-010. Webcam never reimplements ArZoom SmartCamera viewport, DSP, AAC or the native MF writer.
 
 **Hard stop:** Camera open hangs beyond the diagnostic sample timeout, CPU surface only, adapter LUID mismatch, device unplug deadlock, crash, resource growth or an audio regression means this path is not accepted. P8W1A is a capability gate, not evidence of a shipped camera feature.
+
+## P8W1A diagnostic refinement — real Windows webcam feedback, 2026-10-11
+
+A Windows user confirmed one webcam with native NV12 1280×720 @30 Hz on the recorder's D3D11 adapter. An initial 12-read run reported **11/11 delivered frames DXGI-backed, 0 CPU frames, monotonically increasing timestamps**, plus one null sample; initial `status=review` and `empty_samples=1`. This is a **strong positive GPU compatibility result**, not yet zero-gap capture acceptance.
+
+Per [Microsoft IMFSourceReaderCallback::OnReadSample](https://learn.microsoft.com/en-us/windows/win32/api/mfreadwrite/nf-mfreadwrite-imfsourcereadercallback-onreadsample), a null `pSample` can accompany `MF_SOURCE_READERF_STREAMTICK`, indicating a **real gap in source time**, or `MF_SOURCE_READERF_ENDOFSTREAM`. The first probe omitted stream flags from diagnostics, so it **cannot retrospectively classify** that single null callback. Do not assume it was a stream tick, a lost frame, or a hardware problem.
+
+Updated tool classifies and counts Source Reader callbacks, adding `completed_reads`, `stream_ticks`, `unexpected_empty`, `stream_changes`, `reader_errors`, `end_of_stream`, `last_flags` and `gpu_compatible` alongside existing numeric output.
+
+- `gpu_candidate`, exit 0: at least three actual samples, all on the matching GPU adapter, no gaps, no unexpected nulls/type changes/read errors, monotonically ordered.
+- `gpu_path_with_stream_gaps`, exit 4: GPU sample feasibility confirmed, but source reader reported one or more stream ticks. A tick is an actual time gap; it does **not** prove full delivery quality.
+- `review`, exit 4: flags inconsistent, CPU-backed sample, renegotiation, EOS, read error, unexpected null, or insufficient GPU samples. Conservative by design.
+- Probe reports callback counts, not measured frame loss, real-time jitter, CPU utilization or camera-overlay readiness. `last_flags` is the numeric last callback mask and is not a personal device ID.
+
+New Windows-only CTest exercises every documented flag, combined flags, null samples, unknown bits and priority ordering. This change touches **only** the diagnostic executable, test and documentation—not RecorderSession, GUI, writer, or audio.
+
+**Next hardware run:** download the new probe artifact from the **new exact-head green PR #119 CI**, not the prior `056cec3` artifact. Run `--capture 0 30` three times and share each JSON line. Repeated stream ticks motivate longer capture and source timing tests before production ownership. Continue testing no-camera/busy and privacy failure modes before P8W1B.

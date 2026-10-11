@@ -822,6 +822,19 @@ if(ARSSYUT_BUILD_TESTS)
             )
         endif()
 
+        # P8W1A real-MF status event classifier, deterministic and
+        # hardware-free; stream gaps must never look like delivered frames.
+        add_executable(arssyut_webcam_probe_flags_tests
+            tests/windows/test_webcam_probe_flags.cpp)
+        target_include_directories(arssyut_webcam_probe_flags_tests PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR})
+        if(MSVC)
+            target_compile_options(arssyut_webcam_probe_flags_tests PRIVATE
+                /W4 /permissive- /utf-8 /Zc:__cplusplus)
+        endif()
+        add_test(NAME arssyut_webcam_probe_flags_tests
+            COMMAND arssyut_webcam_probe_flags_tests)
+
         add_executable(arssyut_windows_tests
             tests/windows/test_d3d11_device.cpp
         )
