@@ -1105,11 +1105,18 @@ public sealed partial class MainWindow : Window
     private async void CameraDevice_OnSelectionChanged(
         object? sender, SelectionChangedEventArgs e)
     {
-        if (_loadingCameraDevices ||
+        // Avalonia may raise SelectionChanged while InitializeComponent()
+        // is *still creating* CameraDeviceComboMain. In an async void event,
+        // touching the not-yet-created named field throws on the dispatcher
+        // and terminates the entire WinExe (0xE0434352). Always use sender
+        // and the existing _mainUiReady construction barrier.
+        if (!_mainUiReady ||
+            _loadingCameraDevices ||
             !_webcamHardwarePreview ||
             _nativeBridge is null ||
             _webcamStartTransition || _webcamShuttingDown ||
-            CameraDeviceComboMain.SelectedItem is not ComboBoxItem item ||
+            sender is not ComboBox combo ||
+            combo.SelectedItem is not ComboBoxItem item ||
             item.Tag is not NativeDeviceItem device)
             return;
 
