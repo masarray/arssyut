@@ -11,12 +11,14 @@
 #include <mfidl.h>
 #include <mfobjects.h>
 #include <mfreadwrite.h>
+#include <mferror.h>
 #include <wrl/client.h>
 #include <wrl/implements.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <cwchar>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -101,7 +103,7 @@ public:
         }
         ResetEvent(event_);
         HRESULT hr = reader->ReadSample(
-            MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0,
+            static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), 0,
             nullptr, nullptr, nullptr, nullptr);
         if (FAILED(hr))
             return hr;
@@ -264,7 +266,7 @@ int run_capture(
     for (DWORD index = 0; index < 128; ++index) {
         ComPtr<IMFMediaType> media_type;
         hr = reader->GetNativeMediaType(
-            MF_SOURCE_READER_FIRST_VIDEO_STREAM, index, &media_type);
+            static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), index, &media_type);
         if (hr == MF_E_NO_MORE_TYPES) break;
         if (FAILED(hr)) break;
 
@@ -304,15 +306,15 @@ int run_capture(
     const auto selected = candidates[best];
     ComPtr<IMFMediaType> type;
     hr = reader->GetNativeMediaType(
-        MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+        static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM),
         selected.type_index, &type);
     if (SUCCEEDED(hr))
-        hr = reader->SetStreamSelection(MF_SOURCE_READER_ALL_STREAMS, FALSE);
+        hr = reader->SetStreamSelection(static_cast<DWORD>(MF_SOURCE_READER_ALL_STREAMS), FALSE);
     if (SUCCEEDED(hr))
-        hr = reader->SetStreamSelection(MF_SOURCE_READER_FIRST_VIDEO_STREAM, TRUE);
+        hr = reader->SetStreamSelection(static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), TRUE);
     if (SUCCEEDED(hr))
         hr = reader->SetCurrentMediaType(
-            MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, type.Get());
+            static_cast<DWORD>(MF_SOURCE_READER_FIRST_VIDEO_STREAM), nullptr, type.Get());
 
     std::uint32_t seen = 0, gpu = 0, non_gpu = 0, missed = 0;
     bool monotonic = true;
