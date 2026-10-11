@@ -331,6 +331,31 @@ arssyut_bridge_device_at(
     std::uint32_t index,
     ArssyutBridgeDeviceV1 *device) noexcept;
 
+// Internal GPU webcam thumbnail preview, NOT a second recorder.
+// Every valid device token is generation scoped to refresh_devices. The
+// returned BGRA buffer is 192x108 tightly packed; only a small thumbnail
+// crosses to Avalonia. The preview source is closed before recording starts.
+// These exports are additive to V11; existing ABI structs remain unchanged.
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_start(
+    ArssyutBridgeHandle handle,
+    std::uint64_t camera_device_token) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_stop(
+    ArssyutBridgeHandle handle) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_frame(
+    ArssyutBridgeHandle handle,
+    std::uint8_t *bgra,
+    std::uint32_t capacity,
+    std::uint64_t *sequence,
+    std::uint32_t *state) noexcept;
+
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_start(

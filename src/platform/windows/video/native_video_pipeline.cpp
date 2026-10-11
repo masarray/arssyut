@@ -120,7 +120,9 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
                 context, camera->texture.Get(), camera->subresource);
             if (camera_update.ok()) {
                 last_webcam_at_ = camera->captured_at.ticks_100ns;
+                ++webcam_new_gpu_frames_;
             } else {
+                ++webcam_gpu_copy_failures_;
                 compositor_->clear_webcam();
                 last_webcam_at_ = 0;
             }
@@ -161,6 +163,8 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
             render_status);
     }
 
+    if (webcam_slot_ && last_webcam_at_ > 0)
+        ++webcam_rendered_slots_;
     diagnostics_->increment(
         DiagnosticMetric::VideoFramesRendered);
 

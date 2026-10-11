@@ -70,6 +70,7 @@ if(WIN32)
         # P8W1B GPU-only webcam source; compiled into the existing native
         # platform library, never a second writer/recorder executable.
         src/platform/windows/capture/webcam_capture_source.cpp
+        src/platform/windows/capture/webcam_preview_session.cpp
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
@@ -833,6 +834,19 @@ if(ARSSYUT_BUILD_TESTS)
         # concurrent publishes, no physical camera on CI runner.
         # One production HLSL renderer, synthetic NV12 GPU pixel and
         # camera-off regression. No physical webcam on hosted runners.
+        # P8W2B: previews use the same GPU source and a tiny 192x108
+        # readback. Compile the real HLSL in CI with no camera present.
+        add_executable(arssyut_webcam_preview_contract_tests
+            tests/windows/test_webcam_preview_contract.cpp)
+        target_link_libraries(arssyut_webcam_preview_contract_tests
+            PRIVATE arssyut_windows)
+        if(MSVC)
+            target_compile_options(arssyut_webcam_preview_contract_tests PRIVATE
+                /W4 /permissive- /utf-8 /Zc:__cplusplus)
+        endif()
+        add_test(NAME arssyut_webcam_preview_contract_tests
+            COMMAND arssyut_webcam_preview_contract_tests)
+
         add_executable(arssyut_webcam_compositor_tests
             tests/windows/test_webcam_compositor.cpp)
         target_link_libraries(arssyut_webcam_compositor_tests

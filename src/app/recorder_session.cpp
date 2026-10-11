@@ -1589,6 +1589,20 @@ void RecorderSession::worker_main() noexcept
         std::memory_order_relaxed);
 
     presentation_input.stop();
+    // Take a real source snapshot BEFORE stop() overwrites its state,
+    // allowing user MP4 diagnostics to prove camera was actually captured.
+    const auto webcam_health = webcam_source.snapshot();
+    webcam_received_.store(webcam_health.received);
+    webcam_published_.store(webcam_health.published);
+    webcam_ticks_startup_.store(webcam_health.stream_ticks_startup);
+    webcam_ticks_streaming_.store(webcam_health.stream_ticks_streaming);
+    webcam_adapter_mismatch_.store(webcam_health.adapter_mismatch);
+    webcam_foreign_device_.store(
+        webcam_health.frames_other_device_same_adapter);
+    webcam_hresult_.store(webcam_health.last_hresult);
+    webcam_new_gpu_frames_.store(pipeline->webcam_new_gpu_frames());
+    webcam_rendered_slots_.store(pipeline->webcam_rendered_slots());
+    webcam_copy_failures_.store(pipeline->webcam_gpu_copy_failures());
     webcam_source.stop();
     capture.stop();
 
@@ -2054,6 +2068,28 @@ void RecorderSession::write_diagnostics(
             << capture_preroll_received_.load(
                    std::memory_order_relaxed)
             << ",\n"
+            << "  \"webcam_requested\": "
+            << (config_.webcam_enabled ? "true" : "false") << ",\n"
+            << "  \"webcam_received\": "
+            << webcam_received_.load() << ",\n"
+            << "  \"webcam_published\": "
+            << webcam_published_.load() << ",\n"
+            << "  \"webcam_ticks_startup\": "
+            << webcam_ticks_startup_.load() << ",\n"
+            << "  \"webcam_ticks_streaming\": "
+            << webcam_ticks_streaming_.load() << ",\n"
+            << "  \"webcam_adapter_mismatch\": "
+            << webcam_adapter_mismatch_.load() << ",\n"
+            << "  \"webcam_foreign_device\": "
+            << webcam_foreign_device_.load() << ",\n"
+            << "  \"webcam_new_gpu_frames\": "
+            << webcam_new_gpu_frames_.load() << ",\n"
+            << "  \"webcam_rendered_slots\": "
+            << webcam_rendered_slots_.load() << ",\n"
+            << "  \"webcam_copy_failures\": "
+            << webcam_copy_failures_.load() << ",\n"
+            << "  \"webcam_hresult\": "
+            << webcam_hresult_.load() << ",\n"
             << "  \"capture_received\": "
             << snapshot_value.capture_received << ",\n"
             << "  \"capture_replaced\": "

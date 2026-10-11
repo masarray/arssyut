@@ -66,6 +66,16 @@ public:
         if (!slot && compositor_) compositor_->clear_webcam();
     }
 
+    [[nodiscard]] std::uint64_t webcam_new_gpu_frames() const noexcept {
+        return webcam_new_gpu_frames_;
+    }
+    [[nodiscard]] std::uint64_t webcam_rendered_slots() const noexcept {
+        return webcam_rendered_slots_;
+    }
+    [[nodiscard]] std::uint64_t webcam_gpu_copy_failures() const noexcept {
+        return webcam_gpu_copy_failures_;
+    }
+
     [[nodiscard]] ID3D11Texture2D *output_texture() const noexcept
     {
         return compositor_->output_texture();
@@ -82,6 +92,9 @@ private:
     LatestFrameSlot *frame_slot_ = nullptr;
     WebcamGpuFrameSlot *webcam_slot_ = nullptr;
     std::int64_t last_webcam_at_ = 0;
+    std::uint64_t webcam_new_gpu_frames_ = 0;
+    std::uint64_t webcam_rendered_slots_ = 0;
+    std::uint64_t webcam_gpu_copy_failures_ = 0;
     arssyut::core::Diagnostics *diagnostics_ = nullptr;
     arssyut::core::FrameScheduler scheduler_;
     std::unique_ptr<D3D11Compositor> compositor_;
