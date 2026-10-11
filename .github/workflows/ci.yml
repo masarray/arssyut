@@ -370,16 +370,18 @@ jobs:
             # AAC transport correctness: one source seam is not a whole program gap.
             "src/app/audio_pcm16_submission_adapter.hpp" = "acf610b6309a8ae4e668325e38408e7ae6089e22"
             # P7A6 sole RecorderSession product audio owner (opt-in).
-            # Quality regression forensic counters only: no changes to mixer/DSP.
+            # Live microphone mute: preserve verified source timing, apply only a
+            # bounded 240-frame worker-owned mic gain transition; no codec reset.
             # Real-device 25.4s audio stale/pool-exhaustion regression:
             # fixed source lease headroom and bounded 35ms settle.
-            "src/app/audio_product_runtime.hpp" = "db5fb8ab18654f56372ef5c08f12d085601f6d58"
+            "src/app/audio_product_runtime.hpp" = "87f5ede93fea2384348321d287144a76c2cf097e"
             "src/app/recording_audio_health.hpp" = "6cd6fb9a91b330e5a796219cc64143eef69b6703"
             # Fixed 48k recorded click/keycap cues, no second clock or audio source.
             "src/app/recorded_input_sounds.hpp" = "ee7c4aba077b7133b0156f6f7d61fddd48673026"
+            # Native mic mute command is valid only while Recording and mic enabled.
             # Experimental-only bridge approval: default/release still
             # rejects audio. Mic tokens are generation checked.
-            "src/bridge/native_bridge.cpp" = "79f8fae4199343721220897587105dfa941d8117"
+            "src/bridge/native_bridge.cpp" = "c28115763143b89dfc75fd1e4adbc14801598c57"
 
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;
@@ -394,10 +396,11 @@ jobs:
 
             # P7A5 canonical program timing/mixer/window core. These exact
             # reviewed blobs preserve one 48 kHz/1024-frame authority,
+            # with an isolated 5ms control-only mic fade on state change,
             # bounded source-window semantics and lock-free telemetry
             # publication without admitting arbitrary future core changes.
             "src/core/audio/audio_program_clock.hpp" = "ac37912426c7b1e42a846e95b938182df8caf8b1"
-            "src/core/audio/audio_program_mixer.hpp" = "14652f0ea21446483796aad7d29b1210bc9dd4a1"
+            "src/core/audio/audio_program_mixer.hpp" = "12efa8a7e2c7e3656a118adb6ae1f975e14e7649"
             "src/core/audio/audio_source_block_window.hpp" = "801fc8a4440f626d6220ccfec462cd6196b929e5"
             # P7A5 source mapper creates no new clock; exact reviewed blob maps
             # capture QPC into the RecorderSession media-zero domain.
