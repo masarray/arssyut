@@ -104,6 +104,35 @@ class PauseAcceptanceTests(TestCase):
         self.data["pause_resume_media_ticks_100ns"].pop()
         self.assertEqual(self.evaluate()["status"], "PASS")
 
+    def test_stop_while_paused_without_resume_is_valid(self):
+        self.data["pause_count"] = 1
+        self.data["pause_resume_events"] = 0
+        self.data["pause_resume_media_ticks_100ns"] = []
+        self.assertEqual(self.evaluate()["status"], "PASS")
+
+    def test_more_than_64_resumes_requires_manual_review(self):
+        self.data["pause_count"] = 65
+        self.data["pause_resume_events"] = 65
+        self.data["pause_resume_seam_overflow"] = 1
+        self.data["pause_resume_media_ticks_100ns"] = [
+            5_000_000 + 30_000_000 * i for i in range(64)]
+        self.assertEqual(self.evaluate()["status"], "REVIEW")
+
+    def test_core_audio_staging_error_is_always_fatal(self):
+        self.data["audio_staging_gaps"] = 1
+        self.assertEqual(self.evaluate(("audio_staging_gaps nonzero",))["status"],
+                         "FAIL")
+
+    def test_resume_instrumentation_has_fixed_memory_bound(self):
+        header = (ROOT / "src/app/recorder_session.hpp").read_text("utf-8")
+        cpp = (ROOT / "src/app/recorder_session.cpp").read_text("utf-8")
+        self.assertIn("kMaxPauseResumeSeams = 64;", header)
+        self.assertIn("std::array<std::int64_t, kMaxPauseResumeSeams>", header)
+        self.assertIn("pause_resume_seams_.fill(0);", cpp)
+        self.assertIn("pause_clock.elapsed(physical_now.ticks_100ns)", cpp)
+        self.assertIn("pause_resume_media_ticks_100ns", cpp)
+        self.assertIn("pause_resume_seam_overflow", cpp)
+
     def test_nonmonotonic_pts_around_seam_fails(self):
         self.diag.write_text(json.dumps(self.data), encoding="utf-8")
         with mock.patch.object(gate.av, "evaluate", return_value=av_result()), \
