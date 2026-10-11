@@ -374,15 +374,16 @@
                               Grid.Column="1" Classes="context-toggle ar-toggle"
                               IsChecked="False" IsEnabled="False"
                               OnContent="" OffContent=""
-                              ToolTip.Tip="Live webcam preview is unavailable until the camera backend is implemented." />
+                              Click="CameraToggle_OnClick"
+                              ToolTip.Tip="Turn camera preview on or off." />
               </Grid>
-              <!-- Honest 16:9 preview: a centered camera glyph while OFF or
-                   backend unavailable, not a simulated image or fake feed. -->
+              <!-- Real 16:9 native GPU camera thumbnail. OFF shows placeholder.
+                   The image never simulates an active device. -->
               <Border x:Name="CameraPreviewFrame"
                       Grid.Row="1" Classes="camera-preview"
                       Width="148" Height="83.25"
                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                      ToolTip.Tip="Webcam preview is unavailable in this build.">
+                      ToolTip.Tip="Camera preview starts when Webcam is enabled.">
                 <Grid>
                   <Image x:Name="CameraPreviewImage" IsVisible="False"
                          Stretch="UniformToFill" />
@@ -391,7 +392,8 @@
               </Border>
               <ComboBox x:Name="CameraDeviceComboMain" Grid.Row="2"
                         Classes="context-device" SelectedIndex="0" IsEnabled="False"
-                        ToolTip.Tip="Camera selection will be available with the webcam backend.">
+                        SelectionChanged="CameraDevice_OnSelectionChanged"
+                        ToolTip.Tip="Choose which native USB/web camera to capture.">
                 <ComboBoxItem Content="No camera detected" />
               </ComboBox>
             </Grid>

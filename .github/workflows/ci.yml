@@ -84,6 +84,28 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+      # Probe uses the exact native Windows CI build. No second product job
+      # and no headless-runner camera access masquerading as real acceptance.
+      - name: Webcam GPU diagnostic CLI contract (device-free)
+        shell: pwsh
+        run: |
+          $probe = Join-Path $PWD "build/windows-x64/Release/arssyut_p8w1_webcam_gpu_probe.exe"
+          if (-not (Test-Path $probe)) {
+            throw "Webcam GPU probe missing from native Windows build."
+          }
+          & $probe --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "Webcam GPU diagnostic CLI contract failed."
+          }
+
+      - name: Upload P8W1 webcam GPU diagnostic (hardware QA only)
+        uses: actions/upload-artifact@v4
+        with:
+          name: arssyut-P8W1-WEBCAM-GPU-PROBE-win-x64
+          path: build/windows-x64/Release/arssyut_p8w1_webcam_gpu_probe.exe
+          if-no-files-found: error
+          retention-days: 30
+
   p7a5-swresample-adapter:
     name: P7A5 libswresample adapter evidence
     # Only explicitly requested product integration compiles against pinned
@@ -336,8 +358,8 @@ jobs:
             # P6UI.6A-6C bounded presenter command / momentary release plumbing
             # only. Capture, timing, compositor, encoder and RecorderSession
             # lifecycle remain unchanged.
-            "src/app/recorder_session.cpp",
-            "src/app/recorder_session.hpp",
+            # Webcam RecorderSession is now locked below at the exact
+            # accepted source blobs; remove its broad historical exemption.
             # P6UI.6B/6C reads the already-authoritative Raw Input pressed-state
             # table for momentary presenter chords. P6UI.6C adds only a
             # GetAsyncKeyState stale-release fuse; it cannot activate a chord
@@ -349,15 +371,37 @@ jobs:
           # These are not a broad allowlist: each path below has a documented
           # acceptance reason and deterministic regression coverage.
           $lockedNativeCorrectionBlobs = @{
+            # P8W1A is a new isolated, portable webcam *probe policy*.
+            # Lock its exact reviewed blob; do not unfreeze the old engine.
+            # The actual device probe resides in tools/, not a runtime source.
+            "src/core/video/webcam_capture_policy.hpp" = "468bf72bb55f0522fe7faf940361910849b507d6"
+            # P8W1C: portable, deterministic 100ns/interval cadence rules.
+            "src/core/video/webcam_capture_timing.hpp" = "c4471b9acc968e20ff70162fd1b2d3179488bcd4"
+            # P8W1B adds a new independent native camera input; these exact
+            # blobs alone are admitted. WGC/RecorderSession/compositor/audio
+            # historical locked hashes remain unchanged and fail closed.
+            "src/platform/windows/capture/webcam_gpu_frame_slot.hpp" = "0e78cc1aa5e93fd8bb2943c24488ec6f505477dd"
+            "src/platform/windows/capture/webcam_capture_source.hpp" = "479763798c44b4131a99f7b7ce76c770f49ba828"
+            "src/platform/windows/capture/webcam_capture_source.cpp" = "03c7f1eceebfe855661e67e53af4d02cb5b4a0d8"
+            # P8W2B explicitly owned short-lived GPU thumbnail bridge:
+            # exact 192x108 readback only, not a full CPU webcam fallback.
+            "src/platform/windows/capture/webcam_preview_session.hpp" = "cc2f9cae111a1ac753b07d38b9d2f9a198e67acb"
+            "src/platform/windows/capture/webcam_preview_session.cpp" = "97205840fc1d2f0114fa14bdd44d3442e758d03c"
             # P6UI.6D/P6UI.6F retained Spotlight + keycap destination-rect path,
             # plus final Region Smart Auto crop normalization.
-            "src/platform/windows/graphics/d3d11_compositor.cpp" = "97f7e203dc75620f9abd74901f4b88dac87f29b1"
-            "src/platform/windows/graphics/d3d11_compositor.hpp" = "6810588fd42e267c26528b2b17be2e93b74e9547"
+            "src/platform/windows/graphics/d3d11_compositor.cpp" = "b72cc6888424cf52643fdbb4bfb6cc7c7bc08874"
+            "src/platform/windows/graphics/d3d11_compositor.hpp" = "65429055a431a06779fde16691126111357a4535"
+            # P8W2: same-pass GPU NV12 camera renderer, built only into
+            # existing WGC compositor. Bounded source without CPU fallback.
+            "src/platform/windows/graphics/webcam_nv12_surface.hpp" = "91812ab92b3ffa63beae7bb71e1c5cf94c09e5c2"
+            "src/platform/windows/graphics/webcam_nv12_surface.cpp" = "d3c080f002b8d574236d7def179a365244d36e72"
+            "src/platform/windows/video/native_video_pipeline.hpp" = "56ccb2da11f6d92bed01d97f76b74555533e2384"
+            "src/platform/windows/video/native_video_pipeline.cpp" = "c4cf54b18b568c850114f11b9b033256d0c56e34"
             # Final review gate: 64x36 async scene analyzer samples only the
             # canonical encoded Region UV rectangle.
             "src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp" = "fd8c16a4493dab3ee61a88e5c3a055a07786dcab"
             "src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.hpp" = "a8d9e45f402df0ede482067390e612d97ad276af"
-            "src/platform/windows/video/native_video_pipeline.cpp" = "01a75b2715cc737af61aba71a431a5846ffb023d"
+            # P8W2 updates the one existing pipeline at the locked hash above.
             # Final review gate: protect the visible legacy/native workspace
             # before WGC starts so recorder chrome cannot leak into Display/
             # Region output.
@@ -376,12 +420,16 @@ jobs:
             # fixed source lease headroom and bounded 35ms settle.
             "src/app/audio_product_runtime.hpp" = "87f5ede93fea2384348321d287144a76c2cf097e"
             "src/app/recording_audio_health.hpp" = "6cd6fb9a91b330e5a796219cc64143eef69b6703"
+            # P8W2B explicitly auditable camera request/source/render
+            # evidence in the established RecorderSession diagnostics.
+            "src/app/recorder_session.hpp" = "f2ebf0f2e72c5100b0e8c3907ef5b8b408e551a5"
+            "src/app/recorder_session.cpp" = "cbbb39a8db54676b4dd8ef8d724d8ba18ff6136a"
             # Fixed 48k recorded click/keycap cues, no second clock or audio source.
             "src/app/recorded_input_sounds.hpp" = "ee7c4aba077b7133b0156f6f7d61fddd48673026"
             # Native mic mute command is valid only while Recording and mic enabled.
             # Experimental-only bridge approval: default/release still
             # rejects audio. Mic tokens are generation checked.
-            "src/bridge/native_bridge.cpp" = "c28115763143b89dfc75fd1e4adbc14801598c57"
+            "src/bridge/native_bridge.cpp" = "67bd5840f95dacf660d4a1eed636682f6cddc3b0"
 
             # P7A1 canonical portable audio contracts. These exact blobs are
             # intentionally admitted after the P7A architecture/acceptance lock;

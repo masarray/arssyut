@@ -1,4 +1,5 @@
 #include "bridge/native_bridge.h"
+#include "platform/windows/capture/webcam_preview_session.hpp"
 
 #ifdef _WIN32
 
@@ -53,6 +54,10 @@ struct NativeBridgeContext final {
     std::vector<DeviceChoice> cameras;
     std::uint32_t source_generation = 0;
     std::uint32_t device_generation = 0;
+    // Independent tiny-preview owner; camera is never opened unless the
+    // internal UI asks, and is stopped before RecorderSession opens it.
+    std::mutex webcam_preview_mutex;
+    std::unique_ptr<arssyut::windows::WebcamPreviewSession> webcam_preview;
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     // Preview only: never owns or supplies RecorderSession audio.
     std::mutex preview_mutex;
@@ -91,6 +96,16 @@ struct NativeBridgeContext final {
     std::array<HotkeyBinding, 9> hotkeys{};
     std::atomic<std::uint32_t> pending_hotkey_events{0};
 };
+
+void stop_webcam_preview(NativeBridgeContext &context) noexcept
+{
+    std::unique_ptr<arssyut::windows::WebcamPreviewSession> old;
+    {
+        std::lock_guard guard(context.webcam_preview_mutex);
+        old = std::move(context.webcam_preview);
+    }
+    if (old) old->stop(); // camera driver join outside bridge mutex
+}
 
 [[nodiscard]] NativeBridgeContext *
 as_context(
@@ -1067,6 +1082,7 @@ arssyut_bridge_destroy(
         return;
     }
 
+    stop_webcam_preview(*context);
     shutdown_overlay_context(
         *context);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
@@ -1497,6 +1513,8 @@ arssyut_bridge_refresh_devices(
     if (!context)
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
 
+    // A refresh invalidates all generation-scoped device tokens.
+    stop_webcam_preview(*context);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     // All device tokens change generation on refresh.
     { std::lock_guard lock(context->preview_mutex);
@@ -1606,6 +1624,83 @@ arssyut_bridge_device_at(
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_start(
+    ArssyutBridgeHandle handle,
+    std::uint64_t camera_device_token) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    wchar_t enabled[2]{};
+    if (GetEnvironmentVariableW(
+            L"ARSSYUT_WEBCAM_PREVIEW", enabled, 2) != 1 ||
+        enabled[0] != L'1')
+        return ARSSYUT_BRIDGE_UNSUPPORTED;
+    try {
+        std::wstring id;
+        {
+            std::lock_guard guard(context->mutex);
+            std::uint32_t generation=0, index=0;
+            if (!decode_token(camera_device_token, generation, index) ||
+                generation != context->device_generation ||
+                index >= context->cameras.size())
+                return ARSSYUT_BRIDGE_STALE_TOKEN;
+            if (context->recorder) {
+                const auto snapshot = context->recorder->snapshot();
+                if (active_state(snapshot.state) || !snapshot.worker_finished)
+                    return ARSSYUT_BRIDGE_BUSY;
+            }
+            id = context->cameras[index].id;
+        }
+        if (id.empty()) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+        stop_webcam_preview(*context);
+        auto preview =
+            std::make_unique<arssyut::windows::WebcamPreviewSession>();
+        if (!preview->start(std::move(id)))
+            return ARSSYUT_BRIDGE_START_FAILED;
+        {
+            std::lock_guard guard(context->webcam_preview_mutex);
+            context->webcam_preview = std::move(preview);
+        }
+        return ARSSYUT_BRIDGE_OK;
+    } catch (...) {
+        return ARSSYUT_BRIDGE_INTERNAL_ERROR;
+    }
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_stop(ArssyutBridgeHandle handle) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    stop_webcam_preview(*context);
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_frame(
+    ArssyutBridgeHandle handle,
+    std::uint8_t *bgra,
+    std::uint32_t capacity,
+    std::uint64_t *sequence,
+    std::uint32_t *state) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !bgra || !sequence || !state ||
+        capacity < arssyut::windows::WebcamPreviewSession::bytes)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard guard(context->webcam_preview_mutex);
+    if (!context->webcam_preview) {
+        *state = 0;
+        *sequence = 0;
+        return ARSSYUT_BRIDGE_OK;
+    }
+    if (!context->webcam_preview->copy_frame(
+        bgra, capacity, *sequence, *state))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_start(
     ArssyutBridgeHandle handle,
     const ArssyutBridgeStartRequestV1 *request) noexcept
@@ -1675,9 +1770,13 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_UNSUPPORTED;
     }
 
-    // Only an explicitly marked INTERNAL product-on build permits real
-    // hardware audio acceptance. Public/default video-only builds still
-    // reject Mic/System requests and Camera is never silently accepted.
+    // Webcam is internal opt-in only until real recorded MP4 acceptance.
+    // No public release automatically enables camera or its privacy light.
+    wchar_t camera_value[2]{};
+    const bool camera_preview_allowed =
+        GetEnvironmentVariableW(
+            L"ARSSYUT_WEBCAM_PREVIEW", camera_value, 2) == 1 &&
+        camera_value[0] == L'1';
     constexpr std::uint32_t audio_flags =
         ARSSYUT_BRIDGE_START_SYSTEM_AUDIO |
         ARSSYUT_BRIDGE_START_MICROPHONE;
@@ -1688,18 +1787,25 @@ arssyut_bridge_recorder_start(
             L"ARSSYUT_AUDIO_PREVIEW", preview_value, 2) == 1 &&
         preview_value[0] == L'1';
     const std::uint32_t unsupported_input_flags =
-        ARSSYUT_BRIDGE_START_CAMERA |
+        (camera_preview_allowed ? 0U : ARSSYUT_BRIDGE_START_CAMERA) |
         (audio_preview_allowed ? 0U : audio_flags);
 #else
-    constexpr std::uint32_t unsupported_input_flags =
-        ARSSYUT_BRIDGE_START_CAMERA | audio_flags;
+    const std::uint32_t unsupported_input_flags =
+        (camera_preview_allowed ? 0U : ARSSYUT_BRIDGE_START_CAMERA) |
+        audio_flags;
 #endif
     if ((request->flags & unsupported_input_flags) != 0)
         return ARSSYUT_BRIDGE_UNSUPPORTED;
 
+    // OBS-style explicit handoff: one physical camera owner at a time.
+    // Preview is stopped before the recorder opens its GPU capture stream.
+    // No UI/bridge mutex is held while the camera driver shuts down.
+    stop_webcam_preview(*context);
+
     try {
         std::unique_ptr<RecorderSession> previous;
         RecorderTarget target;
+        std::wstring camera_id;
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
         std::wstring microphone_id;
 #endif
@@ -1724,8 +1830,19 @@ arssyut_bridge_recorder_start(
                 return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
             }
 
-            target =
-                *resolved;
+            target = *resolved;
+
+            if ((request->flags & ARSSYUT_BRIDGE_START_CAMERA) != 0) {
+                std::uint32_t generation = 0, index = 0;
+                if (!decode_token(request->camera_device_token,
+                                  generation, index) ||
+                    generation != context->device_generation ||
+                    index >= context->cameras.size())
+                    return ARSSYUT_BRIDGE_STALE_TOKEN;
+                camera_id = context->cameras[index].id;
+                if (camera_id.empty())
+                    return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+            }
 
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
             if ((request->flags & ARSSYUT_BRIDGE_START_MICROPHONE) != 0 &&
@@ -1788,8 +1905,9 @@ arssyut_bridge_recorder_start(
             previous->wait();
 
         RecorderConfig config;
-        config.target =
-            std::move(target);
+        config.target = std::move(target);
+        config.webcam_enabled = !camera_id.empty();
+        config.webcam_symbolic_link = std::move(camera_id);
         config.output_path =
             build_output_path(
                 *request);

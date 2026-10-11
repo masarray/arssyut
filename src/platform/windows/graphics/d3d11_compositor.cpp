@@ -48,10 +48,14 @@ cbuffer PresentationConstants : register(b0)
     float4 spotlight0;
     float4 spotlight1;
     float4 spotlight2;
+    float4 webcam_rect;    // output-normalized, LTRB, not desktop UV
+    float4 webcam_params;  // enabled, reserved, reserved, reserved
 };
 
 Texture2D source_texture : register(t0);
 Texture2D keyboard_texture : register(t1);
+Texture2D webcam_luma : register(t2);
+Texture2D webcam_chroma : register(t3);
 SamplerState source_sampler : register(s0);
 
 struct VertexOutput
@@ -1120,6 +1124,40 @@ float4 ps_main(VertexOutput input) : SV_Target
             lerp(color.rgb, overlay.rgb, alpha);
     }
 
+    // Face-cam lives in output space: unaffected by desktop pan/zoom,
+    // ArVisual grading, source crop or the WGC frame rate.
+    if (webcam_params.x > 0.5 &&
+        input.uv.x >= webcam_rect.x - 0.002 &&
+        input.uv.x <= webcam_rect.z + 0.002 &&
+        input.uv.y >= webcam_rect.y - 0.002 &&
+        input.uv.y <= webcam_rect.w + 0.002) {
+        const float2 extent = max(webcam_rect.zw - webcam_rect.xy, 0.0001);
+        const float2 camera_uv = (input.uv - webcam_rect.xy) / extent;
+        const float2 box_half_px = extent * output_info.xy * 0.5;
+        const float corner_px = min(box_half_px.x, box_half_px.y) * 0.15;
+        const float2 centered_px = (camera_uv - 0.5) * extent * output_info.xy;
+        const float2 d = abs(centered_px) - (box_half_px - corner_px);
+        const float signed_dist = length(max(d, 0.0)) +
+            min(max(d.x, d.y), 0.0) - corner_px;
+        const float edge_alpha = 1.0 - smoothstep(-1.25, 1.25, signed_dist);
+        if (edge_alpha > 0.001) {
+            // NV12 limited-range Rec.709, matching native HD webcam profile.
+            // Camera is not processed through the desktop ArVisual grade.
+            const float y = webcam_luma.Sample(source_sampler, saturate(camera_uv)).r;
+            const float2 chroma = webcam_chroma.Sample(source_sampler, saturate(camera_uv)).rg;
+            const float Y = max(0.0, (y - 16.0 / 255.0) * (255.0 / 219.0));
+            const float U = (chroma.x - 128.0 / 255.0) * (255.0 / 224.0);
+            const float V = (chroma.y - 128.0 / 255.0) * (255.0 / 224.0);
+            const float3 rgb = saturate(float3(
+                Y + 1.5748 * V,
+                Y - 0.1873 * U - 0.4681 * V,
+                Y + 1.8556 * U));
+            const float border = smoothstep(-3.5, -2.0, signed_dist);
+            const float3 bordered = lerp(rgb, float3(0.96, 0.96, 0.96),
+                                           border * 0.80);
+            color.rgb = lerp(color.rgb, bordered, edge_alpha);
+        }
+    }
     return color;
 }
 )";
@@ -1196,6 +1234,14 @@ struct PresentationConstants {
     float spotlight_dim_mix = 0.0f;
     float spotlight_corner_radius_px = 0.0f;
     float spotlight_reserved = 0.0f;
+    float webcam_left = 0.0f;
+    float webcam_top = 0.0f;
+    float webcam_right = 0.0f;
+    float webcam_bottom = 0.0f;
+    float webcam_active = 0.0f;
+    float webcam_reserved0 = 0.0f;
+    float webcam_reserved1 = 0.0f;
+    float webcam_reserved2 = 0.0f;
 };
 
 constexpr UINT kKeyboardWidth = 768;
@@ -2071,6 +2117,14 @@ Status D3D11Compositor::update_source(
     return Status::success();
 }
 
+Status D3D11Compositor::update_webcam(
+    ID3D11DeviceContext *context,
+    ID3D11Texture2D *source,
+    std::uint32_t subresource) noexcept
+{
+    return webcam_.update(device_.Get(), context, source, subresource);
+}
+
 Status D3D11Compositor::render_retained(
     ID3D11DeviceContext *context,
     CropRect crop,
@@ -2125,6 +2179,22 @@ Status D3D11Compositor::render_retained(
         return keyboard_status;
 
     PresentationConstants constants{};
+    if (webcam_.ready() && output_size.width && output_size.height) {
+        // One grounded upper-right preset. Future placement settings will
+        // change this immutable-per-output-frame geometry, not sampling.
+        const float source_aspect = static_cast<float>(webcam_.height()) /
+            static_cast<float>(webcam_.width());
+        const float width_fraction = 0.235f;
+        const float height_fraction = width_fraction *
+            static_cast<float>(output_size.width) /
+            static_cast<float>(output_size.height) * source_aspect;
+        constants.webcam_left = 0.735f;
+        constants.webcam_top = 0.045f;
+        constants.webcam_right = 0.735f + width_fraction;
+        constants.webcam_bottom = std::min(
+            0.045f + height_fraction, 0.95f);
+        constants.webcam_active = 1.0f;
+    }
     constants.uv_left =
         static_cast<float>(crop.left) /
         static_cast<float>(source_size.width);
@@ -2493,19 +2563,18 @@ Status D3D11Compositor::render_retained(
     ID3D11SamplerState *sampler = sampler_.Get();
     context->PSSetSamplers(0, 1, &sampler);
 
-    ID3D11ShaderResourceView *srvs[2] = {
-        input_srv_.Get(),
-        keyboard_srv_.Get()
+    ID3D11ShaderResourceView *srvs[4] = {
+        input_srv_.Get(), keyboard_srv_.Get(),
+        webcam_.y(), webcam_.uv()
     };
-    context->PSSetShaderResources(0, 2, srvs);
+    context->PSSetShaderResources(0, 4, srvs);
 
     context->Draw(3, 0);
 
-    ID3D11ShaderResourceView *null_srvs[2] = {
-        nullptr,
-        nullptr
+    ID3D11ShaderResourceView *null_srvs[4] = {
+        nullptr, nullptr, nullptr, nullptr
     };
-    context->PSSetShaderResources(0, 2, null_srvs);
+    context->PSSetShaderResources(0, 4, null_srvs);
 
     ID3D11RenderTargetView *null_rtv = nullptr;
     context->OMSetRenderTargets(1, &null_rtv, nullptr);

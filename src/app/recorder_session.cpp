@@ -8,6 +8,8 @@
 
 #include "core/result/status.hpp"
 #include "platform/windows/capture/latest_frame_slot.hpp"
+#include "platform/windows/capture/webcam_capture_source.hpp"
+#include "platform/windows/capture/webcam_gpu_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "platform/windows/input/presentation_input_worker.hpp"
@@ -664,6 +666,10 @@ void RecorderSession::worker_main() noexcept
         std::move(device_result).value();
 
     LatestFrameSlot frame_slot;
+    // Mailbox and camera lifetime both belong to this one recorder session;
+    // destruct camera first so the callback never sees a freed slot/device.
+    arssyut::windows::WebcamGpuFrameSlot webcam_slot;
+    arssyut::windows::WebcamCaptureSource webcam_source;
 
     auto pipeline_result =
         NativeVideoPipeline::create(
@@ -861,6 +867,15 @@ void RecorderSession::worker_main() noexcept
             RecorderState::Failed,
             std::memory_order_release);
         return;
+    }
+
+    if (config_.webcam_enabled) {
+        const auto camera_status = webcam_source.start(
+            device->device(), config_.webcam_symbolic_link, webcam_slot);
+        if (camera_status.ok())
+            pipeline->set_webcam_source(&webcam_slot);
+        // Optional source failure cannot break established desktop/audio.
+        // The internal camera QA must inspect the resulting recorded MP4.
     }
 
     PresentationInputWorker presentation_input;
@@ -1574,6 +1589,21 @@ void RecorderSession::worker_main() noexcept
         std::memory_order_relaxed);
 
     presentation_input.stop();
+    // Take a real source snapshot BEFORE stop() overwrites its state,
+    // allowing user MP4 diagnostics to prove camera was actually captured.
+    const auto webcam_health = webcam_source.snapshot();
+    webcam_received_.store(webcam_health.received);
+    webcam_published_.store(webcam_health.published);
+    webcam_ticks_startup_.store(webcam_health.stream_ticks_startup);
+    webcam_ticks_streaming_.store(webcam_health.stream_ticks_streaming);
+    webcam_adapter_mismatch_.store(webcam_health.adapter_mismatch);
+    webcam_foreign_device_.store(
+        webcam_health.frames_other_device_same_adapter);
+    webcam_hresult_.store(webcam_health.last_hresult);
+    webcam_new_gpu_frames_.store(pipeline->webcam_new_gpu_frames());
+    webcam_rendered_slots_.store(pipeline->webcam_rendered_slots());
+    webcam_copy_failures_.store(pipeline->webcam_gpu_copy_failures());
+    webcam_source.stop();
     capture.stop();
 
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
@@ -2038,6 +2068,28 @@ void RecorderSession::write_diagnostics(
             << capture_preroll_received_.load(
                    std::memory_order_relaxed)
             << ",\n"
+            << "  \"webcam_requested\": "
+            << (config_.webcam_enabled ? "true" : "false") << ",\n"
+            << "  \"webcam_received\": "
+            << webcam_received_.load() << ",\n"
+            << "  \"webcam_published\": "
+            << webcam_published_.load() << ",\n"
+            << "  \"webcam_ticks_startup\": "
+            << webcam_ticks_startup_.load() << ",\n"
+            << "  \"webcam_ticks_streaming\": "
+            << webcam_ticks_streaming_.load() << ",\n"
+            << "  \"webcam_adapter_mismatch\": "
+            << webcam_adapter_mismatch_.load() << ",\n"
+            << "  \"webcam_foreign_device\": "
+            << webcam_foreign_device_.load() << ",\n"
+            << "  \"webcam_new_gpu_frames\": "
+            << webcam_new_gpu_frames_.load() << ",\n"
+            << "  \"webcam_rendered_slots\": "
+            << webcam_rendered_slots_.load() << ",\n"
+            << "  \"webcam_copy_failures\": "
+            << webcam_copy_failures_.load() << ",\n"
+            << "  \"webcam_hresult\": "
+            << webcam_hresult_.load() << ",\n"
             << "  \"capture_received\": "
             << snapshot_value.capture_received << ",\n"
             << "  \"capture_replaced\": "
