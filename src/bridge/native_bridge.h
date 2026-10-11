@@ -151,8 +151,10 @@ struct ArssyutBridgeRecorderSnapshotV1 {
     std::uint32_t state;
     std::int64_t elapsed_ticks;
     std::uint8_t worker_finished;
-    std::uint8_t reserved0;
-    std::uint8_t reserved1;
+    // ABI-compatible use of the original three reserved snapshot bytes:
+    // old readers ignore them, current GUI reads native recorder truth.
+    std::uint8_t microphone_enabled;
+    std::uint8_t microphone_muted;
     std::uint8_t reserved2;
     float camera_center_x;
     float camera_center_y;
@@ -349,6 +351,13 @@ arssyut_bridge_recorder_commit_start(
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_stop(
+    ArssyutBridgeHandle handle) noexcept;
+
+// Toggle only the RECORDED microphone contribution; preserve capture device,
+// system audio, canonical PTS and the single AAC stream.
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_toggle_microphone_mute(
     ArssyutBridgeHandle handle) noexcept;
 
 ARSSYUT_BRIDGE_API

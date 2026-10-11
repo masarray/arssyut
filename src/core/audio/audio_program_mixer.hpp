@@ -350,6 +350,8 @@ public:
             level.publish({});
 
         pending_output_discontinuity_ = false;
+        for (auto &fade : source_fades_)
+            fade = {};
     }
 
     void set_source_config(
@@ -406,26 +408,54 @@ public:
         const auto config =
             source_config(source);
 
-        if (config.muted) {
-            level_publications_[source_index(source)].publish({});
+        // The normal stable source retains the original optimized accumulation
+        // path. Only an actual control transition pays per-frame ramp cost.
+        // Source fade is owned by the same single audio worker as mixing;
+        // publication from UI/bridge stays atomic and lock-free.
+        auto &fade = source_fades_[source_index(source)];
+        const float target = config.muted ? 0.0F : config.gain;
+        if (!fade.initialized) {
+            fade.current = fade.target = target;
+            fade.initialized = true;
+        }
+        if (fade.target != target) {
+            fade.target = target;
+            fade.remaining = kControlFadeFrames;
+            fade.step = (target - fade.current) /
+                static_cast<float>(kControlFadeFrames);
+        }
+        if (fade.remaining == 0) {
+            if (target == 0.0F) {
+                level_publications_[source_index(source)].publish({});
+                return true;
+            }
+            if (!accumulate_stereo(
+                    canonical_stereo, block.audio.interleaved(),
+                    target, nullptr))
+                return false;
+            block.audio.source_presence_mask |= source_presence_bit(source);
+            level_publications_[source_index(source)].publish(
+                level_snapshot(canonical_stereo, target));
             return true;
         }
 
-        if (!accumulate_stereo(
-                canonical_stereo,
-                block.audio.interleaved(),
-                config.gain,
-                nullptr))
-            return false;
-
-        block.audio.source_presence_mask |=
-            source_presence_bit(source);
-
+        // Only 240 frames (~5ms @48k): bounded, click-free mute/unmute,
+        // including rapid reversal halfway through an in-progress ramp.
+        auto destination = block.audio.interleaved();
+        const auto frames = block.audio.frame_count;
+        for (std::uint32_t frame = 0; frame < frames; ++frame) {
+            if (fade.remaining != 0) {
+                fade.current += fade.step;
+                --fade.remaining;
+                if (fade.remaining == 0) fade.current = fade.target;
+            }
+            const auto at = static_cast<std::size_t>(frame) * 2U;
+            destination[at] += canonical_stereo[at] * fade.current;
+            destination[at + 1U] += canonical_stereo[at + 1U] * fade.current;
+        }
+        block.audio.source_presence_mask |= source_presence_bit(source);
         level_publications_[source_index(source)].publish(
-            level_snapshot(
-                canonical_stereo,
-                config.gain));
-
+            level_snapshot(canonical_stereo, fade.current));
         return true;
     }
 
@@ -561,6 +591,16 @@ private:
         return result;
     }
 
+    // Uncontended worker-local fade state. Never allocated on the hot path.
+    static constexpr std::uint32_t kControlFadeFrames = 240;
+    struct SourceFade {
+        float current = 0.0F;
+        float target = 0.0F;
+        float step = 0.0F;
+        std::uint32_t remaining = 0;
+        bool initialized = false;
+    };
+    std::array<SourceFade, kSourceCount> source_fades_{};
     AudioProgramClock clock_{};
     std::array<detail::AtomicAudioConfigPublication, kSourceCount>
         config_publications_{};

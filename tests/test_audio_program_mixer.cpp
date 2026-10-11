@@ -113,26 +113,36 @@ void test_silence_mute_and_meter_reset(TestContext &test)
             .muted = true,
         });
 
+    auto transition = mixer.begin_block();
+    test.expect(
+        mixer.mix_source(transition, AudioSourceId::Microphone, signal),
+        "Live microphone mute is accepted without touching the media clock");
+    test.expect(
+        transition.audio.samples[0] > 0.0F &&
+        transition.audio.samples[0] < 0.5F &&
+        transition.audio.samples[478] > 0.0F &&
+        transition.audio.samples[478] < 0.01F &&
+        transition.audio.samples[480] == 0.0F,
+        "Mute ramps to exact silence in 240 stereo frames without a click");
+
     auto muted = mixer.begin_block();
     test.expect(
-        mixer.mix_source(
-            muted,
-            AudioSourceId::Microphone,
-            signal),
-        "Muted source is accepted without restarting or shifting time");
-
-    for (float sample : muted.audio.interleaved()) {
-        if (sample != 0.0F) {
-            test.expect(
-                false,
-                "Muted source must leave canonical block silent");
-            return;
-        }
-    }
-
+        mixer.mix_source(muted, AudioSourceId::Microphone, signal),
+        "Steady mute follows the original zero-work, zero-presence fast path");
     test.expect(
-        muted.audio.source_presence_mask == 0,
-        "Muted source does not claim audible presence");
+        muted.audio.source_presence_mask == 0 &&
+        muted.audio.samples[0] == 0.0F &&
+        muted.audio.samples[2047] == 0.0F,
+        "Muted source produces no output or program discontinuity");
+
+    mixer.set_source_config(AudioSourceId::Microphone, {1.0F, false});
+    auto restored = mixer.begin_block();
+    test.expect(mixer.mix_source(restored, AudioSourceId::Microphone, signal) &&
+        restored.audio.samples[0] > 0.0F &&
+        restored.audio.samples[0] < 0.01F &&
+        restored.audio.samples[478] == 0.5F &&
+        restored.audio.samples[480] == 0.5F,
+        "Unmute ramps from silence then restores original audio bit-exact");
 }
 
 void test_overlap_stale_policy(TestContext &test)
