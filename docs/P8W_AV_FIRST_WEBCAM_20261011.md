@@ -1,5 +1,9 @@
 # P8W — A/V-first Windows webcam recovery (2026-10-11)
 
+
+> **UPDATE 2026-10-12 — THIS PAGE IS HISTORICAL P8W RECOVERY CONTEXT.** The implementation and hardware gating source of truth is [P8W F1–F5 execution plan](P8W_F1_F5_EXECUTION_PLAN_2026-10-12.md) plus [ADR-011](adr/ADR-011-webcam-source-continuity-and-output-overlays.md). The user's subsequent physical MP4 demonstrated real **moving webcam PIP** and a valid H.264/AAC output while the session still ended failed with \`status_code=4\`, \`status_detail=8\` = audio ingress \`StageFull\`, and \`audio_staging_overflows=1\`. It also showed a frozen GUI preview and a locked Camera Settings page. Do not repeat the prior webcam-GPU probe or reuse a VIDEO-ONLY build. F1 Stop/Finalize first, then single-owner continuous preview F2, real Camera Settings F3, Logo Overlay F4, exact-head integrated A/V acceptance F5. **No F1–F5 code is deemed fixed by this documentation update.**
+
+
 ## Canonical baseline — NO experimental webcam as parent
 
 Branch `feat/120-av-first-webcam-doubleclick-stability` begins at **`main@72bef9a1b8f6dcaddad3a1693b6f9dedacfdda9a`**. That point already contains accepted dual A/V integration and microphone mute, plus a documentation-only P8W0 webcam ADR. The immutable real dual-audio acceptance checkpoint is **`checkpoint/av-dual-audio-accepted-20261011@12e1fa98e33735cade2ec5bdca61a76861d8bf23`**. Mic-mute main merge **`1d5ed67bcb47466c6cd210145d5f8fd80e90e526`** follows the A/V checkpoint. Do not regress audio to a video-only PR #119 artifact or import Draft Pause PR #115.
