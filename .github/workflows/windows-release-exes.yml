@@ -1,9 +1,5 @@
 name: Windows Release Candidate EXEs
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -24,14 +20,8 @@ permissions:
   actions: read
 jobs:
   package:
-    # Only a successful exact-main CI run on a specially marked release
-    # merge may publish this one release candidate automatically.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       contains(github.event.workflow_run.head_commit.message, '[release-preview-v0.1.0-rc.2]'))
+    # Manual dispatch only. No commit-message-triggered release.
+    # Only exact successful main CI audio-enabled artifact is accepted.
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -40,8 +30,8 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.source_run_id || github.event.workflow_run.id }}
-          VERSION: ${{ inputs.version || '0.1.0-rc.2' }}
+          RUN_ID: ${{ inputs.source_run_id }}
+          VERSION: ${{ inputs.version }}
         run: |
           if ($env:GITHUB_REF -ne 'refs/heads/main' -or
               $env:VERSION -notmatch '^0[.]\d+[.]\d+-rc[.]\d+$' -or
@@ -55,7 +45,7 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.source_run_id || github.event.workflow_run.id }}
+          RUN_ID: ${{ inputs.source_run_id }}
         run: |
           New-Item -ItemType Directory -Force dist/publish | Out-Null
           gh run download $env:RUN_ID --repo $env:GITHUB_REPOSITORY --name arssyut-AUDIO-ENABLED-TEST-win-x64 --dir dist/publish
@@ -83,7 +73,7 @@ jobs:
       - name: Build two EXE release assets from identical binary
         shell: pwsh
         env:
-          VERSION: ${{ inputs.version || '0.1.0-rc.2' }}
+          VERSION: ${{ inputs.version }}
         run: |
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
           if (-not (Test-Path $iscc)) { throw 'ISCC missing' }
@@ -101,7 +91,7 @@ jobs:
       - name: Smoke test EXACT portable and installed Setup EXE on Windows
         shell: pwsh
         env:
-          VERSION: ${{ inputs.version || '0.1.0-rc.2' }}
+          VERSION: ${{ inputs.version }}
         run: |
           $portable = (Resolve-Path "dist/release/Arssyut-$env:VERSION-portable-win-x64.exe").Path
           $setup = (Resolve-Path "dist/release/Arssyut-Setup-$env:VERSION-win-x64.exe").Path
@@ -158,17 +148,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub preview (manual opt-in only)
-        if: ${{ inputs.publish_prerelease || github.event_name == 'workflow_run' }}
+      - name: Publish GitHub preview (explicit manual opt-in only)
+        if: ${{ inputs.publish_prerelease }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version || '0.1.0-rc.2' }}
+          VERSION: ${{ inputs.version }}
         run: |
           $tag = "v$env:VERSION"
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) { throw 'Tag already exists; refusing overwrite' }
-          $notes = "Windows $tag PREVIEW, NOT stable. Two direct Windows EXEs are packaged from the same exact-commit audio-enabled engine. Fix: restore bounded WASAPI loopback timeline discontinuity handling when audio playback (e.g. YouTube) starts; retain Open/Folder for recovered MP4s on failed sessions. CI exercises native/audio contracts, portable GUI launch, Inno install/launch/uninstall and byte-identity. Real-hardware playback-onset, mic/system stereo and long MP4 recording still require user acceptance. No commercial code signature; SmartScreen may appear."
+          $notes = "Arssyut $tag Windows PREVIEW — not stable. Integrated H264 screen video with System Audio plus Microphone capture, stereo mixer and meters. Webcam is NOT implemented. Setup and portable use the same exact-CI audio-enabled single executable. Release source commit: $env:GITHUB_SHA. CI verifies exact binary hash, launch, install and uninstall. Real microphone-only, repeated Start/Stop, long-session A/V and exact packaged EXEs still require acceptance before stable or verified public downloads. No commercial code signature; Windows SmartScreen may appear. Evidence and checklist: docs/AV_RELEASE_ACCEPTANCE_2026-10-11.md."
           $assets = @(Get-ChildItem dist/release -Filter '*.exe' | ForEach-Object FullName)
           $assets += (Resolve-Path dist/SHA256SUMS.txt).Path
           if ($assets.Count -ne 3) { throw 'Expected exactly two executables plus SHA256SUMS' }
