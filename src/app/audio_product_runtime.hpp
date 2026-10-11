@@ -150,10 +150,12 @@ public:
             return core::Status::failure(
                 core::StatusCode::InvalidStateTransition);
 
-        // A 10 ms capture-settle allowance lets event-driven WASAPI
-        // publish its last packet before the canonical interval closes.
-        // This is a bounded delay, NOT a second clock or a PTS offset.
-        constexpr std::int64_t kPacketSettle100ns = 100'000;
+        // Real 25.4s capture discarded 230993 stale source frames at 1080p60.
+        // 10ms settle is below ordinary event+AV writer scheduling jitter.
+        // Keep output closure 35ms behind host QPC (around 2 AAC blocks).
+        // The original RecorderSession QPC/PTS remains authoritative:
+        // no audio retiming, additional clock or unbounded buffering.
+        constexpr std::int64_t kPacketSettle100ns = 350'000;
         constexpr std::uint32_t kMaxRounds = 4;
         constexpr std::uint32_t kPacketsPerRound = 2;
         constexpr std::uint32_t kBlocksPerRound = 2;

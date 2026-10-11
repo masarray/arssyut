@@ -70,6 +70,8 @@ class UXContract(unittest.TestCase):
         self.assertIn("-p:InternalAudioPreview=true", self.workflow)
         self.assertIn("name: arssyut-AUDIO-ENABLED-TEST-win-x64", self.workflow)
         self.assertIn("name: arssyut-VIDEO-ONLY-avalonia-win-x64", self.workflow)
+        self.assertIn("UI-only contract (not a release build)", self.workflow)
+        self.assertIn("if: github.event_name == 'pull_request' && !contains(github.event.pull_request.title, '[audio]')", self.workflow)
         self.assertIn("README_VIDEO_ONLY.txt", self.workflow)
         self.assertIn('Title="Arssyut — Enhanced Screen Recorder"', self.xaml)
         self.assertIn('Text="Enhanced Screen Recorder"', self.xaml)
@@ -319,6 +321,17 @@ class UXContract(unittest.TestCase):
         self.assertIn("audio_runtime->health_snapshot()", session)
         self.assertIn("loopback_.snapshot()", runtime)
         self.assertIn("microphone_.snapshot()", runtime)
+
+
+    def test_captured_audio_headroom_stays_bounded_and_audio_clock_is_single(self):
+        capture = (ROOT / "src/platform/windows/audio/wasapi_capture_source.hpp").read_text(encoding="utf-8")
+        runtime = (ROOT / "src/app/audio_product_runtime.hpp").read_text(encoding="utf-8")
+        self.assertIn("queue_capacity = 64;", capture)
+        self.assertIn("packet_pool_capacity = 64;", capture)
+        self.assertIn("packet_pool_capacity <= 4'096", capture)
+        self.assertIn("constexpr std::int64_t kPacketSettle100ns = 350'000;", runtime)
+        self.assertIn("constexpr std::uint32_t kMaxRounds = 4;", runtime)
+        self.assertIn("program_.close_one_due(program_.next_due_100ns())", runtime)
 
 if __name__ == "__main__":
     unittest.main()
