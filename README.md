@@ -9,7 +9,7 @@
 Arssyut is a focused Windows screen recorder for tutorials, software demos, walkthroughs, and everyday captures. Choose what to record, start capturing, and save an MP4—without a crowded workspace.
 
 > [!IMPORTANT]
-> **Download status — audio quality acceptance BLOCKED:** Both initial previews have real-world recording defects: RC1 stops on System Audio onset; RC2 may save crackling audio even when it reports `ready`. **Do not recommend them as accepted Windows downloads.** The [Download page](https://masarray.github.io/arssyut/download/) only enables matched Setup/Portable EXEs when their GitHub Release explicitly records completed on-device audio QA. Historical previews remain visible on [GitHub Releases](https://github.com/masarray/arssyut/releases) for diagnosis. System audio and microphone recording are implemented, but reliable capture is under active correction; **webcam is not implemented**.
+> **Release readiness:** Real Windows recordings from the latest integrated A/V engine pass offline quality checks for **System Audio-only (30 seconds)** and **System Audio + Microphone (52 seconds)**; the user reports the latest dual-audio recording sounds good. Earlier published RC1/RC2 binaries are **not** accepted. [See the measured A/V acceptance record](docs/AV_RELEASE_ACCEPTANCE_2026-10-11.md). Microphone-only, repeated Start/Stop and the new packaged Windows Installer/Portable still need validation before verified public downloads or stable. System audio and microphone recording are implemented; **webcam is not implemented**.
 
 ## What can Arssyut do?
 
