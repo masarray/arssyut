@@ -112,6 +112,7 @@ if(WIN32)
             dxgi
             gdi32
             user32
+            mf
             mfplat
             mfreadwrite
             mfuuid
