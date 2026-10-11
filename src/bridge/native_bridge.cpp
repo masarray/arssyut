@@ -107,6 +107,7 @@ as_context(
         state == RecorderState::Preparing ||
         state == RecorderState::Armed ||
         state == RecorderState::Recording ||
+        state == RecorderState::Paused ||
         state == RecorderState::Stopping ||
         state == RecorderState::Finalizing;
 }
@@ -234,6 +235,8 @@ to_bridge_state(
         return ARSSYUT_BRIDGE_RECORDER_ARMED;
     case RecorderState::Recording:
         return ARSSYUT_BRIDGE_RECORDER_RECORDING;
+    case RecorderState::Paused:
+        return ARSSYUT_BRIDGE_RECORDER_PAUSED;
     case RecorderState::Stopping:
         return ARSSYUT_BRIDGE_RECORDER_STOPPING;
     case RecorderState::Finalizing:
@@ -2035,6 +2038,19 @@ arssyut_bridge_recorder_toggle_microphone_mute(
     std::scoped_lock lock(context->mutex);
     if (!context->recorder ||
         !context->recorder->request_toggle_microphone_mute())
+        return ARSSYUT_BRIDGE_INVALID_STATE;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_toggle_pause(
+    ArssyutBridgeHandle handle) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::scoped_lock lock(context->mutex);
+    if (!context->recorder ||
+        !context->recorder->request_toggle_pause())
         return ARSSYUT_BRIDGE_INVALID_STATE;
     return ARSSYUT_BRIDGE_OK;
 }

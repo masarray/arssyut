@@ -771,6 +771,7 @@ public sealed partial class SettingsWindow : Window
             {
                 "Record" => NativeHotkeyAction.ToggleRecord,
                 "Microphone" => NativeHotkeyAction.ToggleMicrophone,
+                "Pause" => NativeHotkeyAction.TogglePause,
                 "ToggleZoom" => NativeHotkeyAction.ToggleZoom,
                 "ZoomIn" => NativeHotkeyAction.ZoomIn,
                 "ZoomOut" => NativeHotkeyAction.ZoomOut,
@@ -782,6 +783,7 @@ public sealed partial class SettingsWindow : Window
         return action is
             "Record" or
             "Microphone" or
+            "Pause" or
             "ToggleZoom" or
             "ZoomIn" or
             "ZoomOut" or
