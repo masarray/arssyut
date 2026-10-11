@@ -281,11 +281,28 @@ jobs:
         run: |
           # Acceptance symbol in the single-file EXE enables audio itself.
           $exe = Join-Path $PWD "dist/arssyut-audio-acceptance/Arssyut.UI.exe"
+          $startedAt = Get-Date
           $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
           try {
             Start-Sleep -Seconds 4
+            $process.Refresh()
             if ($process.HasExited) {
-              throw "Experimental audio UI exited early: $($process.ExitCode)"
+              # This is a real Windows GUI process, not a CLI app: failed
+              # startup exceptions go to Windows Event Log, not stdout.
+              # A fatal .NET Runtime event 1026 includes the exception and
+              # stack; print it before treating an EXE exit as a regression.
+              $events = Get-WinEvent -FilterHashtable @{
+                LogName = 'Application'
+                StartTime = $startedAt
+                Id = 1026
+              } -ErrorAction SilentlyContinue |
+                Where-Object { $_.Message -match 'Arssyut.UI.exe' } |
+                Select-Object -First 2
+              foreach ($event in $events) {
+                Write-Host "--- Native A/V GUI startup crash evidence ---"
+                Write-Host $event.Message
+              }
+              throw "Integrated A/V + webcam UI exited early: $($process.ExitCode)"
             }
           } finally {
             if (-not $process.HasExited) {

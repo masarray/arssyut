@@ -893,12 +893,21 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception)
         {
-            // Fail closed on device enumeration, never start an old token.
+            // Fail closed on device enumeration, never start with a token
+            // from an older generation after a device change.
             _cameraDeviceToken = 0;
+            _microphoneDeviceToken = 0;
         }
         finally {
             _loadingCameraDevices = false;
             _webcamLifecycle.Release();
+        }
+        if (!_webcamShuttingDown && !_webcamCloseFinished) {
+            // Device enumeration completes asynchronously. The initial
+            // OnOpened capability surface ran before tokens were populated,
+            // so update both Camera selector and accepted A/V mic controls.
+            RefreshInputLabels();
+            ApplyProductCapabilitySurface();
         }
     }
 
