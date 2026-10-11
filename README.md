@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/favicon/android-chrome-192x192.png" alt="Arssyut product logo" width="80" height="80"></p>
+<p align="center"><img src="assets/favicon/web-app-manifest-192x192.png" alt="Arssyut product logo" width="80" height="80"></p>
 <h1 align="center">Arssyut</h1>
 <p align="center"><strong>Enhanced Screen Recorder for Windows</strong></p>
 <p align="center">Capture your screen. Stay in the flow.</p>
