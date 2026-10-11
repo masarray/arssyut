@@ -25,6 +25,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Fail fast on cheap Python/Node contracts, BEFORE CMake and MSVC.
+      # A syntax/acceptance-policy failure must not waste the native build.
+      # No extra runner/job, dependency install or video-only executable.
+      - name: Verify A/V acceptance policy and GUI contracts
+        run: python -m unittest discover -s tests/qa -p "test_*.py" -v
+
+      - name: Public release asset selection regression (offline Node)
+        run: node --test tests/qa/public_releases.test.cjs
+
       - name: Configure
         run: cmake --preset windows-x64
 
@@ -33,14 +42,6 @@ jobs:
 
       - name: Test
         run: ctest --preset windows-release
-
-      # Non-skipped policy/unit regressions: protect accepted 27s A/V and GUI.
-      # This does not claim that a runner without devices recorded hardware MP4.
-      - name: Verify A/V acceptance policy and GUI contracts
-        run: python -m unittest discover -s tests/qa -p "test_*.py" -v
-
-      - name: Public release asset selection regression (offline Node)
-        run: node --test tests/qa/public_releases.test.cjs
 
       - name: P7A1R Media Foundation resampler evidence
         shell: pwsh
