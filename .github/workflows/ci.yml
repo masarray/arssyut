@@ -243,6 +243,34 @@ jobs:
           FFmpeg linkage and redistribution require licensing review.
           '@ | Set-Content (Join-Path $package "README_AUDIO_ACCEPTANCE.txt")
 
+      - name: Integrated A/V GUI interaction-state regression (reuse audio-enabled build)
+        shell: pwsh
+        run: |
+          # Reuse the same checkout and .NET toolchain; do not build a second
+          # video-only GUI just to prove state/Settings controls still work.
+          dotnet run --project tests/ui/Arssyut.UI.InteractionTests/Arssyut.UI.InteractionTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Integrated A/V UI interaction tests failed" }
+
+      - name: Integrated A/V Settings and controller stress smoke
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "dist/arssyut-audio-acceptance/Arssyut.UI.exe").Path
+          foreach ($args in @(
+            @('--stress-long-names', '--controller-preview'),
+            @('--settings-preview', '--settings-stress')
+          )) {
+            $process = Start-Process -FilePath $exe -ArgumentList $args -PassThru
+            try {
+              Start-Sleep -Seconds 4
+              $process.Refresh()
+              if ($process.HasExited) {
+                throw "Integrated A/V GUI stress exited early (code $($process.ExitCode))"
+              }
+            } finally {
+              if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+            }
+          }
+
       - name: Internal preview launch smoke (no device requested)
         shell: pwsh
         run: |
