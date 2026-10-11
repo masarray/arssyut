@@ -20,12 +20,13 @@ class UXContract(unittest.TestCase):
         import json
         from xml.etree import ElementTree
         favicon = ROOT / "assets/favicon"
-        for name in ("favicon.ico", "favicon-16x16.png", "favicon-32x32.png",
-                     "apple-touch-icon.png", "android-chrome-192x192.png",
-                     "android-chrome-512x512.png", "site.webmanifest"):
+        for name in ("favicon.ico", "favicon-96x96.png",
+                     "apple-touch-icon.png", "web-app-manifest-192x192.png",
+                     "web-app-manifest-512x512.png", "site.webmanifest"):
             self.assertTrue((favicon / name).is_file(), name)
         manifest = json.loads((favicon / "site.webmanifest").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["name"], "Arssyut")
+        self.assertEqual(manifest["short_name"], "Arssyut")
+        self.assertEqual(manifest["theme_color"], "#0c1119")
         self.assertTrue(all(not icon["src"].startswith("/")
                             for icon in manifest["icons"]))
         self.assertIn("<ApplicationIcon>", self.project)
@@ -37,13 +38,13 @@ class UXContract(unittest.TestCase):
         self.assertIn('Icon="avares://Arssyut.UI/Assets/favicon.ico"',
                       (UI / "SettingsWindow.axaml").read_text(encoding="utf-8"))
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn('src="assets/favicon/android-chrome-192x192.png"', readme)
+        self.assertIn('src="assets/favicon/web-app-manifest-192x192.png"', readme)
         landing = (ROOT / "index.html").read_text(encoding="utf-8")
         for url in ("assets/favicon/favicon.ico",
-                    "assets/favicon/favicon-32x32.png",
+                    "assets/favicon/favicon-96x96.png",
                     "assets/favicon/apple-touch-icon.png",
                     "assets/favicon/site.webmanifest",
-                    "assets/favicon/android-chrome-512x512.png"):
+                    "assets/favicon/web-app-manifest-512x512.png"):
             self.assertIn(url, landing)
         self.assertIn("Arssyut.UI.exe", landing)
         installer = (ROOT / "packaging/windows/Arssyut.iss").read_text(encoding="utf-8")

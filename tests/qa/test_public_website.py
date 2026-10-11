@@ -70,12 +70,12 @@ class PublicSiteContracts(unittest.TestCase):
     def test_site_uses_canonical_brand_files(self):
         homepage = HOME.read_text(encoding="utf-8")
         download = DOWNLOAD.read_text(encoding="utf-8")
-        self.assertIn("assets/favicon/android-chrome-192x192.png", homepage)
-        self.assertIn("assets/favicon/android-chrome-512x512.png", homepage)
+        self.assertIn("assets/favicon/web-app-manifest-192x192.png", homepage)
+        self.assertIn("assets/favicon/web-app-manifest-512x512.png", homepage)
         self.assertIn("../assets/favicon/favicon.ico", download)
         self.assertIn("../assets/favicon/site.webmanifest", download)
         manifest = json.loads((ROOT / "assets/favicon/site.webmanifest").read_text())
-        self.assertEqual(manifest["name"], "Arssyut")
+        self.assertEqual(manifest["short_name"], "Arssyut")
         for icon in manifest["icons"]:
             self.assertTrue((ROOT / "assets/favicon" / icon["src"]).is_file())
 
@@ -141,7 +141,7 @@ class PublicSiteContracts(unittest.TestCase):
         self.assertNotIn("Portable ZIP", download)
         self.assertNotIn("test builds", download.lower())
         self.assertIn("newest complete", readme.lower())
-        self.assertIn("src=\"assets/favicon/android-chrome-192x192.png\"", readme)
+        self.assertIn("src=\"assets/favicon/web-app-manifest-192x192.png\"", readme)
         self.assertIn("Arssyut.UI.exe", download)
         self.assertIn("webcam recording and its live preview have not been implemented", readme.lower())
 
