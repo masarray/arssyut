@@ -243,6 +243,34 @@ jobs:
           FFmpeg linkage and redistribution require licensing review.
           '@ | Set-Content (Join-Path $package "README_AUDIO_ACCEPTANCE.txt")
 
+      - name: Integrated A/V GUI interaction-state regression (reuse audio-enabled build)
+        shell: pwsh
+        run: |
+          # Reuse the same checkout and .NET toolchain; do not build a second
+          # video-only GUI just to prove state/Settings controls still work.
+          dotnet run --project tests/ui/Arssyut.UI.InteractionTests/Arssyut.UI.InteractionTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw "Integrated A/V UI interaction tests failed" }
+
+      - name: Integrated A/V Settings and controller stress smoke
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path "dist/arssyut-audio-acceptance/Arssyut.UI.exe").Path
+          foreach ($args in @(
+            @('--stress-long-names', '--controller-preview'),
+            @('--settings-preview', '--settings-stress')
+          )) {
+            $process = Start-Process -FilePath $exe -ArgumentList $args -PassThru
+            try {
+              Start-Sleep -Seconds 4
+              $process.Refresh()
+              if ($process.HasExited) {
+                throw "Integrated A/V GUI stress exited early (code $($process.ExitCode))"
+              }
+            } finally {
+              if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+            }
+          }
+
       - name: Internal preview launch smoke (no device requested)
         shell: pwsh
         run: |
@@ -277,7 +305,10 @@ jobs:
           retention-days: 90
 
   p6ui-windows:
-    name: P6UI Avalonia Windows x64
+    name: Avalonia UI-only contract (not a release build)
+    # The authoritative audio+video GUI is built in P7A5 on main/[audio] PRs.
+    # Do not duplicate a video-only build for the same commit.
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.title, '[audio]')
     runs-on: windows-latest
     timeout-minutes: 12
 
@@ -336,10 +367,13 @@ jobs:
             "src/app/audio_startup_gate.hpp" = "453a2fe2b1beea85d093244c77b68df2dff35771"
             "src/app/audio_source_preparation.hpp" = "5f64b96540f5a98d319c5af793cc5cbe868f8b21"
             "src/app/audio_endpoint_preflight.hpp" = "859170accf6351963fa51326ebcad6170293a148"
-            "src/app/audio_pcm16_submission_adapter.hpp" = "d69fdccb252f6ba6c0dd0cef6d9dc444a81cff52"
+            # AAC transport correctness: one source seam is not a whole program gap.
+            "src/app/audio_pcm16_submission_adapter.hpp" = "acf610b6309a8ae4e668325e38408e7ae6089e22"
             # P7A6 sole RecorderSession product audio owner (opt-in).
             # Quality regression forensic counters only: no changes to mixer/DSP.
-            "src/app/audio_product_runtime.hpp" = "2de68414999cd24257e92d1e52c9feaa52784322"
+            # Real-device 25.4s audio stale/pool-exhaustion regression:
+            # fixed source lease headroom and bounded 35ms settle.
+            "src/app/audio_product_runtime.hpp" = "db5fb8ab18654f56372ef5c08f12d085601f6d58"
             "src/app/recording_audio_health.hpp" = "6cd6fb9a91b330e5a796219cc64143eef69b6703"
             # Fixed 48k recorded click/keycap cues, no second clock or audio source.
             "src/app/recorded_input_sounds.hpp" = "ee7c4aba077b7133b0156f6f7d61fddd48673026"
@@ -390,12 +424,16 @@ jobs:
             "src/core/audio/audio_canonical_program_assembler.hpp" = "506256245d20ffa0efb487d27f4d63077782aa28"
             # P7A5 typed packet lease -> native normalization -> mapped
             # canonical SRC ingress, exact blob; no unreviewed core drift.
-            "src/core/audio/audio_packet_ingress.hpp" = "28525e79048aa288a608022b64288bee0a62130e"
+            # P7 audio quality: QPC trust gating and 2ms bounded seam declick;
+            # deterministic normal-PCM and discontinuity regressions.
+            "src/core/audio/audio_packet_ingress.hpp" = "4769990b5804370847467c6d35a8786770e89d8c"
 
             # P7A2 event-driven microphone source and the deliberately shared
             # Windows-audio seam that P7A3 must reuse rather than clone.
             "src/platform/windows/audio/wasapi_audio_utils.hpp" = "8bde8701ab524119f99ca95049ce507084141a5e"
-            "src/platform/windows/audio/wasapi_capture_source.hpp" = "d58125d520808b2fdb75cbc8bf490e02e41d8a55"
+            # Real-device 25.4s audio stale/pool-exhaustion regression:
+            # fixed source lease headroom and bounded 35ms settle.
+            "src/platform/windows/audio/wasapi_capture_source.hpp" = "9feddbb6ceeaba228dd8c6e1a5651fafb61703ca"
             "src/platform/windows/audio/wasapi_capture_source.cpp" = "eb2e929a0907fb966f99d33b739831703c16ea12"
             "src/platform/windows/audio/wasapi_microphone_source.hpp" = "7e7e71deae21cc1b8d17609500d6233555ca2995"
             "src/platform/windows/audio/wasapi_microphone_source.cpp" = "ef821592ee5ce01505ae11fcb309ff42caecb1d3"

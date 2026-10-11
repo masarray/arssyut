@@ -235,9 +235,15 @@ public:
             .relative_pts_100ns = static_cast<std::int64_t>(start_offset),
             .duration_100ns = static_cast<std::int64_t>(duration),
             .frames = output_frames,
+            // A per-SOURCE WASAPI restart is NOT an output-program gap:
+            // P7A5 has already placed it at the one canonical clock and
+            // filled missing source intervals with PCM silence. Sending
+            // MFSampleExtension_Discontinuity to Media Foundation AAC for
+            // source-only seams can reset encoder filter history at every
+            // 1024-frame boundary and produce severe encoded crackling.
+            // Only a dropped/skipped PROGRAM block breaks AAC continuity.
             .discontinuity =
                 block.follows_output_discontinuity ||
-                block.audio.discontinuity_mask != 0 ||
                 first_frame > next_minimum_frame_ ||
                 next_output_discontinuity_,
         };

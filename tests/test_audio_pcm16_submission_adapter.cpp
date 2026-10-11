@@ -63,7 +63,8 @@ void one_block_and_clip()
             r.view.interleaved[5] == -16384, "explicit deterministic rounding");
     require(r.view.interleaved[6] == 0 &&
             r.view.interleaved[7] == 0, "NaN/Inf do not reach AAC");
-    require(r.view.discontinuity, "source discontinuity is carried");
+    require(!r.view.discontinuity,
+        "Source-local WASAPI discontinuity cannot reset continuous AAC");
     require(a.prepare(b, 0).status == AacPrepareStatus::Busy,
         "cannot overwrite in-flight writer input");
     require(a.finish(true), "successful writer acknowledgment");
@@ -73,6 +74,38 @@ void one_block_and_clip()
     require(!a.finish(true), "duplicate writer acknowledgment rejected");
     require(a.prepare(b, 0).status == AacPrepareStatus::OutOfOrder,
         "duplicate block is not written twice");
+}
+
+
+void source_seams_never_reset_contiguous_aac()
+{
+    AacPcm16SubmissionAdapter a;
+    a.reset(kZero);
+    // Source 2 may disappear/recover repeatedly while the canonical 48k
+    // stereo program remains one continuous block-per-1024 timeline.
+    // No input source flag may masquerade as an AAC program discontinuity.
+    constexpr std::uint64_t kBlocks = 200;
+    for (std::uint64_t i=0;i<kBlocks;++i) {
+        const auto first=i*1024ULL;
+        auto block=make_block(first);
+        block.audio.discontinuity_mask = (i%2 == 0) ? 2U : 1U;
+        block.audio.source_presence_mask = (i%2 == 0) ? 1U : 2U;
+        block.audio.samples.fill(0.125F);
+        const auto prepared=a.prepare(block,first);
+        if (prepared.status != AacPrepareStatus::Ready ||
+            prepared.view.discontinuity ||
+            prepared.view.relative_pts_100ns !=
+                static_cast<std::int64_t>(frames_to_ticks_floor(first,48'000)) ||
+            prepared.view.interleaved[0] != 4096 ||
+            !a.finish(true)) {
+            require(false,
+                "200 mixed source-seam blocks remain uninterrupted AAC PCM");
+            return;
+        }
+    }
+    require(a.stats().submitted_blocks == kBlocks &&
+            a.stats().skipped_frames == 0,
+        "No source-local seam loses or duplicates program PCM");
 }
 
 void backpressure_preserves_later_timestamps()
@@ -502,6 +535,7 @@ void bounded_writer_service_cut_and_stale()
 int main()
 {
     one_block_and_clip();
+    source_seams_never_reset_contiguous_aac();
     backpressure_preserves_later_timestamps();
     live_then_stop_tail();
     malformed_and_overflow_fail_closed();

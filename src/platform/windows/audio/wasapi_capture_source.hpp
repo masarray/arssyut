@@ -85,8 +85,10 @@ enum class WasapiCaptureState : std::uint8_t {
 };
 
 struct WasapiCaptureOptions {
-    std::size_t queue_capacity = 32;
-    std::size_t packet_pool_capacity = 32;
+    // Real hardware at 1080p60: microphone exhausted the 32-slot pool 34x.
+    // Bounded 64-lease cushion; no unbounded queue or new capture thread.
+    std::size_t queue_capacity = 64;
+    std::size_t packet_pool_capacity = 64;
 
     [[nodiscard]] bool valid() const noexcept
     {
