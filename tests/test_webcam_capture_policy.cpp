@@ -1,4 +1,5 @@
 #include "core/video/webcam_capture_policy.hpp"
+#include "core/video/webcam_capture_timing.hpp"
 
 #include <cstdint>
 #include <iostream>
@@ -66,6 +67,32 @@ int main()
           "boundaries included");
     check(!webcam_candidate_supported({3841, 2160, 60, 1, F::Nv12}),
           "boundary overflow rejected");
+    // P8W1C: measured cadence must exclude camera opening and use frame
+    // *intervals*; a source tick before the first frame is not a dropped
+    // streaming frame. All tests run without Windows devices.
+    using arssyut::core::webcam_observed_fps_x100;
+    using arssyut::core::webcam_excessive_frame_interval;
+    check(webcam_observed_fps_x100(151, 10'000'000, 60'000'000) == 3000,
+          "151 samples over 150 intervals in five seconds is exactly 30fps");
+    check(webcam_observed_fps_x100(76, 10'000'000, 35'000'000) == 3000,
+          "75 intervals over 2.5 seconds is 30fps, independent of startup");
+    check(webcam_observed_fps_x100(1, 10'000'000, 10'000'000) == 0,
+          "single startup frame has no steady FPS");
+    check(webcam_observed_fps_x100(0, 0, 0) == 0,
+          "no camera frame yields zero FPS");
+    check(webcam_observed_fps_x100(5, 20'000'000, 19'000'000) == 0,
+          "counter rewind is not a valid FPS");
+    check(webcam_observed_fps_x100(3, 0, 20'000'000) == 0,
+          "unknown first timestamp fails closed");
+    check(!webcam_excessive_frame_interval(1'000'000, 1'333'333),
+          "normal 30fps frame interval not counted as stall");
+    check(!webcam_excessive_frame_interval(1'000'000, 2'000'000),
+          "100ms threshold itself is not a stall");
+    check(webcam_excessive_frame_interval(1'000'000, 2'000'001),
+          "over-100ms interframe stall detected");
+    check(!webcam_excessive_frame_interval(2'000'000, 1'000'000),
+          "QPC rewind not misclassified as long stall");
+
     std::cout << "P8W1 webcam candidate policy: " <<
         (failed == 0 ? "PASS" : "FAIL") << '\n';
     return failed == 0 ? 0 : 1;

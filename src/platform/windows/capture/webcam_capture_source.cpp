@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include "core/time/monotonic_clock.hpp"
+#include "core/video/webcam_capture_timing.hpp"
 #include <Windows.h>
 #include <dxgi.h>
 #include <mfapi.h>
@@ -222,8 +223,10 @@ struct Mode {
     IMFSample *sample,
     ID3D11Device *expected_device,
     const LUID &expected_adapter,
-    ComPtr<ID3D11Texture2D> &texture) noexcept
+    ComPtr<ID3D11Texture2D> &texture,
+    bool &foreign_device_same_adapter) noexcept
 {
+    foreign_device_same_adapter = false;
     ComPtr<IMFMediaBuffer> buffer;
     if (!sample || FAILED(sample->GetBufferByIndex(0, &buffer)))
         return false;
@@ -237,9 +240,15 @@ struct Mode {
     if (texture_device.Get() == expected_device)
         return true;
     LUID actual{};
-    return adapter_luid(texture_device.Get(), actual) &&
+    foreign_device_same_adapter =
+        adapter_luid(texture_device.Get(), actual) &&
         actual.HighPart == expected_adapter.HighPart &&
         actual.LowPart == expected_adapter.LowPart;
+    // Matching adapter LUID is not sufficient to bind a texture to the
+    // recorder's immediate context: D3D11 resources belong to their device.
+    // Cross-device sharing requires an explicit, later GPU copy protocol.
+    texture.Reset();
+    return false;
 }
 } // namespace
 
@@ -250,6 +259,12 @@ void WebcamCaptureSource::reset_counters() noexcept
     received_.store(0); published_.store(0);
     replaced_.store(0); busy_drops_.store(0);
     stream_ticks_.store(0); invalid_samples_.store(0);
+    stream_ticks_startup_.store(0); stream_ticks_streaming_.store(0);
+    frame_intervals_over_100ms_.store(0);
+    max_frame_interval_ticks_.store(0);
+    frames_other_device_same_adapter_.store(0);
+    open_request_ticks_.store(0); source_ready_ticks_.store(0);
+    first_frame_ticks_.store(0); last_frame_ticks_.store(0);
     adapter_mismatch_.store(0); source_changes_.store(0);
     callback_timeouts_.store(0); last_hresult_.store(0);
     mode_width_.store(0); mode_height_.store(0);
@@ -269,6 +284,8 @@ arssyut::core::Status WebcamCaptureSource::start(
         return Status::failure(StatusCode::InvalidStateTransition);
 
     reset_counters();
+    open_request_ticks_.store(
+        arssyut::core::MonotonicClock::now().ticks_100ns);
     gpu_frames.discard_unread();
     slot_ = &gpu_frames;
     stop_requested_.store(false, std::memory_order_release);
@@ -318,6 +335,31 @@ WebcamCaptureSnapshot WebcamCaptureSource::snapshot() const noexcept
     s.replaced = replaced_.load();
     s.busy_drops = busy_drops_.load();
     s.stream_ticks = stream_ticks_.load();
+    s.stream_ticks_startup = stream_ticks_startup_.load();
+    s.stream_ticks_streaming = stream_ticks_streaming_.load();
+    s.frame_intervals_over_100ms = frame_intervals_over_100ms_.load();
+    s.frames_other_device_same_adapter =
+        frames_other_device_same_adapter_.load();
+
+    const auto started = open_request_ticks_.load();
+    const auto ready = source_ready_ticks_.load();
+    const auto first = first_frame_ticks_.load();
+    const auto last = last_frame_ticks_.load();
+    const auto max_gap = max_frame_interval_ticks_.load();
+    const auto elapsed_ms = [](std::int64_t begin, std::int64_t end)
+        -> std::uint32_t {
+        if (begin <= 0 || end < begin) return 0;
+        const auto delta = static_cast<std::uint64_t>(end - begin) / 10000;
+        return static_cast<std::uint32_t>(
+            std::min<std::uint64_t>(delta, UINT32_MAX));
+    };
+    s.source_open_ms = elapsed_ms(started, ready);
+    s.first_frame_ms = elapsed_ms(started, first);
+    s.max_frame_interval_ms =
+        static_cast<std::uint64_t>(max_gap) / 10000;
+    // Compute using N-1 frame intervals and canonical 100ns clock ticks.
+    s.streaming_fps_x100 = arssyut::core::webcam_observed_fps_x100(
+        s.received, first, last);
     s.invalid_samples = invalid_samples_.load();
     s.adapter_mismatch = adapter_mismatch_.load();
     s.source_changes = source_changes_.load();
@@ -359,8 +401,10 @@ void WebcamCaptureSource::worker(
         mode_rate_num_.store(mode.fps_num);
         mode_rate_den_.store(mode.fps_den);
         mode_format_.store(static_cast<std::uint8_t>(mode.format));
-        if (!stop_requested_.load(std::memory_order_acquire))
-            state_.store(WebcamCaptureState::Active, std::memory_order_release);
+        source_ready_ticks_.store(
+            arssyut::core::MonotonicClock::now().ticks_100ns);
+        // Opening remains truthful until the first valid GPU-backed frame
+        // arrives. Negotiating a format is not evidence of camera delivery.
     }
 
     std::uint64_t sequence = 0;
@@ -400,6 +444,10 @@ void WebcamCaptureSource::worker(
             }
             if (done.flags & MF_SOURCE_READERF_STREAMTICK) {
                 stream_ticks_.fetch_add(1);
+                if (sequence == 0)
+                    stream_ticks_startup_.fetch_add(1);
+                else
+                    stream_ticks_streaming_.fetch_add(1);
                 continue;
             }
             if (!done.sample) {
@@ -408,9 +456,14 @@ void WebcamCaptureSource::worker(
             }
             received_.fetch_add(1);
             ComPtr<ID3D11Texture2D> texture;
+            bool foreign_device_same_adapter = false;
             if (!gpu_texture_from_sample(
-                    done.sample.Get(), device.Get(), adapter, texture)) {
-                adapter_mismatch_.fetch_add(1);
+                    done.sample.Get(), device.Get(), adapter,
+                    texture, foreign_device_same_adapter)) {
+                if (foreign_device_same_adapter)
+                    frames_other_device_same_adapter_.fetch_add(1);
+                else
+                    adapter_mismatch_.fetch_add(1);
                 // GPU is a non-negotiable capability; no CPU fallback.
                 hr = MF_E_INVALIDMEDIATYPE;
                 break;
@@ -422,14 +475,34 @@ void WebcamCaptureSource::worker(
                 hr = MF_E_INVALIDMEDIATYPE;
                 break;
             }
+            const auto frame_time =
+                arssyut::core::MonotonicClock::now().ticks_100ns;
+            const auto previous = last_frame_ticks_.load();
+            if (previous > 0 && frame_time > previous) {
+                const auto interval = static_cast<std::uint64_t>(
+                    frame_time - previous);
+                if (arssyut::core::webcam_excessive_frame_interval(
+                        previous, frame_time))
+                    frame_intervals_over_100ms_.fetch_add(1);
+                auto largest = max_frame_interval_ticks_.load();
+                while (largest < interval &&
+                       !max_frame_interval_ticks_.compare_exchange_weak(
+                           largest, interval)) {}
+            }
+            last_frame_ticks_.store(frame_time);
+            if (sequence == 0)
+                first_frame_ticks_.store(frame_time);
+
             WebcamGpuFrame frame{};
             frame.sample = done.sample;
             frame.texture = std::move(texture);
-            frame.captured_at = arssyut::core::MonotonicClock::now();
+            frame.captured_at.ticks_100ns = frame_time;
             frame.sequence = ++sequence;
             frame.width = desc.Width;
             frame.height = desc.Height;
 
+            // No UI/recorder authority is advanced until GPU frame
+            // validation and publication are both complete.
             switch (slot_->publish(std::move(frame))) {
             case WebcamGpuFrameSlot::PublishResult::Published:
                 published_.fetch_add(1);
@@ -442,6 +515,9 @@ void WebcamCaptureSource::worker(
                 busy_drops_.fetch_add(1);
                 break;
             }
+            if (sequence == 1)
+                state_.store(WebcamCaptureState::Active,
+                             std::memory_order_release);
         }
     }
     if (!stop_requested_.load(std::memory_order_acquire))

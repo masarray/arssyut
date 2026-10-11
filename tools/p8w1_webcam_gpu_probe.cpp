@@ -443,44 +443,74 @@ int run_native_engine(const arssyut::app::DeviceChoice &camera,
         return 4;
     }
 
-    std::uint64_t consumed = 0, previous = 0, stale = 0;
+    std::uint64_t consumed = 0, previous = 0, nonmonotonic = 0;
     std::uint64_t peak_slot_usage = 0;
-    const auto deadline = std::chrono::steady_clock::now() +
-        std::chrono::seconds(seconds);
-    while (std::chrono::steady_clock::now() < deadline) {
+    // Real Windows evidence: 95, 71 and 58 frames in "5 seconds" were
+    // counted from process start. That conflates MF camera initialization
+    // with capture cadence. Here 'seconds' is measured only AFTER first
+    // valid GPU frame; opening is separately bounded to eight seconds.
+    const auto requested_at = std::chrono::steady_clock::now();
+    const auto opening_deadline = requested_at + std::chrono::seconds(8);
+    auto active_at = requested_at;
+    bool started = false;
+    while (true) {
+        const auto now = std::chrono::steady_clock::now();
+        if (!started && now >= opening_deadline)
+            break;
+        if (started && now >= active_at + std::chrono::seconds(seconds))
+            break;
+
         auto lease = slot.try_acquire_latest();
         if (lease) {
             ++consumed;
             if (lease->sequence <= previous)
-                ++stale;
+                ++nonmonotonic;
             previous = lease->sequence;
             peak_slot_usage = std::max<std::uint64_t>(
                 peak_slot_usage, slot.in_flight_count());
-            // No screen readback. No CPU pixel data. A renderer will consume
-            // this same leased ID3D11Texture2D in the next milestone.
+            // The real GPU sample and texture belong to the bounded lease.
+            // No CPU readback or additional source/recorder is instantiated.
         }
         const auto snap = engine.snapshot();
         if (snap.state == arssyut::windows::WebcamCaptureState::Unavailable)
             break;
+        if (!started &&
+            snap.state == arssyut::windows::WebcamCaptureState::Active) {
+            started = true;
+            active_at = now;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
-    // Preserve actual status before stopping; Stop transitions to Off.
+    const auto finished_at = std::chrono::steady_clock::now();
     const auto snapshot = engine.snapshot();
     engine.stop();
-    const bool gpu_ok =
-        snapshot.received >= 3 &&
+    const auto wall_ms = std::chrono::duration_cast<
+        std::chrono::milliseconds>(finished_at - requested_at).count();
+    const auto steady_ms = started ?
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            finished_at - active_at).count() : 0;
+
+    const bool gpu_ok = snapshot.received >= 3 &&
         snapshot.adapter_mismatch == 0 &&
         snapshot.invalid_samples == 0 &&
         snapshot.callback_timeouts == 0 &&
         snapshot.source_changes == 0 &&
-        stale == 0;
-    const bool clean = gpu_ok && snapshot.stream_ticks == 0 &&
+        snapshot.frames_other_device_same_adapter == 0 &&
+        nonmonotonic == 0;
+    const bool healthy = gpu_ok && started &&
+        snapshot.stream_ticks_streaming == 0 &&
+        snapshot.frame_intervals_over_100ms == 0 &&
         snapshot.state == arssyut::windows::WebcamCaptureState::Active;
-    const wchar_t *status = clean ? L"engine_gpu_active" :
-        gpu_ok ? L"engine_gpu_with_gaps" : L"review";
+    const wchar_t *status = healthy ? L"engine_gpu_active" :
+        gpu_ok && started ? L"engine_gpu_with_gaps" : L"review";
     std::wcout << L"{\"status\":\"" << status
                << L"\",\"seconds\":" << seconds
+               << L",\"wall_ms\":" << wall_ms
+               << L",\"steady_ms\":" << steady_ms
+               << L",\"device_open_ms\":" << snapshot.source_open_ms
+               << L",\"first_frame_ms\":" << snapshot.first_frame_ms
+               << L",\"observed_fps_x100\":" << snapshot.streaming_fps_x100
                << L",\"mode\":{"
                << L"\"width\":" << snapshot.format.width
                << L",\"height\":" << snapshot.format.height
@@ -492,15 +522,23 @@ int run_native_engine(const arssyut::app::DeviceChoice &camera,
                << L",\"replaced\":" << snapshot.replaced
                << L",\"busy_drops\":" << snapshot.busy_drops
                << L",\"stream_ticks\":" << snapshot.stream_ticks
+               << L",\"stream_ticks_startup\":" << snapshot.stream_ticks_startup
+               << L",\"stream_ticks_streaming\":" << snapshot.stream_ticks_streaming
+               << L",\"frame_intervals_over_100ms\":"
+               << snapshot.frame_intervals_over_100ms
+               << L",\"max_frame_interval_ms\":"
+               << snapshot.max_frame_interval_ms
+               << L",\"frames_other_device_same_adapter\":"
+               << snapshot.frames_other_device_same_adapter
                << L",\"invalid_samples\":" << snapshot.invalid_samples
                << L",\"adapter_mismatch\":" << snapshot.adapter_mismatch
                << L",\"source_changes\":" << snapshot.source_changes
                << L",\"callback_timeouts\":" << snapshot.callback_timeouts
                << L",\"consumed\":" << consumed
-               << L",\"consumer_nonmonotonic\":" << stale
+               << L",\"consumer_nonmonotonic\":" << nonmonotonic
                << L",\"peak_occupied_slots\":" << peak_slot_usage
                << L",\"hr\":" << snapshot.last_hresult << L"}\n";
-    return clean ? 0 : 4;
+    return healthy ? 0 : 4;
 }
 
 } // namespace
