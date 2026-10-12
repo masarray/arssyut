@@ -451,7 +451,7 @@
 
                 <!-- Camera -->
                 <StackPanel x:Name="PageCamera" IsVisible="False">
-                  <TextBlock Text="PIP is composited in the native MP4 output. Changes apply to the next recording." Classes="micro" TextWrapping="Wrap" Margin="0,0,0,12" />
+                  <TextBlock Text="Output-accurate position and mask · changes apply to the next recording." Classes="micro" TextWrapping="Wrap" Margin="0,0,0,9" />
                   <Border Classes="setting-row">
                     <StackPanel Spacing="10">
                       <TextBlock Text="Position" FontWeight="Medium" />
@@ -461,14 +461,27 @@
                         <Button x:Name="AnchorBottomLeft" Grid.Column="2" Content="Bottom left" Tag="BottomLeft" Click="CameraPlacement_OnClick" />
                         <Button x:Name="AnchorBottomRight" Grid.Column="3" Content="Bottom right" Tag="BottomRight" Click="CameraPlacement_OnClick" />
                       </Grid>
-                      <Border Background="{DynamicResource ArBrush.Surface3}" Height="118" CornerRadius="8" Padding="10">
-                        <Border x:Name="CameraPreviewBadge" Width="126" Height="76" BorderBrush="#ECF0F5" BorderThickness="2" Background="#476678" CornerRadius="14" HorizontalAlignment="Right" VerticalAlignment="Top">
-                          <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="3">
-                            <PathIcon Data="{StaticResource MsCamera}" Width="18" Height="18" Foreground="White" />
-                            <TextBlock Text="CAM" FontSize="10" HorizontalAlignment="Center" Foreground="White" />
-                          </StackPanel>
-                        </Border>
+                      <!-- 16:9 output-space layout. True proportional PIP geometry,
+                           not a CSS rounded badge that fakes a circle. -->
+                      <Border Background="{DynamicResource ArBrush.Surface3}" CornerRadius="8"
+                              Padding="0" HorizontalAlignment="Left">
+                        <Canvas x:Name="CameraOutputStage" Width="448" Height="252"
+                                Background="#1D2631" ClipToBounds="True">
+                          <Grid x:Name="CameraOverlaySurface" Width="104" Height="78"
+                                Background="#476678">
+                            <Image x:Name="CameraSettingsLiveFrame" Stretch="UniformToFill"
+                                   IsVisible="False" />
+                            <TextBlock x:Name="CameraSettingsIdle" Text="Camera OFF"
+                                       FontSize="10" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" Foreground="White" />
+                            <Path x:Name="CameraPreviewOutline" Stroke="#F2F5F8"
+                                  StrokeThickness="1" Fill="Transparent" />
+                          </Grid>
+                        </Canvas>
                       </Border>
+                      <TextBlock x:Name="CameraPreviewSourceInfo" Classes="micro"
+                                 Text="Output layout 16:9 · Camera OFF"
+                                 TextWrapping="Wrap" />
                     </StackPanel>
                   </Border>
                   <Border Classes="setting-row" Margin="0,8,0,0">
