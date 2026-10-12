@@ -20,6 +20,7 @@
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 
 #include <cstdint>
+#include <limits>
 
 namespace arssyut::app::audio {
 
@@ -101,6 +102,7 @@ public:
         // Every recording uses exactly the RecorderSession QPC media zero.
         program_.reset(media_zero_100ns,
                        pinned_.microphone, pinned_.system_audio);
+        media_zero_100ns_ = media_zero_100ns;
         // Existing canonical per-source mixer; unity defaults are unchanged.
         program_.mixer().set_source_config(
             core::audio::AudioSourceId::Microphone, {mic_gain, mic_muted});
@@ -290,6 +292,23 @@ public:
             discard_while_paused();
         }
 
+        // Physical Stop has already been compressed by RecordingPauseClock.
+        // Compute one exclusive 48k media boundary for both WASAPI sources.
+        // Rounding upward keeps the final in-range partial PCM frame; the
+        // existing AAC submit adapter performs final exact-time truncation.
+        const auto stop_elapsed = static_cast<std::uint64_t>(
+            (std::max)(std::int64_t{0},
+                       stopped.ticks_100ns - media_zero_100ns_));
+        const auto full_frames = core::audio::ticks_to_frames_floor(
+            stop_elapsed, 48'000);
+        const auto stop_frame_exclusive = static_cast<std::int64_t>(
+            (std::min)(
+                full_frames +
+                    (core::audio::frames_to_ticks_floor(
+                         full_frames, 48'000) < stop_elapsed ? 1ULL : 0ULL),
+                static_cast<std::uint64_t>(
+                    (std::numeric_limits<std::int64_t>::max)())));
+        
         const auto fail_stop = [this](core::Status error) noexcept {
             stop_sources();  // retire pool only after last lease released
             recording_ = false;
@@ -311,7 +330,7 @@ public:
         for (int round = 0; round < kMaxStopRounds; ++round) {
             if (!mic_empty) {
                 const auto r = mic_ingress_.pump_available(
-                    microphone_, program_, 1);
+                    microphone_, program_, 1, stop_frame_exclusive);
                 if (!acceptable(r.status))
                     return fail_stop(
                         ingress_failure_recorded(2, 1, r.status));
@@ -320,7 +339,7 @@ public:
             }
             if (!sys_empty) {
                 const auto r = sys_ingress_.pump_available(
-                    loopback_, program_, 1);
+                    loopback_, program_, 1, stop_frame_exclusive);
                 if (!acceptable(r.status))
                     return fail_stop(
                         ingress_failure_recorded(2, 2, r.status));
@@ -336,7 +355,8 @@ public:
                 if (!mic_ingress_.has_canonical_cursor()) {
                     mic_done = true;
                 } else {
-                    const auto r = mic_ingress_.drain_one(program_);
+                    const auto r = mic_ingress_.drain_one(
+                        program_, stop_frame_exclusive);
                     if (!acceptable(r.status))
                         return fail_stop(
                             ingress_failure_recorded(3, 1, r.status));
@@ -347,7 +367,8 @@ public:
                 if (!sys_ingress_.has_canonical_cursor()) {
                     sys_done = true;
                 } else {
-                    const auto r = sys_ingress_.drain_one(program_);
+                    const auto r = sys_ingress_.drain_one(
+                        program_, stop_frame_exclusive);
                     if (!acceptable(r.status))
                         return fail_stop(
                             ingress_failure_recorded(3, 2, r.status));
@@ -561,6 +582,7 @@ private:
     AacPcm16SubmissionAdapter adapter_{};
     RecordedInputSounds recorded_cues_{};
     core::audio::AudioProgramBlock scratch_{};
+    std::int64_t media_zero_100ns_ = 0;
     bool sources_started_ = false;
     bool recording_ = false;
     bool paused_ = false;
