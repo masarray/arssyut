@@ -215,6 +215,18 @@ struct ArssyutBridgeCameraOverlayV1 {
     std::uint32_t enabled;
 };
 
+struct ArssyutBridgeLogoOverlayV1 {
+    std::uint32_t struct_size;
+    std::uint32_t version;
+    std::uint32_t enabled;
+    std::uint32_t placement; // TL, TR, BL, BR, Center
+    float width_fraction;
+    float margin_fraction;
+    float opacity;
+    float reserved;
+    wchar_t png_path[ARSSYUT_BRIDGE_PATH_CAPACITY];
+};
+
 // Additive ABI v10 endpoint-level peak monitor. Read-only; never records,
 // remixes, processes or intercepts PCM. A mono endpoint reports 1 channel.
 struct ArssyutBridgeAudioMeterV1 {
@@ -382,6 +394,12 @@ std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_webcam_preview_failure(
     ArssyutBridgeHandle handle, std::uint32_t *stage,
     std::uint32_t *hresult) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_logo_overlay(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeLogoOverlayV1 *profile) noexcept;
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL

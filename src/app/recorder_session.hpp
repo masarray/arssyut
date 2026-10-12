@@ -92,6 +92,8 @@ struct RecorderConfig {
     // The existing bridge still rejects audio until real-device MP4 acceptance.
     // Internal P8W2 opt-in uses ONE established writer and frame clock.
     arssyut::core::overlay::CameraOverlayProfile camera_overlay{};
+    arssyut::core::overlay::LogoOverlayProfile logo_overlay{};
+    std::wstring logo_png_path;
     bool webcam_enabled = false;
     std::wstring webcam_symbolic_link;
     // Live single-source camera handed over by native bridge; remains owned

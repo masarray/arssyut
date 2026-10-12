@@ -736,6 +736,10 @@ void RecorderSession::worker_main() noexcept
         state_.store(RecorderState::Failed, std::memory_order_release);
         return;
     }
+    // Optional PNG overlay: a corrupt/missing image may disable the logo,
+    // NEVER abort microphone, desktop capture or the single MP4 writer.
+    (void)pipeline->compositor().set_logo_overlay_profile(
+        config_.logo_overlay, config_.logo_png_path);
 
     visual_analysis_available_.store(
         pipeline->compositor().

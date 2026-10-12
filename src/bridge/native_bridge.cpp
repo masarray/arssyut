@@ -59,6 +59,8 @@ struct NativeBridgeContext final {
     std::mutex webcam_preview_mutex;
     std::shared_ptr<arssyut::windows::WebcamPreviewSession> webcam_preview;
     arssyut::core::overlay::CameraOverlayProfile camera_overlay{};
+    arssyut::core::overlay::LogoOverlayProfile logo_overlay{};
+    std::wstring logo_png_path;
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     // Preview only: never owns or supplies RecorderSession audio.
     std::mutex preview_mutex;
@@ -1751,6 +1753,42 @@ arssyut_bridge_webcam_preview_failure(
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_logo_overlay(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeLogoOverlayV1 *profile) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !profile || profile->struct_size != sizeof(*profile))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    arssyut::core::overlay::LogoOverlayProfile chosen{};
+    chosen.version = profile->version;
+    chosen.enabled = profile->enabled != 0;
+    chosen.placement = static_cast<arssyut::core::overlay::Corner>(profile->placement);
+    chosen.width_fraction = profile->width_fraction;
+    chosen.margin_fraction = profile->margin_fraction;
+    chosen.opacity = profile->opacity;
+    if (profile->enabled > 1U || !arssyut::core::overlay::valid(chosen))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    const auto *end = std::find(std::begin(profile->png_path),
+        std::end(profile->png_path), L'\0');
+    if (end == std::end(profile->png_path))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::wstring path(profile->png_path, end);
+    if (chosen.enabled &&
+        (path.empty() || !std::filesystem::path(path).is_absolute()))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard lock(context->mutex);
+    if (context->recorder) {
+        const auto state = context->recorder->snapshot();
+        if (active_state(state.state) || !state.worker_finished)
+            return ARSSYUT_BRIDGE_BUSY;
+    }
+    context->logo_overlay = chosen;
+    context->logo_png_path = std::move(path);
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_set_camera_overlay(
     ArssyutBridgeHandle handle,
     const ArssyutBridgeCameraOverlayV1 *profile) noexcept
@@ -1991,6 +2029,8 @@ arssyut_bridge_recorder_start(
         {
             std::lock_guard lock(context->mutex);
             config.camera_overlay = context->camera_overlay;
+            config.logo_overlay = context->logo_overlay;
+            config.logo_png_path = context->logo_png_path;
         }
         config.target = std::move(target);
         config.webcam_enabled = !camera_id.empty();

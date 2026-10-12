@@ -72,6 +72,7 @@ if(WIN32)
         src/platform/windows/capture/wgc_capture_source.cpp
         src/platform/windows/graphics/d3d11_arvisual_scene_analyzer.cpp
         src/platform/windows/graphics/d3d11_compositor.cpp
+        src/platform/windows/graphics/logo_overlay_texture.cpp
         src/platform/windows/graphics/webcam_nv12_surface.cpp
         src/platform/windows/graphics/d3d11_device.cpp
         src/platform/windows/input/presentation_input_worker.cpp
@@ -110,6 +111,8 @@ if(WIN32)
             d3d11
             d3dcompiler
             dxgi
+            ole32
+            windowscodecs
             gdi32
             user32
             mf
