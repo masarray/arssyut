@@ -57,7 +57,7 @@ struct NativeBridgeContext final {
     // Independent tiny-preview owner; camera is never opened unless the
     // internal UI asks, and is stopped before RecorderSession opens it.
     std::mutex webcam_preview_mutex;
-    std::unique_ptr<arssyut::windows::WebcamPreviewSession> webcam_preview;
+    std::shared_ptr<arssyut::windows::WebcamPreviewSession> webcam_preview;
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     // Preview only: never owns or supplies RecorderSession audio.
     std::mutex preview_mutex;
@@ -99,7 +99,7 @@ struct NativeBridgeContext final {
 
 void stop_webcam_preview(NativeBridgeContext &context) noexcept
 {
-    std::unique_ptr<arssyut::windows::WebcamPreviewSession> old;
+    std::shared_ptr<arssyut::windows::WebcamPreviewSession> old;
     {
         std::lock_guard guard(context.webcam_preview_mutex);
         old = std::move(context.webcam_preview);
@@ -1085,6 +1085,12 @@ arssyut_bridge_destroy(
         return;
     }
 
+    // Recorder must retire every shared D3D11/IMFSample lease before the
+    // persistent camera source is closed (including app close mid-Record).
+    if (context->recorder) {
+        context->recorder->request_stop();
+        context->recorder->wait();
+    }
     stop_webcam_preview(*context);
     shutdown_overlay_context(
         *context);
@@ -1516,6 +1522,14 @@ arssyut_bridge_refresh_devices(
     if (!context)
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
 
+    // Device refresh cannot tear down an active recorder's shared source.
+    { std::lock_guard guard(context->mutex);
+      if (context->recorder) {
+          const auto snap = context->recorder->snapshot();
+          if (active_state(snap.state) || !snap.worker_finished)
+              return ARSSYUT_BRIDGE_BUSY;
+      }
+    }
     // A refresh invalidates all generation-scoped device tokens.
     stop_webcam_preview(*context);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
@@ -1655,9 +1669,18 @@ arssyut_bridge_webcam_preview_start(
             id = context->cameras[index].id;
         }
         if (id.empty()) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+        {
+            std::lock_guard guard(context->webcam_preview_mutex);
+            // Recorder returned GPU consumption to the SAME physical MF
+            // source after Stop. Starting preview again must be idempotent.
+            if (context->webcam_preview &&
+                context->webcam_preview->symbolic_link() == id &&
+                context->webcam_preview->failure_stage() == 0)
+                return ARSSYUT_BRIDGE_OK;
+        }
         stop_webcam_preview(*context);
         auto preview =
-            std::make_unique<arssyut::windows::WebcamPreviewSession>();
+            std::make_shared<arssyut::windows::WebcamPreviewSession>();
         if (!preview->start(std::move(id)))
             return ARSSYUT_BRIDGE_START_FAILED;
         {
@@ -1675,6 +1698,13 @@ arssyut_bridge_webcam_preview_stop(ArssyutBridgeHandle handle) noexcept
 {
     auto *context = as_context(handle);
     if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    { std::lock_guard guard(context->mutex);
+      if (context->recorder) {
+          const auto snap = context->recorder->snapshot();
+          if (active_state(snap.state) || !snap.worker_finished)
+              return ARSSYUT_BRIDGE_BUSY;
+      }
+    }
     stop_webcam_preview(*context);
     return ARSSYUT_BRIDGE_OK;
 }
@@ -1816,11 +1846,8 @@ arssyut_bridge_recorder_start(
     if ((request->flags & unsupported_input_flags) != 0)
         return ARSSYUT_BRIDGE_UNSUPPORTED;
 
-    // OBS-style explicit handoff: one physical camera owner at a time.
-    // Preview is stopped before the recorder opens its GPU capture stream.
-    // No UI/bridge mutex is held while the camera driver shuts down.
-    stop_webcam_preview(*context);
-
+    // F2B retains one physical camera source. Do not close it here:
+    // ownership of the GPU consumer changes after a bounded barrier.
     try {
         std::unique_ptr<RecorderSession> previous;
         RecorderTarget target;
@@ -2029,16 +2056,42 @@ arssyut_bridge_recorder_start(
         { std::lock_guard lock(context->preview_mutex);
           context->preview_mic.stop(); context->preview_token = 0; }
 #endif
-        auto recorder =
-            std::make_unique<
-                RecorderSession>();
+        // Physical camera stays open and uses the EXACT same D3D11Device
+        // across Preview -> Recording -> Preview. Never attempt another
+        // source open while a matching preview source exists.
+        std::shared_ptr<arssyut::windows::WebcamPreviewSession> camera;
+        if (config.webcam_enabled) {
+            {
+                std::lock_guard guard(context->webcam_preview_mutex);
+                camera = context->webcam_preview;
+            }
+            if (camera && camera->symbolic_link() ==
+                    config.webcam_symbolic_link) {
+                if (!camera->begin_recording())
+                    return ARSSYUT_BRIDGE_START_FAILED;
+                config.shared_webcam = camera;
+            } else if (camera) {
+                // A stale preview owner is retired before the fallback
+                // recorder can open a different selected physical camera.
+                stop_webcam_preview(*context);
+            }
+        } else {
+            stop_webcam_preview(*context);
+        }
 
-        const auto status =
-            recorder->start(
-                config);
-
-        if (!status.ok())
+        std::unique_ptr<RecorderSession> recorder;
+        try {
+            recorder = std::make_unique<RecorderSession>();
+        } catch (...) {
+            if (camera && config.shared_webcam)
+                camera->end_recording();
+            throw;
+        }
+        const auto status = recorder->start(config);
+        if (!status.ok()) {
+            if (config.shared_webcam) config.shared_webcam->end_recording();
             return ARSSYUT_BRIDGE_START_FAILED;
+        }
 
         const auto diagnostics =
             recorder->
