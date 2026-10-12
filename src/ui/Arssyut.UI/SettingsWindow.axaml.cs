@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -7,6 +8,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Arssyut.UI.Design;
@@ -32,6 +34,8 @@ public sealed partial class SettingsWindow : Window
     private string? _capturingHotkeyAction;
     private ulong _settingsMicrophoneToken;
     private readonly bool _audioSessionLocked;
+    private Bitmap? _logoPreviewBitmap;
+    private string _logoPreviewLoadedPath = "";
     private bool _audioReady;
     private bool _uiReady;
     private bool _syncingPreviewControls;
@@ -88,6 +92,7 @@ public sealed partial class SettingsWindow : Window
             NavOutput,
             NavAudio,
             NavCamera,
+            NavLogo,
             NavMouse,
             NavHotkeys,
             NavAdvanced
@@ -100,6 +105,7 @@ public sealed partial class SettingsWindow : Window
             PageOutput,
             PageAudio,
             PageCamera,
+            PageLogo,
             PageMouse,
             PageHotkeys,
             PageAdvanced
@@ -147,9 +153,11 @@ public sealed partial class SettingsWindow : Window
                 RefreshPreviewState();
             };
 
-        Closed +=
-            (_, _) =>
-                _audioPreviewTimer.Stop();
+        Closed += (_, _) => {
+            _audioPreviewTimer.Stop();
+            _logoPreviewBitmap?.Dispose();
+            _logoPreviewBitmap=null;
+        };
 
         if (stressLayout)
         {
@@ -295,9 +303,10 @@ public sealed partial class SettingsWindow : Window
                 "Output" => 2,
                 "Audio" => 3,
                 "Camera" => 4,
-                "Mouse" => 5,
-                "Hotkeys" => 6,
-                "Advanced" => 7,
+                "Logo" => 5,
+                "Mouse" => 6,
+                "Hotkeys" => 7,
+                "Advanced" => 8,
                 _ => 1
             };
 
@@ -344,7 +353,9 @@ public sealed partial class SettingsWindow : Window
                 "Audio" =>
                     "Input levels and recording mix.",
                 "Camera" =>
-                    "Native camera compositor capability status.",
+                    "Native output PIP placement, shape and size.",
+                "Logo" =>
+                    "Independent alpha image composited in the recorded MP4.",
                 "Mouse" =>
                     "Pointer, click, and keyboard visualization.",
                 "Hotkeys" =>
@@ -631,6 +642,8 @@ public sealed partial class SettingsWindow : Window
         object? sender,
         SelectionChangedEventArgs e)
     {
+        if (!_uiReady || _syncingPreviewControls || _audioSessionLocked)
+            return;
         if (sender is not ComboBox combo)
             return;
 
@@ -683,6 +696,19 @@ public sealed partial class SettingsWindow : Window
 
                 MicrophoneDeviceCombo.IsEnabled =
                     devices.Microphones.Count > 0;
+                CameraDeviceCombo.Items.Clear();
+                foreach (var camera in devices.Cameras)
+                    CameraDeviceCombo.Items.Add(new ComboBoxItem {
+                        Content = camera.Name, Tag = camera
+                    });
+                var cameraIndex=devices.Cameras
+                    .Select((device,index)=>(device,index))
+                    .Where(v=>v.device.Name == _preview.CameraDevice)
+                    .Select(v=>v.index).DefaultIfEmpty(0).First();
+                if (devices.Cameras.Count > 0)
+                    CameraDeviceCombo.SelectedIndex=cameraIndex;
+                CameraDeviceCombo.IsEnabled =
+                    devices.Cameras.Count > 0 && !_audioSessionLocked;
             }
             finally { _syncingPreviewControls = false; }
         }
@@ -722,6 +748,136 @@ public sealed partial class SettingsWindow : Window
 
         MarkPreviewChanged(
             "Camera placement preview updated");
+    }
+
+    private void CameraMask_OnChanged(object? sender,
+        SelectionChangedEventArgs e) {
+        if (!_uiReady || _syncingPreviewControls ||
+            sender is not ComboBox combo || combo.SelectedIndex < 0)
+            return;
+        _preview.SetCameraMask((CameraOverlayMask)combo.SelectedIndex);
+        CameraCornerSlider.IsEnabled = combo.SelectedIndex != 0;
+        MarkPreviewChanged("Camera image mask applies to next recording.");
+    }
+
+    private void CameraGeometry_OnChanged(object? sender,
+        AvaloniaPropertyChangedEventArgs e) {
+        if (!_uiReady || _syncingPreviewControls ||
+            e.Property != Slider.ValueProperty) return;
+        var size=(int)Math.Round(CameraSizeSlider.Value);
+        var margin=(int)Math.Round(CameraMarginSlider.Value);
+        var corner=(int)Math.Round(CameraCornerSlider.Value);
+        var border=(int)Math.Round(CameraBorderSlider.Value);
+        var opacity=(int)Math.Round(CameraOpacitySlider.Value);
+        _preview.SetCameraGeometry(size,margin,corner,border,opacity,
+                                   CameraMirrorToggle.IsChecked == true);
+        CameraSizeLabel.Text=$"{size}%";
+        CameraMarginLabel.Text=$"{margin}%";
+        CameraCornerLabel.Text=$"{corner}%";
+        CameraBorderLabel.Text=$"{border} px";
+        CameraOpacityLabel.Text=$"{opacity}%";
+    }
+
+    private void CameraMirror_OnClick(object? sender, RoutedEventArgs e) {
+        if (!_uiReady || _syncingPreviewControls) return;
+        _preview.SetCameraGeometry(_preview.CameraSizePercent,
+            _preview.CameraMarginPercent,_preview.CameraCornerPercent,
+            _preview.CameraBorderPixels,_preview.CameraOpacityPercent,
+            CameraMirrorToggle.IsChecked == true);
+    }
+
+    private void ApplyLogoSettings() {
+        if (!_uiReady || _syncingPreviewControls) return;
+        _preview.SetLogoOverlay(LogoEnabledToggle.IsChecked == true,
+            _preview.LogoPath,(LogoOverlayPlacement)Math.Max(0,
+                LogoPlacementCombo.SelectedIndex),
+            (int)Math.Round(LogoSizeSlider.Value),
+            (int)Math.Round(LogoMarginSlider.Value),
+            (int)Math.Round(LogoOpacitySlider.Value));
+        LogoSizeLabel.Text=$"{_preview.LogoSizePercent}%";
+        LogoMarginLabel.Text=$"{_preview.LogoMarginPercent}%";
+        LogoOpacityLabel.Text=$"{_preview.LogoOpacityPercent}%";
+    }
+
+    private void LogoEnabled_OnClick(object? sender, RoutedEventArgs e) {
+        if (!_uiReady || _syncingPreviewControls) return;
+        if (LogoEnabledToggle.IsChecked == true &&
+            string.IsNullOrWhiteSpace(_preview.LogoPath)) {
+            LogoEnabledToggle.IsChecked=false;
+            MarkPreviewChanged("Choose a PNG before enabling Logo Overlay.");
+            return;
+        }
+        ApplyLogoSettings();
+    }
+    private void LogoPlacement_OnChanged(object? sender,
+        SelectionChangedEventArgs e) => ApplyLogoSettings();
+    private void LogoGeometry_OnChanged(object? sender,
+        AvaloniaPropertyChangedEventArgs e) {
+        if (e.Property == Slider.ValueProperty) ApplyLogoSettings();
+    }
+
+    private async void LogoPick_OnClick(object? sender, RoutedEventArgs e) {
+        if (!StorageProvider.CanOpen) return;
+        var files=await StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions {
+                Title="Choose a transparent PNG logo",
+                AllowMultiple=false,
+                FileTypeFilter=[
+                    new FilePickerFileType("PNG images") {
+                        Patterns=["*.png"]
+                    }]
+            });
+        var file=files.FirstOrDefault();
+        if (file is null) return;
+        var path=file.Path is {IsAbsoluteUri:true} uri
+            ? uri.LocalPath : file.Path?.ToString();
+        if (string.IsNullOrWhiteSpace(path) ||
+            !string.Equals(Path.GetExtension(path),".png",
+                           StringComparison.OrdinalIgnoreCase))
+            return;
+        if (!LoadLogoPreview(path)) {
+            MarkPreviewChanged("Invalid PNG, dimensions or file size.");
+            return;
+        }
+        _preview.SetLogoOverlay(true,path,_preview.LogoPlacement,
+            _preview.LogoSizePercent,_preview.LogoMarginPercent,
+            _preview.LogoOpacityPercent);
+        LogoEnabledToggle.IsChecked=true;
+        MarkPreviewChanged("Logo will be composited into next MP4.");
+    }
+
+    private bool LoadLogoPreview(string path) {
+        if (_logoPreviewLoadedPath == path) return true;
+        if (string.IsNullOrEmpty(path)) {
+            _logoPreviewBitmap?.Dispose();
+            _logoPreviewBitmap=null;
+            _logoPreviewLoadedPath="";
+            LogoPreviewImage.Source=null;
+            LogoPathText.Text="No image selected";
+            return true;
+        }
+        try {
+            var file=new FileInfo(path);
+            if (!file.Exists || file.Length == 0 ||
+                file.Length > 16L*1024*1024 ||
+                !string.Equals(file.Extension,".png",
+                    StringComparison.OrdinalIgnoreCase))
+                return false;
+            var bmp=new Bitmap(path);
+            if (bmp.PixelSize.Width < 1 || bmp.PixelSize.Height < 1 ||
+                bmp.PixelSize.Width > 4096 || bmp.PixelSize.Height > 4096 ||
+                (long)bmp.PixelSize.Width * bmp.PixelSize.Height > 8_388_608) {
+                bmp.Dispose(); return false;
+            }
+            _logoPreviewBitmap?.Dispose();
+            _logoPreviewBitmap=bmp;
+            _logoPreviewLoadedPath=path;
+            LogoPreviewImage.Source=bmp;
+            LogoPathText.Text=file.Name;
+            return true;
+        } catch (Exception) {
+            return false;
+        }
     }
 
     private void UpdateCameraPlacementVisual()
@@ -1134,6 +1290,27 @@ public sealed partial class SettingsWindow : Window
 
             RefreshHotkeyLabels();
             UpdateCameraPlacementVisual();
+            CameraMaskCombo.SelectedIndex=(int)_preview.CameraMask;
+            CameraSizeSlider.Value=_preview.CameraSizePercent;
+            CameraMarginSlider.Value=_preview.CameraMarginPercent;
+            CameraCornerSlider.Value=_preview.CameraCornerPercent;
+            CameraBorderSlider.Value=_preview.CameraBorderPixels;
+            CameraOpacitySlider.Value=_preview.CameraOpacityPercent;
+            CameraMirrorToggle.IsChecked=_preview.CameraMirror;
+            CameraSizeLabel.Text=$"{_preview.CameraSizePercent}%";
+            CameraMarginLabel.Text=$"{_preview.CameraMarginPercent}%";
+            CameraCornerLabel.Text=$"{_preview.CameraCornerPercent}%";
+            CameraBorderLabel.Text=$"{_preview.CameraBorderPixels} px";
+            CameraOpacityLabel.Text=$"{_preview.CameraOpacityPercent}%";
+            LogoEnabledToggle.IsChecked=_preview.LogoEnabled;
+            LogoPlacementCombo.SelectedIndex=(int)_preview.LogoPlacement;
+            LogoSizeSlider.Value=_preview.LogoSizePercent;
+            LogoMarginSlider.Value=_preview.LogoMarginPercent;
+            LogoOpacitySlider.Value=_preview.LogoOpacityPercent;
+            LogoSizeLabel.Text=$"{_preview.LogoSizePercent}%";
+            LogoMarginLabel.Text=$"{_preview.LogoMarginPercent}%";
+            LogoOpacityLabel.Text=$"{_preview.LogoOpacityPercent}%";
+            LoadLogoPreview(_preview.LogoPath);
         }
         finally
         {
