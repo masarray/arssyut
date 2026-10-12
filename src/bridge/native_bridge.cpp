@@ -58,6 +58,7 @@ struct NativeBridgeContext final {
     // internal UI asks, and is stopped before RecorderSession opens it.
     std::mutex webcam_preview_mutex;
     std::shared_ptr<arssyut::windows::WebcamPreviewSession> webcam_preview;
+    arssyut::core::overlay::CameraOverlayProfile camera_overlay{};
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     // Preview only: never owns or supplies RecorderSession audio.
     std::mutex preview_mutex;
@@ -1750,6 +1751,42 @@ arssyut_bridge_webcam_preview_failure(
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_camera_overlay(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeCameraOverlayV1 *profile) noexcept
+{
+    if (!profile || profile->struct_size != sizeof(*profile))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    arssyut::core::overlay::CameraOverlayProfile proposed{};
+    proposed.version = profile->version;
+    proposed.placement = static_cast<arssyut::core::overlay::Corner>(profile->placement);
+    proposed.mask = static_cast<arssyut::core::overlay::CameraMask>(profile->mask);
+    proposed.width_fraction = profile->width_fraction;
+    proposed.margin_fraction = profile->margin_fraction;
+    proposed.corner_radius_fraction = profile->corner_radius_fraction;
+    proposed.border_width_px = profile->border_width_px;
+    proposed.border_r = profile->border_r;
+    proposed.border_g = profile->border_g;
+    proposed.border_b = profile->border_b;
+    proposed.opacity = profile->opacity;
+    if (profile->mirror > 1U || profile->enabled > 1U ||
+        !arssyut::core::overlay::valid(proposed))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    proposed.mirror = profile->mirror != 0;
+    proposed.enabled = profile->enabled != 0;
+    std::lock_guard lock(context->mutex);
+    if (context->recorder) {
+        const auto state = context->recorder->snapshot();
+        if (active_state(state.state) || !state.worker_finished)
+            return ARSSYUT_BRIDGE_BUSY;
+    }
+    context->camera_overlay = proposed;  // NEXT recording only.
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_start(
     ArssyutBridgeHandle handle,
     const ArssyutBridgeStartRequestV1 *request) noexcept
@@ -1951,6 +1988,10 @@ arssyut_bridge_recorder_start(
             previous->wait();
 
         RecorderConfig config;
+        {
+            std::lock_guard lock(context->mutex);
+            config.camera_overlay = context->camera_overlay;
+        }
         config.target = std::move(target);
         config.webcam_enabled = !camera_id.empty();
         config.webcam_symbolic_link = std::move(camera_id);

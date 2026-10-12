@@ -49,7 +49,9 @@ cbuffer PresentationConstants : register(b0)
     float4 spotlight1;
     float4 spotlight2;
     float4 webcam_rect;    // output-normalized, LTRB, not desktop UV
-    float4 webcam_params;  // enabled, reserved, reserved, reserved
+    float4 webcam_params;  // enabled, mask, corner_fraction, opacity
+    float4 webcam_border;  // border RGB, width px
+    float4 webcam_style;   // mirror, reserved x3
 };
 
 Texture2D source_texture : register(t0);
@@ -1132,13 +1134,32 @@ float4 ps_main(VertexOutput input) : SV_Target
         input.uv.y >= webcam_rect.y - 0.002 &&
         input.uv.y <= webcam_rect.w + 0.002) {
         const float2 extent = max(webcam_rect.zw - webcam_rect.xy, 0.0001);
-        const float2 camera_uv = (input.uv - webcam_rect.xy) / extent;
-        const float2 box_half_px = extent * output_info.xy * 0.5;
-        const float corner_px = min(box_half_px.x, box_half_px.y) * 0.15;
-        const float2 centered_px = (camera_uv - 0.5) * extent * output_info.xy;
-        const float2 d = abs(centered_px) - (box_half_px - corner_px);
-        const float signed_dist = length(max(d, 0.0)) +
-            min(max(d.x, d.y), 0.0) - corner_px;
+        const float2 pixel_extent = extent * output_info.xy;
+        const float2 centered_px = (input.uv - 0.5 * (webcam_rect.xy + webcam_rect.zw)) * output_info.xy;
+        const float2 box_half_px = pixel_extent * 0.5;
+        const int mask = (int)(webcam_params.y + 0.5);
+        float signed_dist = 0.0;
+        if (mask == 0) {  // physically round, never elliptical
+            signed_dist = length(centered_px) - min(box_half_px.x, box_half_px.y);
+        } else {
+            const bool left = centered_px.x < 0.0;
+            const bool top = centered_px.y < 0.0;
+            const bool rounded = (mask == 1) ||
+                (mask == 2 && (left == top)) ||
+                (mask == 3 && (left != top));
+            const float r = rounded ? min(box_half_px.x, box_half_px.y) *
+                                             webcam_params.z : 0.0;
+            const float2 d = abs(centered_px) - (box_half_px - r);
+            signed_dist = length(max(d, 0.0)) +
+                min(max(d.x, d.y), 0.0) - r;
+        }
+        float2 camera_uv = (input.uv - webcam_rect.xy) / extent;
+        // Circle crops the 16:9/4:3 source to cover a square aperture.
+        if (mask == 0) {
+            const float source_ratio = max(webcam_style.y, 0.0001);
+            camera_uv.x = 0.5 + (camera_uv.x - 0.5) * source_ratio;
+        }
+        if (webcam_style.x > 0.5) camera_uv.x = 1.0 - camera_uv.x;
         const float edge_alpha = 1.0 - smoothstep(-1.25, 1.25, signed_dist);
         if (edge_alpha > 0.001) {
             // NV12 limited-range Rec.709, matching native HD webcam profile.
@@ -1152,10 +1173,12 @@ float4 ps_main(VertexOutput input) : SV_Target
                 Y + 1.5748 * V,
                 Y - 0.1873 * U - 0.4681 * V,
                 Y + 1.8556 * U));
-            const float border = smoothstep(-3.5, -2.0, signed_dist);
-            const float3 bordered = lerp(rgb, float3(0.96, 0.96, 0.96),
-                                           border * 0.80);
-            color.rgb = lerp(color.rgb, bordered, edge_alpha);
+            const float b = max(webcam_border.w, 0.0);
+            const float border = b > 0.0 ?
+                smoothstep(-b - 1.0, -b + 1.0, signed_dist) : 0.0;
+            const float3 bordered = lerp(rgb, webcam_border.rgb, border);
+            color.rgb = lerp(color.rgb, bordered,
+                             edge_alpha * saturate(webcam_params.w));
         }
     }
     return color;
@@ -1242,6 +1265,14 @@ struct PresentationConstants {
     float webcam_reserved0 = 0.0f;
     float webcam_reserved1 = 0.0f;
     float webcam_reserved2 = 0.0f;
+    float webcam_border_r = 0.96f;
+    float webcam_border_g = 0.96f;
+    float webcam_border_b = 0.96f;
+    float webcam_border_width = 2.0f;
+    float webcam_mirror = 0.0f;
+    float webcam_source_aspect = 1.0f;
+    float webcam_style_reserved2 = 0.0f;
+    float webcam_style_reserved3 = 0.0f;
 };
 
 constexpr UINT kKeyboardWidth = 768;
@@ -2179,21 +2210,41 @@ Status D3D11Compositor::render_retained(
         return keyboard_status;
 
     PresentationConstants constants{};
-    if (webcam_.ready() && output_size.width && output_size.height) {
-        // One grounded upper-right preset. Future placement settings will
-        // change this immutable-per-output-frame geometry, not sampling.
+    if (camera_overlay_.enabled && webcam_.ready() &&
+        output_size.width && output_size.height) {
         const float source_aspect = static_cast<float>(webcam_.height()) /
             static_cast<float>(webcam_.width());
-        const float width_fraction = 0.235f;
-        const float height_fraction = width_fraction *
-            static_cast<float>(output_size.width) /
-            static_cast<float>(output_size.height) * source_aspect;
-        constants.webcam_left = 0.735f;
-        constants.webcam_top = 0.045f;
-        constants.webcam_right = 0.735f + width_fraction;
-        constants.webcam_bottom = std::min(
-            0.045f + height_fraction, 0.95f);
+        const float margin = camera_overlay_.margin_fraction;
+        const bool circle = camera_overlay_.mask ==
+            arssyut::core::overlay::CameraMask::Circle;
+        float w = camera_overlay_.width_fraction;
+        float h = w * static_cast<float>(output_size.width) /
+            static_cast<float>(output_size.height) *
+            (circle ? 1.0f : source_aspect);
+        const float fit = std::min({1.0f, (1.0f - 2.0f * margin) / w,
+                                    (1.0f - 2.0f * margin) / h});
+        w *= fit;
+        h *= fit;
+        const auto placement = camera_overlay_.placement;
+        const bool right = placement == arssyut::core::overlay::Corner::TopRight ||
+                           placement == arssyut::core::overlay::Corner::BottomRight;
+        const bool bottom = placement == arssyut::core::overlay::Corner::BottomLeft ||
+                            placement == arssyut::core::overlay::Corner::BottomRight;
+        constants.webcam_left = right ? 1.0f - margin - w : margin;
+        constants.webcam_top = bottom ? 1.0f - margin - h : margin;
+        constants.webcam_right = constants.webcam_left + w;
+        constants.webcam_bottom = constants.webcam_top + h;
         constants.webcam_active = 1.0f;
+        constants.webcam_reserved0 =
+            static_cast<float>(static_cast<std::uint8_t>(camera_overlay_.mask));
+        constants.webcam_reserved1 = camera_overlay_.corner_radius_fraction;
+        constants.webcam_reserved2 = camera_overlay_.opacity;
+        constants.webcam_border_r = camera_overlay_.border_r;
+        constants.webcam_border_g = camera_overlay_.border_g;
+        constants.webcam_border_b = camera_overlay_.border_b;
+        constants.webcam_border_width = camera_overlay_.border_width_px;
+        constants.webcam_mirror = camera_overlay_.mirror ? 1.0f : 0.0f;
+        constants.webcam_source_aspect = source_aspect;
     }
     constants.uv_left =
         static_cast<float>(crop.left) /

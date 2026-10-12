@@ -729,6 +729,13 @@ void RecorderSession::worker_main() noexcept
 
     auto pipeline =
         std::move(pipeline_result).value();
+    // Immutable profile resolved before writer Start; never mutate GPU state
+    // from the settings dispatcher or allocate per composited frame.
+    if (!pipeline->compositor().set_camera_overlay_profile(config_.camera_overlay)) {
+        fail(Status::failure(StatusCode::InvalidArgument));
+        state_.store(RecorderState::Failed, std::memory_order_release);
+        return;
+    }
 
     visual_analysis_available_.store(
         pipeline->compositor().

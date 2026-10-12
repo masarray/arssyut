@@ -3,6 +3,7 @@
 #ifdef _WIN32
 
 #include "core/diagnostics/latency_histogram.hpp"
+#include "core/overlay/output_overlay_profile.hpp"
 #include "core/result/result.hpp"
 #include "core/result/status.hpp"
 #include "core/time/monotonic_clock.hpp"
@@ -44,6 +45,13 @@ public:
         ID3D11Texture2D *sample,
         std::uint32_t subresource) noexcept;
     void clear_webcam() noexcept { webcam_.clear(); }
+
+    bool set_camera_overlay_profile(
+        const arssyut::core::overlay::CameraOverlayProfile &profile) noexcept {
+        if (!arssyut::core::overlay::valid(profile)) return false;
+        camera_overlay_ = profile;
+        return true;
+    }
 
     [[nodiscard]] arssyut::core::Status submit_scene_analysis(
         ID3D11DeviceContext *context,
@@ -171,6 +179,7 @@ private:
     std::uint32_t keyboard_content_height_ = 1;
 
     WebcamNv12Surface webcam_;
+    arssyut::core::overlay::CameraOverlayProfile camera_overlay_{};
     Microsoft::WRL::ComPtr<ID3D11Texture2D> input_copy_;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> input_srv_;
     D3D11_TEXTURE2D_DESC input_desc_{};

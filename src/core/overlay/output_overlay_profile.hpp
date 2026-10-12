@@ -28,6 +28,9 @@ struct CameraOverlayProfile {
     float margin_fraction = 0.035f;
     float corner_radius_fraction = 0.15f;
     float border_width_px = 2.0f;
+    float border_r = 0.96f;
+    float border_g = 0.96f;
+    float border_b = 0.96f;
     float opacity = 1.0f;
     bool mirror = false;
 };
@@ -59,6 +62,9 @@ inline bool valid(const CameraOverlayProfile &x) noexcept {
         x.corner_radius_fraction >= 0.f && x.corner_radius_fraction <= .5f &&
         std::isfinite(x.border_width_px) &&
         x.border_width_px >= 0.f && x.border_width_px <= 32.f &&
+        std::isfinite(x.border_r) && x.border_r >= 0.f && x.border_r <= 1.f &&
+        std::isfinite(x.border_g) && x.border_g >= 0.f && x.border_g <= 1.f &&
+        std::isfinite(x.border_b) && x.border_b >= 0.f && x.border_b <= 1.f &&
         std::isfinite(x.opacity) && x.opacity >= 0.f && x.opacity <= 1.f;
 }
 inline bool valid(const LogoOverlayProfile &x) noexcept {

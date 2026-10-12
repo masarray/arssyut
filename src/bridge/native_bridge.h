@@ -196,6 +196,25 @@ struct ArssyutBridgeStartRequestV1 {
     std::uint32_t microphone_muted;
 };
 
+// Additive ABI v12 profile endpoint. The existing StartRequestV1 layout,
+// audio and recorder entrypoint remain untouched.
+struct ArssyutBridgeCameraOverlayV1 {
+    std::uint32_t struct_size;
+    std::uint32_t version;
+    std::uint32_t placement;  // TL=0, TR=1, BL=2, BR=3
+    std::uint32_t mask;       // circle=0, rounded=1, TL/BR=2, TR/BL=3
+    float width_fraction;
+    float margin_fraction;
+    float corner_radius_fraction;
+    float border_width_px;
+    float opacity;
+    float border_r;
+    float border_g;
+    float border_b;
+    std::uint32_t mirror;
+    std::uint32_t enabled;
+};
+
 // Additive ABI v10 endpoint-level peak monitor. Read-only; never records,
 // remixes, processes or intercepts PCM. A mono endpoint reports 1 channel.
 struct ArssyutBridgeAudioMeterV1 {
@@ -363,6 +382,12 @@ std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_webcam_preview_failure(
     ArssyutBridgeHandle handle, std::uint32_t *stage,
     std::uint32_t *hresult) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_camera_overlay(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeCameraOverlayV1 *profile) noexcept;
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
