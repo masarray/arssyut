@@ -19,6 +19,7 @@
 #include "platform/windows/audio/wasapi_loopback_source.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 
