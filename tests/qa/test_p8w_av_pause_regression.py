@@ -47,11 +47,11 @@ class P8WPauseAvIntegration(unittest.TestCase):
     def test_idle_rejection_and_paused_mute_apply_on_resume(self):
         source = read("src/app/recorder_session.cpp")
         controller = read("src/ui/Arssyut.UI/RecordingControllerWindow.axaml.cs")
-        self.assertRegex(source, r'request_toggle_pause\\(\\) noexcept')
+        self.assertRegex(source, r'request_toggle_pause\(\) noexcept')
         self.assertIn('state != RecorderState::Paused', source)
         self.assertIn('microphone_mute_requested_.load(', source)
         self.assertIn('audio_runtime->set_microphone_muted(', source)
-        self.assertRegex(controller, r'NativeRecorderState\\.Recording or\\s*NativeRecorderState\\.Paused')
+        self.assertRegex(controller, r'NativeRecorderState\.Recording or\s*NativeRecorderState\.Paused')
         self.assertIn('arssyut_bridge_recorder_toggle_pause(', read(
             "tests/windows/test_native_bridge.cpp"))
         self.assertIn('arssyut_recording_pause_clock_tests', read("CMakeLists.txt"))
