@@ -32,7 +32,20 @@ public sealed record ProductSettingsSnapshot(
     int SystemMixPercent = 100,
     int MicrophoneMixPercent = 100,
     bool SystemMixMuted = false,
-    bool MicrophoneMixMuted = false);
+    bool MicrophoneMixMuted = false,
+    CameraOverlayMask CameraMask = CameraOverlayMask.RoundedRectangle,
+    int CameraSizePercent = 24,
+    int CameraMarginPercent = 3,
+    int CameraCornerPercent = 15,
+    int CameraBorderPixels = 2,
+    int CameraOpacityPercent = 100,
+    bool CameraMirror = false,
+    bool LogoEnabled = false,
+    string LogoPath = "",
+    LogoOverlayPlacement LogoPlacement = LogoOverlayPlacement.BottomRight,
+    int LogoSizePercent = 13,
+    int LogoMarginPercent = 3,
+    int LogoOpacityPercent = 100);
 
 public sealed class ProductSettingsStore
 {
@@ -41,7 +54,8 @@ public sealed class ProductSettingsStore
     private const int FreezeHotkeySchemaVersion = 3;
     private const int SpotlightSchemaVersion = 4;
     private const int ProductSchemaVersion = 5;
-    private const int CurrentSchemaVersion = 6;
+    private const int MixerSchemaVersion = 6;
+    private const int CurrentSchemaVersion = 7;
 
     private readonly string _path;
 
@@ -122,6 +136,8 @@ public sealed class ProductSettingsStore
                      SpotlightSchemaVersion &&
                  document.SchemaVersion !=
                      ProductSchemaVersion &&
+                 document.SchemaVersion !=
+                     MixerSchemaVersion &&
                  document.SchemaVersion !=
                      CurrentSchemaVersion))
             {
@@ -209,6 +225,8 @@ public sealed class ProductSettingsStore
             var latest =
                 document.SchemaVersion >= ProductSchemaVersion;
             var hasMixer =
+                document.SchemaVersion >= MixerSchemaVersion;
+            var hasOverlay =
                 document.SchemaVersion >= CurrentSchemaVersion;
             var outputFolder = latest
                 ? document.OutputFolder
@@ -237,9 +255,11 @@ public sealed class ProductSettingsStore
                  document.MicrophoneEnabled is null))
                 throw new InvalidDataException("Invalid recording preferences.");
 
-            var cameraPlacement = latest && document.CameraPlacement is not null
+            // v1-v6 persisted only inactive BottomRight placeholders.
+            // New profiles preserve the physically encoded TopRight default.
+            var cameraPlacement = hasOverlay && document.CameraPlacement is not null
                 ? (CameraPlacement)document.CameraPlacement.Value
-                : CameraPlacement.BottomRight;
+                : CameraPlacement.TopRight;
             var cameraDevice = latest && !string.IsNullOrWhiteSpace(document.CameraDevice)
                 ? document.CameraDevice! : "USB2.0 HD UVC Webcam";
             if (!Enum.IsDefined(cameraPlacement) ||
@@ -250,6 +270,15 @@ public sealed class ProductSettingsStore
                   document.SystemMixMuted is null ||
                   document.MicrophoneMixMuted is null)))
                 throw new InvalidDataException("Invalid camera preferences.");
+
+            var cameraMask = hasOverlay && document.CameraMask is not null
+                ? (CameraOverlayMask)document.CameraMask.Value
+                : CameraOverlayMask.RoundedRectangle;
+            var logoPlace = hasOverlay && document.LogoPlacement is not null
+                ? (LogoOverlayPlacement)document.LogoPlacement.Value
+                : LogoOverlayPlacement.BottomRight;
+            if (!Enum.IsDefined(cameraMask) || !Enum.IsDefined(logoPlace))
+                throw new InvalidDataException("Invalid overlay shape or placement.");
 
             settings =
                 new ProductSettingsSnapshot(
@@ -276,7 +305,20 @@ public sealed class ProductSettingsStore
                     hasMixer ? document.SystemMixPercent ?? 100 : 100,
                     hasMixer ? document.MicrophoneMixPercent ?? 100 : 100,
                     hasMixer && document.SystemMixMuted == true,
-                    hasMixer && document.MicrophoneMixMuted == true);
+                    hasMixer && document.MicrophoneMixMuted == true,
+                    cameraMask,
+                    hasOverlay ? document.CameraSizePercent ?? 24 : 24,
+                    hasOverlay ? document.CameraMarginPercent ?? 3 : 3,
+                    hasOverlay ? document.CameraCornerPercent ?? 15 : 15,
+                    hasOverlay ? document.CameraBorderPixels ?? 2 : 2,
+                    hasOverlay ? document.CameraOpacityPercent ?? 100 : 100,
+                    hasOverlay && document.CameraMirror == true,
+                    hasOverlay && document.LogoEnabled == true,
+                    hasOverlay ? document.LogoPath ?? "" : "",
+                    logoPlace,
+                    hasOverlay ? document.LogoSizePercent ?? 13 : 13,
+                    hasOverlay ? document.LogoMarginPercent ?? 3 : 3,
+                    hasOverlay ? document.LogoOpacityPercent ?? 100 : 100);
             return true;
         }
         catch (Exception exception)
@@ -343,7 +385,18 @@ public sealed class ProductSettingsStore
                 settings.CaptureSourceId.Length > 1024 ||
                 settings.MicrophoneDevice.Length > 512 ||
                 settings.SystemMixPercent is < 0 or > 100 ||
-                settings.MicrophoneMixPercent is < 0 or > 100)
+                settings.MicrophoneMixPercent is < 0 or > 100 ||
+                settings.CameraSizePercent is < 15 or > 40 ||
+                settings.CameraMarginPercent is < 0 or > 12 ||
+                settings.CameraCornerPercent is < 0 or > 50 ||
+                settings.CameraBorderPixels is < 0 or > 12 ||
+                settings.CameraOpacityPercent is < 0 or > 100 ||
+                settings.LogoSizePercent is < 3 or > 40 ||
+                settings.LogoMarginPercent is < 0 or > 12 ||
+                settings.LogoOpacityPercent is < 0 or > 100 ||
+                settings.LogoPath.Length > 511 ||
+                !Enum.IsDefined(settings.CameraMask) ||
+                !Enum.IsDefined(settings.LogoPlacement))
                 throw new InvalidDataException("Invalid recording preferences.");
 
             var document =
@@ -368,6 +421,19 @@ public sealed class ProductSettingsStore
                     MicrophoneMixMuted = settings.MicrophoneMixMuted,
                     CameraPlacement = (int)settings.CameraPlacement,
                     CameraDevice = settings.CameraDevice,
+                    CameraMask = (int)settings.CameraMask,
+                    CameraSizePercent = settings.CameraSizePercent,
+                    CameraMarginPercent = settings.CameraMarginPercent,
+                    CameraCornerPercent = settings.CameraCornerPercent,
+                    CameraBorderPixels = settings.CameraBorderPixels,
+                    CameraOpacityPercent = settings.CameraOpacityPercent,
+                    CameraMirror = settings.CameraMirror,
+                    LogoEnabled = settings.LogoEnabled,
+                    LogoPath = settings.LogoPath,
+                    LogoPlacement = (int)settings.LogoPlacement,
+                    LogoSizePercent = settings.LogoSizePercent,
+                    LogoMarginPercent = settings.LogoMarginPercent,
+                    LogoOpacityPercent = settings.LogoOpacityPercent,
                     PresenterZoom =
                         settings.PresenterZoom,
                     SpotlightEnabled =
@@ -595,6 +661,19 @@ public sealed class ProductSettingsStore
         public bool? MicrophoneMixMuted { get; set; }
         public int? CameraPlacement { get; set; }
         public string? CameraDevice { get; set; }
+        public int? CameraMask { get; set; }
+        public int? CameraSizePercent { get; set; }
+        public int? CameraMarginPercent { get; set; }
+        public int? CameraCornerPercent { get; set; }
+        public int? CameraBorderPixels { get; set; }
+        public int? CameraOpacityPercent { get; set; }
+        public bool? CameraMirror { get; set; }
+        public bool? LogoEnabled { get; set; }
+        public string? LogoPath { get; set; }
+        public int? LogoPlacement { get; set; }
+        public int? LogoSizePercent { get; set; }
+        public int? LogoMarginPercent { get; set; }
+        public int? LogoOpacityPercent { get; set; }
 
         public float? PresenterZoom { get; set; }
 
