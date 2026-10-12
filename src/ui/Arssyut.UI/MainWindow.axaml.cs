@@ -48,6 +48,9 @@ public sealed partial class MainWindow : Window
     private bool _webcamFailureReported;
     private bool _webcamResumeAfterRecording;
     private bool _webcamResumeInFlight;
+    private bool _webcamResumeProbeDone;
+    private bool _webcamResumeRecoveryUsed;
+    private bool _webcamResumeRecoveryInFlight;
     private long _webcamRecorderStoppedAt;
     private int _webcamIntentVersion;
     private bool _loadingCameraDevices;
@@ -1326,7 +1329,8 @@ public sealed partial class MainWindow : Window
 
     private async Task RestoreWebcamAfterRecordingAsync()
     {
-        if (_webcamResumeInFlight || !_webcamResumeAfterRecording ||
+        if (_webcamResumeInFlight || _webcamResumeProbeDone ||
+            !_webcamResumeAfterRecording ||
             _webcamStartTransition || !_session.CameraEnabled ||
             _cameraDeviceToken == 0 || _webcamShuttingDown)
             return;
@@ -1342,10 +1346,9 @@ public sealed partial class MainWindow : Window
                 var status = await Task.Run(
                     () => bridge.StartWebcamPreview(_cameraDeviceToken));
                 if (status == NativeBridgeStatus.Ok) {
-                    _webcamResumeAfterRecording = false;
-                    _webcamStartupRecoveryUsed = false;
-                    _webcamFailureReported = false;
-                    _webcamPreviewFreshAt = Stopwatch.GetTimestamp();
+                    // Bridge OK means the session exists, NOT that the
+                    // post-Stop GPU worker has published a new frame.
+                    _webcamResumeProbeDone = true;
                 } else if (status != NativeBridgeStatus.Busy) {
                     _webcamResumeAfterRecording = false;
                     ReportWebcamPreviewProblem(
@@ -1362,6 +1365,27 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async Task RecoverStalledPostStopWebcamAsync()
+    {
+        if (_webcamResumeRecoveryInFlight || _webcamShuttingDown ||
+            !_webcamResumeAfterRecording || !_session.CameraEnabled)
+            return;
+        _webcamResumeRecoveryInFlight = true;
+        // Exactly one cold recovery permitted only AFTER the recorder
+        // worker finished. Healthy Stop never closes/reopens MF hardware.
+        _webcamResumeRecoveryUsed = true;
+        _webcamResumeProbeDone = false;
+        _webcamRecorderStoppedAt = Stopwatch.GetTimestamp();
+        var version = ++_webcamIntentVersion;
+        try {
+            HideWebcamPreview();
+            await ApplyWebcamPreviewIntentAsync(
+                version, _cameraDeviceToken, true);
+        } finally {
+            _webcamResumeRecoveryInFlight = false;
+        }
+    }
+
     private void WebcamPreviewTimer_OnTick(object? sender, EventArgs e)
     {
         if (!_webcamHardwarePreview || !_session.CameraEnabled ||
@@ -1374,16 +1398,22 @@ public sealed partial class MainWindow : Window
         if (_webcamResumeAfterRecording) {
             try {
                 var snapshot = _nativeBridge.Snapshot();
-                if (snapshot.State is NativeRecorderState.Ready or
-                    NativeRecorderState.Failed or NativeRecorderState.Idle) {
+                if (snapshot.WorkerFinished &&
+                    snapshot.State is NativeRecorderState.Ready or
+                        NativeRecorderState.Failed or NativeRecorderState.Idle) {
                     if (_webcamRecorderStoppedAt == 0)
                         _webcamRecorderStoppedAt = Stopwatch.GetTimestamp();
-                    if (Stopwatch.GetElapsedTime(_webcamRecorderStoppedAt) >
-                        TimeSpan.FromSeconds(4)) {
+                    var waited = Stopwatch.GetElapsedTime(_webcamRecorderStoppedAt);
+                    if (waited > TimeSpan.FromSeconds(10)) {
                         _webcamResumeAfterRecording = false;
                         ReportWebcamPreviewProblem(
-                            "Timed out waiting for recorder camera ownership to release.");
-                    } else {
+                            "Webcam did not produce a fresh frame after Stop. Toggle Camera to retry.");
+                    } else if (waited > TimeSpan.FromSeconds(3.5) &&
+                               !_webcamResumeRecoveryUsed &&
+                               !_webcamResumeRecoveryInFlight) {
+                        _ = RecoverStalledPostStopWebcamAsync();
+                    } else if (!_webcamResumeProbeDone &&
+                               !_webcamResumeRecoveryInFlight) {
                         _ = RestoreWebcamAfterRecordingAsync();
                     }
                 }
@@ -1474,6 +1504,16 @@ public sealed partial class MainWindow : Window
             CameraPreviewPlaceholder.IsVisible = false;
             _webcamPreviewSequence = sequence;
             _webcamPreviewFreshAt = Stopwatch.GetTimestamp();
+            if (_webcamResumeAfterRecording &&
+                _webcamRecorderStoppedAt != 0 &&
+                state == 2) {
+                // Only a genuinely new post-record frame acknowledges
+                // successful ownership return; never Start() status alone.
+                _webcamResumeAfterRecording = false;
+                _webcamResumeProbeDone = false;
+                _webcamRecorderStoppedAt = 0;
+                _webcamStartupRecoveryUsed = false;
+            }
             _webcamFailureReported = false;
             // Clear only an earlier CAMERA startup warning; never erase an
             // actual failed recording's separate audio/encoder diagnosis.
@@ -2057,6 +2097,8 @@ public sealed partial class MainWindow : Window
         _webcamStartTransition = true;
         ++_webcamIntentVersion;
         _webcamResumeAfterRecording = _session.CameraEnabled;
+        _webcamResumeProbeDone = false;
+        _webcamResumeRecoveryUsed = false;
         _webcamRecorderStoppedAt = 0;
         HideWebcamPreview();
         ToolTip.SetTip(CameraPreviewFrame,
