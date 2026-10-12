@@ -280,14 +280,13 @@
                                 OnContent="" OffContent=""
                                 ToolTip.Tip="System audio recording is unavailable in this build." />
                 </Grid>
-                <Border x:Name="SystemAudioDeviceComboMain" Grid.Row="1" Grid.Column="0"
-                        Padding="8,7" CornerRadius="7"
-                        Background="{DynamicResource ArBrush.Surface3}"
-                        ToolTip.Tip="Captures the Windows default playback endpoint.">
-                  <TextBlock Text="Windows default playback" FontSize="10.5"
-                             TextTrimming="CharacterEllipsis"
-                             Foreground="{DynamicResource ArBrush.TextSecondary}"/>
-                </Border>
+                <ComboBox x:Name="SystemAudioDeviceComboMain"
+                          Grid.Row="1" Grid.Column="0" Classes="context-device"
+                          IsEnabled="False"
+                          AutomationProperties.Name="System audio playback device"
+                          ToolTip.Tip="Choose Windows default or a specific playback endpoint for loopback recording.">
+                  <ComboBoxItem Content="Windows default playback" />
+                </ComboBox>
                 <StackPanel Grid.Column="1" Grid.RowSpan="2"
                             Orientation="Horizontal" Spacing="5"
                             HorizontalAlignment="Right" VerticalAlignment="Center"

@@ -370,7 +370,10 @@
                                       AutomationProperties.Name="Enable system audio recording"
                                       ToolTip.Tip="Enable system audio for the next recording." />
                       </Grid>
-                      <TextBlock Text="Windows default playback" Classes="micro" />
+                      <ComboBox x:Name="SystemPlaybackCombo" Classes="context-device"
+                                AutomationProperties.Name="System audio playback device"
+                                SelectionChanged="SystemPlayback_OnSelectionChanged"
+                                ToolTip.Tip="Select Windows default, HDMI monitor or soundcard playback." />
                       <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
                         <Grid ColumnDefinitions="14,*,50" ColumnSpacing="6">
                           <TextBlock Text="L" Classes="micro" />

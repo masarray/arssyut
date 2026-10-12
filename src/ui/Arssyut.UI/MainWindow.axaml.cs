@@ -75,6 +75,8 @@ public sealed partial class MainWindow : Window
     private string _cameraDevice =
         "Camera";
     private ulong _microphoneDeviceToken;
+    private ulong _systemAudioDeviceToken;
+    private bool _playbackSelectionValid = true;
     private ulong _cameraDeviceToken;
     private bool _systemAudioEnabled;
     private NativeRecorderSnapshot? _lastNativeSnapshot;
@@ -134,6 +136,26 @@ public sealed partial class MainWindow : Window
         ModeDisplay.IsChecked = _captureMode == PreviewCaptureMode.Display;
         ModeWindow.IsChecked = _captureMode == PreviewCaptureMode.Window;
         ModeRegion.IsChecked = _captureMode == PreviewCaptureMode.Region;
+
+        SystemAudioDeviceComboMain.SelectionChanged += (_, _) =>
+        {
+            if (!_mainUiReady || _loadingCameraDevices ||
+                !_audioHardwarePreview ||
+                SystemAudioDeviceComboMain.SelectedItem is not ComboBoxItem item)
+                return;
+            if (_lastNativeSnapshot?.State is NativeRecorderState.Recording or
+                NativeRecorderState.Paused or NativeRecorderState.Preparing or
+                NativeRecorderState.Armed or NativeRecorderState.Stopping or
+                NativeRecorderState.Finalizing) return;
+            var choice = item.Tag as NativeDeviceItem;
+            _systemAudioDeviceToken = choice?.Token ?? 0;
+            _playbackSelectionValid = true;
+            _settings.SetSystemAudioDevice(choice?.Name ??
+                SettingsPreviewState.DefaultPlaybackDevice);
+            if (_nativeBridge is not null)
+                _ = _nativeBridge.SetSystemAudioEndpoint(_systemAudioDeviceToken);
+            RefreshInputLabels();
+        };
 
         MicrophoneDeviceComboMain.SelectionChanged += (_, _) =>
         {
@@ -845,6 +867,42 @@ public sealed partial class MainWindow : Window
                 _cameraOptions,
                 devices.Cameras);
 
+            SystemAudioDeviceComboMain.Items.Clear();
+            SystemAudioDeviceComboMain.Items.Add(new ComboBoxItem {
+                Content = SettingsPreviewState.DefaultPlaybackDevice
+            });
+            foreach (var device in devices.Playbacks)
+                SystemAudioDeviceComboMain.Items.Add(new ComboBoxItem {
+                    Content = device.Name, Tag = device
+                });
+            // Persist user intent but never silently map a missing/ambiguous
+            // selected render endpoint to the Windows default.
+            var wantedPlayback = _settings.SystemAudioDevice;
+            var found = wantedPlayback ==
+                SettingsPreviewState.DefaultPlaybackDevice
+                ? -1 : devices.Playbacks
+                    .Select((device,index) => (device,index))
+                    .Where(x => string.Equals(x.device.Name, wantedPlayback,
+                                              StringComparison.Ordinal))
+                    .ToArray().Length == 1
+                    ? devices.Playbacks
+                        .Select((device,index) => (device,index))
+                        .Single(x => string.Equals(x.device.Name, wantedPlayback,
+                                                  StringComparison.Ordinal)).index
+                    : -2;
+            _playbackSelectionValid = found != -2;
+            _systemAudioDeviceToken = found >= 0
+                ? devices.Playbacks[found].Token : 0;
+            if (found == -2) {
+                SystemAudioDeviceComboMain.Items.Add(new ComboBoxItem {
+                    Content = $"Unavailable: {wantedPlayback}",
+                    IsEnabled = false
+                });
+                SystemAudioDeviceComboMain.SelectedIndex =
+                    SystemAudioDeviceComboMain.Items.Count - 1;
+            } else
+                SystemAudioDeviceComboMain.SelectedIndex = found + 1;
+
             // Preserve the user's selection across an MMDevice refresh.
             // Tokens have a new generation after refresh, so pin the new
             // token by a uniquely matched displayed device name.
@@ -904,6 +962,8 @@ public sealed partial class MainWindow : Window
             // from an older generation after a device change.
             _cameraDeviceToken = 0;
             _microphoneDeviceToken = 0;
+            _playbackSelectionValid = false;
+            _systemAudioDeviceToken = 0;
         }
         finally {
             _loadingCameraDevices = false;
@@ -1520,6 +1580,9 @@ public sealed partial class MainWindow : Window
         // ComboBox truncation is intentional in the compact audio card.
         // The full native device name must remain accessible on hover.
         ToolTip.SetTip(MicrophoneDeviceComboMain, _microphoneDevice);
+        ToolTip.SetTip(SystemAudioDeviceComboMain, _playbackSelectionValid
+            ? _settings.SystemAudioDevice
+            : "Selected playback device unavailable; choose another endpoint.");
     }
 
     private void RefreshSettingsSurface()
@@ -1922,6 +1985,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (_systemAudioEnabled && !_playbackSelectionValid) {
+            ShowCommandFeedback("Playback device unavailable",
+                "The selected audio endpoint is disconnected or ambiguous. Choose a valid device or Windows default.");
+            return;
+        }
         var flags =
             NativeStartFlags.ArmedStart;
 
@@ -2031,7 +2099,8 @@ public sealed partial class MainWindow : Window
                             Placement: (uint)_settings.LogoPlacement,
                             Width: _settings.LogoWidthFraction,
                             Margin: _settings.LogoMarginFraction,
-                            Opacity: _settings.LogoOpacity))));
+                            Opacity: _settings.LogoOpacity),
+                        SystemAudioDeviceToken: _systemAudioDeviceToken))));
             } finally {
                 _webcamLifecycle.Release();
             }
@@ -2757,7 +2826,7 @@ public sealed partial class MainWindow : Window
         if (_audioHardwarePreview)
         {
             ToolTip.SetTip(SystemAudioToggle,
-                "Record sound from the Windows default playback device.");
+                "Record playback from the selected Windows audio endpoint.");
             ToolTip.SetTip(MicToggle,
                 "Record audio from the selected microphone.");
             ToolTip.SetTip(MicrophoneDeviceComboMain,
@@ -2796,7 +2865,7 @@ public sealed partial class MainWindow : Window
             // Once chosen, preserve these flags until the user changes them
             // (never rewrite them on Ready/Saved UI refresh).
             RefreshInputLabels();
-            SystemAudioDeviceComboMain.IsEnabled = false;
+            SystemAudioDeviceComboMain.IsEnabled = !cameraBusy;
             // Audio and camera are independent optional capabilities.
             CameraToggle.IsEnabled = _webcamHardwarePreview &&
                 _cameraDeviceToken != 0;

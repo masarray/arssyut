@@ -46,7 +46,8 @@ public sealed record ProductSettingsSnapshot(
     LogoPlacement LogoPlacement = LogoPlacement.BottomRight,
     float LogoWidthFraction = .12f,
     float LogoMarginFraction = .025f,
-    float LogoOpacity = 1f);
+    float LogoOpacity = 1f,
+    string SystemAudioDevice = SettingsPreviewState.DefaultPlaybackDevice);
 
 public sealed class ProductSettingsStore
 {
@@ -57,7 +58,8 @@ public sealed class ProductSettingsStore
     private const int ProductSchemaVersion = 5;
     private const int MixerSchemaVersion = 6;
     private const int CameraSchemaVersion = 7;
-    private const int CurrentSchemaVersion = 8;
+    private const int LogoSchemaVersion = 8;
+    private const int CurrentSchemaVersion = 9;
 
     private readonly string _path;
 
@@ -140,6 +142,7 @@ public sealed class ProductSettingsStore
                      ProductSchemaVersion &&
                  document.SchemaVersion != MixerSchemaVersion &&
                  document.SchemaVersion != CameraSchemaVersion &&
+                 document.SchemaVersion != LogoSchemaVersion &&
                  document.SchemaVersion != CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
@@ -228,7 +231,8 @@ public sealed class ProductSettingsStore
             var hasMixer =
                 document.SchemaVersion >= MixerSchemaVersion;
             var hasCameraProfile = document.SchemaVersion >= CameraSchemaVersion;
-            var hasLogoProfile = document.SchemaVersion >= CurrentSchemaVersion;
+            var hasLogoProfile = document.SchemaVersion >= LogoSchemaVersion;
+            var hasPlaybackChoice = document.SchemaVersion >= CurrentSchemaVersion;
             var outputFolder = latest
                 ? document.OutputFolder
                 : SettingsPreviewState.DefaultOutputFolder;
@@ -304,6 +308,12 @@ public sealed class ProductSettingsStore
                 !float.IsFinite(logoOpacity) || logoOpacity is < 0f or > 1f)
                 throw new InvalidDataException("Invalid logo preferences.");
 
+            var playbackChoice = hasPlaybackChoice
+                ? document.SystemAudioDevice
+                : SettingsPreviewState.DefaultPlaybackDevice;
+            if (string.IsNullOrWhiteSpace(playbackChoice) ||
+                playbackChoice.Length > 512)
+                throw new InvalidDataException("Invalid playback endpoint selection.");
             settings =
                 new ProductSettingsSnapshot(
                     loaded,
@@ -332,7 +342,7 @@ public sealed class ProductSettingsStore
                     hasMixer && document.MicrophoneMixMuted == true,
                     shape, tone, width, margin, radius, border, opacity, mirror,
                     logoEnabled, logoPath, logoPlacement, logoWidth, logoMargin,
-                    logoOpacity);
+                    logoOpacity, playbackChoice);
             return true;
         }
         catch (Exception exception)
@@ -398,6 +408,8 @@ public sealed class ProductSettingsStore
                 settings.CaptureMode is not ("Display" or "Window" or "Region") ||
                 settings.CaptureSourceId.Length > 1024 ||
                 settings.MicrophoneDevice.Length > 512 ||
+                string.IsNullOrWhiteSpace(settings.SystemAudioDevice) ||
+                settings.SystemAudioDevice.Length > 512 ||
                 settings.SystemMixPercent is < 0 or > 100 ||
                 settings.MicrophoneMixPercent is < 0 or > 100 ||
                 !Enum.IsDefined(settings.CameraMask) ||
@@ -444,6 +456,7 @@ public sealed class ProductSettingsStore
                     MicrophoneMixMuted = settings.MicrophoneMixMuted,
                     CameraPlacement = (int)settings.CameraPlacement,
                     CameraDevice = settings.CameraDevice,
+                    SystemAudioDevice = settings.SystemAudioDevice,
                     CameraMask = (int)settings.CameraMask,
                     CameraBorder = (int)settings.CameraBorder,
                     CameraWidthFraction = settings.CameraWidthFraction,
@@ -679,6 +692,7 @@ public sealed class ProductSettingsStore
         public bool? SystemAudioEnabled { get; set; }
         public bool? MicrophoneEnabled { get; set; }
         public string? MicrophoneDevice { get; set; }
+        public string? SystemAudioDevice { get; set; }
         public int? SystemMixPercent { get; set; }
         public int? MicrophoneMixPercent { get; set; }
         public bool? SystemMixMuted { get; set; }

@@ -21,7 +21,8 @@ public enum NativeBridgeAvailability
 public enum NativeDeviceKind : uint
 {
     Microphone = 0,
-    Camera = 1
+    Camera = 1,
+    Playback = 2
 }
 
 public enum NativeBridgeStatus
@@ -146,7 +147,8 @@ public sealed record NativeDeviceItem(
 
 public sealed record NativeDeviceSnapshot(
     IReadOnlyList<NativeDeviceItem> Microphones,
-    IReadOnlyList<NativeDeviceItem> Cameras);
+    IReadOnlyList<NativeDeviceItem> Cameras,
+    IReadOnlyList<NativeDeviceItem> Playbacks);
 
 public sealed record NativeRecorderSnapshot(
     NativeRecorderState State,
@@ -197,7 +199,8 @@ public sealed record NativeStartRequest(
     bool SystemMuted = false,
     bool MicrophoneMuted = false,
     NativeCameraOverlay? CameraOverlay = null,
-    NativeLogoOverlay? LogoOverlay = null);
+    NativeLogoOverlay? LogoOverlay = null,
+    ulong SystemAudioDeviceToken = 0);
 
 public sealed record NativeCameraOverlay(
     uint Placement = 1, uint Mask = 1, float Width = .235f,
@@ -725,7 +728,8 @@ public sealed class NativeBridgeClient : IDisposable
         ThrowIfDisposed();
         return new NativeDeviceSnapshot(
             ReadDevices(NativeDeviceKind.Microphone),
-            ReadDevices(NativeDeviceKind.Camera));
+            ReadDevices(NativeDeviceKind.Camera),
+            ReadDevices(NativeDeviceKind.Playback));
     }
 
     public NativeDeviceSnapshot RefreshDevices()
@@ -740,7 +744,8 @@ public sealed class NativeBridgeClient : IDisposable
             ReadDevices(
                 NativeDeviceKind.Microphone),
             ReadDevices(
-                NativeDeviceKind.Camera));
+                NativeDeviceKind.Camera),
+            ReadDevices(NativeDeviceKind.Playback));
     }
 
     private IReadOnlyList<NativeDeviceItem> ReadDevices(
@@ -843,6 +848,13 @@ public sealed class NativeBridgeClient : IDisposable
             meter.MicrophoneLeft, meter.MicrophoneRight);
     }
 
+    public NativeBridgeStatus SetSystemAudioEndpoint(ulong token)
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)NativeMethods.RecorderSetSystemAudioEndpoint(
+            _handle, token);
+    }
+
     public NativeBridgeStatus StartRecording(
         NativeStartRequest request)
     {
@@ -916,6 +928,10 @@ public sealed class NativeBridgeClient : IDisposable
             Green = camera.Green, Blue = camera.Blue,
             Mirror = camera.Mirror ? 1U : 0U, Enabled = 1U
         };
+        var endpointStatus = SetSystemAudioEndpoint(
+            (request.Flags & NativeStartFlags.SystemAudio) != 0
+                ? request.SystemAudioDeviceToken : 0);
+        if (endpointStatus != NativeBridgeStatus.Ok) return endpointStatus;
         var overlayStatus = (NativeBridgeStatus)
             NativeMethods.RecorderSetCameraOverlay(_handle, ref profile);
         if (overlayStatus != NativeBridgeStatus.Ok) return overlayStatus;
@@ -1414,6 +1430,13 @@ public sealed class NativeBridgeClient : IDisposable
             uint kind,
             uint index,
             ref NativeDeviceV1 device);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_set_system_audio_endpoint",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderSetSystemAudioEndpoint(
+            IntPtr handle, ulong playbackDeviceToken);
 
         [DllImport(
             LibraryName,

@@ -34,6 +34,7 @@ public sealed partial class SettingsWindow : Window
 
     private string? _capturingHotkeyAction;
     private ulong _settingsMicrophoneToken;
+    private bool _loadingPlaybackDevices;
     private readonly bool _audioSessionLocked;
     private bool _audioReady;
     private bool _uiReady;
@@ -657,6 +658,7 @@ public sealed partial class SettingsWindow : Window
         if (!_audioReady || _nativeBridge is null)
         {
             MicrophoneDeviceCombo.IsEnabled = false;
+            SystemPlaybackCombo.IsEnabled = false;
             return;
         }
         try
@@ -693,6 +695,30 @@ public sealed partial class SettingsWindow : Window
 
                 MicrophoneDeviceCombo.IsEnabled =
                     devices.Microphones.Count > 0;
+                SystemPlaybackCombo.Items.Clear();
+                SystemPlaybackCombo.Items.Add(new ComboBoxItem {
+                    Content = SettingsPreviewState.DefaultPlaybackDevice
+                });
+                foreach (var device in devices.Playbacks)
+                    SystemPlaybackCombo.Items.Add(new ComboBoxItem {
+                        Content = device.Name, Tag = device
+                    });
+                var desired = _preview.SystemAudioDevice;
+                var matched = devices.Playbacks
+                    .Select((device, index) => (device,index))
+                    .Where(x => string.Equals(x.device.Name, desired,
+                                              StringComparison.Ordinal)).ToArray();
+                if (desired == SettingsPreviewState.DefaultPlaybackDevice)
+                    SystemPlaybackCombo.SelectedIndex = 0;
+                else if (matched.Length == 1)
+                    SystemPlaybackCombo.SelectedIndex = matched[0].index + 1;
+                else {
+                    SystemPlaybackCombo.Items.Add(new ComboBoxItem {
+                        Content = $"Unavailable: {desired}", IsEnabled = false
+                    });
+                    SystemPlaybackCombo.SelectedIndex = SystemPlaybackCombo.Items.Count - 1;
+                }
+                SystemPlaybackCombo.IsEnabled = !_audioSessionLocked;
             }
             finally { _syncingPreviewControls = false; }
         }
@@ -701,6 +727,21 @@ public sealed partial class SettingsWindow : Window
             _settingsMicrophoneToken = 0;
             MicrophoneDeviceCombo.IsEnabled = false;
         }
+    }
+
+    private void SystemPlayback_OnSelectionChanged(
+        object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_uiReady || _syncingPreviewControls || _audioSessionLocked ||
+            sender is not ComboBox combo ||
+            combo.SelectedItem is not ComboBoxItem item || !item.IsEnabled)
+            return;
+        var selected = item.Tag as NativeDeviceItem;
+        _preview.SetSystemAudioDevice(selected?.Name ??
+            SettingsPreviewState.DefaultPlaybackDevice);
+        if (_nativeBridge is not null)
+            _ = _nativeBridge.SetSystemAudioEndpoint(selected?.Token ?? 0);
+        MarkPreviewChanged("Playback endpoint saved for next recording");
     }
 
     private static string? SelectedItemText(

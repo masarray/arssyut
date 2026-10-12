@@ -97,6 +97,18 @@ public sealed class SettingsPreviewState
     // generations are always refreshed on launch.
     public string CaptureMode { get; private set; } = "Display";
     public string CaptureSourceId { get; private set; } = string.Empty;
+    public const string DefaultPlaybackDevice = "Windows default playback";
+    public string SystemAudioDevice { get; private set; } = DefaultPlaybackDevice;
+
+    public void SetSystemAudioDevice(string device)
+    {
+        if (string.IsNullOrWhiteSpace(device) || device.Length > 512 ||
+            device == SystemAudioDevice) return;
+        SystemAudioDevice = device;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     public bool SystemAudioEnabled { get; private set; }
     public bool MicrophoneEnabled { get; private set; }
 
@@ -584,6 +596,8 @@ public sealed class SettingsPreviewState
             snapshot.CaptureSourceId.Length > 1024 ||
             string.IsNullOrWhiteSpace(snapshot.MicrophoneDevice) ||
             snapshot.MicrophoneDevice.Length > 512 ||
+            string.IsNullOrWhiteSpace(snapshot.SystemAudioDevice) ||
+            snapshot.SystemAudioDevice.Length > 512 ||
             !Enum.IsDefined(snapshot.CameraPlacement) ||
             !Enum.IsDefined(snapshot.LogoPlacement) ||
             snapshot.LogoImagePath.Length > 511 ||
@@ -646,6 +660,7 @@ public sealed class SettingsPreviewState
         CaptureMode = snapshot.CaptureMode;
         CaptureSourceId = snapshot.CaptureSourceId;
         SystemAudioEnabled = snapshot.SystemAudioEnabled;
+        SystemAudioDevice = snapshot.SystemAudioDevice;
         MicrophoneEnabled = snapshot.MicrophoneEnabled;
         SystemMixPercent = snapshot.SystemMixPercent;
         MicrophoneMixPercent = snapshot.MicrophoneMixPercent;
@@ -760,6 +775,7 @@ public sealed class SettingsPreviewState
         CaptureMode = "Display";
         CaptureSourceId = string.Empty;
         SystemAudioEnabled = false;
+        SystemAudioDevice = DefaultPlaybackDevice;
         MicrophoneEnabled = false;
         SystemMixPercent = 100;
         MicrophoneMixPercent = 100;
