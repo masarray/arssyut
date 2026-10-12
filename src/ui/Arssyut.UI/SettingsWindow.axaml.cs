@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -9,6 +10,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Arssyut.UI.Design;
@@ -27,6 +29,13 @@ public sealed partial class SettingsWindow : Window
     private readonly Button[] _cameraAnchorButtons;
     private readonly Button[] _hotkeyButtons;
     private readonly DispatcherTimer _audioPreviewTimer;
+    // Settings only SUBSCRIBES to the bridge's retained tiny GPU pixels.
+    // It never opens a second webcam or touches the SPSC GPU mailbox.
+    private readonly DispatcherTimer _cameraPreviewTimer;
+    private readonly byte[] _cameraPreviewPixels =
+        new byte[NativeBridgeClient.WebcamPreviewByteCount];
+    private WriteableBitmap? _cameraPreviewBitmap;
+    private ulong _settingsCameraSequence;
     private readonly IBrush _warningBrush;
     private readonly IBrush _successBrush;
     private readonly IBrush _textSecondaryBrush;
@@ -144,6 +153,11 @@ public sealed partial class SettingsWindow : Window
         _audioPreviewTimer.Tick +=
             AudioPreviewTimer_OnTick;
 
+        _cameraPreviewTimer = new DispatcherTimer {
+            Interval = TimeSpan.FromMilliseconds(110)
+        };
+        _cameraPreviewTimer.Tick += CameraPreviewTick;
+
         Opened +=
             (_, _) =>
             {
@@ -155,6 +169,9 @@ public sealed partial class SettingsWindow : Window
 
         Closed += (_, _) => {
             _audioPreviewTimer.Stop();
+            _cameraPreviewTimer.Stop();
+            _cameraPreviewBitmap?.Dispose();
+            _cameraPreviewBitmap=null;
             _logoPreviewBitmap?.Dispose();
             _logoPreviewBitmap=null;
         };
@@ -335,6 +352,11 @@ public sealed partial class SettingsWindow : Window
 
         SettingsFooterHint.IsVisible = tag != "Audio";
         _audioPreviewTimer.Stop();
+        _cameraPreviewTimer.Stop();
+        if (tag == "Camera" && _nativeBridge is not null) {
+            _cameraPreviewTimer.Start();
+            CameraPreviewTick(this, EventArgs.Empty);
+        }
         if (tag == "Audio" && _audioReady)
         {
             _audioPreviewTimer.Start();
@@ -750,6 +772,60 @@ public sealed partial class SettingsWindow : Window
             "Camera placement preview updated");
     }
 
+    private void UpdateCameraPreviewMask() {
+        CameraPreviewBadge.Width = _preview.CameraMask ==
+            CameraOverlayMask.Circle ? 56 : 82;
+        CameraPreviewBadge.Height = _preview.CameraMask ==
+            CameraOverlayMask.Circle ? 56 : 49;
+        CameraPreviewBadge.CornerRadius = _preview.CameraMask switch {
+            CameraOverlayMask.Circle => new CornerRadius(28),
+            CameraOverlayMask.RoundedRectangle => new CornerRadius(12),
+            CameraOverlayMask.DiagonalTopLeftBottomRight =>
+                new CornerRadius(12,0,12,0),
+            CameraOverlayMask.DiagonalTopRightBottomLeft =>
+                new CornerRadius(0,12,0,12),
+            _ => new CornerRadius(12)
+        };
+    }
+
+    private void CameraPreviewTick(object? sender, EventArgs e) {
+        if (_nativeBridge is null) return;
+        try {
+            var status=_nativeBridge.ReadWebcamPreview(
+                _cameraPreviewPixels, out var seq, out var state);
+            if (status!=NativeBridgeStatus.Ok ||
+                (state != 2 && state != 4) || seq == 0) {
+                CameraSettingsLiveImage.IsVisible=false;
+                CameraSettingsEmptyIcon.IsVisible=true;
+                return;
+            }
+            if (seq == _settingsCameraSequence) return;
+            _cameraPreviewBitmap ??= new WriteableBitmap(
+                new PixelSize(NativeBridgeClient.WebcamPreviewWidth,
+                              NativeBridgeClient.WebcamPreviewHeight),
+                new Vector(96,96),PixelFormat.Bgra8888,AlphaFormat.Opaque);
+            using (var frame = _cameraPreviewBitmap.Lock()) {
+                var pitch=NativeBridgeClient.WebcamPreviewWidth*4;
+                if (frame.RowBytes == pitch) {
+                    Marshal.Copy(_cameraPreviewPixels,0,
+                        frame.Address,_cameraPreviewPixels.Length);
+                } else {
+                    for(var row=0;row<NativeBridgeClient.WebcamPreviewHeight;row++)
+                        Marshal.Copy(_cameraPreviewPixels,row*pitch,
+                            IntPtr.Add(frame.Address,row*frame.RowBytes),pitch);
+                }
+            }
+            CameraSettingsLiveImage.Source=_cameraPreviewBitmap;
+            CameraSettingsLiveImage.InvalidateVisual();
+            CameraSettingsLiveImage.IsVisible=true;
+            CameraSettingsEmptyIcon.IsVisible=false;
+            _settingsCameraSequence=seq;
+        } catch(Exception) {
+            CameraSettingsLiveImage.IsVisible=false;
+            CameraSettingsEmptyIcon.IsVisible=true;
+        }
+    }
+
     private void CameraMask_OnChanged(object? sender,
         SelectionChangedEventArgs e) {
         if (!_uiReady || _syncingPreviewControls ||
@@ -757,6 +833,7 @@ public sealed partial class SettingsWindow : Window
             return;
         _preview.SetCameraMask((CameraOverlayMask)combo.SelectedIndex);
         CameraCornerSlider.IsEnabled = combo.SelectedIndex != 0;
+        UpdateCameraPreviewMask();
         MarkPreviewChanged("Camera image mask applies to next recording.");
     }
 
@@ -882,6 +959,7 @@ public sealed partial class SettingsWindow : Window
 
     private void UpdateCameraPlacementVisual()
     {
+        UpdateCameraPreviewMask();
         foreach (var button in
                  _cameraAnchorButtons)
             button.Classes.Remove(
