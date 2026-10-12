@@ -169,6 +169,9 @@ struct WebcamPreviewRenderer {
         ctx->OMSetRenderTargets(1, &null_target, nullptr);
         ctx->CopyResource(staging[write].Get(), render.Get());
         ctx->End(ready[write].Get());
+        // The query uses DONOTFLUSH: explicitly submit the tiny GPU
+        // thumbnail batch on its sole owner, but never wait on the GPU.
+        ctx->Flush();
         pending[write] = true;
         return true;
     }
@@ -366,6 +369,8 @@ void WebcamPreviewSession::run(std::wstring symbolic_link) noexcept {
                     return !recording_requested_ || stopping_.load();
                 });
                 recording_acknowledged_ = false;
+                next_preview_ticks_ = 0;
+                state_.store(1, std::memory_order_release);
                 handoff_cv_.notify_all();
                 continue;
             }
