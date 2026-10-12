@@ -9,6 +9,7 @@
 #include "core/video/frame_geometry.hpp"
 #include "core/video/frame_scheduler.hpp"
 #include "platform/windows/capture/wgc_capture_source.hpp"
+#include "platform/windows/capture/webcam_preview_session.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "presentation/presentation_controller.hpp"
 #include "visual/arvisual_grade.hpp"
@@ -21,6 +22,7 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -90,6 +92,9 @@ struct RecorderConfig {
     // Internal P8W2 opt-in uses ONE established writer and frame clock.
     bool webcam_enabled = false;
     std::wstring webcam_symbolic_link;
+    // Live single-source camera handed over by native bridge; remains owned
+    // by the preview coordinator across recording and finalization.
+    std::shared_ptr<arssyut::windows::WebcamPreviewSession> shared_webcam;
     bool audio_microphone = false;
     bool audio_system = false;
     std::wstring audio_microphone_id;
