@@ -441,27 +441,55 @@
 
                 <!-- Camera -->
                 <StackPanel x:Name="PageCamera" IsVisible="False">
-                  <Border Classes="capability-lock">
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                      <Border Width="34" Height="34" CornerRadius="9"
-                              Background="{DynamicResource ArBrush.Surface3}">
-                        <PathIcon Data="{StaticResource MsCamera}" Width="17" Height="17" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                  <TextBlock Text="PIP is composited in the native MP4 output. Changes apply to the next recording." Classes="micro" TextWrapping="Wrap" Margin="0,0,0,12" />
+                  <Border Classes="setting-row">
+                    <StackPanel Spacing="10">
+                      <TextBlock Text="Position" FontWeight="Medium" />
+                      <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="6">
+                        <Button x:Name="AnchorTopLeft" Grid.Column="0" Content="Top left" Tag="TopLeft" Click="CameraPlacement_OnClick" />
+                        <Button x:Name="AnchorTopRight" Grid.Column="1" Content="Top right" Tag="TopRight" Click="CameraPlacement_OnClick" />
+                        <Button x:Name="AnchorBottomLeft" Grid.Column="2" Content="Bottom left" Tag="BottomLeft" Click="CameraPlacement_OnClick" />
+                        <Button x:Name="AnchorBottomRight" Grid.Column="3" Content="Bottom right" Tag="BottomRight" Click="CameraPlacement_OnClick" />
+                      </Grid>
+                      <Border Background="{DynamicResource ArBrush.Surface3}" Height="118" CornerRadius="8" Padding="10">
+                        <Border x:Name="CameraPreviewBadge" Width="126" Height="76" BorderBrush="#ECF0F5" BorderThickness="2" Background="#476678" CornerRadius="14" HorizontalAlignment="Right" VerticalAlignment="Top">
+                          <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="3">
+                            <PathIcon Data="{StaticResource MsCamera}" Width="18" Height="18" Foreground="White" />
+                            <TextBlock Text="CAM" FontSize="10" HorizontalAlignment="Center" Foreground="White" />
+                          </StackPanel>
+                        </Border>
                       </Border>
-                      <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-                        <TextBlock Text="Camera compositor backend is not connected yet" FontWeight="SemiBold" />
-                        <TextBlock Text="Device selection, placement and size controls return only when the real Media Foundation camera path can change the encoded recording." Classes="micro" TextWrapping="Wrap" />
-                      </StackPanel>
-                    </Grid>
+                    </StackPanel>
                   </Border>
-
-                  <Grid IsVisible="False">
-                    <ComboBox x:Name="CameraDeviceCombo" SelectionChanged="CameraDevice_OnSelectionChanged" />
-                    <Button x:Name="AnchorTopLeft" Tag="TopLeft" Click="CameraPlacement_OnClick" />
-                    <Button x:Name="AnchorTopRight" Tag="TopRight" Click="CameraPlacement_OnClick" />
-                    <Button x:Name="AnchorBottomLeft" Tag="BottomLeft" Click="CameraPlacement_OnClick" />
-                    <Button x:Name="AnchorBottomRight" Tag="BottomRight" Click="CameraPlacement_OnClick" />
-                    <Border x:Name="CameraPreviewBadge" />
-                  </Grid>
+                  <Border Classes="setting-row" Margin="0,8,0,0">
+                    <StackPanel Spacing="10">
+                      <TextBlock Text="Image mask" FontWeight="Medium" />
+                      <ComboBox x:Name="CameraMaskCombo" SelectionChanged="CameraAppearance_OnChange">
+                        <ComboBoxItem Content="Circle" />
+                        <ComboBoxItem Content="Rounded rectangle" />
+                        <ComboBoxItem Content="Diagonal: top-left + bottom-right rounded" />
+                        <ComboBoxItem Content="Diagonal: top-right + bottom-left rounded" />
+                      </ComboBox>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="PIP size" /><TextBlock x:Name="CameraSizeText" Grid.Column="1" Text="23.5%" /></Grid>
+                      <Slider x:Name="CameraSizeSlider" Minimum="15" Maximum="40" Value="23.5" TickFrequency=".5" PropertyChanged="CameraSlider_OnChange" />
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Edge margin" /><TextBlock x:Name="CameraMarginText" Grid.Column="1" Text="3.5%" /></Grid>
+                      <Slider x:Name="CameraMarginSlider" Minimum="0" Maximum="15" Value="3.5" TickFrequency=".5" PropertyChanged="CameraSlider_OnChange" />
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Corner radius" /><TextBlock x:Name="CameraRadiusText" Grid.Column="1" Text="15%" /></Grid>
+                      <Slider x:Name="CameraRadiusSlider" Minimum="0" Maximum="50" Value="15" PropertyChanged="CameraSlider_OnChange" />
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Border thickness" /><TextBlock x:Name="CameraBorderText" Grid.Column="1" Text="2 px" /></Grid>
+                      <Slider x:Name="CameraBorderSlider" Minimum="0" Maximum="12" Value="2" PropertyChanged="CameraSlider_OnChange" />
+                      <TextBlock Text="Border color" FontWeight="Medium" />
+                      <ComboBox x:Name="CameraBorderCombo" SelectionChanged="CameraAppearance_OnChange">
+                        <ComboBoxItem Content="White" />
+                        <ComboBoxItem Content="Dark" />
+                        <ComboBoxItem Content="Arssyut Red" />
+                      </ComboBox>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Opacity" /><TextBlock x:Name="CameraOpacityText" Grid.Column="1" Text="100%" /></Grid>
+                      <Slider x:Name="CameraOpacitySlider" Minimum="0" Maximum="100" Value="100" PropertyChanged="CameraSlider_OnChange" />
+                      <CheckBox x:Name="CameraMirrorCheck" Content="Mirror webcam horizontally" Click="CameraAppearance_OnChange" />
+                    </StackPanel>
+                  </Border>
+                  <ComboBox x:Name="CameraDeviceCombo" IsVisible="False" SelectionChanged="CameraDevice_OnSelectionChanged" />
                 </StackPanel>
 
                 <!-- Mouse and keystroke -->

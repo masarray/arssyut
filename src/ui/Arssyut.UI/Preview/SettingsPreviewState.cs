@@ -12,6 +12,21 @@ public enum CameraPlacement
     BottomRight
 }
 
+public enum CameraPipMask
+{
+    Circle = 0,
+    RoundedRectangle = 1,
+    DiagonalTopLeftBottomRight = 2,
+    DiagonalTopRightBottomLeft = 3
+}
+
+public enum CameraBorderTone
+{
+    White = 0,
+    Dark = 1,
+    Red = 2
+}
+
 public enum RecordingVisualStyle
 {
     PixelAccurate,
@@ -197,7 +212,47 @@ public sealed class SettingsPreviewState
             HotkeyActionIds.FreezeCamera);
 
     public CameraPlacement CameraPlacement { get; private set; } =
-        CameraPlacement.BottomRight;
+        CameraPlacement.TopRight;
+
+    public CameraPipMask CameraMask { get; private set; } =
+        CameraPipMask.RoundedRectangle;
+    public CameraBorderTone CameraBorder { get; private set; } =
+        CameraBorderTone.White;
+    public float CameraWidthFraction { get; private set; } = 0.235f;
+    public float CameraMarginFraction { get; private set; } = 0.035f;
+    public float CameraRadiusFraction { get; private set; } = 0.15f;
+    public float CameraBorderWidthPx { get; private set; } = 2f;
+    public float CameraOpacity { get; private set; } = 1f;
+    public bool CameraMirror { get; private set; }
+
+    public bool TrySetCameraOverlay(CameraPipMask mask,
+        CameraBorderTone border, float width, float margin,
+        float radius, float borderWidth, float opacity, bool mirror)
+    {
+        if (!Enum.IsDefined(mask) || !Enum.IsDefined(border) ||
+            !float.IsFinite(width) || width is < .15f or > .40f ||
+            !float.IsFinite(margin) || margin is < 0f or > .15f ||
+            !float.IsFinite(radius) || radius is < 0f or > .5f ||
+            !float.IsFinite(borderWidth) || borderWidth is < 0f or > 32f ||
+            !float.IsFinite(opacity) || opacity is < 0f or > 1f)
+            return false;
+        if (CameraMask == mask && CameraBorder == border &&
+            CameraWidthFraction == width && CameraMarginFraction == margin &&
+            CameraRadiusFraction == radius && CameraBorderWidthPx == borderWidth &&
+            CameraOpacity == opacity && CameraMirror == mirror)
+            return true;
+        CameraMask = mask;
+        CameraBorder = border;
+        CameraWidthFraction = width;
+        CameraMarginFraction = margin;
+        CameraRadiusFraction = radius;
+        CameraBorderWidthPx = borderWidth;
+        CameraOpacity = opacity;
+        CameraMirror = mirror;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
 
     private string _microphoneDevice =
         "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
@@ -491,6 +546,18 @@ public sealed class SettingsPreviewState
             string.IsNullOrWhiteSpace(snapshot.MicrophoneDevice) ||
             snapshot.MicrophoneDevice.Length > 512 ||
             !Enum.IsDefined(snapshot.CameraPlacement) ||
+            !Enum.IsDefined(snapshot.CameraMask) ||
+            !Enum.IsDefined(snapshot.CameraBorder) ||
+            !float.IsFinite(snapshot.CameraWidthFraction) ||
+            snapshot.CameraWidthFraction is < .15f or > .40f ||
+            !float.IsFinite(snapshot.CameraMarginFraction) ||
+            snapshot.CameraMarginFraction is < 0f or > .15f ||
+            !float.IsFinite(snapshot.CameraRadiusFraction) ||
+            snapshot.CameraRadiusFraction is < 0f or > .5f ||
+            !float.IsFinite(snapshot.CameraBorderWidthPx) ||
+            snapshot.CameraBorderWidthPx is < 0f or > 32f ||
+            !float.IsFinite(snapshot.CameraOpacity) ||
+            snapshot.CameraOpacity is < 0f or > 1f ||
             string.IsNullOrWhiteSpace(snapshot.CameraDevice) ||
             snapshot.CameraDevice.Length > 512 ||
             snapshot.SystemMixPercent is < 0 or > 100 ||
@@ -539,6 +606,14 @@ public sealed class SettingsPreviewState
         MicrophoneMixMuted = snapshot.MicrophoneMixMuted;
         _microphoneDevice = snapshot.MicrophoneDevice;
         CameraPlacement = snapshot.CameraPlacement;
+        CameraMask = snapshot.CameraMask;
+        CameraBorder = snapshot.CameraBorder;
+        CameraWidthFraction = snapshot.CameraWidthFraction;
+        CameraMarginFraction = snapshot.CameraMarginFraction;
+        CameraRadiusFraction = snapshot.CameraRadiusFraction;
+        CameraBorderWidthPx = snapshot.CameraBorderWidthPx;
+        CameraOpacity = snapshot.CameraOpacity;
+        CameraMirror = snapshot.CameraMirror;
         _cameraDevice = snapshot.CameraDevice;
         return true;
     }
@@ -668,8 +743,15 @@ public sealed class SettingsPreviewState
                 pair.Value;
         }
 
-        CameraPlacement =
-            CameraPlacement.BottomRight;
+        CameraPlacement = CameraPlacement.TopRight;
+        CameraMask = CameraPipMask.RoundedRectangle;
+        CameraBorder = CameraBorderTone.White;
+        CameraWidthFraction = .235f;
+        CameraMarginFraction = .035f;
+        CameraRadiusFraction = .15f;
+        CameraBorderWidthPx = 2f;
+        CameraOpacity = 1f;
+        CameraMirror = false;
         _microphoneDevice =
             "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
         _cameraDevice =

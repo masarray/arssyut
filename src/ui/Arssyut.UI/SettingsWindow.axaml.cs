@@ -344,7 +344,7 @@ public sealed partial class SettingsWindow : Window
                 "Audio" =>
                     "Input levels and recording mix.",
                 "Camera" =>
-                    "Native camera compositor capability status.",
+                    "GPU picture-in-picture position, size and shape.",
                 "Mouse" =>
                     "Pointer, click, and keyboard visualization.",
                 "Hotkeys" =>
@@ -704,6 +704,47 @@ public sealed partial class SettingsWindow : Window
             _ =>
                 selected.ToString()
         };
+
+    private void CameraAppearance_OnChange(object? sender, RoutedEventArgs e)
+    {
+        ApplyCameraAppearance();
+    }
+
+    private void CameraSlider_OnChange(object? sender,
+        AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == Slider.ValueProperty)
+            ApplyCameraAppearance();
+    }
+
+    private void ApplyCameraAppearance()
+    {
+        if (!_uiReady || _syncingPreviewControls ||
+            CameraMaskCombo is null || CameraSizeSlider is null)
+            return;
+        var mask = (CameraPipMask)Math.Max(0, CameraMaskCombo.SelectedIndex);
+        var tone = (CameraBorderTone)Math.Max(0, CameraBorderCombo.SelectedIndex);
+        if (!_preview.TrySetCameraOverlay(mask, tone,
+            (float)(CameraSizeSlider.Value / 100.0),
+            (float)(CameraMarginSlider.Value / 100.0),
+            (float)(CameraRadiusSlider.Value / 100.0),
+            (float)CameraBorderSlider.Value,
+            (float)(CameraOpacitySlider.Value / 100.0),
+            CameraMirrorCheck.IsChecked == true))
+            return;
+        CameraSizeText.Text = $"{CameraSizeSlider.Value:0.#}%";
+        CameraMarginText.Text = $"{CameraMarginSlider.Value:0.#}%";
+        CameraRadiusText.Text = $"{CameraRadiusSlider.Value:0}%";
+        CameraBorderText.Text = $"{CameraBorderSlider.Value:0.#} px";
+        CameraOpacityText.Text = $"{CameraOpacitySlider.Value:0}%";
+        CameraPreviewBadge.CornerRadius =
+            mask == CameraPipMask.Circle ? new CornerRadius(99) :
+            mask == CameraPipMask.RoundedRectangle ?
+                new CornerRadius(Math.Clamp(CameraRadiusSlider.Value, 0, 35)) :
+            mask == CameraPipMask.DiagonalTopRightBottomLeft ?
+                new CornerRadius(0, 24, 0, 24) : new CornerRadius(24, 0, 24, 0);
+        MarkPreviewChanged("Camera PIP settings saved for next recording");
+    }
 
     private void CameraPlacement_OnClick(
         object? sender,
@@ -1133,6 +1174,14 @@ public sealed partial class SettingsWindow : Window
                 (int)_preview.SpotlightMotion;
 
             RefreshHotkeyLabels();
+            CameraMaskCombo.SelectedIndex = (int)_preview.CameraMask;
+            CameraBorderCombo.SelectedIndex = (int)_preview.CameraBorder;
+            CameraSizeSlider.Value = _preview.CameraWidthFraction * 100;
+            CameraMarginSlider.Value = _preview.CameraMarginFraction * 100;
+            CameraRadiusSlider.Value = _preview.CameraRadiusFraction * 100;
+            CameraBorderSlider.Value = _preview.CameraBorderWidthPx;
+            CameraOpacitySlider.Value = _preview.CameraOpacity * 100;
+            CameraMirrorCheck.IsChecked = _preview.CameraMirror;
             UpdateCameraPlacementVisual();
         }
         finally

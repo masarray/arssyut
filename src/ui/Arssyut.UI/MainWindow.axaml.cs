@@ -2000,7 +2000,31 @@ public sealed partial class MainWindow : Window
                         _settings.SystemMixPercent / 100.0f,
                         _settings.MicrophoneMixPercent / 100.0f,
                         _settings.SystemMixMuted,
-                        _settings.MicrophoneMixMuted)));
+                        _settings.MicrophoneMixMuted,
+                        new NativeCameraOverlay(
+                            Placement: (uint)_settings.CameraPlacement,
+                            Mask: (uint)_settings.CameraMask,
+                            Width: _settings.CameraWidthFraction,
+                            Margin: _settings.CameraMarginFraction,
+                            Radius: _settings.CameraRadiusFraction,
+                            BorderWidth: _settings.CameraBorderWidthPx,
+                            Opacity: _settings.CameraOpacity,
+                            Mirror: _settings.CameraMirror,
+                            Red: _settings.CameraBorder switch {
+                                CameraBorderTone.Dark => .12f,
+                                CameraBorderTone.Red => 1f,
+                                _ => .96f
+                            },
+                            Green: _settings.CameraBorder switch {
+                                CameraBorderTone.Dark => .16f,
+                                CameraBorderTone.Red => .27f,
+                                _ => .96f
+                            },
+                            Blue: _settings.CameraBorder switch {
+                                CameraBorderTone.Dark => .22f,
+                                CameraBorderTone.Red => .36f,
+                                _ => .96f
+                            }))));
             } finally {
                 _webcamLifecycle.Release();
             }

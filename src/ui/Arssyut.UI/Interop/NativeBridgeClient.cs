@@ -195,7 +195,14 @@ public sealed record NativeStartRequest(
     float SystemGain = 1.0f,
     float MicrophoneGain = 1.0f,
     bool SystemMuted = false,
-    bool MicrophoneMuted = false);
+    bool MicrophoneMuted = false,
+    NativeCameraOverlay? CameraOverlay = null);
+
+public sealed record NativeCameraOverlay(
+    uint Placement = 1, uint Mask = 1, float Width = .235f,
+    float Margin = .035f, float Radius = .15f, float BorderWidth = 2f,
+    float Opacity = 1f, bool Mirror = false, float Red = .96f,
+    float Green = .96f, float Blue = .96f);
 
 public sealed class NativeBridgeClient : IDisposable
 {
@@ -890,10 +897,25 @@ public sealed class NativeBridgeClient : IDisposable
                 MicrophoneMuted = request.MicrophoneMuted ? 1U : 0U
             };
 
+        // Additive bridge call; keep StartRequestV1 binary layout unchanged.
+        // If the internal native library is not the matching build, fail
+        // honestly instead of silently recording hard-coded PIP geometry.
+        var camera = request.CameraOverlay ?? new NativeCameraOverlay();
+        var profile = new NativeCameraOverlayV1
+        {
+            StructSize = (uint)Marshal.SizeOf<NativeCameraOverlayV1>(),
+            Version = 1, Placement = camera.Placement, Mask = camera.Mask,
+            Width = camera.Width, Margin = camera.Margin,
+            Radius = camera.Radius, BorderWidth = camera.BorderWidth,
+            Opacity = camera.Opacity, Red = camera.Red,
+            Green = camera.Green, Blue = camera.Blue,
+            Mirror = camera.Mirror ? 1U : 0U, Enabled = 1U
+        };
+        var overlayStatus = (NativeBridgeStatus)
+            NativeMethods.RecorderSetCameraOverlay(_handle, ref profile);
+        if (overlayStatus != NativeBridgeStatus.Ok) return overlayStatus;
         return (NativeBridgeStatus)
-            NativeMethods.RecorderStart(
-                _handle,
-                ref native);
+            NativeMethods.RecorderStart(_handle, ref native);
     }
 
     public NativeBridgeStatus PresenterCommand(
@@ -1133,6 +1155,25 @@ public sealed class NativeBridgeClient : IDisposable
     [StructLayout(
         LayoutKind.Sequential,
         CharSet = CharSet.Unicode)]
+    private struct NativeCameraOverlayV1
+    {
+        public uint StructSize;
+        public uint Version;
+        public uint Placement;
+        public uint Mask;
+        public float Width;
+        public float Margin;
+        public float Radius;
+        public float BorderWidth;
+        public float Opacity;
+        public float Red;
+        public float Green;
+        public float Blue;
+        public uint Mirror;
+        public uint Enabled;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NativeStartRequestV1
     {
         public uint StructSize;
@@ -1341,6 +1382,13 @@ public sealed class NativeBridgeClient : IDisposable
             uint kind,
             uint index,
             ref NativeDeviceV1 device);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_set_camera_overlay",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderSetCameraOverlay(
+            IntPtr handle, ref NativeCameraOverlayV1 profile);
 
         [DllImport(
             LibraryName,

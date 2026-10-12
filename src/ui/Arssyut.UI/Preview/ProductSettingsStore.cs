@@ -27,12 +27,20 @@ public sealed record ProductSettingsSnapshot(
     bool SystemAudioEnabled = false,
     bool MicrophoneEnabled = false,
     string MicrophoneDevice = "Hi-Fi Cable Output (VB-Audio Virtual Cable)",
-    CameraPlacement CameraPlacement = CameraPlacement.BottomRight,
+    CameraPlacement CameraPlacement = CameraPlacement.TopRight,
     string CameraDevice = "USB2.0 HD UVC Webcam",
     int SystemMixPercent = 100,
     int MicrophoneMixPercent = 100,
     bool SystemMixMuted = false,
-    bool MicrophoneMixMuted = false);
+    bool MicrophoneMixMuted = false,
+    CameraPipMask CameraMask = CameraPipMask.RoundedRectangle,
+    CameraBorderTone CameraBorder = CameraBorderTone.White,
+    float CameraWidthFraction = .235f,
+    float CameraMarginFraction = .035f,
+    float CameraRadiusFraction = .15f,
+    float CameraBorderWidthPx = 2f,
+    float CameraOpacity = 1f,
+    bool CameraMirror = false);
 
 public sealed class ProductSettingsStore
 {
@@ -41,7 +49,8 @@ public sealed class ProductSettingsStore
     private const int FreezeHotkeySchemaVersion = 3;
     private const int SpotlightSchemaVersion = 4;
     private const int ProductSchemaVersion = 5;
-    private const int CurrentSchemaVersion = 6;
+    private const int MixerSchemaVersion = 6;
+    private const int CurrentSchemaVersion = 7;
 
     private readonly string _path;
 
@@ -122,8 +131,8 @@ public sealed class ProductSettingsStore
                      SpotlightSchemaVersion &&
                  document.SchemaVersion !=
                      ProductSchemaVersion &&
-                 document.SchemaVersion !=
-                     CurrentSchemaVersion))
+                 document.SchemaVersion != MixerSchemaVersion &&
+                 document.SchemaVersion != CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
                     "Unsupported or incomplete settings schema.");
@@ -209,7 +218,8 @@ public sealed class ProductSettingsStore
             var latest =
                 document.SchemaVersion >= ProductSchemaVersion;
             var hasMixer =
-                document.SchemaVersion >= CurrentSchemaVersion;
+                document.SchemaVersion >= MixerSchemaVersion;
+            var hasCameraProfile = document.SchemaVersion >= CurrentSchemaVersion;
             var outputFolder = latest
                 ? document.OutputFolder
                 : SettingsPreviewState.DefaultOutputFolder;
@@ -237,9 +247,11 @@ public sealed class ProductSettingsStore
                  document.MicrophoneEnabled is null))
                 throw new InvalidDataException("Invalid recording preferences.");
 
-            var cameraPlacement = latest && document.CameraPlacement is not null
+            // Old BottomRight preference was an inert placeholder; migrate
+            // deterministically to the actual upper-right recorded default.
+            var cameraPlacement = hasCameraProfile && document.CameraPlacement is not null
                 ? (CameraPlacement)document.CameraPlacement.Value
-                : CameraPlacement.BottomRight;
+                : CameraPlacement.TopRight;
             var cameraDevice = latest && !string.IsNullOrWhiteSpace(document.CameraDevice)
                 ? document.CameraDevice! : "USB2.0 HD UVC Webcam";
             if (!Enum.IsDefined(cameraPlacement) ||
@@ -250,6 +262,24 @@ public sealed class ProductSettingsStore
                   document.SystemMixMuted is null ||
                   document.MicrophoneMixMuted is null)))
                 throw new InvalidDataException("Invalid camera preferences.");
+
+            var shape = hasCameraProfile
+                ? (CameraPipMask)(document.CameraMask ?? -1) : CameraPipMask.RoundedRectangle;
+            var tone = hasCameraProfile
+                ? (CameraBorderTone)(document.CameraBorder ?? -1) : CameraBorderTone.White;
+            var width = hasCameraProfile ? document.CameraWidthFraction ?? float.NaN : .235f;
+            var margin = hasCameraProfile ? document.CameraMarginFraction ?? float.NaN : .035f;
+            var radius = hasCameraProfile ? document.CameraRadiusFraction ?? float.NaN : .15f;
+            var border = hasCameraProfile ? document.CameraBorderWidthPx ?? float.NaN : 2f;
+            var opacity = hasCameraProfile ? document.CameraOpacity ?? float.NaN : 1f;
+            var mirror = hasCameraProfile && document.CameraMirror == true;
+            if (!Enum.IsDefined(shape) || !Enum.IsDefined(tone) ||
+                !float.IsFinite(width) || width is < .15f or > .40f ||
+                !float.IsFinite(margin) || margin is < 0f or > .15f ||
+                !float.IsFinite(radius) || radius is < 0f or > .5f ||
+                !float.IsFinite(border) || border is < 0f or > 32f ||
+                !float.IsFinite(opacity) || opacity is < 0f or > 1f)
+                throw new InvalidDataException("Invalid Camera PIP profile.");
 
             settings =
                 new ProductSettingsSnapshot(
@@ -276,7 +306,8 @@ public sealed class ProductSettingsStore
                     hasMixer ? document.SystemMixPercent ?? 100 : 100,
                     hasMixer ? document.MicrophoneMixPercent ?? 100 : 100,
                     hasMixer && document.SystemMixMuted == true,
-                    hasMixer && document.MicrophoneMixMuted == true);
+                    hasMixer && document.MicrophoneMixMuted == true,
+                    shape, tone, width, margin, radius, border, opacity, mirror);
             return true;
         }
         catch (Exception exception)
@@ -343,7 +374,19 @@ public sealed class ProductSettingsStore
                 settings.CaptureSourceId.Length > 1024 ||
                 settings.MicrophoneDevice.Length > 512 ||
                 settings.SystemMixPercent is < 0 or > 100 ||
-                settings.MicrophoneMixPercent is < 0 or > 100)
+                settings.MicrophoneMixPercent is < 0 or > 100 ||
+                !Enum.IsDefined(settings.CameraMask) ||
+                !Enum.IsDefined(settings.CameraBorder) ||
+                !float.IsFinite(settings.CameraWidthFraction) ||
+                settings.CameraWidthFraction is < .15f or > .40f ||
+                !float.IsFinite(settings.CameraMarginFraction) ||
+                settings.CameraMarginFraction is < 0f or > .15f ||
+                !float.IsFinite(settings.CameraRadiusFraction) ||
+                settings.CameraRadiusFraction is < 0f or > .5f ||
+                !float.IsFinite(settings.CameraBorderWidthPx) ||
+                settings.CameraBorderWidthPx is < 0f or > 32f ||
+                !float.IsFinite(settings.CameraOpacity) ||
+                settings.CameraOpacity is < 0f or > 1f)
                 throw new InvalidDataException("Invalid recording preferences.");
 
             var document =
@@ -368,6 +411,14 @@ public sealed class ProductSettingsStore
                     MicrophoneMixMuted = settings.MicrophoneMixMuted,
                     CameraPlacement = (int)settings.CameraPlacement,
                     CameraDevice = settings.CameraDevice,
+                    CameraMask = (int)settings.CameraMask,
+                    CameraBorder = (int)settings.CameraBorder,
+                    CameraWidthFraction = settings.CameraWidthFraction,
+                    CameraMarginFraction = settings.CameraMarginFraction,
+                    CameraRadiusFraction = settings.CameraRadiusFraction,
+                    CameraBorderWidthPx = settings.CameraBorderWidthPx,
+                    CameraOpacity = settings.CameraOpacity,
+                    CameraMirror = settings.CameraMirror,
                     PresenterZoom =
                         settings.PresenterZoom,
                     SpotlightEnabled =
@@ -595,6 +646,14 @@ public sealed class ProductSettingsStore
         public bool? MicrophoneMixMuted { get; set; }
         public int? CameraPlacement { get; set; }
         public string? CameraDevice { get; set; }
+        public int? CameraMask { get; set; }
+        public int? CameraBorder { get; set; }
+        public float? CameraWidthFraction { get; set; }
+        public float? CameraMarginFraction { get; set; }
+        public float? CameraRadiusFraction { get; set; }
+        public float? CameraBorderWidthPx { get; set; }
+        public float? CameraOpacity { get; set; }
+        public bool? CameraMirror { get; set; }
 
         public float? PresenterZoom { get; set; }
 
