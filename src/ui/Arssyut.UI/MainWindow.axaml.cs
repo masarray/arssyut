@@ -2938,7 +2938,7 @@ public sealed partial class MainWindow : Window
             // Once chosen, preserve these flags until the user changes them
             // (never rewrite them on Ready/Saved UI refresh).
             RefreshInputLabels();
-            SystemAudioDeviceComboMain.IsEnabled = _playbackSelectionValid;
+            SystemAudioDeviceComboMain.IsEnabled = true; // permit user to repair stale playback choice
             // Audio and camera are independent optional capabilities.
             CameraToggle.IsEnabled = _webcamHardwarePreview &&
                 _cameraDeviceToken != 0;
