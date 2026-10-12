@@ -46,7 +46,8 @@ public enum NativeRecorderState : uint
     Stopping = 4,
     Finalizing = 5,
     Ready = 6,
-    Failed = 7
+    Failed = 7,
+    Paused = 8
 }
 
 public readonly record struct NativeHotkeyChord(
@@ -931,6 +932,13 @@ public sealed class NativeBridgeClient : IDisposable
             NativeMethods.RecorderToggleMicrophoneMute(_handle);
     }
 
+    public NativeBridgeStatus TogglePause()
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)
+            NativeMethods.RecorderTogglePause(_handle);
+    }
+
     public NativeRecorderResult Result()
     {
         ThrowIfDisposed();
@@ -1357,6 +1365,12 @@ public sealed class NativeBridgeClient : IDisposable
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int RecorderToggleMicrophoneMute(
             IntPtr handle);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_toggle_pause",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderTogglePause(IntPtr handle);
 
         [DllImport(
             LibraryName,

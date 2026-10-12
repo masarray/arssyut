@@ -373,7 +373,7 @@ public sealed partial class MainWindow : Window
                     _nativeBridge,
                     audioSessionLocked: _lastNativeSnapshot?.State is
                         NativeRecorderState.Preparing or NativeRecorderState.Armed or
-                        NativeRecorderState.Recording or NativeRecorderState.Stopping or
+                        NativeRecorderState.Recording or NativeRecorderState.Paused or NativeRecorderState.Stopping or
                         NativeRecorderState.Finalizing)
                 {
                     WindowStartupLocation =
@@ -1411,6 +1411,9 @@ public sealed partial class MainWindow : Window
                  NativeHotkeyEvents.ToggleMicrophone) != 0) {
                 HandleGlobalMicrophoneHotkey();
             }
+            if ((events & NativeHotkeyEvents.TogglePause) != 0) {
+                HandleGlobalPauseHotkey();
+            }
         }
         catch (Exception)
         {
@@ -1437,7 +1440,8 @@ public sealed partial class MainWindow : Window
         if (snapshot.State is
             NativeRecorderState.Preparing or
             NativeRecorderState.Armed or
-            NativeRecorderState.Recording)
+            NativeRecorderState.Recording or
+            NativeRecorderState.Paused)
         {
             _nativeBridge.StopRecording();
             return;
@@ -1449,6 +1453,19 @@ public sealed partial class MainWindow : Window
             return;
 
         StartNativeRecording();
+    }
+
+    private void HandleGlobalPauseHotkey()
+    {
+        if (_nativeBridge is null) return;
+        try
+        {
+            _nativeBridge.TogglePause();
+        }
+        catch (Exception)
+        {
+            // A closing session may reject a late shortcut safely.
+        }
     }
 
     private void HandleGlobalMicrophoneHotkey()
@@ -1487,6 +1504,10 @@ public sealed partial class MainWindow : Window
             desired,
             NativeHotkeyAction.ToggleMicrophone,
             HotkeyActionIds.Microphone);
+        AddHotkeyIfAssigned(
+            desired,
+            NativeHotkeyAction.TogglePause,
+            HotkeyActionIds.Pause);
         AddHotkeyIfAssigned(
             desired,
             NativeHotkeyAction.ToggleZoom,
@@ -2331,6 +2352,15 @@ public sealed partial class MainWindow : Window
                     false;
                 break;
 
+            case NativeRecorderState.Paused:
+                StatusDot.Fill = _warningBrush;
+                StatusText.Foreground = _warningBrush;
+                StatusText.Text = "Paused";
+                StatusDetail.Text =
+                    $"Recording paused · {FormatNativeElapsed(snapshot.ElapsedTicks)}";
+                SavedActions.IsVisible = false;
+                break;
+
             case NativeRecorderState.Recording:
                 StatusDot.Fill =
                     _recordBrush;
@@ -2620,6 +2650,7 @@ public sealed partial class MainWindow : Window
                 NativeRecorderState.Preparing or
                 NativeRecorderState.Armed or
                 NativeRecorderState.Recording or
+                NativeRecorderState.Paused or
                 NativeRecorderState.Stopping or
                 NativeRecorderState.Finalizing or
                 NativeRecorderState.Ready or

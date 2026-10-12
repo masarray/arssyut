@@ -131,6 +131,42 @@ public:
         return core::Status::success();
     }
 
+    // The one native recorder worker owns Pause/Resume. Capture callbacks
+    // continue to publish into their original bounded WASAPI packet pools;
+    // discard their contents without creating AAC media during exclusion.
+    void discard_while_paused() noexcept
+    {
+        if (!recording_) return;
+        const auto drop = [](auto &source) noexcept {
+            windows::WasapiPacketLease packet;
+            for (int i = 0; i < 64 && source.try_pop(packet); ++i)
+                (void)packet.release();
+        };
+        if (pinned_.microphone) drop(microphone_);
+        if (pinned_.system_audio) drop(loopback_);
+    }
+
+    void pause() noexcept
+    {
+        if (!recording_ || paused_) return;
+        program_.discard_sources_after_pause();
+        discard_while_paused();
+        paused_ = true;
+    }
+
+    void resume(std::int64_t completed_pause_ticks,
+                std::int64_t physical_resume_qpc) noexcept
+    {
+        if (!recording_ || !paused_) return;
+        discard_while_paused();
+        program_.discard_sources_after_pause();
+        if (pinned_.microphone) mic_ingress_.reanchor_after_pause(
+            completed_pause_ticks, physical_resume_qpc);
+        if (pinned_.system_audio) sys_ingress_.reanchor_after_pause(
+            completed_pause_ticks, physical_resume_qpc);
+        paused_ = false;
+    }
+
     // Worker-only transport mutation: leave WASAPI running and preserve the
     // canonical 48kHz program, AAC history and source gain. The mixer performs
     // a bounded 5ms transition only when the microphone mute bit changes.
@@ -163,7 +199,7 @@ public:
     [[nodiscard]] core::Status service(
         core::TimePoint now, windows::MfH264Mp4Writer &writer) noexcept
     {
-        if (!recording_)
+        if (!recording_ || paused_)
             return core::Status::failure(
                 core::StatusCode::InvalidStateTransition);
 
@@ -226,13 +262,20 @@ public:
     // causing an unbounded Stop. The final AAC block is whole-frame trimmed
     // to the same physical Stop instant as the video timeline.
     [[nodiscard]] core::Status finish(
-        core::TimePoint stopped, windows::MfH264Mp4Writer &writer) noexcept
+        core::TimePoint stopped, windows::MfH264Mp4Writer &writer,
+        bool stopped_during_pause = false) noexcept
     {
         if (!recording_) {
             stop_sources();
             return core::Status::success();
         }
 
+        if (stopped_during_pause) {
+            // All captured PCM in the excluded interval is abandoned, not
+            // replayed as post-resume media. Audio timeline stays frozen.
+            discard_while_paused();
+            program_.discard_sources_after_pause();
+        }
         // First quiesce the producers, but retain their bounded WASAPI
         // handoffs and pool generations. WasapiCaptureSource::stop() retires
         // queued packets, so using stop() here would lose audible tail data.
@@ -241,6 +284,11 @@ public:
             microphone_.quiesce();
         if (pinned_.system_audio)
             loopback_.quiesce();
+        if (stopped_during_pause) {
+            // Producer is now quiesced: drain any remaining paused packets
+            // (no concurrent writer), preserving the physical Stop cap.
+            discard_while_paused();
+        }
 
         const auto fail_stop = [this](core::Status error) noexcept {
             stop_sources();  // retire pool only after last lease released
@@ -253,10 +301,10 @@ public:
         // captured packet per source, then closes/submits only program blocks
         // BOTH sources have already reached. No batch-first overflow and no
         // false synthetic silence ahead of delayed microphone packets.
-        bool mic_empty = !pinned_.microphone;
-        bool sys_empty = !pinned_.system_audio;
-        bool mic_done = !pinned_.microphone;
-        bool sys_done = !pinned_.system_audio;
+        bool mic_empty = !pinned_.microphone || stopped_during_pause;
+        bool sys_empty = !pinned_.system_audio || stopped_during_pause;
+        bool mic_done = !pinned_.microphone || stopped_during_pause;
+        bool sys_done = !pinned_.system_audio || stopped_during_pause;
         constexpr int kMaxStopRounds = 512;
         constexpr int kMaxClosesPerRound = 4;
         bool completed = false;
@@ -370,6 +418,7 @@ public:
             program_.stats().dropped_program_blocks == 0;
         stop_sources();
         recording_ = false;
+        paused_ = false;
         return emptied ? core::Status::success()
             : program_failure_recorded(
                 4, core::StatusCode::InvalidStateTransition);
@@ -514,6 +563,7 @@ private:
     core::audio::AudioProgramBlock scratch_{};
     bool sources_started_ = false;
     bool recording_ = false;
+    bool paused_ = false;
     bool mic_ingested_ = false;
     bool sys_ingested_ = false;
     std::uint32_t first_error_phase_ = 0, first_error_source_ = 0;

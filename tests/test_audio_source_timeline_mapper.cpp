@@ -111,6 +111,33 @@ void test_alignment(Test &test)
         "100 ms offset maps to exact canonical frame");
 }
 
+void test_pause_qpc_translation_without_new_program_zero(Test &test)
+{
+    AudioSourceTimelineMapper m;
+    constexpr std::int64_t zero=100'000'000;
+    m.reset(zero);
+    // 10s program, 5s physical Pause, and 10s program after resume.
+    auto pre = m.map(packet(zero+100'000'000,
+        AudioTimestampQuality::DeviceQpcTrusted));
+    test.expect(pre.canonical_start_frame == 480'000,
+        "10s physical maps to 10s canonical PCM before Pause");
+    m.set_excluded_pause_ticks(50'000'000);
+    auto resumed = m.map(packet(zero+150'000'000,
+        AudioTimestampQuality::DeviceQpcTrusted));
+    test.expect(resumed.status == AudioTimelineMapStatus::Mapped &&
+        resumed.canonical_start_frame == 480'000,
+        "First resumed packet continues at EXACT same 10s canonical frame");
+    auto after = m.map(packet(zero+250'000'000,
+        AudioTimestampQuality::HostQpcFallback));
+    test.expect(after.canonical_start_frame == 960'000 &&
+        !after.drift_eligible,
+        "20s encoded PCM after 25s wall time; untrusted clock stays degraded");
+    m.reset(zero);
+    test.expect(m.map(packet(zero+250'000'000,
+        AudioTimestampQuality::DeviceQpcTrusted)).canonical_start_frame ==
+        1'200'000, "New recording resets old pause offset, no clock leakage");
+}
+
 void test_pre_zero_trim(Test &test)
 {
     AudioSourceTimelineMapper mapper;
@@ -295,6 +322,7 @@ int main()
     Test test;
     test_requires_authoritative_zero(test);
     test_alignment(test);
+    test_pause_qpc_translation_without_new_program_zero(test);
     test_pre_zero_trim(test);
     test_fractional_overlap(test);
     test_invalid_discontinuity_and_zero(test);

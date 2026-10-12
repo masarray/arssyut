@@ -399,6 +399,14 @@ if(ARSSYUT_BUILD_TESTS)
 
     add_test(NAME arssyut_core_tests COMMAND arssyut_core_tests)
 
+    # The same Pause/QPC clock drives video and canonical audio.
+    add_executable(arssyut_recording_pause_clock_tests
+        tests/test_recording_pause_clock.cpp)
+    target_link_libraries(arssyut_recording_pause_clock_tests
+        PRIVATE arssyut_core)
+    add_test(NAME arssyut_recording_pause_clock_tests
+        COMMAND arssyut_recording_pause_clock_tests)
+
     add_executable(arssyut_audio_core_tests
         tests/test_audio_core.cpp
     )

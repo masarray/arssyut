@@ -64,6 +64,7 @@ public:
         have_next_ = false;
         marked_discontinuity_ = false;
         seam_ramp_remaining_ = 0;
+        post_resume_qpc_floor_ = 0;
         if (recorder_qpc_zero_100ns <= 0 ||
             !format.valid() || format.channels > kMaxNativeChannels ||
             format.sample_rate < 8'000 ||
@@ -77,6 +78,24 @@ public:
         };
         ready_ = resampler.configure(cfg) == AudioResampleStatus::Ok;
         return ready_;
+    }
+
+    // Re-anchor source-local SRC after a deliberate recorder Pause. AAC and
+    // the canonical 1024-frame PROGRAM clock continue without reset. Packages
+    // older than the Resume cutoff are discarded, never marked as new media.
+    void reanchor_after_pause(
+        std::int64_t completed_pause_100ns,
+        std::int64_t resume_qpc_100ns) noexcept
+    {
+        mapper_.set_excluded_pause_ticks(completed_pause_100ns);
+        post_resume_qpc_floor_ = resume_qpc_100ns;
+        if (resampler_) resampler_->reset();
+        drift_.reset();
+        drift_controller_.reset_for_discontinuity();
+        next_frame_ = 0;
+        have_next_ = false;
+        marked_discontinuity_ = true;
+        seam_ramp_remaining_ = kSeamRampFrames;
     }
 
     [[nodiscard]] PacketIngressResult process_packet(
@@ -319,6 +338,16 @@ public:
 
         const auto &original = lease.packet();
         const auto payload = lease.payload();
+        if (post_resume_qpc_floor_ > 0 &&
+            original.timing.packet_start_qpc_100ns < post_resume_qpc_floor_) {
+            PacketIngressResult old{};
+            old.status = PacketIngressStatus::BeforeMediaZero;
+            if (!lease.release()) {
+                ready_ = false;
+                old.status = PacketIngressStatus::Invalid;
+            }
+            return old;
+        }
         constexpr std::uint32_t kMaxChunksPerLease = 8;
         if (!ready_ || !original.metadata_valid() ||
             original.native_format.sample_rate == 0 ||
@@ -512,6 +541,7 @@ private:
     std::int64_t next_frame_ = 0;
     bool have_next_ = false;
     bool marked_discontinuity_ = false;
+    std::int64_t post_resume_qpc_floor_ = 0;
     bool ready_ = false;
 };
 

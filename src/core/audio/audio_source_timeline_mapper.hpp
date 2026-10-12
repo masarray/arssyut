@@ -54,6 +54,14 @@ public:
         mapped_packets_ = 0;
         rejected_packets_ = 0;
         pre_zero_frames_trimmed_ = 0;
+        excluded_pause_ticks_ = 0;
+    }
+
+    // Recorder worker applies the same completed-pause offset to source QPC
+    // as the video scheduler's virtual clock. This is NOT a new clock.
+    void set_excluded_pause_ticks(std::int64_t ticks) noexcept
+    {
+        excluded_pause_ticks_ = (std::max)(std::int64_t{0}, ticks);
     }
 
     [[nodiscard]] AudioTimelineMapResult map(
@@ -74,8 +82,12 @@ public:
             return result;
         }
 
+        if (packet.timing.packet_start_qpc_100ns <= excluded_pause_ticks_) {
+            ++rejected_packets_;
+            return result;
+        }
         const auto packet_start =
-            packet.timing.packet_start_qpc_100ns;
+            packet.timing.packet_start_qpc_100ns - excluded_pause_ticks_;
 
         const auto duration =
             frames_to_ticks_ceil(
@@ -399,6 +411,7 @@ private:
         };
     }
 
+    std::int64_t excluded_pause_ticks_ = 0;
     std::int64_t session_zero_qpc_100ns_ = 0;
     bool session_zero_valid_ = false;
     std::uint64_t mapped_packets_ = 0;
