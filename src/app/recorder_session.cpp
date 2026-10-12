@@ -729,6 +729,9 @@ void RecorderSession::worker_main() noexcept
 
     auto pipeline =
         std::move(pipeline_result).value();
+    // Decode optional logo & resolve camera geometry once in Preparing,
+    // never during GPU/encoder frame scheduling.
+    pipeline->compositor().set_output_overlays(config_.output_overlays);
 
     visual_analysis_available_.store(
         pipeline->compositor().
