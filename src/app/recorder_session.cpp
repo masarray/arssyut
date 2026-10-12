@@ -654,6 +654,16 @@ void RecorderSession::worker_main() noexcept
         }
     } finish_guard{worker_finished_};
 
+    // This guard is constructed BEFORE all GPU/video locals. It transfers
+    // consumer ownership back to the preview worker only AFTER compositor,
+    // WGC, MF writer and recorder-owned device references are destroyed.
+    struct SharedCameraReturn {
+        std::shared_ptr<arssyut::windows::WebcamPreviewSession> camera;
+        ~SharedCameraReturn() noexcept {
+            if (camera) camera->end_recording();
+        }
+    } camera_return{config_.shared_webcam};
+
     std::error_code file_ec;
     std::filesystem::create_directories(
         config_.output_path.parent_path(),
@@ -679,20 +689,24 @@ void RecorderSession::worker_main() noexcept
         memory_start,
         std::memory_order_release);
 
-    auto device_result =
-        D3D11Device::create(
-            D3D11DevicePreference::HardwareOnly,
-            false);
-    if (!device_result) {
-        fail(device_result.status());
+    // Reuse the EXACT physical-camera D3D11 device, not just its adapter
+    // LUID. Recorder is now the sole GPU immediate-context consumer.
+    std::shared_ptr<D3D11Device> device;
+    if (config_.shared_webcam) {
+        device = config_.shared_webcam->recording_device();
+    } else {
+        auto created = D3D11Device::create(
+            D3D11DevicePreference::HardwareOnly, false);
+        if (created)
+            device = std::move(created).value();
+    }
+    if (!device) {
+        fail(Status::failure(StatusCode::PlatformFailure));
         state_.store(
             RecorderState::Failed,
             std::memory_order_release);
         return;
     }
-
-    auto device =
-        std::move(device_result).value();
 
     LatestFrameSlot frame_slot;
     // Mailbox and camera lifetime both belong to this one recorder session;
@@ -898,13 +912,21 @@ void RecorderSession::worker_main() noexcept
         return;
     }
 
+    const auto camera_before = config_.shared_webcam
+        ? config_.shared_webcam->capture_snapshot()
+        : arssyut::windows::WebcamCaptureSnapshot{};
     if (config_.webcam_enabled) {
-        const auto camera_status = webcam_source.start(
-            device->device(), config_.webcam_symbolic_link, webcam_slot);
-        if (camera_status.ok())
-            pipeline->set_webcam_source(&webcam_slot);
-        // Optional source failure cannot break established desktop/audio.
-        // The internal camera QA must inspect the resulting recorded MP4.
+        if (config_.shared_webcam) {
+            pipeline->set_webcam_source(&config_.shared_webcam->frames());
+            pipeline->set_webcam_preview_sink(config_.shared_webcam.get());
+        } else {
+            const auto camera_status = webcam_source.start(
+                device->device(), config_.webcam_symbolic_link, webcam_slot);
+            if (camera_status.ok())
+                pipeline->set_webcam_source(&webcam_slot);
+        }
+        // The no-preview fallback keeps the established optional camera
+        // behavior. A shared coordinator never creates a second MF source.
     }
 
     PresentationInputWorker presentation_input;
@@ -1069,6 +1091,9 @@ void RecorderSession::worker_main() noexcept
             if (audio_runtime)
                 audio_runtime->discard_preroll();
 #endif
+            // Countdown freezes the MEDIA clock, not the camera's
+            // physical preview. Keep a fresh UI thumbnail on one GPU owner.
+            pipeline->preview_while_paused(device->immediate_context());
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(1));
         }
@@ -1285,6 +1310,9 @@ void RecorderSession::worker_main() noexcept
             arssyut::windows::ShortcutEvent ignored_shortcut{};
             for (int n=0; n<16 && presentation_input.try_pop_click(ignored_click); ++n) {}
             for (int n=0; n<16 && presentation_input.try_pop_shortcut(ignored_shortcut); ++n) {}
+            // Physical camera keeps publishing a tiny preview without
+            // encoding frames or advancing the compressed A/V timeline.
+            pipeline->preview_while_paused(device->immediate_context());
             // Existing producer threads remain live but their bounded queues
             // cannot grow; the one writer and A/V media clock stay frozen.
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -1691,9 +1719,13 @@ void RecorderSession::worker_main() noexcept
     presentation_input.stop();
     // Take a real source snapshot BEFORE stop() overwrites its state,
     // allowing user MP4 diagnostics to prove camera was actually captured.
-    const auto webcam_health = webcam_source.snapshot();
-    webcam_received_.store(webcam_health.received);
-    webcam_published_.store(webcam_health.published);
+    const auto webcam_health = config_.shared_webcam
+        ? config_.shared_webcam->capture_snapshot()
+        : webcam_source.snapshot();
+    webcam_received_.store(webcam_health.received -
+        (std::min)(webcam_health.received, camera_before.received));
+    webcam_published_.store(webcam_health.published -
+        (std::min)(webcam_health.published, camera_before.published));
     webcam_ticks_startup_.store(webcam_health.stream_ticks_startup);
     webcam_ticks_streaming_.store(webcam_health.stream_ticks_streaming);
     webcam_adapter_mismatch_.store(webcam_health.adapter_mismatch);
@@ -1703,7 +1735,9 @@ void RecorderSession::worker_main() noexcept
     webcam_new_gpu_frames_.store(pipeline->webcam_new_gpu_frames());
     webcam_rendered_slots_.store(pipeline->webcam_rendered_slots());
     webcam_copy_failures_.store(pipeline->webcam_gpu_copy_failures());
-    webcam_source.stop();
+    pipeline->set_webcam_source(nullptr);
+    pipeline->set_webcam_preview_sink(nullptr);
+    if (!config_.shared_webcam) webcam_source.stop();
     capture.stop();
 
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
