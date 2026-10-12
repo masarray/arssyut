@@ -119,7 +119,7 @@ int main()
     require(
         arssyut_bridge_abi_version() ==
             ARSSYUT_BRIDGE_ABI_VERSION &&
-            ARSSYUT_BRIDGE_ABI_VERSION == 11,
+            ARSSYUT_BRIDGE_ABI_VERSION == 12,
         "bridge ABI version mismatch");
 
     require(
@@ -651,6 +651,18 @@ int main()
     ArssyutBridgeStartRequestV1 invalid_start{};
     invalid_start.struct_size =
         sizeof(invalid_start);
+    invalid_start.camera_profile_version = 1;
+    invalid_start.camera_placement = 1;
+    invalid_start.camera_mask = 1;
+    invalid_start.camera_width_fraction = 0.235f;
+    invalid_start.camera_margin_fraction = 0.03f;
+    invalid_start.camera_corner_fraction = 0.15f;
+    invalid_start.camera_border_pixels = 2.0f;
+    invalid_start.camera_opacity = 1.0f;
+    invalid_start.logo_placement = 3;
+    invalid_start.logo_width_fraction = 0.13f;
+    invalid_start.logo_margin_fraction = 0.025f;
+    invalid_start.logo_opacity = 1.0f;
     invalid_start.capture_mode =
         ARSSYUT_BRIDGE_CAPTURE_DISPLAY;
     invalid_start.source_token =
@@ -777,6 +789,18 @@ int main()
         ArssyutBridgeStartRequestV1 unsupported{};
         unsupported.struct_size =
             sizeof(unsupported);
+        unsupported.camera_profile_version = 1;
+        unsupported.camera_placement = 1;
+        unsupported.camera_mask = 1;
+        unsupported.camera_width_fraction = 0.235f;
+        unsupported.camera_margin_fraction = 0.03f;
+        unsupported.camera_corner_fraction = 0.15f;
+        unsupported.camera_border_pixels = 2.0f;
+        unsupported.camera_opacity = 1.0f;
+        unsupported.logo_placement = 3;
+        unsupported.logo_width_fraction = 0.13f;
+        unsupported.logo_margin_fraction = 0.025f;
+        unsupported.logo_opacity = 1.0f;
         unsupported.capture_mode =
             source.kind ==
                     ARSSYUT_BRIDGE_SOURCE_MONITOR
