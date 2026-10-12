@@ -413,6 +413,7 @@ public sealed partial class MainWindow : Window
             // Rebind persisted choice by CURRENT token generation after
             // dialog; it must not refresh devices or create stale tokens.
             RebindSettingsMicrophone();
+            RebindSettingsPlayback();
         }
         finally
         {
@@ -976,6 +977,32 @@ public sealed partial class MainWindow : Window
             RefreshInputLabels();
             ApplyProductCapabilitySurface();
         }
+    }
+
+    private void RebindSettingsPlayback()
+    {
+        if (!_audioHardwarePreview || _loadingCameraDevices) return;
+        var wanted = _settings.SystemAudioDevice;
+        for (var i = 0; i < SystemAudioDeviceComboMain.Items.Count; ++i)
+        {
+            if (SystemAudioDeviceComboMain.Items[i] is not ComboBoxItem item ||
+                !item.IsEnabled) continue;
+            var device = item.Tag as NativeDeviceItem;
+            var label = device?.Name ?? SettingsPreviewState.DefaultPlaybackDevice;
+            if (string.Equals(wanted, label, StringComparison.Ordinal))
+            {
+                SystemAudioDeviceComboMain.SelectedIndex = i;
+                _systemAudioDeviceToken = device?.Token ?? 0;
+                _playbackSelectionValid = true;
+                if (_nativeBridge is not null)
+                    _ = _nativeBridge.SetSystemAudioEndpoint(_systemAudioDeviceToken);
+                return;
+            }
+        }
+        _playbackSelectionValid = false;
+        // A disconnected persisted selection is never silently defaulted.
+        ToolTip.SetTip(SystemAudioDeviceComboMain,
+            "Previously selected playback endpoint is unavailable.");
     }
 
     private static void ApplyReadOnlyDeviceCombo(
@@ -1571,6 +1598,8 @@ public sealed partial class MainWindow : Window
                 ? _cameraDevice
                 : $"Off · {_cameraDevice}";
 
+        SystemAudioDeviceComboMain.IsEnabled = _audioHardwarePreview &&
+            !cameraBusy;
         SystemAudioToggle.IsChecked =
             _systemAudioEnabled;
         MicToggle.IsChecked =
@@ -2865,7 +2894,7 @@ public sealed partial class MainWindow : Window
             // Once chosen, preserve these flags until the user changes them
             // (never rewrite them on Ready/Saved UI refresh).
             RefreshInputLabels();
-            SystemAudioDeviceComboMain.IsEnabled = !cameraBusy;
+            SystemAudioDeviceComboMain.IsEnabled = _playbackSelectionValid;
             // Audio and camera are independent optional capabilities.
             CameraToggle.IsEnabled = _webcamHardwarePreview &&
                 _cameraDeviceToken != 0;
