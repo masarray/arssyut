@@ -357,6 +357,13 @@ arssyut_bridge_webcam_preview_frame(
     std::uint64_t *sequence,
     std::uint32_t *state) noexcept;
 
+// Additive ABI; does not alter recorder snapshot or an existing bridge struct.
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_failure(
+    ArssyutBridgeHandle handle, std::uint32_t *stage,
+    std::uint32_t *hresult) noexcept;
+
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_start(

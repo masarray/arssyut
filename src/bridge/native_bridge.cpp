@@ -1704,6 +1704,22 @@ arssyut_bridge_webcam_preview_frame(
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_failure(
+    ArssyutBridgeHandle handle, std::uint32_t *stage,
+    std::uint32_t *hresult) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !stage || !hresult)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard guard(context->webcam_preview_mutex);
+    *stage = context->webcam_preview
+        ? context->webcam_preview->failure_stage() : 0U;
+    *hresult = context->webcam_preview
+        ? context->webcam_preview->failure_detail() : 0U;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_start(
     ArssyutBridgeHandle handle,
     const ArssyutBridgeStartRequestV1 *request) noexcept

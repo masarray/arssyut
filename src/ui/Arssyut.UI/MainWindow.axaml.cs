@@ -42,6 +42,13 @@ public sealed partial class MainWindow : Window
         new byte[NativeBridgeClient.WebcamPreviewByteCount];
     private WriteableBitmap? _webcamPreviewBitmap;
     private ulong _webcamPreviewSequence;
+    private long _webcamPreviewFreshAt;
+    private bool _webcamStartupRecoveryUsed;
+    private bool _webcamStartupRecoveryInFlight;
+    private bool _webcamFailureReported;
+    private bool _webcamResumeAfterRecording;
+    private bool _webcamResumeInFlight;
+    private long _webcamRecorderStoppedAt;
     private int _webcamIntentVersion;
     private bool _loadingCameraDevices;
     private readonly SemaphoreSlim _webcamLifecycle = new(1, 1);
@@ -1123,6 +1130,8 @@ public sealed partial class MainWindow : Window
         _cameraDevice = device.Name;
         _cameraDeviceToken = device.Token;
         if (_session.CameraEnabled) {
+            _webcamStartupRecoveryUsed = false;
+            _webcamFailureReported = false;
             var version = ++_webcamIntentVersion;
             HideWebcamPreview();
             await ApplyWebcamPreviewIntentAsync(
@@ -1150,12 +1159,12 @@ public sealed partial class MainWindow : Window
                 () => bridge.StartWebcamPreview(token));
             if (version == _webcamIntentVersion &&
                 !_webcamShuttingDown && status != NativeBridgeStatus.Ok)
-                DisableWebcamPreview(
-                    $"Camera failed to open ({status}).");
+                ReportWebcamPreviewProblem(
+                    $"Camera could not start ({status}).");
         } catch (Exception ex) {
             if (version == _webcamIntentVersion &&
                 !_webcamShuttingDown)
-                DisableWebcamPreview(ex.Message);
+                ReportWebcamPreviewProblem(ex.Message);
         } finally {
             _webcamLifecycle.Release();
         }
@@ -1168,15 +1177,94 @@ public sealed partial class MainWindow : Window
         _webcamPreviewSequence = 0;
     }
 
+    // Actual camera state must NOT overwrite the user's ON intent.
+    // A cold-start MF failure is recoverable without toggling the switch.
+    private void ReportWebcamPreviewProblem(string why)
+    {
+        HideWebcamPreview();
+        ToolTip.SetTip(CameraPreviewFrame, why);
+        if (_webcamFailureReported) return;
+        _webcamFailureReported = true;
+        ShowCommandFeedback("Webcam unavailable", why);
+    }
+
     private void DisableWebcamPreview(string why)
     {
         ++_webcamIntentVersion;
         _session.CameraEnabled = false;
         CameraToggle.IsChecked = false;
-        HideWebcamPreview();
-        ToolTip.SetTip(CameraPreviewFrame, why);
+        ReportWebcamPreviewProblem(why);
         RefreshInputLabels();
-        ShowCommandFeedback("Webcam unavailable", why);
+    }
+
+    private string WebcamNativeFailure()
+    {
+        try {
+            if (_nativeBridge?.ReadWebcamPreviewFailure(
+                    out var stage, out var hresult) == NativeBridgeStatus.Ok)
+                return $"Native webcam stage {stage}, HRESULT 0x{hresult:X8}.";
+        } catch (Exception) {
+            // The bridge can already be shutting down.
+        }
+        return "Native camera worker stopped unexpectedly.";
+    }
+
+    // At most one cold-start source reinitialization per explicit ON.
+    // Always stop/join the previous worker before opening a replacement.
+    // Unlike an uncontrolled retry loop, a second failure is surfaced with
+    // the exact native stage/HRESULT and the requested ON state is retained.
+    private async Task RecoverInitialWebcamAsync(
+        int version, ulong token)
+    {
+        if (_webcamStartupRecoveryInFlight ||
+            _webcamStartupRecoveryUsed || !_session.CameraEnabled)
+            return;
+        _webcamStartupRecoveryUsed = true;
+        _webcamStartupRecoveryInFlight = true;
+        try {
+            HideWebcamPreview();
+            await ApplyWebcamPreviewIntentAsync(version, token, true);
+        } finally {
+            _webcamStartupRecoveryInFlight = false;
+        }
+    }
+
+    private async Task RestoreWebcamAfterRecordingAsync()
+    {
+        if (_webcamResumeInFlight || !_webcamResumeAfterRecording ||
+            _webcamStartTransition || !_session.CameraEnabled ||
+            _cameraDeviceToken == 0 || _webcamShuttingDown)
+            return;
+        var bridge = _nativeBridge;
+        if (bridge is null) return;
+        _webcamResumeInFlight = true;
+        try {
+            await _webcamLifecycle.WaitAsync();
+            try {
+                if (!_webcamResumeAfterRecording ||
+                    !_session.CameraEnabled || _webcamShuttingDown)
+                    return;
+                var status = await Task.Run(
+                    () => bridge.StartWebcamPreview(_cameraDeviceToken));
+                if (status == NativeBridgeStatus.Ok) {
+                    _webcamResumeAfterRecording = false;
+                    _webcamStartupRecoveryUsed = false;
+                    _webcamFailureReported = false;
+                    _webcamPreviewFreshAt = Stopwatch.GetTimestamp();
+                } else if (status != NativeBridgeStatus.Busy) {
+                    _webcamResumeAfterRecording = false;
+                    ReportWebcamPreviewProblem(
+                        $"Camera restart failed ({status}).");
+                }
+            } finally {
+                _webcamLifecycle.Release();
+            }
+        } catch (Exception ex) {
+            _webcamResumeAfterRecording = false;
+            ReportWebcamPreviewProblem(ex.Message);
+        } finally {
+            _webcamResumeInFlight = false;
+        }
     }
 
     private void WebcamPreviewTimer_OnTick(object? sender, EventArgs e)
@@ -1186,25 +1274,76 @@ public sealed partial class MainWindow : Window
             _webcamStartTransition || _webcamShuttingDown)
             return;
 
+        // Recorder still owns this camera until the native worker retires.
+        // Do not try to open another physical camera while it is writing MP4.
+        if (_webcamResumeAfterRecording) {
+            try {
+                var snapshot = _nativeBridge.Snapshot();
+                if (snapshot.State is NativeRecorderState.Ready or
+                    NativeRecorderState.Failed or NativeRecorderState.Idle) {
+                    if (_webcamRecorderStoppedAt == 0)
+                        _webcamRecorderStoppedAt = Stopwatch.GetTimestamp();
+                    if (Stopwatch.GetElapsedTime(_webcamRecorderStoppedAt) >
+                        TimeSpan.FromSeconds(4)) {
+                        _webcamResumeAfterRecording = false;
+                        ReportWebcamPreviewProblem(
+                            "Timed out waiting for recorder camera ownership to release.");
+                    } else {
+                        _ = RestoreWebcamAfterRecordingAsync();
+                    }
+                }
+            } catch (Exception) {
+                // Native recorder teardown is asynchronous.
+            }
+            return;
+        }
+
+        if (_webcamStartupRecoveryInFlight) return;
         try {
             var status = _nativeBridge.ReadWebcamPreview(
                 _webcamPreviewPixels, out var sequence, out var state);
             if (status != NativeBridgeStatus.Ok) {
-                DisableWebcamPreview($"Preview read failed ({status}).");
+                ReportWebcamPreviewProblem($"Preview read failed ({status}).");
                 return;
             }
             if (state == 3) {
-                DisableWebcamPreview(
-                    "Camera driver or GPU preview unavailable. Choose a camera again.");
+                if (!_webcamStartupRecoveryUsed &&
+                    _webcamPreviewSequence == 0) {
+                    _ = RecoverInitialWebcamAsync(
+                        _webcamIntentVersion, _cameraDeviceToken);
+                    return;
+                }
+                ReportWebcamPreviewProblem(WebcamNativeFailure());
                 return;
             }
             if (state == 1) {
+                CameraPreviewImage.IsVisible = false;
+                CameraPreviewPlaceholder.IsVisible = true;
                 ToolTip.SetTip(CameraPreviewFrame, "Opening webcam...");
                 return;
             }
-            if (state != 2 || sequence == 0 ||
-                sequence == _webcamPreviewSequence)
+            if (state == 0) {
+                CameraPreviewImage.IsVisible = false;
+                CameraPreviewPlaceholder.IsVisible = true;
+                ToolTip.SetTip(CameraPreviewFrame,
+                    "Webcam is not yet publishing preview frames.");
                 return;
+            }
+            if (state != 2 || sequence == 0) return;
+            if (sequence == _webcamPreviewSequence) {
+                // Do not display a frozen bitmap as though it is a live feed.
+                if (_webcamPreviewFreshAt != 0 &&
+                    Stopwatch.GetElapsedTime(_webcamPreviewFreshAt) >
+                        TimeSpan.FromMilliseconds(1500)) {
+                    // Preserve last seen sequence, but never show its
+                    // stale bitmap as a "live" frame after capture stalls.
+                    CameraPreviewImage.IsVisible = false;
+                    CameraPreviewPlaceholder.IsVisible = true;
+                    ToolTip.SetTip(CameraPreviewFrame,
+                        "Waiting for a fresh camera frame.");
+                }
+                return;
+            }
             _webcamPreviewBitmap ??= new WriteableBitmap(
                 new PixelSize(NativeBridgeClient.WebcamPreviewWidth,
                               NativeBridgeClient.WebcamPreviewHeight),
@@ -1231,9 +1370,16 @@ public sealed partial class MainWindow : Window
             CameraPreviewImage.IsVisible = true;
             CameraPreviewPlaceholder.IsVisible = false;
             _webcamPreviewSequence = sequence;
+            _webcamPreviewFreshAt = Stopwatch.GetTimestamp();
+            _webcamFailureReported = false;
+            // Clear only an earlier CAMERA startup warning; never erase an
+            // actual failed recording's separate audio/encoder diagnosis.
+            if (StatusText.Text == "Webcam unavailable" &&
+                _lastNativeSnapshot?.State is null or NativeRecorderState.Idle)
+                ApplyNativeReadyState();
             ToolTip.SetTip(CameraPreviewFrame, "Live native GPU webcam preview");
         } catch (Exception ex) {
-            DisableWebcamPreview(ex.Message);
+            ReportWebcamPreviewProblem(ex.Message);
         }
     }
 
@@ -1246,6 +1392,10 @@ public sealed partial class MainWindow : Window
             return;
         var enabled = CameraToggle.IsChecked == true;
         var version = ++_webcamIntentVersion;
+        _webcamStartupRecoveryUsed = false;
+        _webcamFailureReported = false;
+        _webcamPreviewFreshAt = Stopwatch.GetTimestamp();
+        if (!enabled) _webcamResumeAfterRecording = false;
         _session.CameraEnabled = enabled;
         HideWebcamPreview();
         RefreshInputLabels();
@@ -1771,6 +1921,11 @@ public sealed partial class MainWindow : Window
         NativeBridgeStatus status;
         _webcamStartTransition = true;
         ++_webcamIntentVersion;
+        _webcamResumeAfterRecording = _session.CameraEnabled;
+        _webcamRecorderStoppedAt = 0;
+        HideWebcamPreview();
+        ToolTip.SetTip(CameraPreviewFrame,
+            "Camera is being transferred to the native recorder.");
         try {
             // Do not let preview and RecorderSession compete for the one
             // physical webcam. This is fully serialized with toggle/switch.
@@ -1816,6 +1971,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception)
         {
+            _webcamResumeAfterRecording = false;
             ShowCommandFeedback(
                 "Native bridge error",
                 "Recorder command bridge became unavailable.");
@@ -1828,6 +1984,7 @@ public sealed partial class MainWindow : Window
         if (status !=
             NativeBridgeStatus.Ok)
         {
+            _webcamResumeAfterRecording = false;
             HandleNativeStartFailure(
                 status);
             return;

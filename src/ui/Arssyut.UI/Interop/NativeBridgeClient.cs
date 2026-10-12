@@ -1017,6 +1017,14 @@ public sealed class NativeBridgeClient : IDisposable
             _handle, bgra, (uint)bgra.Length, out sequence, out state);
     }
 
+    public NativeBridgeStatus ReadWebcamPreviewFailure(
+        out uint stage, out uint hresult)
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)NativeMethods.WebcamPreviewFailure(
+            _handle, out stage, out hresult);
+    }
+
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(
@@ -1189,6 +1197,12 @@ public sealed class NativeBridgeClient : IDisposable
             EntryPoint = "arssyut_bridge_webcam_preview_stop",
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int WebcamPreviewStop(IntPtr handle);
+
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_failure",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewFailure(
+            IntPtr handle, out uint stage, out uint hresult);
 
         [DllImport(LibraryName,
             EntryPoint = "arssyut_bridge_webcam_preview_frame",

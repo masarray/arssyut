@@ -32,6 +32,15 @@ public:
     // State: 0=Off,1=Opening,2=Active,3=Unavailable.
     // Copies the most recent completed BGRA frame, even if caller's last
     // sequence is equal; GUI checks sequence to avoid pointless redraws.
+    // Published only on the native camera worker. Queryable even after
+    // failure; UI can report the exact stage/HRESULT, not merely "unavailable".
+    // Stage 1=device, 2=renderer, 3=source start, 4=source capture, 5=GPU draw.
+    [[nodiscard]] std::uint32_t failure_stage() const noexcept {
+        return failure_stage_.load(std::memory_order_acquire);
+    }
+    [[nodiscard]] std::uint32_t failure_detail() const noexcept {
+        return failure_detail_.load(std::memory_order_acquire);
+    }
     [[nodiscard]] bool copy_frame(std::uint8_t *out,
                                   std::uint32_t capacity,
                                   std::uint64_t &sequence,
@@ -43,6 +52,8 @@ private:
     std::uint64_t sequence_ = 0;
     std::atomic<std::uint32_t> state_{0};
     std::atomic<bool> stopping_{false};
+    std::atomic<std::uint32_t> failure_stage_{0};
+    std::atomic<std::uint32_t> failure_detail_{0};
     std::thread worker_;
 };
 }

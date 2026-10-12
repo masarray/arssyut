@@ -1,0 +1,33 @@
+# P8W-F2A webcam first-ON reliability & stale-preview truth — implementation handoff
+
+Status: **candidate, F2A only, not full F2/real-hardware acceptance**
+Date: 2026-10-12
+Parent: [ADR-011](adr/ADR-011-webcam-source-continuity-and-output-overlays.md), [F1–F5 plan](P8W_F1_F5_EXECUTION_PLAN_2026-10-12.md).
+Exact parent candidate before these changes: `checkpoint/p8w-pause-mute-f1-webcam-integration-ci-green-20261012@7e49d42a0da6672bdf5ffc1406f85b096b8ebfda`. Keep Draft PR #115/#120/#121/main untouched.
+
+## Observed user evidence, no masking
+
+- User reports first Webcam ON toggles back OFF + “Webcam unavailable”; second attempt often works. This is **actual product failure**, not a camera mode-selection error established by the existing NV12 GPU evidence.
+- Current source confirms `WebcamPreviewSession::start()` returns success when a worker is launched, *before* MF device activation and first valid DXGI frame. The worker can later fail and set state 3. `MainWindow.WebcamPreviewTimer_OnTick` used to respond by `DisableWebcamPreview()`, clearing **user intent** and unchecking the UI. There was no native failure stage/HRESULT exposed.
+- Current native recorder obtains a new physical webcam source after stopping the separate preview source. GUI does not have an active preview producer during recording and keeps the last `WriteableBitmap`; this is an ownership design gap, not insufficient polling.
+- Newly attached user real MP4: ~7.91665s 1920×1080/60 H264+AAC, `webcam_received=301`, `webcam_new_gpu_frames=237`, `webcam_rendered_slots=475`, no webcam GPU copy errors, no encoder backpressure/skips. Thus capture in MP4 is live, while GUI preview is a separate problem.
+- **P0 A/V is still not accepted:** that MP4's diagnostics reports `result=failed`, `audio_failure_phase=2` (Stop drain), `audio_failure_source=1` (microphone), `status_code=4/detail=8` (StageFull), `audio_stage_mic_frames=16084`, and `audio_staging_overflows=1`. The earlier green F1 CI did NOT eliminate this on real hardware. Preserve this evidence/first error; do not call it Saved or hide it behind webcam work.
+
+## F2A scope and invariants
+
+1. Keep the selected **user desire ON** separate from hardware truth `Opening/Live/Unavailable`. On native worker failure, show placeholder + error, but **do not automatically toggle user intent OFF**. Explicit user OFF still stops and joins the source and releases privacy lamp.
+2. The empirical first-open fail/second-open succeed is treated as a **bounded cold-start recovery**, not an unbounded retry. At most **one** automatic re-initialization for an explicit ON epoch, only if the first attempt failed **before publishing any GUI frame**. Existing `SemaphoreSlim`, token generation and `_webcamIntentVersion` serialize close/join/next open and make obsolete intents harmless. No arbitrary delay, concurrent open, or recursive retry. If second attempt fails, keep ON requested, display native stage/HRESULT and placeholder. Driver-side cause still requires the real Windows error code; a one-time recovery is not proof of its origin.
+3. Add a new bridge export `arssyut_bridge_webcam_preview_failure(handle,*stage,*hresult)` without modifying existing structs/ABI IDs. Stages: 1 D3D11 device, 2 shader/preview renderer, 3 MF source start, 4 MF stream/callback/format, 5 thumbnail GPU render/readback. This is a truthful **error origin**, not a magic generic status. Native worker stores stage then publishes unavailable using release/acquire semantics.
+4. Update thumbnail **only when sequence advances**. If no sequence advances for 1.5s, hide the stale bitmap **without resetting the last observed sequence** (otherwise an old frame gets repainted on the next timer tick). A real new sample can restore the image. This is only a UI truth gate, not the final canonical age policy in ADR-011.
+5. Native recording Start still has sole ownership of the physical camera. On transferring from preview→recorder, **hide** the now-invalid GUI bitmap, and after native recorder fully finishes, attempt a serialized preview restart on the same current camera token with a bounded four-second ownership-relinquish timeout. A `BUSY` bridge result is not a user device error; a genuine nonbusy failure is surfaced. Do not reopen webcam while RecorderSession is active, and never reopen a stale intent after explicit OFF.
+6. CI gate: existing native Windows 33+ CTests, new preview failure-origin smoke check, device-free QA for desired/actual source state, stale sequence and single bounded recovery, pinned FFmpeg A/V product startup (double-click `Arssyut.UI.exe`). **CI runner has no physical USB webcam**, so native camera initialization success is not inferred.
+
+## Not in scope (F2B hard requirement)
+
+The real full F2 still requires **ONE native `WebcamCoordinator` owning one MF source continuously across PreviewActive↔RecordingActive** and GPU consumer handoff. The three-slot mailbox is SPSC, and the two GPU immediate contexts/devices are not interchangeable because their adapters match. Adopt ADR-011: renderer draws tiny preview on the only active consumer while in preview state; recorder worker, when recording, consumes the same webcam GPU frame and periodically generates a tiny 192×108 preview frame. Cross-device ownership must be validated at the exact `ID3D11Device` level. During recording, F2A keeps thumbnail placeholder rather than mislabeling a static image “Live”; it does **not** claim the user-requested live camera preview while recording. Do not open a second webcam just to satisfy GUI.
+
+F2B acceptance: switch ON once, live pre-record preview, live preview during 15s capture, live preview immediately after Stop, stable camera privacy lamp, camera unplug/denied/slow/rapid toggle/Close, no duplicate-open, no stale bitmap and GPU fresh-sequence diagnostics. **Hardware acceptance of F2A and F2B remains pending until user tests the actual physical camera.**
+
+## Separate P0 audio blocker to address before product acceptance
+
+The observed F1.2 scenario is `StageFull` at **Stop drain with microphone staging ~16084/16384 frames, after one Pause**. This suggests a media Stop-watermark/canonical-frame-frontier mismatch or attempted admission of post-Stop PCM rather than simple writer throughput. Investigate `CanonicalPacketIngress::process_packet` and `AudioProductRuntime::finish()` using a deterministic **Pause→Resume→Stop** fixture with audio packets that extend beyond the compressed media Stop. Do not increase ring capacity, claim clean sound based only on file playability, or alter accepted mixer/source clocks without a test.

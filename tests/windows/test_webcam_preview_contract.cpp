@@ -23,6 +23,10 @@ int main()
         std::cerr << "Empty device symbol link opened\n";
         return 1;
     }
+    if (preview.failure_stage() != 0 || preview.failure_detail() != 0) {
+        std::cerr << "OFF/invalid preview must have no phantom GPU failure\n";
+        return 1;
+    }
     if (!WebcamPreviewSession::validate_gpu_shader()) {
         std::cerr << "Production thumbnail GPU shader failed compile\n";
         return 1;

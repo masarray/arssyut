@@ -150,6 +150,8 @@ bool WebcamPreviewSession::start(std::wstring symbolic_link) noexcept {
     if (symbolic_link.empty() || worker_.joinable())
         return false;
     stopping_.store(false, std::memory_order_release);
+    failure_stage_.store(0, std::memory_order_release);
+    failure_detail_.store(0, std::memory_order_release);
     state_.store(1, std::memory_order_release);
     try {
         worker_ = std::thread([this, id = std::move(symbolic_link)]() mutable {
@@ -192,19 +194,26 @@ void WebcamPreviewSession::run(std::wstring symbolic_link) noexcept {
     auto graphics_result = D3D11Device::create(
         D3D11DevicePreference::HardwareOnly);
     if (!graphics_result) {
+        failure_detail_.store(graphics_result.status().detail);
+        failure_stage_.store(1, std::memory_order_release);
         state_.store(3, std::memory_order_release);
         return;
     }
     auto graphics = std::move(graphics_result).value();
     PreviewRenderer renderer;
     if (!renderer.init(graphics->device())) {
+        failure_detail_.store(static_cast<std::uint32_t>(E_FAIL));
+        failure_stage_.store(2, std::memory_order_release);
         state_.store(3, std::memory_order_release);
         return;
     }
     WebcamGpuFrameSlot frame_slot;
     WebcamCaptureSource camera;
-    if (!camera.start(graphics->device(),
-                      std::move(symbolic_link), frame_slot).ok()) {
+    const auto started = camera.start(graphics->device(),
+                                      std::move(symbolic_link), frame_slot);
+    if (!started.ok()) {
+        failure_detail_.store(started.detail);
+        failure_stage_.store(3, std::memory_order_release);
         state_.store(3, std::memory_order_release);
         return;
     }
@@ -215,6 +224,8 @@ void WebcamPreviewSession::run(std::wstring symbolic_link) noexcept {
     while (!stopping_.load(std::memory_order_acquire)) {
         const auto camera_status = camera.snapshot();
         if (camera_status.state == WebcamCaptureState::Unavailable) {
+            failure_detail_.store(camera_status.last_hresult);
+            failure_stage_.store(4, std::memory_order_release);
             state_.store(3, std::memory_order_release);
             break;
         }
@@ -232,6 +243,8 @@ void WebcamPreviewSession::run(std::wstring symbolic_link) noexcept {
                     ++sequence_;
                     state_.store(2, std::memory_order_release);
                 } else {
+                    failure_detail_.store(static_cast<std::uint32_t>(E_FAIL));
+                    failure_stage_.store(5, std::memory_order_release);
                     state_.store(3, std::memory_order_release);
                     break;
                 }
