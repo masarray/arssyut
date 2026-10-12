@@ -7,6 +7,7 @@
 #include "app/recording_audio_health.hpp"
 #include "core/time/monotonic_clock.hpp"
 #include "core/video/frame_geometry.hpp"
+#include "core/video/output_overlay_profile.hpp"
 #include "core/video/frame_scheduler.hpp"
 #include "platform/windows/capture/wgc_capture_source.hpp"
 #include "platform/windows/capture/webcam_preview_session.hpp"
@@ -90,6 +91,7 @@ struct RecorderConfig {
     // concrete Windows MMDevice IDs, never GUI display names or stale tokens.
     // The existing bridge still rejects audio until real-device MP4 acceptance.
     // Internal P8W2 opt-in uses ONE established writer and frame clock.
+    arssyut::core::video::OutputOverlayProfile output_overlays{};
     bool webcam_enabled = false;
     std::wstring webcam_symbolic_link;
     // Live single-source camera handed over by native bridge; remains owned
