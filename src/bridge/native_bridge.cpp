@@ -1814,6 +1814,37 @@ arssyut_bridge_recorder_start(
         request->system_muted > 1 || request->microphone_muted > 1)
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
 
+    // Validate all output-space values before opening any driver, writer
+    // or GPU. Invalid logo config never silently aliases camera geometry.
+    arssyut::core::video::OutputOverlayProfile overlay{};
+    if (request->camera_profile_version != 1U)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    overlay.camera.placement = static_cast<
+        arssyut::core::video::OverlayCorner>(request->camera_placement);
+    overlay.camera.mask = static_cast<
+        arssyut::core::video::CameraMask>(request->camera_mask);
+    overlay.camera.width_fraction = request->camera_width_fraction;
+    overlay.camera.margin_fraction = request->camera_margin_fraction;
+    overlay.camera.corner_fraction = request->camera_corner_fraction;
+    overlay.camera.border_pixels = request->camera_border_pixels;
+    overlay.camera.opacity = request->camera_opacity;
+    if (request->camera_mirror > 1U || request->logo_enabled > 1U)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    overlay.camera.mirror = request->camera_mirror != 0;
+    overlay.logo.enabled = request->logo_enabled != 0;
+    overlay.logo.placement = static_cast<
+        arssyut::core::video::OverlayCorner>(request->logo_placement);
+    overlay.logo.width_fraction = request->logo_width_fraction;
+    overlay.logo.margin_fraction = request->logo_margin_fraction;
+    overlay.logo.opacity = request->logo_opacity;
+    const auto path_length = wcsnlen_s(
+        request->logo_path, ARSSYUT_BRIDGE_PATH_CAPACITY);
+    if (path_length >= ARSSYUT_BRIDGE_PATH_CAPACITY)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    overlay.logo.path.assign(request->logo_path, path_length);
+    if (!overlay.valid())
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+
     if (request->capture_mode ==
         ARSSYUT_BRIDGE_CAPTURE_GAME) {
         return ARSSYUT_BRIDGE_UNSUPPORTED;
@@ -1952,6 +1983,7 @@ arssyut_bridge_recorder_start(
 
         RecorderConfig config;
         config.target = std::move(target);
+        config.output_overlays = overlay;
         config.webcam_enabled = !camera_id.empty();
         config.webcam_symbolic_link = std::move(camera_id);
         config.output_path =
