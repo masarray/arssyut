@@ -116,6 +116,7 @@ if(WIN32)
             mfplat
             mfreadwrite
             mfuuid
+            windowscodecs
             windowsapp
             avrt
     )
