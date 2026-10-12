@@ -361,6 +361,23 @@ public sealed partial class MainWindow : Window
             UpdateAudioMeters();
         }
 
+        // Settings Camera selects the SAME token as the main toolbar,
+        // never just a friendly-name mock profile with an unrelated source.
+        if (_mainUiReady && !_loadingCameraDevices &&
+            _webcamHardwarePreview &&
+            _cameraDevice != _settings.CameraDevice &&
+            _lastNativeSnapshot?.State is not (
+                NativeRecorderState.Recording or NativeRecorderState.Paused or
+                NativeRecorderState.Armed or NativeRecorderState.Preparing or
+                NativeRecorderState.Stopping or NativeRecorderState.Finalizing)) {
+            foreach (var item in CameraDeviceComboMain.Items) {
+                if (item is ComboBoxItem {Tag: NativeDeviceItem device} &&
+                    device.Name == _settings.CameraDevice) {
+                    CameraDeviceComboMain.SelectedItem=item;
+                    break;
+                }
+            }
+        }
         RefreshSettingsSurface();
         SyncGlobalHotkeys();
     }
@@ -2000,7 +2017,21 @@ public sealed partial class MainWindow : Window
                         _settings.SystemMixPercent / 100.0f,
                         _settings.MicrophoneMixPercent / 100.0f,
                         _settings.SystemMixMuted,
-                        _settings.MicrophoneMixMuted)));
+                        _settings.MicrophoneMixMuted,
+                        (uint)_settings.CameraPlacement,
+                        (uint)_settings.CameraMask,
+                        _settings.CameraSizePercent / 100.0f,
+                        _settings.CameraMarginPercent / 100.0f,
+                        _settings.CameraCornerPercent / 100.0f,
+                        _settings.CameraBorderPixels,
+                        _settings.CameraOpacityPercent / 100.0f,
+                        _settings.CameraMirror,
+                        _settings.LogoEnabled,
+                        (uint)_settings.LogoPlacement,
+                        _settings.LogoSizePercent / 100.0f,
+                        _settings.LogoMarginPercent / 100.0f,
+                        _settings.LogoOpacityPercent / 100.0f,
+                        _settings.LogoPath)));
             } finally {
                 _webcamLifecycle.Release();
             }
