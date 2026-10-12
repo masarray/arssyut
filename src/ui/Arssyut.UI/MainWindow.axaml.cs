@@ -2173,7 +2173,7 @@ public sealed partial class MainWindow : Window
                             Width: _settings.LogoWidthFraction,
                             Margin: _settings.LogoMarginFraction,
                             Opacity: _settings.LogoOpacity),
-                        SystemAudioDeviceToken: _systemAudioDeviceToken))));
+                        SystemAudioDeviceToken: _systemAudioDeviceToken)));
             } finally {
                 _webcamLifecycle.Release();
             }
