@@ -2024,7 +2024,14 @@ public sealed partial class MainWindow : Window
                                 CameraBorderTone.Dark => .22f,
                                 CameraBorderTone.Red => .36f,
                                 _ => .96f
-                            }))));
+                            }),
+                        new NativeLogoOverlay(
+                            Enabled: _settings.LogoEnabled,
+                            ImagePath: _settings.LogoImagePath,
+                            Placement: (uint)_settings.LogoPlacement,
+                            Width: _settings.LogoWidthFraction,
+                            Margin: _settings.LogoMarginFraction,
+                            Opacity: _settings.LogoOpacity))));
             } finally {
                 _webcamLifecycle.Release();
             }

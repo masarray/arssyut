@@ -7,6 +7,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using System.IO;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Arssyut.UI.Design;
@@ -20,6 +22,7 @@ public sealed partial class SettingsWindow : Window
     private readonly SettingsPreviewState _preview;
     private readonly NativeBridgeClient? _nativeBridge;
     private readonly bool _stressLayout;
+    private Bitmap? _logoPreviewBitmap;
     private readonly Button[] _navButtons;
     private readonly Control[] _pages;
     private readonly Button[] _cameraAnchorButtons;
@@ -88,6 +91,7 @@ public sealed partial class SettingsWindow : Window
             NavOutput,
             NavAudio,
             NavCamera,
+            NavLogo,
             NavMouse,
             NavHotkeys,
             NavAdvanced
@@ -100,6 +104,7 @@ public sealed partial class SettingsWindow : Window
             PageOutput,
             PageAudio,
             PageCamera,
+            PageLogo,
             PageMouse,
             PageHotkeys,
             PageAdvanced
@@ -148,8 +153,10 @@ public sealed partial class SettingsWindow : Window
             };
 
         Closed +=
-            (_, _) =>
+            (_, _) => {
                 _audioPreviewTimer.Stop();
+                _logoPreviewBitmap?.Dispose();
+            };
 
         if (stressLayout)
         {
@@ -295,9 +302,10 @@ public sealed partial class SettingsWindow : Window
                 "Output" => 2,
                 "Audio" => 3,
                 "Camera" => 4,
-                "Mouse" => 5,
-                "Hotkeys" => 6,
-                "Advanced" => 7,
+                "Logo" => 5,
+                "Mouse" => 6,
+                "Hotkeys" => 7,
+                "Advanced" => 8,
                 _ => 1
             };
 
@@ -345,6 +353,8 @@ public sealed partial class SettingsWindow : Window
                     "Input levels and recording mix.",
                 "Camera" =>
                     "GPU picture-in-picture position, size and shape.",
+                "Logo" =>
+                    "Independent PNG logo compositing on recorded MP4.",
                 "Mouse" =>
                     "Pointer, click, and keyboard visualization.",
                 "Hotkeys" =>
@@ -744,6 +754,96 @@ public sealed partial class SettingsWindow : Window
             mask == CameraPipMask.DiagonalTopRightBottomLeft ?
                 new CornerRadius(0, 24, 0, 24) : new CornerRadius(24, 0, 24, 0);
         MarkPreviewChanged("Camera PIP settings saved for next recording");
+    }
+
+    private void LogoAppearance_OnChange(object? sender,
+        RoutedEventArgs e) => ApplyLogoAppearance();
+
+    private void LogoSlider_OnChange(object? sender,
+        AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == Slider.ValueProperty) ApplyLogoAppearance();
+    }
+
+    private async void ChooseLogo_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!StorageProvider.CanOpen) {
+            LogoValidationText.Text = "PNG file picker unavailable.";
+            return;
+        }
+        var options = new FilePickerOpenOptions {
+            Title = "Choose transparent logo PNG",
+            AllowMultiple = false,
+            FileTypeFilter = new[] {
+                new FilePickerFileType("PNG image") {
+                    Patterns = new[] {"*.png"}
+                }
+            }
+        };
+        var choice = (await StorageProvider.OpenFilePickerAsync(options))
+            .FirstOrDefault();
+        if (choice is null) return;
+        var path = choice.Path.LocalPath;
+        if (!TryLogoPreview(path, out var reason)) {
+            LogoValidationText.Text = reason;
+            return;
+        }
+        if (!_preview.TrySetLogoOverlay(
+            LogoEnabledCheck.IsChecked == true, path,
+            (LogoPlacement)Math.Max(0, LogoPlacementCombo.SelectedIndex),
+            (float)(LogoSizeSlider.Value / 100),
+            (float)(LogoMarginSlider.Value / 100),
+            (float)(LogoOpacitySlider.Value / 100))) {
+            LogoValidationText.Text = "Logo settings are invalid.";
+            return;
+        }
+        LogoPathText.Text = Path.GetFileName(path);
+        LogoValidationText.Text = "PNG accepted; composited on next recording.";
+        MarkPreviewChanged("Logo overlay settings saved");
+    }
+
+    private bool TryLogoPreview(string path, out string message)
+    {
+        message = "Invalid logo image.";
+        try {
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length is <= 0 or > 16777216 ||
+                !path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                return false;
+            var image = new Bitmap(path);
+            if (image.PixelSize.Width is < 1 or > 4096 ||
+                image.PixelSize.Height is < 1 or > 4096 ||
+                (long)image.PixelSize.Width * image.PixelSize.Height > 8388608) {
+                image.Dispose();
+                return false;
+            }
+            var old = _logoPreviewBitmap;
+            _logoPreviewBitmap = image;
+            LogoPreviewImage.Source = image;
+            old?.Dispose();
+            message = "";
+            return true;
+        } catch (Exception) { return false; }
+    }
+
+    private void ApplyLogoAppearance()
+    {
+        if (!_uiReady || _syncingPreviewControls || LogoSizeSlider is null)
+            return;
+        var enabled = LogoEnabledCheck.IsChecked == true;
+        if (!_preview.TrySetLogoOverlay(enabled, _preview.LogoImagePath,
+                (LogoPlacement)Math.Max(0, LogoPlacementCombo.SelectedIndex),
+                (float)(LogoSizeSlider.Value / 100),
+                (float)(LogoMarginSlider.Value / 100),
+                (float)(LogoOpacitySlider.Value / 100))) {
+            if (enabled) LogoEnabledCheck.IsChecked = false;
+            LogoValidationText.Text = "Choose a valid PNG before enabling logo.";
+            return;
+        }
+        LogoSizeText.Text = $"{LogoSizeSlider.Value:0.#}%";
+        LogoMarginText.Text = $"{LogoMarginSlider.Value:0.#}%";
+        LogoOpacityText.Text = $"{LogoOpacitySlider.Value:0}%";
+        MarkPreviewChanged("Logo overlay settings saved for next recording");
     }
 
     private void CameraPlacement_OnClick(
@@ -1182,6 +1282,16 @@ public sealed partial class SettingsWindow : Window
             CameraBorderSlider.Value = _preview.CameraBorderWidthPx;
             CameraOpacitySlider.Value = _preview.CameraOpacity * 100;
             CameraMirrorCheck.IsChecked = _preview.CameraMirror;
+            LogoEnabledCheck.IsChecked = _preview.LogoEnabled;
+            LogoPlacementCombo.SelectedIndex = (int)_preview.LogoPlacement;
+            LogoSizeSlider.Value = _preview.LogoWidthFraction * 100;
+            LogoMarginSlider.Value = _preview.LogoMarginFraction * 100;
+            LogoOpacitySlider.Value = _preview.LogoOpacity * 100;
+            LogoPathText.Text = string.IsNullOrEmpty(_preview.LogoImagePath)
+                ? "No PNG selected" : Path.GetFileName(_preview.LogoImagePath);
+            if (!string.IsNullOrEmpty(_preview.LogoImagePath) &&
+                !TryLogoPreview(_preview.LogoImagePath, out var reason))
+                LogoValidationText.Text = reason;
             UpdateCameraPlacementVisual();
         }
         finally

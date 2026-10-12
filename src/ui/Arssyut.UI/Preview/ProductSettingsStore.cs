@@ -40,7 +40,13 @@ public sealed record ProductSettingsSnapshot(
     float CameraRadiusFraction = .15f,
     float CameraBorderWidthPx = 2f,
     float CameraOpacity = 1f,
-    bool CameraMirror = false);
+    bool CameraMirror = false,
+    bool LogoEnabled = false,
+    string LogoImagePath = "",
+    LogoPlacement LogoPlacement = LogoPlacement.BottomRight,
+    float LogoWidthFraction = .12f,
+    float LogoMarginFraction = .025f,
+    float LogoOpacity = 1f);
 
 public sealed class ProductSettingsStore
 {
@@ -50,7 +56,8 @@ public sealed class ProductSettingsStore
     private const int SpotlightSchemaVersion = 4;
     private const int ProductSchemaVersion = 5;
     private const int MixerSchemaVersion = 6;
-    private const int CurrentSchemaVersion = 7;
+    private const int CameraSchemaVersion = 7;
+    private const int CurrentSchemaVersion = 8;
 
     private readonly string _path;
 
@@ -132,6 +139,7 @@ public sealed class ProductSettingsStore
                  document.SchemaVersion !=
                      ProductSchemaVersion &&
                  document.SchemaVersion != MixerSchemaVersion &&
+                 document.SchemaVersion != CameraSchemaVersion &&
                  document.SchemaVersion != CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
@@ -219,7 +227,8 @@ public sealed class ProductSettingsStore
                 document.SchemaVersion >= ProductSchemaVersion;
             var hasMixer =
                 document.SchemaVersion >= MixerSchemaVersion;
-            var hasCameraProfile = document.SchemaVersion >= CurrentSchemaVersion;
+            var hasCameraProfile = document.SchemaVersion >= CameraSchemaVersion;
+            var hasLogoProfile = document.SchemaVersion >= CurrentSchemaVersion;
             var outputFolder = latest
                 ? document.OutputFolder
                 : SettingsPreviewState.DefaultOutputFolder;
@@ -281,6 +290,20 @@ public sealed class ProductSettingsStore
                 !float.IsFinite(opacity) || opacity is < 0f or > 1f)
                 throw new InvalidDataException("Invalid Camera PIP profile.");
 
+            var logoEnabled = hasLogoProfile && document.LogoEnabled == true;
+            var logoPath = hasLogoProfile ? document.LogoImagePath ?? "" : "";
+            var logoPlacement = hasLogoProfile
+                ? (LogoPlacement)(document.LogoPlacement ?? -1)
+                : LogoPlacement.BottomRight;
+            var logoWidth = hasLogoProfile ? document.LogoWidthFraction ?? float.NaN : .12f;
+            var logoMargin = hasLogoProfile ? document.LogoMarginFraction ?? float.NaN : .025f;
+            var logoOpacity = hasLogoProfile ? document.LogoOpacity ?? float.NaN : 1f;
+            if (!Enum.IsDefined(logoPlacement) || logoPath.Length > 511 ||
+                !float.IsFinite(logoWidth) || logoWidth is < .02f or > .50f ||
+                !float.IsFinite(logoMargin) || logoMargin is < 0f or > .15f ||
+                !float.IsFinite(logoOpacity) || logoOpacity is < 0f or > 1f)
+                throw new InvalidDataException("Invalid logo preferences.");
+
             settings =
                 new ProductSettingsSnapshot(
                     loaded,
@@ -307,7 +330,9 @@ public sealed class ProductSettingsStore
                     hasMixer ? document.MicrophoneMixPercent ?? 100 : 100,
                     hasMixer && document.SystemMixMuted == true,
                     hasMixer && document.MicrophoneMixMuted == true,
-                    shape, tone, width, margin, radius, border, opacity, mirror);
+                    shape, tone, width, margin, radius, border, opacity, mirror,
+                    logoEnabled, logoPath, logoPlacement, logoWidth, logoMargin,
+                    logoOpacity);
             return true;
         }
         catch (Exception exception)
@@ -386,7 +411,15 @@ public sealed class ProductSettingsStore
                 !float.IsFinite(settings.CameraBorderWidthPx) ||
                 settings.CameraBorderWidthPx is < 0f or > 32f ||
                 !float.IsFinite(settings.CameraOpacity) ||
-                settings.CameraOpacity is < 0f or > 1f)
+                settings.CameraOpacity is < 0f or > 1f ||
+                !Enum.IsDefined(settings.LogoPlacement) ||
+                settings.LogoImagePath.Length > 511 ||
+                !float.IsFinite(settings.LogoWidthFraction) ||
+                settings.LogoWidthFraction is < .02f or > .5f ||
+                !float.IsFinite(settings.LogoMarginFraction) ||
+                settings.LogoMarginFraction is < 0f or > .15f ||
+                !float.IsFinite(settings.LogoOpacity) ||
+                settings.LogoOpacity is < 0f or > 1f)
                 throw new InvalidDataException("Invalid recording preferences.");
 
             var document =
@@ -419,6 +452,12 @@ public sealed class ProductSettingsStore
                     CameraBorderWidthPx = settings.CameraBorderWidthPx,
                     CameraOpacity = settings.CameraOpacity,
                     CameraMirror = settings.CameraMirror,
+                    LogoEnabled = settings.LogoEnabled,
+                    LogoImagePath = settings.LogoImagePath,
+                    LogoPlacement = (int)settings.LogoPlacement,
+                    LogoWidthFraction = settings.LogoWidthFraction,
+                    LogoMarginFraction = settings.LogoMarginFraction,
+                    LogoOpacity = settings.LogoOpacity,
                     PresenterZoom =
                         settings.PresenterZoom,
                     SpotlightEnabled =
@@ -654,6 +693,12 @@ public sealed class ProductSettingsStore
         public float? CameraBorderWidthPx { get; set; }
         public float? CameraOpacity { get; set; }
         public bool? CameraMirror { get; set; }
+        public bool? LogoEnabled { get; set; }
+        public string? LogoImagePath { get; set; }
+        public int? LogoPlacement { get; set; }
+        public float? LogoWidthFraction { get; set; }
+        public float? LogoMarginFraction { get; set; }
+        public float? LogoOpacity { get; set; }
 
         public float? PresenterZoom { get; set; }
 

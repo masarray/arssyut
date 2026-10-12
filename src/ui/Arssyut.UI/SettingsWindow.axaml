@@ -106,6 +106,13 @@
                 </Grid>
               </Button>
 
+              <Button x:Name="NavLogo" AutomationProperties.Name="Logo overlay settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Logo">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <PathIcon Data="{StaticResource MsPhoto}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="Logo Overlay" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
               <Button x:Name="NavMouse" AutomationProperties.Name="Mouse and keystroke settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Mouse">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
                   <PathIcon Data="{StaticResource MsMouse}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -490,6 +497,42 @@
                     </StackPanel>
                   </Border>
                   <ComboBox x:Name="CameraDeviceCombo" IsVisible="False" SelectionChanged="CameraDevice_OnSelectionChanged" />
+                </StackPanel>
+
+                <!-- Logo Overlay: independent of the webcam device -->
+                <StackPanel x:Name="PageLogo" IsVisible="False">
+                  <TextBlock Classes="micro" Text="PNG with alpha is composited onto the MP4. Changes apply to the next recording." TextWrapping="Wrap" Margin="0,0,0,12" />
+                  <Border Classes="setting-row">
+                    <StackPanel Spacing="9">
+                      <CheckBox x:Name="LogoEnabledCheck" Content="Enable logo overlay" Click="LogoAppearance_OnChange" />
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <TextBlock x:Name="LogoPathText" Text="No PNG selected" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Choose PNG" Click="ChooseLogo_OnClick" />
+                      </Grid>
+                      <Border Background="{DynamicResource ArBrush.Surface3}" CornerRadius="8" Height="108" Padding="10">
+                        <Image x:Name="LogoPreviewImage" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="240" MaxHeight="88" />
+                      </Border>
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="setting-row" Margin="0,8,0,0">
+                    <StackPanel Spacing="10">
+                      <TextBlock Text="Placement" FontWeight="Medium" />
+                      <ComboBox x:Name="LogoPlacementCombo" SelectionChanged="LogoAppearance_OnChange">
+                        <ComboBoxItem Content="Top left" />
+                        <ComboBoxItem Content="Top right" />
+                        <ComboBoxItem Content="Bottom left" />
+                        <ComboBoxItem Content="Bottom right" />
+                        <ComboBoxItem Content="Center" />
+                      </ComboBox>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Logo size" /><TextBlock x:Name="LogoSizeText" Grid.Column="1" Text="12%" /></Grid>
+                      <Slider x:Name="LogoSizeSlider" Minimum="2" Maximum="50" Value="12" PropertyChanged="LogoSlider_OnChange" />
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Edge margin" /><TextBlock x:Name="LogoMarginText" Grid.Column="1" Text="2.5%" /></Grid>
+                      <Slider x:Name="LogoMarginSlider" Minimum="0" Maximum="15" Value="2.5" PropertyChanged="LogoSlider_OnChange" />
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Opacity" /><TextBlock x:Name="LogoOpacityText" Grid.Column="1" Text="100%" /></Grid>
+                      <Slider x:Name="LogoOpacitySlider" Minimum="0" Maximum="100" Value="100" PropertyChanged="LogoSlider_OnChange" />
+                      <TextBlock x:Name="LogoValidationText" Classes="micro" Text="PNG only · Maximum 16 MB and 4096 px per side." TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
                 </StackPanel>
 
                 <!-- Mouse and keystroke -->

@@ -196,13 +196,18 @@ public sealed record NativeStartRequest(
     float MicrophoneGain = 1.0f,
     bool SystemMuted = false,
     bool MicrophoneMuted = false,
-    NativeCameraOverlay? CameraOverlay = null);
+    NativeCameraOverlay? CameraOverlay = null,
+    NativeLogoOverlay? LogoOverlay = null);
 
 public sealed record NativeCameraOverlay(
     uint Placement = 1, uint Mask = 1, float Width = .235f,
     float Margin = .035f, float Radius = .15f, float BorderWidth = 2f,
     float Opacity = 1f, bool Mirror = false, float Red = .96f,
     float Green = .96f, float Blue = .96f);
+
+public sealed record NativeLogoOverlay(
+    bool Enabled = false, string ImagePath = "", uint Placement = 3,
+    float Width = .12f, float Margin = .025f, float Opacity = 1f);
 
 public sealed class NativeBridgeClient : IDisposable
 {
@@ -914,6 +919,18 @@ public sealed class NativeBridgeClient : IDisposable
         var overlayStatus = (NativeBridgeStatus)
             NativeMethods.RecorderSetCameraOverlay(_handle, ref profile);
         if (overlayStatus != NativeBridgeStatus.Ok) return overlayStatus;
+        var logo = request.LogoOverlay ?? new NativeLogoOverlay();
+        var logoProfile = new NativeLogoOverlayV1
+        {
+            StructSize = (uint)Marshal.SizeOf<NativeLogoOverlayV1>(),
+            Version = 1, Enabled = logo.Enabled ? 1U : 0U,
+            Placement = logo.Placement, Width = logo.Width,
+            Margin = logo.Margin, Opacity = logo.Opacity,
+            ImagePath = logo.ImagePath
+        };
+        var logoStatus = (NativeBridgeStatus)
+            NativeMethods.RecorderSetLogoOverlay(_handle, ref logoProfile);
+        if (logoStatus != NativeBridgeStatus.Ok) return logoStatus;
         return (NativeBridgeStatus)
             NativeMethods.RecorderStart(_handle, ref native);
     }
@@ -1155,6 +1172,21 @@ public sealed class NativeBridgeClient : IDisposable
     [StructLayout(
         LayoutKind.Sequential,
         CharSet = CharSet.Unicode)]
+    private struct NativeLogoOverlayV1
+    {
+        public uint StructSize;
+        public uint Version;
+        public uint Enabled;
+        public uint Placement;
+        public float Width;
+        public float Margin;
+        public float Opacity;
+        public float Reserved;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 512)]
+        public string ImagePath;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NativeCameraOverlayV1
     {
         public uint StructSize;
@@ -1382,6 +1414,14 @@ public sealed class NativeBridgeClient : IDisposable
             uint kind,
             uint index,
             ref NativeDeviceV1 device);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_set_logo_overlay",
+            CallingConvention = CallingConvention.Cdecl,
+            CharSet = CharSet.Unicode)]
+        public static extern int RecorderSetLogoOverlay(
+            IntPtr handle, ref NativeLogoOverlayV1 profile);
 
         [DllImport(
             LibraryName,

@@ -27,6 +27,12 @@ public enum CameraBorderTone
     Red = 2
 }
 
+public enum LogoPlacement
+{
+    TopLeft = 0, TopRight = 1, BottomLeft = 2,
+    BottomRight = 3, Center = 4
+}
+
 public enum RecordingVisualStyle
 {
     PixelAccurate,
@@ -249,6 +255,39 @@ public sealed class SettingsPreviewState
         CameraBorderWidthPx = borderWidth;
         CameraOpacity = opacity;
         CameraMirror = mirror;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public bool LogoEnabled { get; private set; }
+    public string LogoImagePath { get; private set; } = string.Empty;
+    public LogoPlacement LogoPlacement { get; private set; } =
+        LogoPlacement.BottomRight;
+    public float LogoWidthFraction { get; private set; } = .12f;
+    public float LogoMarginFraction { get; private set; } = .025f;
+    public float LogoOpacity { get; private set; } = 1f;
+
+    public bool TrySetLogoOverlay(bool enabled, string path,
+        LogoPlacement placement, float width, float margin, float opacity)
+    {
+        if (!Enum.IsDefined(placement) || path.Length > 511 ||
+            (enabled && (string.IsNullOrWhiteSpace(path) ||
+                         !System.IO.Path.IsPathFullyQualified(path))) ||
+            !float.IsFinite(width) || width is < .02f or > .50f ||
+            !float.IsFinite(margin) || margin is < 0f or > .15f ||
+            !float.IsFinite(opacity) || opacity is < 0f or > 1f)
+            return false;
+        if (LogoEnabled == enabled && LogoImagePath == path &&
+            LogoPlacement == placement && LogoWidthFraction == width &&
+            LogoMarginFraction == margin && LogoOpacity == opacity)
+            return true;
+        LogoEnabled = enabled;
+        LogoImagePath = path;
+        LogoPlacement = placement;
+        LogoWidthFraction = width;
+        LogoMarginFraction = margin;
+        LogoOpacity = opacity;
         PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
@@ -546,6 +585,14 @@ public sealed class SettingsPreviewState
             string.IsNullOrWhiteSpace(snapshot.MicrophoneDevice) ||
             snapshot.MicrophoneDevice.Length > 512 ||
             !Enum.IsDefined(snapshot.CameraPlacement) ||
+            !Enum.IsDefined(snapshot.LogoPlacement) ||
+            snapshot.LogoImagePath.Length > 511 ||
+            !float.IsFinite(snapshot.LogoWidthFraction) ||
+            snapshot.LogoWidthFraction is < .02f or > .50f ||
+            !float.IsFinite(snapshot.LogoMarginFraction) ||
+            snapshot.LogoMarginFraction is < 0f or > .15f ||
+            !float.IsFinite(snapshot.LogoOpacity) ||
+            snapshot.LogoOpacity is < 0f or > 1f ||
             !Enum.IsDefined(snapshot.CameraMask) ||
             !Enum.IsDefined(snapshot.CameraBorder) ||
             !float.IsFinite(snapshot.CameraWidthFraction) ||
@@ -614,6 +661,12 @@ public sealed class SettingsPreviewState
         CameraBorderWidthPx = snapshot.CameraBorderWidthPx;
         CameraOpacity = snapshot.CameraOpacity;
         CameraMirror = snapshot.CameraMirror;
+        LogoEnabled = snapshot.LogoEnabled;
+        LogoImagePath = snapshot.LogoImagePath;
+        LogoPlacement = snapshot.LogoPlacement;
+        LogoWidthFraction = snapshot.LogoWidthFraction;
+        LogoMarginFraction = snapshot.LogoMarginFraction;
+        LogoOpacity = snapshot.LogoOpacity;
         _cameraDevice = snapshot.CameraDevice;
         return true;
     }
@@ -752,6 +805,12 @@ public sealed class SettingsPreviewState
         CameraBorderWidthPx = 2f;
         CameraOpacity = 1f;
         CameraMirror = false;
+        LogoEnabled = false;
+        LogoImagePath = string.Empty;
+        LogoPlacement = LogoPlacement.BottomRight;
+        LogoWidthFraction = .12f;
+        LogoMarginFraction = .025f;
+        LogoOpacity = 1f;
         _microphoneDevice =
             "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
         _cameraDevice =
