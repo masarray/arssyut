@@ -368,14 +368,14 @@ try
             0.46f) < 0.0005f,
         "restored startup state preserves canonical presenter and Spotlight settings");
 
-    var schemaV6Lines =
+    var schemaV7Lines =
         File.ReadAllLines(
             persistencePath);
 
     // Schema v3 predates Spotlight product settings. Migration must keep all
     // existing hotkeys/zoom and introduce inert Spotlight defaults.
     var schemaV3Lines =
-        schemaV6Lines
+        schemaV7Lines
             .Where(
                 line =>
                     !line.Contains(
@@ -396,7 +396,7 @@ try
             .Select(
                 line =>
                     line.Replace(
-                        "\"SchemaVersion\": 6",
+                        "\"SchemaVersion\": 7",
                         "\"SchemaVersion\": 3",
                         StringComparison.Ordinal))
             .ToArray();
@@ -838,7 +838,8 @@ Expect(
     string.IsNullOrEmpty(settings.ResetZoomHotkey) &&
     string.IsNullOrEmpty(settings.OverviewPeekHotkey) &&
     settings.CameraPlacement ==
-        CameraPlacement.BottomRight &&
+        CameraPlacement.TopRight &&
+    settings.CameraMask == CameraPipMask.RoundedRectangle &&
     settings.OutputFolder ==
         @"Videos\Arssyut" &&
     settings.FrameRate == 60 &&

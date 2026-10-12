@@ -51,6 +51,26 @@ class WebcamF2BSingleSource(unittest.TestCase):
         assert "next_preview_ticks_ = 0;" in resumed
         assert "state_.store(1, std::memory_order_release);" in resumed
 
+    def test_camera_profile_reaches_encoded_gpu_output(self):
+        settings = load("src/ui/Arssyut.UI/Preview/SettingsPreviewState.cs")
+        store = load("src/ui/Arssyut.UI/Preview/ProductSettingsStore.cs")
+        managed = load("src/ui/Arssyut.UI/Interop/NativeBridgeClient.cs")
+        request = load("src/ui/Arssyut.UI/MainWindow.axaml.cs")
+        native = load("src/bridge/native_bridge.cpp")
+        compos = load("src/platform/windows/graphics/d3d11_compositor.cpp")
+        self.assertIn("TrySetCameraOverlay(", settings)
+        self.assertIn("CurrentSchemaVersion = 7;", store)
+        self.assertIn("RecorderSetCameraOverlay(", managed)
+        self.assertIn("new NativeCameraOverlay(", request)
+        self.assertIn("config.camera_overlay = context->camera_overlay;", native)
+        self.assertIn("set_camera_overlay_profile(config_.camera_overlay)", RECORDER)
+        self.assertIn("camera_overlay_.placement", compos)
+        self.assertIn("const int mask", compos)
+        self.assertIn("const bool rounded", compos)
+        self.assertIn("webcam_border.rgb", compos)
+        self.assertIn("webcam_style.x", compos)
+        self.assertIn("webcam_params.w", compos)
+
     def test_gpu_readback_never_waits_on_recorder(self):
         self.assertIn("D3D11_ASYNC_GETDATA_DONOTFLUSH", SOURCE)
         self.assertIn("D3D11_MAP_FLAG_DO_NOT_WAIT", SOURCE)
