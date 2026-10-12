@@ -106,6 +106,13 @@
                 </Grid>
               </Button>
 
+              <Button x:Name="NavLogo" AutomationProperties.Name="Logo Overlay settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Logo">
+                <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
+                  <PathIcon Data="{StaticResource MsImage}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                  <TextBlock Grid.Column="1" Text="Logo Overlay" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+
               <Button x:Name="NavMouse" AutomationProperties.Name="Mouse and keystroke settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Mouse">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
                   <PathIcon Data="{StaticResource MsMouse}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
@@ -439,29 +446,107 @@
                              Margin="2,0,0,0" Classes="micro" />
                 </StackPanel>
 
-                <!-- Camera -->
-                <StackPanel x:Name="PageCamera" IsVisible="False">
-                  <Border Classes="capability-lock">
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                      <Border Width="34" Height="34" CornerRadius="9"
+                <!-- Native Camera PIP, immutable next-session output profile -->
+                <StackPanel x:Name="PageCamera" IsVisible="False" Spacing="10">
+                  <Border Classes="setting-row">
+                    <StackPanel Spacing="7">
+                      <TextBlock Text="Camera device" FontWeight="Medium" />
+                      <ComboBox x:Name="CameraDeviceCombo" SelectionChanged="CameraDevice_OnSelectionChanged"
+                                AutomationProperties.Name="Native camera device" />
+                      <TextBlock Text="One physical GPU camera feeds the preview and recorded PIP. Changes apply to the next recording." Classes="micro" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="setting-row">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="PIP placement" FontWeight="Medium" />
+                      <Border Height="102" Width="240" HorizontalAlignment="Left" CornerRadius="6"
                               Background="{DynamicResource ArBrush.Surface3}">
-                        <PathIcon Data="{StaticResource MsCamera}" Width="17" Height="17" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource ArBrush.TextSecondary}" />
+                        <Grid Margin="8">
+                          <Border x:Name="CameraPreviewBadge" Width="82" Height="49" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                  CornerRadius="10" Background="#586e7f" BorderBrush="#c3d1df" BorderThickness="1.4">
+                            <PathIcon Data="{StaticResource MsCamera}" Foreground="White" Width="20" Height="20"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                          </Border>
+                        </Grid>
                       </Border>
-                      <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-                        <TextBlock Text="Camera compositor backend is not connected yet" FontWeight="SemiBold" />
-                        <TextBlock Text="Device selection, placement and size controls return only when the real Media Foundation camera path can change the encoded recording." Classes="micro" TextWrapping="Wrap" />
+                      <UniformGrid Columns="4">
+                        <Button x:Name="AnchorTopLeft" Tag="TopLeft" Click="CameraPlacement_OnClick" Content="Top L" />
+                        <Button x:Name="AnchorTopRight" Tag="TopRight" Click="CameraPlacement_OnClick" Content="Top R" />
+                        <Button x:Name="AnchorBottomLeft" Tag="BottomLeft" Click="CameraPlacement_OnClick" Content="Bottom L" />
+                        <Button x:Name="AnchorBottomRight" Tag="BottomRight" Click="CameraPlacement_OnClick" Content="Bottom R" />
+                      </UniformGrid>
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="setting-row">
+                    <StackPanel Spacing="8">
+                      <TextBlock Text="Image mask" FontWeight="Medium" />
+                      <ComboBox x:Name="CameraMaskCombo" SelectionChanged="CameraMask_OnChanged">
+                        <ComboBoxItem Content="Circle" />
+                        <ComboBoxItem Content="Rounded rectangle" />
+                        <ComboBoxItem Content="Diagonal — top-left / bottom-right rounded" />
+                        <ComboBoxItem Content="Diagonal — top-right / bottom-left rounded" />
+                      </ComboBox>
+                      <TextBlock Text="Diagonal TR/BL: top-left and bottom-right remain square." Classes="micro" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="setting-row">
+                    <StackPanel Spacing="8">
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="PIP size" FontWeight="Medium" /><TextBlock x:Name="CameraSizeLabel" Grid.Column="1" Text="24%" Classes="micro"/></Grid>
+                      <Slider x:Name="CameraSizeSlider" Minimum="15" Maximum="40" Value="24" TickFrequency="1" PropertyChanged="CameraGeometry_OnChanged"/>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Edge margin" FontWeight="Medium" /><TextBlock x:Name="CameraMarginLabel" Grid.Column="1" Text="3%" Classes="micro"/></Grid>
+                      <Slider x:Name="CameraMarginSlider" Minimum="0" Maximum="12" Value="3" TickFrequency="1" PropertyChanged="CameraGeometry_OnChanged"/>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Corner radius" FontWeight="Medium" /><TextBlock x:Name="CameraCornerLabel" Grid.Column="1" Text="15%" Classes="micro"/></Grid>
+                      <Slider x:Name="CameraCornerSlider" Minimum="0" Maximum="50" Value="15" TickFrequency="1" PropertyChanged="CameraGeometry_OnChanged"/>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Border" FontWeight="Medium" /><TextBlock x:Name="CameraBorderLabel" Grid.Column="1" Text="2 px" Classes="micro"/></Grid>
+                      <Slider x:Name="CameraBorderSlider" Minimum="0" Maximum="12" Value="2" TickFrequency="1" PropertyChanged="CameraGeometry_OnChanged"/>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Opacity" FontWeight="Medium" /><TextBlock x:Name="CameraOpacityLabel" Grid.Column="1" Text="100%" Classes="micro"/></Grid>
+                      <Slider x:Name="CameraOpacitySlider" Minimum="0" Maximum="100" Value="100" TickFrequency="1" PropertyChanged="CameraGeometry_OnChanged"/>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Mirror horizontally" FontWeight="Medium"/><ToggleSwitch x:Name="CameraMirrorToggle" Grid.Column="1" Classes="ar-toggle" OnContent="" OffContent="" Click="CameraMirror_OnClick"/></Grid>
+                    </StackPanel>
+                  </Border>
+                </StackPanel>
+
+                <!-- Independent PNG-alpha Logo Overlay, not tied to camera -->
+                <StackPanel x:Name="PageLogo" IsVisible="False" Spacing="10">
+                  <Border Classes="setting-row">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="3">
+                        <TextBlock Text="Logo overlay" FontWeight="Medium" />
+                        <TextBlock Text="Composite a transparent PNG into the recorded MP4." Classes="micro"/>
                       </StackPanel>
+                      <ToggleSwitch x:Name="LogoEnabledToggle" Grid.Column="1" Classes="ar-toggle"
+                                    OnContent="" OffContent="" Click="LogoEnabled_OnClick"/>
                     </Grid>
                   </Border>
-
-                  <Grid IsVisible="False">
-                    <ComboBox x:Name="CameraDeviceCombo" SelectionChanged="CameraDevice_OnSelectionChanged" />
-                    <Button x:Name="AnchorTopLeft" Tag="TopLeft" Click="CameraPlacement_OnClick" />
-                    <Button x:Name="AnchorTopRight" Tag="TopRight" Click="CameraPlacement_OnClick" />
-                    <Button x:Name="AnchorBottomLeft" Tag="BottomLeft" Click="CameraPlacement_OnClick" />
-                    <Button x:Name="AnchorBottomRight" Tag="BottomRight" Click="CameraPlacement_OnClick" />
-                    <Border x:Name="CameraPreviewBadge" />
-                  </Grid>
+                  <Border Classes="setting-row">
+                    <StackPanel Spacing="8">
+                      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <TextBlock Text="Image" FontWeight="Medium" VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Content="Choose PNG…" Click="LogoPick_OnClick"/>
+                      </Grid>
+                      <TextBlock x:Name="LogoPathText" Classes="micro" Text="No image selected" TextTrimming="CharacterEllipsis"/>
+                      <Border Height="90" CornerRadius="7" Background="{DynamicResource ArBrush.Surface3}">
+                        <Image x:Name="LogoPreviewImage" Stretch="Uniform" Margin="7"/>
+                      </Border>
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="setting-row">
+                    <StackPanel Spacing="9">
+                      <TextBlock Text="Placement" FontWeight="Medium"/>
+                      <ComboBox x:Name="LogoPlacementCombo" SelectionChanged="LogoPlacement_OnChanged">
+                        <ComboBoxItem Content="Top Left" /><ComboBoxItem Content="Top Right" />
+                        <ComboBoxItem Content="Bottom Left" /><ComboBoxItem Content="Bottom Right" />
+                        <ComboBoxItem Content="Center" />
+                      </ComboBox>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Size" FontWeight="Medium"/><TextBlock Grid.Column="1" x:Name="LogoSizeLabel" Classes="micro" Text="13%"/></Grid>
+                      <Slider x:Name="LogoSizeSlider" Minimum="3" Maximum="40" Value="13" TickFrequency="1" PropertyChanged="LogoGeometry_OnChanged"/>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Margin" FontWeight="Medium"/><TextBlock Grid.Column="1" x:Name="LogoMarginLabel" Classes="micro" Text="3%"/></Grid>
+                      <Slider x:Name="LogoMarginSlider" Minimum="0" Maximum="12" Value="3" TickFrequency="1" PropertyChanged="LogoGeometry_OnChanged"/>
+                      <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Opacity" FontWeight="Medium"/><TextBlock Grid.Column="1" x:Name="LogoOpacityLabel" Classes="micro" Text="100%"/></Grid>
+                      <Slider x:Name="LogoOpacitySlider" Minimum="0" Maximum="100" Value="100" TickFrequency="1" PropertyChanged="LogoGeometry_OnChanged"/>
+                    </StackPanel>
+                  </Border>
+                  <TextBlock Text="PNG with transparency. Invalid or missing logos cannot stop recording." Classes="micro" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!-- Mouse and keystroke -->
