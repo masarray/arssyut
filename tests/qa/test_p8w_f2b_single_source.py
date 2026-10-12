@@ -43,6 +43,14 @@ class WebcamF2BSingleSource(unittest.TestCase):
         self.assertIn("pipeline->preview_while_paused(", RECORDER)
         self.assertIn("pipeline->process_due(", RECORDER)
 
+    def test_post_stop_gpu_readback_submitted_and_cadence_reset(self):
+        assert "ctx->Flush();" in SOURCE
+        assert "D3D11_ASYNC_GETDATA_DONOTFLUSH" in SOURCE
+        assert "D3D11_MAP_FLAG_DO_NOT_WAIT" in SOURCE
+        resumed = SOURCE.split("recording_acknowledged_ = false;", 2)[-1]
+        assert "next_preview_ticks_ = 0;" in resumed
+        assert "state_.store(1, std::memory_order_release);" in resumed
+
     def test_gpu_readback_never_waits_on_recorder(self):
         self.assertIn("D3D11_ASYNC_GETDATA_DONOTFLUSH", SOURCE)
         self.assertIn("D3D11_MAP_FLAG_DO_NOT_WAIT", SOURCE)
