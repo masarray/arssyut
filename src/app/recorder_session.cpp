@@ -1979,6 +1979,12 @@ void RecorderSession::write_diagnostics(
             << "  \"audio_frames_submitted\": "
             << audio_frames_submitted_.load(std::memory_order_relaxed)
             << ",\n"
+            << "  \"audio_system_endpoint_mode\": \""
+            << (config_.audio_system_id.empty() ? "windows_default" : "explicit")
+            << "\",\n"
+            << "  \"audio_system_zero_packets_warning\": "
+            << (config_.audio_system && audio_health_.system.captured == 0
+                ? "true" : "false") << ",\n"
             << "  \"audio_system_packets_captured\": " << audio_health_.system.captured << ",\n"
             << "  \"audio_system_packets_published\": " << audio_health_.system.published << ",\n"
             << "  \"audio_system_packets_silent\": " << audio_health_.system.silent << ",\n"
