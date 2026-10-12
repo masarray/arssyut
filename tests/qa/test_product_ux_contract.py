@@ -301,7 +301,8 @@ class UXContract(unittest.TestCase):
         state = (UI / "Preview/SettingsPreviewState.cs").read_text(encoding="utf-8-sig")
         store = (UI / "Preview/ProductSettingsStore.cs").read_text(encoding="utf-8-sig")
         app = (UI / "App.axaml.cs").read_text(encoding="utf-8-sig")
-        self.assertIn("private const int CurrentSchemaVersion = 6;", store)
+        self.assertIn("private const int CurrentSchemaVersion = 7;", store)
+        self.assertIn("private const int MixerSchemaVersion = 6;", store)
         self.assertIn("private const int ProductSchemaVersion = 5;", store)
         self.assertIn("private const int SpotlightSchemaVersion = 4;", store)
         for field in ("CaptureMode", "CaptureSourceId", "SystemAudioEnabled",
