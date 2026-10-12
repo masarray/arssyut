@@ -23,7 +23,7 @@ class WebcamPreviewSession final {
 public:
     static constexpr std::uint32_t width = 192, height = 108;
     static constexpr std::size_t bytes = width * height * 4U;
-    WebcamPreviewSession() = default;
+    WebcamPreviewSession();
     ~WebcamPreviewSession();
     WebcamPreviewSession(const WebcamPreviewSession &) = delete;
     WebcamPreviewSession &operator=(const WebcamPreviewSession &) = delete;
