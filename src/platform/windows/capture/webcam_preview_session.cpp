@@ -366,6 +366,14 @@ void WebcamPreviewSession::run(std::wstring symbolic_link) noexcept {
                     return !recording_requested_ || stopping_.load();
                 });
                 recording_acknowledged_ = false;
+                // Recorder has finished all immediate-context GPU use.
+                // The preview worker becomes the owner again. Issue a
+                // NON-BLOCKING submit, not a Map/GPU fence wait: query
+                // readbacks queued by the recorder may otherwise never
+                // complete when the desktop is static after Stop.
+                if (graphics_)
+                    graphics_->immediate_context()->Flush();
+                next_preview_ticks_ = 0;
                 handoff_cv_.notify_all();
                 continue;
             }
@@ -388,6 +396,10 @@ void WebcamPreviewSession::run(std::wstring symbolic_link) noexcept {
                                     graphics_->immediate_context(),
                                     lease.get(), pixels.data(), ready)) {
                     if (ready) publish_pixels(pixels);
+                    // Preview-only GPU owner has no encoder to flush its
+                    // command queue. Submit <=10Hz tiny readbacks so the
+                    // D3D11 EVENT becomes ready; no synchronous GPU wait.
+                    graphics_->immediate_context()->Flush();
                 } else {
                     failure_detail_.store(static_cast<std::uint32_t>(E_FAIL));
                     failure_stage_.store(5, std::memory_order_release);
