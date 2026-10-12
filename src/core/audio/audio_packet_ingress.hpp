@@ -24,6 +24,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 
 namespace arssyut::core::audio {
@@ -101,7 +102,9 @@ public:
     [[nodiscard]] PacketIngressResult process_packet(
         const AudioSourcePacket &packet,
         std::span<const std::byte> payload,
-        CanonicalProgramAssembler &assembler) noexcept
+        CanonicalProgramAssembler &assembler,
+        std::int64_t stop_frame_exclusive =
+            (std::numeric_limits<std::int64_t>::max)()) noexcept
     {
         PacketIngressResult result;
         if (!ready_ || packet.source != source_ ||
@@ -222,6 +225,19 @@ public:
             return result;
         }
         const std::int64_t first = next_frame_ + negative_trim;
+        // The physical Stop is projected once into the canonical 48k
+        // program domain. SRC may consume a packet spanning Stop, but PCM
+        // outside that media interval must NEVER occupy bounded staging.
+        // Advance the SRC cursor exactly once even when all its output is
+        // beyond Stop; never replay a partially consumed native packet.
+        if (first >= stop_frame_exclusive) {
+            next_frame_ += produced;
+            result.status = PacketIngressStatus::NoOutput;
+            return result;
+        }
+        const auto admitted = static_cast<std::uint32_t>(
+            (std::min)(static_cast<std::int64_t>(emitted),
+                       stop_frame_exclusive - first));
         result.first_canonical_frame = first;
         result.discontinuity = marked_discontinuity_;
         // De-click only the discontinuity island. Preserve the exact sample
@@ -230,7 +246,7 @@ public:
         // after a successful bounded-stage offer.
         auto next_ramp = seam_ramp_remaining_;
         if (next_ramp != 0) {
-            const auto count = (std::min)(emitted, next_ramp);
+            const auto count = (std::min)(admitted, next_ramp);
             for (std::uint32_t i = 0; i < count; ++i) {
                 const float gain = static_cast<float>(
                     kSeamRampFrames - next_ramp + i + 1U) /
@@ -246,15 +262,15 @@ public:
             source_, first,
             std::span<const float>(
                 canonical_.data() + static_cast<std::size_t>(negative_trim)*2,
-                static_cast<std::size_t>(emitted)*2),
-            emitted, marked_discontinuity_);
+                static_cast<std::size_t>(admitted)*2),
+            admitted, marked_discontinuity_);
         switch (offer) {
         case CanonicalProgramOfferStatus::Applied:
             next_frame_ += produced;
             seam_ramp_remaining_ = next_ramp;
             marked_discontinuity_ = false;
             result.status = PacketIngressStatus::Applied;
-            result.canonical_frames_emitted = emitted;
+            result.canonical_frames_emitted = admitted;
             break;
         case CanonicalProgramOfferStatus::Overflow:
             result.status = PacketIngressStatus::StageFull;
@@ -281,7 +297,9 @@ public:
     // One bounded stop-drain step on the same owner. Caller must run it before
     // closing the canonical output interval, never after MF Finalize.
     [[nodiscard]] PacketIngressResult drain_one(
-        CanonicalProgramAssembler &assembler) noexcept
+        CanonicalProgramAssembler &assembler,
+        std::int64_t stop_frame_exclusive =
+            (std::numeric_limits<std::int64_t>::max)()) noexcept
     {
         PacketIngressResult result;
         if (!ready_ || !have_next_)
@@ -301,7 +319,15 @@ public:
             ready_ = false;
             return result;
         }
-        const auto count = drained.output_frames_produced;
+        const auto produced = drained.output_frames_produced;
+        if (next_frame_ >= stop_frame_exclusive) {
+            next_frame_ += produced;
+            result.status = PacketIngressStatus::NoOutput;
+            return result;
+        }
+        const auto count = static_cast<std::uint32_t>(
+            (std::min)(static_cast<std::int64_t>(produced),
+                       stop_frame_exclusive - next_frame_));
         result.first_canonical_frame = next_frame_;
         result.discontinuity = marked_discontinuity_;
         const auto offer = assembler.offer(
@@ -315,7 +341,7 @@ public:
                 : PacketIngressStatus::StageGap;
             return result;
         }
-        next_frame_ += count;
+        next_frame_ += produced;
         marked_discontinuity_ = false;
         result.status = PacketIngressStatus::Applied;
         result.canonical_frames_emitted = count;
@@ -330,7 +356,9 @@ public:
     // truncated, and the payload is released on *every* exit path.
     [[nodiscard]] PacketIngressResult process_lease(
         windows::WasapiPacketLease &lease,
-        CanonicalProgramAssembler &assembler) noexcept
+        CanonicalProgramAssembler &assembler,
+        std::int64_t stop_frame_exclusive =
+            (std::numeric_limits<std::int64_t>::max)()) noexcept
     {
         PacketIngressResult aggregate{};
         if (!lease.valid())
@@ -419,7 +447,8 @@ public:
                 part.payload_bytes = 0;
             }
 
-            const auto attempt = process_packet(part, bytes, assembler);
+            const auto attempt = process_packet(
+                part, bytes, assembler, stop_frame_exclusive);
             if (attempt.status != PacketIngressStatus::Applied &&
                 attempt.status != PacketIngressStatus::NoOutput &&
                 attempt.status != PacketIngressStatus::BeforeMediaZero) {
@@ -466,7 +495,9 @@ public:
     [[nodiscard]] SourcePumpResult pump_available(
         WasapiSource &source,
         CanonicalProgramAssembler &assembler,
-        std::uint32_t max_packets = 2) noexcept
+        std::uint32_t max_packets = 2,
+        std::int64_t stop_frame_exclusive =
+            (std::numeric_limits<std::int64_t>::max)()) noexcept
     {
         SourcePumpResult result;
         if (!ready_ || max_packets == 0 || max_packets > 4) {
@@ -480,7 +511,8 @@ public:
                 break;
             }
             ++result.packets_popped;
-            const auto one = process_lease(lease, assembler);
+            const auto one = process_lease(
+                lease, assembler, stop_frame_exclusive);
             if (one.status != PacketIngressStatus::Applied &&
                 one.status != PacketIngressStatus::BeforeMediaZero &&
                 one.status != PacketIngressStatus::NoOutput) {
