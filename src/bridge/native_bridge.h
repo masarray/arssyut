@@ -15,7 +15,7 @@
 
 extern "C" {
 
-constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 11;
+constexpr std::uint32_t ARSSYUT_BRIDGE_ABI_VERSION = 12;
 constexpr std::size_t ARSSYUT_BRIDGE_LABEL_CAPACITY = 256;
 constexpr std::size_t ARSSYUT_BRIDGE_PATH_CAPACITY = 512;
 
@@ -194,6 +194,23 @@ struct ArssyutBridgeStartRequestV1 {
     float microphone_gain;
     std::uint32_t system_muted;
     std::uint32_t microphone_muted;
+    // ABI v12 — additive immutable output-space overlays. Only populated
+    // by matching managed v12 clients; do not reinterpret old reserved slots.
+    std::uint32_t camera_profile_version;
+    std::uint32_t camera_placement;
+    std::uint32_t camera_mask;
+    float camera_width_fraction;
+    float camera_margin_fraction;
+    float camera_corner_fraction;
+    float camera_border_pixels;
+    float camera_opacity;
+    std::uint32_t camera_mirror;
+    std::uint32_t logo_enabled;
+    std::uint32_t logo_placement;
+    float logo_width_fraction;
+    float logo_margin_fraction;
+    float logo_opacity;
+    wchar_t logo_path[ARSSYUT_BRIDGE_PATH_CAPACITY];
 };
 
 // Additive ABI v10 endpoint-level peak monitor. Read-only; never records,
