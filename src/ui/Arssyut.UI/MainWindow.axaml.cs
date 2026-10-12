@@ -897,6 +897,8 @@ public sealed partial class MainWindow : Window
             _playbackSelectionValid = found != -2;
             _systemAudioDeviceToken = found >= 0
                 ? devices.Playbacks[found].Token : 0;
+            if (_playbackSelectionValid)
+                _ = _nativeBridge.SetSystemAudioEndpoint(_systemAudioDeviceToken);
             if (found == -2) {
                 SystemAudioDeviceComboMain.Items.Add(new ComboBoxItem {
                     Content = $"Unavailable: {wantedPlayback}",
