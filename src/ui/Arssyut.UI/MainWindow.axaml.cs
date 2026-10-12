@@ -1452,6 +1452,14 @@ public sealed partial class MainWindow : Window
 
     private void RefreshInputLabels()
     {
+        // A hardware-source switch during native capture is not supported.
+        // Disable these controls instead of allowing a misleading GUI state
+        // that disagrees with the one retained MF camera owner.
+        var cameraBusy = _webcamStartTransition ||
+            _lastNativeSnapshot?.State is NativeRecorderState.Preparing or
+                NativeRecorderState.Armed or NativeRecorderState.Recording or
+                NativeRecorderState.Paused or NativeRecorderState.Stopping or
+                NativeRecorderState.Finalizing;
         if (!_allowInteractionPreview && !_audioHardwarePreview)
         {
             SystemAudioToggle.IsChecked =
@@ -1473,9 +1481,9 @@ public sealed partial class MainWindow : Window
             CameraToggle.IsChecked = _webcamHardwarePreview &&
                 _session.CameraEnabled;
             CameraToggle.IsEnabled = _webcamHardwarePreview &&
-                _cameraDeviceToken != 0;
+                _cameraDeviceToken != 0 && !cameraBusy;
             CameraDeviceComboMain.IsEnabled = _webcamHardwarePreview &&
-                _cameraDeviceToken != 0;
+                _cameraDeviceToken != 0 && !cameraBusy;
             CameraDeviceButton.IsEnabled = false;
             CameraDeviceText.Text =
                 _webcamHardwarePreview
@@ -1493,11 +1501,11 @@ public sealed partial class MainWindow : Window
 
         // Internal P8W2 camera may run without enabling experimental
         // audio. Tokens come only from the refreshed native device catalog.
-        CameraToggle.IsEnabled = _allowInteractionPreview ||
-            (_webcamHardwarePreview && _cameraDeviceToken != 0);
+        CameraToggle.IsEnabled = !cameraBusy && (_allowInteractionPreview ||
+            (_webcamHardwarePreview && _cameraDeviceToken != 0));
         CameraDeviceButton.IsEnabled = false;
-        CameraDeviceComboMain.IsEnabled = _allowInteractionPreview ||
-            (_webcamHardwarePreview && _cameraDeviceToken != 0);
+        CameraDeviceComboMain.IsEnabled = !cameraBusy && (_allowInteractionPreview ||
+            (_webcamHardwarePreview && _cameraDeviceToken != 0));
         CameraDeviceText.Text =
             _session.CameraEnabled
                 ? _cameraDevice
