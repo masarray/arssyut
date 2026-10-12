@@ -1,4 +1,6 @@
 #include "platform/windows/capture/webcam_preview_session.hpp"
+#include "core/overlay/output_overlay_profile.hpp"
+#include <limits>
 #include <array>
 #include <iostream>
 
@@ -8,6 +10,31 @@ int main()
     static_assert(WebcamPreviewSession::width == 192);
     static_assert(WebcamPreviewSession::height == 108);
     static_assert(WebcamPreviewSession::bytes == 192 * 108 * 4);
+
+    using namespace arssyut::core::overlay;
+    static_assert(corner_rounded(CameraMask::DiagonalTopRightBottomLeft, 1));
+    static_assert(corner_rounded(CameraMask::DiagonalTopRightBottomLeft, 3));
+    static_assert(!corner_rounded(CameraMask::DiagonalTopRightBottomLeft, 0));
+    static_assert(!corner_rounded(CameraMask::DiagonalTopRightBottomLeft, 2));
+    static_assert(corner_rounded(CameraMask::DiagonalTopLeftBottomRight, 0));
+    static_assert(!corner_rounded(CameraMask::DiagonalTopLeftBottomRight, 1));
+    CameraOverlayProfile camera_profile{};
+    LogoOverlayProfile logo_profile{};
+    if (!valid(camera_profile) || !valid(logo_profile)) {
+        std::cerr << "Overlay defaults invalid\n";
+        return 1;
+    }
+    camera_profile.width_fraction =
+        (std::numeric_limits<float>::quiet_NaN)();
+    if (valid(camera_profile)) {
+        std::cerr << "Non-finite camera geometry was accepted\n";
+        return 1;
+    }
+    logo_profile.opacity = 1.5f;
+    if (valid(logo_profile)) {
+        std::cerr << "Invalid logo opacity was accepted\n";
+        return 1;
+    }
 
     WebcamPreviewSession preview;
     std::array<std::uint8_t, WebcamPreviewSession::bytes> image{};
