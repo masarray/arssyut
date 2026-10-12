@@ -463,9 +463,12 @@
                               Background="{DynamicResource ArBrush.Surface3}">
                         <Grid Margin="8">
                           <Border x:Name="CameraPreviewBadge" Width="82" Height="49" HorizontalAlignment="Right" VerticalAlignment="Top"
-                                  CornerRadius="10" Background="#586e7f" BorderBrush="#c3d1df" BorderThickness="1.4">
-                            <PathIcon Data="{StaticResource MsCamera}" Foreground="White" Width="20" Height="20"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                  CornerRadius="10" ClipToBounds="True" Background="#586e7f" BorderBrush="#c3d1df" BorderThickness="1.4">
+                            <Grid>
+                              <Image x:Name="CameraSettingsLiveImage" Stretch="UniformToFill" IsVisible="False"/>
+                              <PathIcon x:Name="CameraSettingsEmptyIcon" Data="{StaticResource MsCamera}" Foreground="White" Width="20" Height="20"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
                           </Border>
                         </Grid>
                       </Border>
