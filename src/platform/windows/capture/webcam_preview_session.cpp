@@ -184,6 +184,7 @@ bool WebcamPreviewSession::validate_gpu_shader() noexcept {
         D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &ps, nullptr));
 }
 
+WebcamPreviewSession::WebcamPreviewSession() = default;
 WebcamPreviewSession::~WebcamPreviewSession() { stop(); }
 
 bool WebcamPreviewSession::start(std::wstring symbolic_link) noexcept {
@@ -242,7 +243,8 @@ bool WebcamPreviewSession::begin_recording() noexcept {
         return graphics_ready_ ||
                stopping_.load(std::memory_order_acquire) ||
                state_.load(std::memory_order_acquire) == 3;
-    }) || !graphics_ready_ || stopping_.load()) return false;
+    }) || !graphics_ready_ || stopping_.load() ||
+        state_.load(std::memory_order_acquire) == 3) return false;
     recording_requested_ = true;
     handoff_cv_.notify_all();
     const bool handed_over = handoff_cv_.wait_for(
@@ -326,8 +328,8 @@ void WebcamPreviewSession::run(std::wstring symbolic_link) noexcept {
         return;
     }
     graphics_ = std::move(graphics_result).value();
-    renderer_ = std::make_unique<WebcamPreviewRenderer>();
-    if (!renderer_->init(graphics_->device())) {
+    renderer_.reset(new (std::nothrow) WebcamPreviewRenderer{});
+    if (!renderer_ || !renderer_->init(graphics_->device())) {
         failure_detail_.store(static_cast<std::uint32_t>(E_FAIL));
         failure_stage_.store(2, std::memory_order_release);
         state_.store(3, std::memory_order_release);
