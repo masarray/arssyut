@@ -1270,12 +1270,12 @@ public sealed partial class MainWindow : Window
     private void WebcamPreviewTimer_OnTick(object? sender, EventArgs e)
     {
         if (!_webcamHardwarePreview || !_session.CameraEnabled ||
-            _nativeBridge is null || _startSequenceActive ||
+            _nativeBridge is null ||
             _webcamStartTransition || _webcamShuttingDown)
             return;
 
-        // Recorder still owns this camera until the native worker retires.
-        // Do not try to open another physical camera while it is writing MP4.
+        // F2B: the shared physical source remains live while recording.
+        // Only restart/restore after the recorder releases its GPU consumer.
         if (_webcamResumeAfterRecording) {
             try {
                 var snapshot = _nativeBridge.Snapshot();
@@ -1292,10 +1292,15 @@ public sealed partial class MainWindow : Window
                         _ = RestoreWebcamAfterRecordingAsync();
                     }
                 }
+                else if (snapshot.State is not (NativeRecorderState.Recording or
+                    NativeRecorderState.Paused or NativeRecorderState.Armed or
+                    NativeRecorderState.Preparing)) {
+                    return; // Stop/finalization has not released GPU yet.
+                }
             } catch (Exception) {
                 // Native recorder teardown is asynchronous.
+                return;
             }
-            return;
         }
 
         if (_webcamStartupRecoveryInFlight) return;
@@ -1329,7 +1334,7 @@ public sealed partial class MainWindow : Window
                     "Webcam is not yet publishing preview frames.");
                 return;
             }
-            if (state != 2 || sequence == 0) return;
+            if ((state != 2 && state != 4) || sequence == 0) return;
             if (sequence == _webcamPreviewSequence) {
                 // Do not display a frozen bitmap as though it is a live feed.
                 if (_webcamPreviewFreshAt != 0 &&
@@ -1367,6 +1372,9 @@ public sealed partial class MainWindow : Window
                 }
             }
             CameraPreviewImage.Source = _webcamPreviewBitmap;
+            // Reusing the SAME retained WriteableBitmap must still
+            // invalidate the Avalonia visual after its pixels change.
+            CameraPreviewImage.InvalidateVisual();
             CameraPreviewImage.IsVisible = true;
             CameraPreviewPlaceholder.IsVisible = false;
             _webcamPreviewSequence = sequence;
@@ -1377,7 +1385,9 @@ public sealed partial class MainWindow : Window
             if (StatusText.Text == "Webcam unavailable" &&
                 _lastNativeSnapshot?.State is null or NativeRecorderState.Idle)
                 ApplyNativeReadyState();
-            ToolTip.SetTip(CameraPreviewFrame, "Live native GPU webcam preview");
+            ToolTip.SetTip(CameraPreviewFrame, state == 4
+                ? "Live webcam — same GPU source as MP4 recording"
+                : "Live native GPU webcam preview");
         } catch (Exception ex) {
             ReportWebcamPreviewProblem(ex.Message);
         }
@@ -1925,19 +1935,14 @@ public sealed partial class MainWindow : Window
         _webcamRecorderStoppedAt = 0;
         HideWebcamPreview();
         ToolTip.SetTip(CameraPreviewFrame,
-            "Camera is being transferred to the native recorder.");
+            "Camera GPU renderer is transferring to recorder; capture stays open.");
         try {
-            // Do not let preview and RecorderSession compete for the one
-            // physical webcam. This is fully serialized with toggle/switch.
+            // Single MF source remains open; the native bridge waits for
+            // a bounded GPU-consumer handoff. Never STOP preview hardware
+            // or create a second physical source for a recording.
             await _webcamLifecycle.WaitAsync();
             try {
-                if (_webcamHardwarePreview)
-                    await Task.Run(() => bridge.StopWebcamPreview());
-            } finally {
-                _webcamLifecycle.Release();
-            }
-
-            status = await Task.Run(() =>
+                status = await Task.Run(() =>
                 bridge.StartRecording(
                     new NativeStartRequest(
                         _captureMode,
@@ -1968,6 +1973,9 @@ public sealed partial class MainWindow : Window
                         _settings.MicrophoneMixPercent / 100.0f,
                         _settings.SystemMixMuted,
                         _settings.MicrophoneMixMuted)));
+            } finally {
+                _webcamLifecycle.Release();
+            }
         }
         catch (Exception)
         {
