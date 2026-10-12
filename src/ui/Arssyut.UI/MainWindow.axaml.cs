@@ -1127,6 +1127,14 @@ public sealed partial class MainWindow : Window
             item.Tag is not NativeDeviceItem device)
             return;
 
+        if (_lastNativeSnapshot?.State is NativeRecorderState.Recording or
+            NativeRecorderState.Paused or NativeRecorderState.Armed or
+            NativeRecorderState.Preparing or NativeRecorderState.Stopping or
+            NativeRecorderState.Finalizing) {
+            ShowCommandFeedback("Camera in use",
+                "Camera device can be changed after Stop.");
+            return;
+        }
         _cameraDevice = device.Name;
         _cameraDeviceToken = device.Token;
         if (_session.CameraEnabled) {
@@ -1400,6 +1408,18 @@ public sealed partial class MainWindow : Window
         if (!_webcamHardwarePreview || _nativeBridge is null ||
             _webcamStartTransition || _webcamShuttingDown)
             return;
+        // F2B does not yet support changing capture hardware while writer
+        // is active. Reject the control honestly rather than interrupt the
+        // one MF source and corrupt the MP4 or privacy-light state.
+        if (_lastNativeSnapshot?.State is NativeRecorderState.Recording or
+            NativeRecorderState.Paused or NativeRecorderState.Armed or
+            NativeRecorderState.Preparing or NativeRecorderState.Stopping or
+            NativeRecorderState.Finalizing) {
+            CameraToggle.IsChecked = _session.CameraEnabled;
+            ShowCommandFeedback("Camera in use",
+                "Stop recording before switching the camera.");
+            return;
+        }
         var enabled = CameraToggle.IsChecked == true;
         var version = ++_webcamIntentVersion;
         _webcamStartupRecoveryUsed = false;
