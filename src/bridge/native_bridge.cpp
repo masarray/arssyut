@@ -51,6 +51,8 @@ struct NativeBridgeContext final {
     std::mutex mutex;
     std::vector<RecorderTarget> sources;
     std::vector<DeviceChoice> microphones;
+    std::vector<DeviceChoice> playbacks;
+    std::wstring selected_playback_id;
     std::vector<DeviceChoice> cameras;
     std::uint32_t source_generation = 0;
     std::uint32_t device_generation = 0;
@@ -279,6 +281,8 @@ device_vector(
         return &context.microphones;
     case ARSSYUT_BRIDGE_DEVICE_CAMERA:
         return &context.cameras;
+    case ARSSYUT_BRIDGE_DEVICE_PLAYBACK:
+        return &context.playbacks;
     default:
         return nullptr;
     }
@@ -1547,6 +1551,7 @@ arssyut_bridge_refresh_devices(
         auto cameras =
             arssyut::app::
                 enumerate_cameras();
+        auto playbacks = arssyut::app::enumerate_playback_endpoints();
 
         std::scoped_lock lock(
             context->mutex);
@@ -1555,6 +1560,8 @@ arssyut_bridge_refresh_devices(
             std::move(microphones);
         context->cameras =
             std::move(cameras);
+        context->playbacks = std::move(playbacks);
+        context->selected_playback_id.clear(); // refresh tokens are generation-bound
 
         ++context->device_generation;
         if (context->device_generation == 0)
@@ -1749,6 +1756,33 @@ arssyut_bridge_webcam_preview_failure(
         ? context->webcam_preview->failure_stage() : 0U;
     *hresult = context->webcam_preview
         ? context->webcam_preview->failure_detail() : 0U;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_system_audio_endpoint(
+    ArssyutBridgeHandle handle,
+    std::uint64_t playback_device_token) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard lock(context->mutex);
+    if (context->recorder) {
+        const auto state = context->recorder->snapshot();
+        if (active_state(state.state) || !state.worker_finished)
+            return ARSSYUT_BRIDGE_BUSY;
+    }
+    std::wstring endpoint_id;
+    if (playback_device_token != 0) {
+        std::uint32_t generation = 0, index = 0;
+        if (!decode_token(playback_device_token, generation, index) ||
+            generation != context->device_generation ||
+            index >= context->playbacks.size())
+            return ARSSYUT_BRIDGE_STALE_TOKEN;
+        endpoint_id = context->playbacks[index].id;
+        if (endpoint_id.empty()) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+    context->selected_playback_id = std::move(endpoint_id);
     return ARSSYUT_BRIDGE_OK;
 }
 
@@ -2031,6 +2065,7 @@ arssyut_bridge_recorder_start(
             config.camera_overlay = context->camera_overlay;
             config.logo_overlay = context->logo_overlay;
             config.logo_png_path = context->logo_png_path;
+            config.audio_system_id = context->selected_playback_id;
         }
         config.target = std::move(target);
         config.webcam_enabled = !camera_id.empty();
@@ -2076,8 +2111,8 @@ arssyut_bridge_recorder_start(
         config.audio_microphone_gain = request->microphone_gain;
         config.audio_system_muted = request->system_muted != 0;
         config.audio_microphone_muted = request->microphone_muted != 0;
-        // The eConsole render endpoint is pinned once during Preparing.
-        // Current bridge V1 intentionally has no render-device token field.
+        // Preparing pins this explicit render IMMDevice ID or the Windows
+        // eConsole default. Never fall back after an explicit endpoint fails.
 #endif
 
         config.presentation.smart_zoom =
@@ -2409,6 +2444,9 @@ arssyut_bridge_audio_meter(
     // Render endpoint peak API remains authoritative for System Audio:
     // unlike many eCapture virtual endpoints, this works before recording.
     if ((flags & ARSSYUT_BRIDGE_METER_SYSTEM) != 0) {
+        std::wstring pinned_playback_id;
+        { std::lock_guard lock(context->mutex);
+          pinned_playback_id = context->selected_playback_id; }
         HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         if (SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE) {
             struct ComGuard {
@@ -2421,8 +2459,12 @@ arssyut_bridge_audio_meter(
                     __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                     IID_PPV_ARGS(en.GetAddressOf())))) {
                 ComPtr<IMMDevice> device;
-                if (SUCCEEDED(en->GetDefaultAudioEndpoint(
-                        eRender, eConsole, device.GetAddressOf()))) {
+                const HRESULT endpoint_hr = pinned_playback_id.empty()
+                    ? en->GetDefaultAudioEndpoint(
+                        eRender, eConsole, device.GetAddressOf())
+                    : en->GetDevice(
+                        pinned_playback_id.c_str(), device.GetAddressOf());
+                if (SUCCEEDED(endpoint_hr)) {
                     (void)read_endpoint_peak(device.Get(),
                         meter->system_channels,
                         meter->system_left, meter->system_right);

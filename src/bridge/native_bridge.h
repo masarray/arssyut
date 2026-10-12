@@ -39,6 +39,7 @@ enum ArssyutBridgeSourceKind : std::uint32_t {
 enum ArssyutBridgeDeviceKind : std::uint32_t {
     ARSSYUT_BRIDGE_DEVICE_MICROPHONE = 0,
     ARSSYUT_BRIDGE_DEVICE_CAMERA = 1,
+    ARSSYUT_BRIDGE_DEVICE_PLAYBACK = 2,
 };
 
 enum ArssyutBridgeCaptureMode : std::uint32_t {
@@ -395,6 +396,14 @@ arssyut_bridge_webcam_preview_failure(
     ArssyutBridgeHandle handle, std::uint32_t *stage,
     std::uint32_t *hresult) noexcept;
 
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_system_audio_endpoint(
+    ArssyutBridgeHandle handle,
+    std::uint64_t playback_device_token) noexcept;
+
+// The StartRequestV1 ABI stays unchanged; this is the per-next-recording
+// render endpoint pin, not an extra audio stream or a device-volume change.
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_set_logo_overlay(
