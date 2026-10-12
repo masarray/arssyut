@@ -1154,6 +1154,9 @@ public sealed partial class MainWindow : Window
         }
         _cameraDevice = device.Name;
         _cameraDeviceToken = device.Token;
+        // Device-friendly name is persisted intent; token remains native
+        // generation-scoped authority and is refreshed after enumeration.
+        _settings.CameraDevice = device.Name;
         if (_session.CameraEnabled) {
             _webcamStartupRecoveryUsed = false;
             _webcamFailureReported = false;
