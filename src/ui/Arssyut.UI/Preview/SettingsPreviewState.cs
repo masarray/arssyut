@@ -12,6 +12,20 @@ public enum CameraPlacement
     BottomRight
 }
 
+public enum CameraOverlayMask : uint
+{
+    Circle = 0,
+    RoundedRectangle = 1,
+    DiagonalTopLeftBottomRight = 2,
+    DiagonalTopRightBottomLeft = 3
+}
+
+public enum LogoOverlayPlacement : uint
+{
+    TopLeft = 0, TopRight = 1, BottomLeft = 2,
+    BottomRight = 3, Center = 4
+}
+
 public enum RecordingVisualStyle
 {
     PixelAccurate,
@@ -196,8 +210,56 @@ public sealed class SettingsPreviewState
         HotkeyText(
             HotkeyActionIds.FreezeCamera);
 
+    // Versioned F3 output-space PIP. Unlike the old idle-only BottomRight
+    // placeholder, TopRight matches the accepted actual encoded MP4.
     public CameraPlacement CameraPlacement { get; private set; } =
-        CameraPlacement.BottomRight;
+        CameraPlacement.TopRight;
+    public CameraOverlayMask CameraMask { get; private set; } =
+        CameraOverlayMask.RoundedRectangle;
+    public int CameraSizePercent { get; private set; } = 24;
+    public int CameraMarginPercent { get; private set; } = 3;
+    public int CameraCornerPercent { get; private set; } = 15;
+    public int CameraBorderPixels { get; private set; } = 2;
+    public int CameraOpacityPercent { get; private set; } = 100;
+    public bool CameraMirror { get; private set; }
+
+    public bool LogoEnabled { get; private set; }
+    public string LogoPath { get; private set; } = "";
+    public LogoOverlayPlacement LogoPlacement { get; private set; } =
+        LogoOverlayPlacement.BottomRight;
+    public int LogoSizePercent { get; private set; } = 13;
+    public int LogoMarginPercent { get; private set; } = 3;
+    public int LogoOpacityPercent { get; private set; } = 100;
+
+    private void OverlayChanged() {
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetCameraMask(CameraOverlayMask value) {
+        if (!Enum.IsDefined(value) || CameraMask == value) return;
+        CameraMask = value; OverlayChanged();
+    }
+    public void SetCameraGeometry(int size, int margin, int corner,
+                                  int border, int opacity, bool mirror) {
+        if (size is < 15 or > 40 || margin is < 0 or > 12 ||
+            corner is < 0 or > 50 || border is < 0 or > 12 ||
+            opacity is < 0 or > 100) return;
+        CameraSizePercent = size; CameraMarginPercent = margin;
+        CameraCornerPercent = corner; CameraBorderPixels = border;
+        CameraOpacityPercent = opacity; CameraMirror = mirror;
+        OverlayChanged();
+    }
+    public void SetLogoOverlay(bool enabled, string path,
+        LogoOverlayPlacement placement, int size, int margin, int opacity) {
+        if (!Enum.IsDefined(placement) || path.Length > 511 ||
+            size is < 3 or > 40 || margin is < 0 or > 12 ||
+            opacity is < 0 or > 100) return;
+        LogoEnabled = enabled; LogoPath = path;
+        LogoPlacement = placement; LogoSizePercent = size;
+        LogoMarginPercent = margin; LogoOpacityPercent = opacity;
+        OverlayChanged();
+    }
 
     private string _microphoneDevice =
         "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
@@ -494,7 +556,18 @@ public sealed class SettingsPreviewState
             string.IsNullOrWhiteSpace(snapshot.CameraDevice) ||
             snapshot.CameraDevice.Length > 512 ||
             snapshot.SystemMixPercent is < 0 or > 100 ||
-            snapshot.MicrophoneMixPercent is < 0 or > 100)
+            snapshot.MicrophoneMixPercent is < 0 or > 100 ||
+            !Enum.IsDefined(snapshot.CameraMask) ||
+            snapshot.CameraSizePercent is < 15 or > 40 ||
+            snapshot.CameraMarginPercent is < 0 or > 12 ||
+            snapshot.CameraCornerPercent is < 0 or > 50 ||
+            snapshot.CameraBorderPixels is < 0 or > 12 ||
+            snapshot.CameraOpacityPercent is < 0 or > 100 ||
+            snapshot.LogoPath.Length > 511 ||
+            !Enum.IsDefined(snapshot.LogoPlacement) ||
+            snapshot.LogoSizePercent is < 3 or > 40 ||
+            snapshot.LogoMarginPercent is < 0 or > 12 ||
+            snapshot.LogoOpacityPercent is < 0 or > 100)
         {
             error = "Invalid persisted recording preferences.";
             return false;
@@ -540,6 +613,19 @@ public sealed class SettingsPreviewState
         _microphoneDevice = snapshot.MicrophoneDevice;
         CameraPlacement = snapshot.CameraPlacement;
         _cameraDevice = snapshot.CameraDevice;
+        CameraMask = snapshot.CameraMask;
+        CameraSizePercent = snapshot.CameraSizePercent;
+        CameraMarginPercent = snapshot.CameraMarginPercent;
+        CameraCornerPercent = snapshot.CameraCornerPercent;
+        CameraBorderPixels = snapshot.CameraBorderPixels;
+        CameraOpacityPercent = snapshot.CameraOpacityPercent;
+        CameraMirror = snapshot.CameraMirror;
+        LogoEnabled = snapshot.LogoEnabled;
+        LogoPath = snapshot.LogoPath;
+        LogoPlacement = snapshot.LogoPlacement;
+        LogoSizePercent = snapshot.LogoSizePercent;
+        LogoMarginPercent = snapshot.LogoMarginPercent;
+        LogoOpacityPercent = snapshot.LogoOpacityPercent;
         return true;
     }
 
@@ -668,8 +754,15 @@ public sealed class SettingsPreviewState
                 pair.Value;
         }
 
-        CameraPlacement =
-            CameraPlacement.BottomRight;
+        CameraPlacement = CameraPlacement.TopRight;
+        CameraMask = CameraOverlayMask.RoundedRectangle;
+        CameraSizePercent = 24; CameraMarginPercent = 3;
+        CameraCornerPercent = 15; CameraBorderPixels = 2;
+        CameraOpacityPercent = 100; CameraMirror = false;
+        LogoEnabled = false; LogoPath = "";
+        LogoPlacement = LogoOverlayPlacement.BottomRight;
+        LogoSizePercent = 13; LogoMarginPercent = 3;
+        LogoOpacityPercent = 100;
         _microphoneDevice =
             "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
         _cameraDevice =
