@@ -31,6 +31,13 @@ int main()
         std::cerr << "Production thumbnail GPU shader failed compile\n";
         return 1;
     }
+    // Device-free OFF must never manufacture an owner, source or GPU frame.
+    if (preview.begin_recording() || preview.recording_device() != nullptr ||
+        preview.capture_snapshot().received != 0) {
+        std::cerr << "OFF camera acquired phantom recorder GPU ownership\n";
+        return 1;
+    }
+    preview.end_recording();
     preview.stop();
     if (preview.copy_frame(nullptr, 0, seq, state)) {
         std::cerr << "Tiny frame output accepted invalid pointer\n";
