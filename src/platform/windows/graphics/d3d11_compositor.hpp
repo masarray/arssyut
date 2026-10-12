@@ -10,6 +10,8 @@
 #include "presentation/presentation_state.hpp"
 #include "visual/arvisual_grade.hpp"
 #include "platform/windows/graphics/webcam_nv12_surface.hpp"
+#include "platform/windows/graphics/logo_gpu_texture.hpp"
+#include "core/video/output_overlay_profile.hpp"
 #include "visual/arvisual_scene_analysis.hpp"
 
 #include <d3d11.h>
@@ -44,6 +46,17 @@ public:
         ID3D11Texture2D *sample,
         std::uint32_t subresource) noexcept;
     void clear_webcam() noexcept { webcam_.clear(); }
+    // Resolved once in Preparing, never changed by the Avalonia dispatcher.
+    // Corrupt optional PNG disables only logo, not screen/audio recording.
+    void set_output_overlays(
+        const arssyut::core::video::OutputOverlayProfile &profile) noexcept {
+        overlays_ = profile;
+        logo_.clear();
+        if (overlays_.logo.enabled &&
+            !logo_.load_png(device_.Get(), overlays_.logo.path))
+            overlays_.logo.enabled = false;
+    }
+
 
     [[nodiscard]] arssyut::core::Status submit_scene_analysis(
         ID3D11DeviceContext *context,
@@ -170,6 +183,8 @@ private:
     std::uint32_t keyboard_content_width_ = 1;
     std::uint32_t keyboard_content_height_ = 1;
 
+    arssyut::core::video::OutputOverlayProfile overlays_{};
+    LogoGpuTexture logo_{};
     WebcamNv12Surface webcam_;
     Microsoft::WRL::ComPtr<ID3D11Texture2D> input_copy_;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> input_srv_;
