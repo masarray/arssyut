@@ -108,7 +108,7 @@
 
               <Button x:Name="NavLogo" AutomationProperties.Name="Logo overlay settings" Classes="nav settings-nav" Click="Nav_OnClick" Tag="Logo">
                 <Grid ColumnDefinitions="18,*" ColumnSpacing="9" VerticalAlignment="Center">
-                  <PathIcon Data="{StaticResource MsPhoto}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" />
+                  <PathIcon Data="{StaticResource MsFolder}" Width="15" Height="15" Grid.Column="0" HorizontalAlignment="Center" />
                   <TextBlock Grid.Column="1" Text="Logo Overlay" VerticalAlignment="Center" />
                 </Grid>
               </Button>
