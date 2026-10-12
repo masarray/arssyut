@@ -399,6 +399,12 @@ if(ARSSYUT_BUILD_TESTS)
     endif()
 
     add_test(NAME arssyut_core_tests COMMAND arssyut_core_tests)
+    add_executable(arssyut_output_overlay_profile_tests
+        tests/test_output_overlay_profile.cpp)
+    target_link_libraries(arssyut_output_overlay_profile_tests PRIVATE arssyut_core)
+    add_test(NAME arssyut_output_overlay_profile_tests
+        COMMAND arssyut_output_overlay_profile_tests)
+
 
     # The same Pause/QPC clock drives video and canonical audio.
     add_executable(arssyut_recording_pause_clock_tests
