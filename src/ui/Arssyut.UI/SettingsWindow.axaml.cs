@@ -11,6 +11,7 @@ using Avalonia.Media.Imaging;
 using System.IO;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Arssyut.UI.Design;
@@ -1043,8 +1044,6 @@ public sealed partial class SettingsWindow : Window
         var br = tl;
         var bl = tr;
         string n(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
-        string curve(double radius, double endX, double endY) =>
-            radius > 0 ? $"Q{n(endX)},{n(endY)} " : "";
         string path;
         if (mask == CameraPipMask.Circle) {
             var half = w / 2.0;
@@ -1064,7 +1063,8 @@ public sealed partial class SettingsWindow : Window
         CameraOverlaySurface.Clip = geometry;
         CameraPreviewOutline.Data = geometry;
         CameraPreviewOutline.StrokeThickness =
-            Math.Max(1.0, _preview.CameraBorderWidthPx * stageW / 1920.0);
+            _preview.CameraBorderWidthPx <= 0 ? 0 :
+                Math.Max(.75, _preview.CameraBorderWidthPx * stageW / 1920.0);
         CameraPreviewOutline.Stroke = _preview.CameraBorder switch {
             CameraBorderTone.Dark => Brushes.DarkSlateGray,
             CameraBorderTone.Red => Brushes.IndianRed,
