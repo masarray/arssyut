@@ -195,7 +195,21 @@ public sealed record NativeStartRequest(
     float SystemGain = 1.0f,
     float MicrophoneGain = 1.0f,
     bool SystemMuted = false,
-    bool MicrophoneMuted = false);
+    bool MicrophoneMuted = false,
+    uint CameraPlacement = 1,
+    uint CameraMask = 1,
+    float CameraWidthFraction = 0.235f,
+    float CameraMarginFraction = 0.03f,
+    float CameraCornerFraction = 0.15f,
+    float CameraBorderPixels = 2.0f,
+    float CameraOpacity = 1.0f,
+    bool CameraMirror = false,
+    bool LogoEnabled = false,
+    uint LogoPlacement = 3,
+    float LogoWidthFraction = 0.13f,
+    float LogoMarginFraction = 0.025f,
+    float LogoOpacity = 1.0f,
+    string LogoPath = "");
 
 public sealed class NativeBridgeClient : IDisposable
 {
@@ -203,7 +217,7 @@ public sealed class NativeBridgeClient : IDisposable
         "arssyut_native_bridge";
     private const string EmbeddedBridgeResource =
         "Arssyut.Native.arssyut_native_bridge.dll";
-    private const uint ExpectedAbi = 11;
+    private const uint ExpectedAbi = 12;
 
     private static readonly object NativeLoadGate =
         new();
@@ -887,7 +901,22 @@ public sealed class NativeBridgeClient : IDisposable
                 SystemGain = request.SystemGain,
                 MicrophoneGain = request.MicrophoneGain,
                 SystemMuted = request.SystemMuted ? 1U : 0U,
-                MicrophoneMuted = request.MicrophoneMuted ? 1U : 0U
+                MicrophoneMuted = request.MicrophoneMuted ? 1U : 0U,
+                CameraProfileVersion = 1,
+                CameraPlacement = request.CameraPlacement,
+                CameraMask = request.CameraMask,
+                CameraWidthFraction = request.CameraWidthFraction,
+                CameraMarginFraction = request.CameraMarginFraction,
+                CameraCornerFraction = request.CameraCornerFraction,
+                CameraBorderPixels = request.CameraBorderPixels,
+                CameraOpacity = request.CameraOpacity,
+                CameraMirror = request.CameraMirror ? 1U : 0U,
+                LogoEnabled = request.LogoEnabled ? 1U : 0U,
+                LogoPlacement = request.LogoPlacement,
+                LogoWidthFraction = request.LogoWidthFraction,
+                LogoMarginFraction = request.LogoMarginFraction,
+                LogoOpacity = request.LogoOpacity,
+                LogoPath = request.LogoPath ?? string.Empty
             };
 
         return (NativeBridgeStatus)
@@ -1164,6 +1193,23 @@ public sealed class NativeBridgeClient : IDisposable
         public float MicrophoneGain;
         public uint SystemMuted;
         public uint MicrophoneMuted;
+        public uint CameraProfileVersion;
+        public uint CameraPlacement;
+        public uint CameraMask;
+        public float CameraWidthFraction;
+        public float CameraMarginFraction;
+        public float CameraCornerFraction;
+        public float CameraBorderPixels;
+        public float CameraOpacity;
+        public uint CameraMirror;
+        public uint LogoEnabled;
+        public uint LogoPlacement;
+        public float LogoWidthFraction;
+        public float LogoMarginFraction;
+        public float LogoOpacity;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 512)]
+        public string LogoPath;
     }
 
     [StructLayout(
