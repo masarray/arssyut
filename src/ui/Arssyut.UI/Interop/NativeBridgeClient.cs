@@ -1049,6 +1049,14 @@ public sealed class NativeBridgeClient : IDisposable
     public const int WebcamPreviewHeight = 108;
     public const int WebcamPreviewByteCount = 192 * 108 * 4;
 
+    public (uint Width, uint Height) WebcamSourceDimensions()
+    {
+        ThrowIfDisposed();
+        EnsureOk(NativeMethods.WebcamPreviewDimensions(
+            _handle, out var width, out var height));
+        return (width, height);
+    }
+
     public NativeBridgeStatus StartWebcamPreview(ulong cameraToken)
     {
         ThrowIfDisposed();
@@ -1286,6 +1294,12 @@ public sealed class NativeBridgeClient : IDisposable
             EntryPoint = "arssyut_bridge_webcam_preview_stop",
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int WebcamPreviewStop(IntPtr handle);
+
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_dimensions",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewDimensions(
+            IntPtr handle, out uint width, out uint height);
 
         [DllImport(LibraryName,
             EntryPoint = "arssyut_bridge_webcam_preview_failure",

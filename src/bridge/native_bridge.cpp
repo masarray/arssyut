@@ -1744,6 +1744,25 @@ arssyut_bridge_webcam_preview_frame(
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_dimensions(
+    ArssyutBridgeHandle handle,
+    std::uint32_t *source_width, std::uint32_t *source_height) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !source_width || !source_height)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard lock(context->webcam_preview_mutex);
+    *source_width = 0;
+    *source_height = 0;
+    if (context->webcam_preview) {
+        const auto format = context->webcam_preview->capture_snapshot().format;
+        *source_width = format.width;
+        *source_height = format.height;
+    }
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_webcam_preview_failure(
     ArssyutBridgeHandle handle, std::uint32_t *stage,
     std::uint32_t *hresult) noexcept
