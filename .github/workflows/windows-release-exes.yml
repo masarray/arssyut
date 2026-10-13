@@ -15,6 +15,11 @@ on:
         required: true
         type: boolean
         default: false
+      publish_stable:
+        description: "Publish a stable GitHub Release after hardware signoff"
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: write
   actions: read
@@ -32,10 +37,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.source_run_id }}
           VERSION: ${{ inputs.version }}
+          PUBLISH_STABLE: ${{ inputs.publish_stable }}
+          PUBLISH_PRERELEASE: ${{ inputs.publish_prerelease }}
         run: |
           if ($env:GITHUB_REF -ne 'refs/heads/main' -or
-              $env:VERSION -notmatch '^0[.]\d+[.]\d+-rc[.]\d+$' -or
-              $env:RUN_ID -notmatch '^\d+$') { throw 'Invalid candidate parameters' }
+              $env:VERSION -notmatch '^0[.]\d+[.]\d+(?:-rc[.]\d+)?
           $source = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:RUN_ID" | ConvertFrom-Json
           if ($source.head_sha -ne $env:GITHUB_SHA -or
               $source.conclusion -ne 'success' -or
@@ -148,19 +154,66 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish GitHub preview (explicit manual opt-in only)
-        if: ${{ inputs.publish_prerelease }}
+      - name: Publish verified GitHub release (manual opt-in)
+        if: ${{ inputs.publish_prerelease || inputs.publish_stable }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
+          PUBLISH_STABLE: ${{ inputs.publish_stable }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
         run: |
           $tag = "v$env:VERSION"
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) { throw 'Tag already exists; refusing overwrite' }
-          $notes = "Arssyut $tag Windows PREVIEW — not stable. Integrated H264 screen video with System Audio plus Microphone capture, stereo mixer and meters. Webcam is NOT implemented. Setup and portable use the same exact-CI audio-enabled single executable. Release source commit: $env:GITHUB_SHA. CI verifies exact binary hash, launch, install and uninstall. Real microphone-only, repeated Start/Stop, long-session A/V and exact packaged EXEs still require acceptance before stable or verified public downloads. No commercial code signature; Windows SmartScreen may appear. Evidence and checklist: docs/AV_RELEASE_ACCEPTANCE_2026-10-11.md."
-          $assets = @(Get-ChildItem dist/release -Filter '*.exe' | ForEach-Object FullName)
+          $stable = $env:PUBLISH_STABLE -eq 'true'
+          $channel = if ($stable) { 'Stable' } else { 'Preview' }
+          $notes = @"
+          ARSSYUT_AUDIO_HARDWARE_ACCEPTED
+
+          Arssyut $tag — Windows $channel
+          
+          Windows x64 screen recorder with Display, Window and Region capture; 1080p60
+          GPU H.264 recording; Media Foundation webcam live preview and Camera PIP
+          (Circle, Rounded Rectangle, and diagonal masks with adjustable width);
+          transparent PNG logo overlay; Windows playback endpoint choice including
+          HDMI and USB audio devices; System Audio + Microphone AAC stereo recording,
+          audio meters and mute; Pause/Resume; presenter zoom and click visualization.
+          
+          Release source commit: $env:GITHUB_SHA
+          Successful exact-source Windows A/V CI: $env:SOURCE_RUN_ID
+          Installer and Portable contain the byte-identical verified GUI.
+          Windows CI performs GUI launch, install, and uninstall smoke tests.
+          
+          Hardware evidence: user-supplied 2026-10-13 08:28 recording, 1920x1080,
+          60fps, dual-source audio (2,675 system packets, 2,675 microphone packets),
+          two Pause/Resume transitions, completed MP4 with no encoder errors,
+          no webcam GPU copy errors, and one video skipped frame.
+          This is not certification for every webcam, audio interface or long recording.
+          Please report reproducible device problems via GitHub Issues.
+          
+          Windows binaries are not commercially code-signed. Microsoft SmartScreen
+          can warn on new publisher binaries. Distributed under GPL-2.0-or-later
+          with third-party copyright notices for linked dependencies.
+          "@
+          $assets = @(Get-ChildItem dist/release -Filter '*.exe' |
+            ForEach-Object FullName)
           $assets += (Resolve-Path dist/SHA256SUMS.txt).Path
-          if ($assets.Count -ne 3) { throw 'Expected exactly two executables plus SHA256SUMS' }
-          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "Arssyut $tag Windows Preview" --prerelease --notes "$notes"
-          if ($LASTEXITCODE -ne 0) { throw 'Preview release publication failed' }
+          if ($assets.Count -ne 3) {
+            throw 'Expected exactly two executables plus SHA256SUMS'
+          }
+          $arguments = @('release', 'create', $tag) + $assets + @(
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--target', $env:GITHUB_SHA,
+            '--title', "Arssyut $tag Windows $channel",
+            '--notes', $notes
+          )
+          if ($stable) {
+            $arguments += '--latest'
+          } else {
+            $arguments += '--prerelease'
+          }
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw 'GitHub Release publication failed'
+          }
