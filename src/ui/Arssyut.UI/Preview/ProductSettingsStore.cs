@@ -37,7 +37,7 @@ public sealed record ProductSettingsSnapshot(
     CameraBorderTone CameraBorder = CameraBorderTone.White,
     float CameraWidthFraction = .235f,
     float CameraMarginFraction = .035f,
-    float CameraRadiusFraction = .15f,
+    float CameraRadiusFraction = .72f,
     float CameraBorderWidthPx = 2f,
     float CameraOpacity = 1f,
     bool CameraMirror = false,
@@ -59,7 +59,8 @@ public sealed class ProductSettingsStore
     private const int MixerSchemaVersion = 6;
     private const int CameraSchemaVersion = 7;
     private const int LogoSchemaVersion = 8;
-    private const int CurrentSchemaVersion = 9;
+    private const int PlaybackSchemaVersion = 9;
+    private const int CurrentSchemaVersion = 10;
 
     private readonly string _path;
 
@@ -143,6 +144,7 @@ public sealed class ProductSettingsStore
                  document.SchemaVersion != MixerSchemaVersion &&
                  document.SchemaVersion != CameraSchemaVersion &&
                  document.SchemaVersion != LogoSchemaVersion &&
+                 document.SchemaVersion != PlaybackSchemaVersion &&
                  document.SchemaVersion != CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
@@ -232,7 +234,7 @@ public sealed class ProductSettingsStore
                 document.SchemaVersion >= MixerSchemaVersion;
             var hasCameraProfile = document.SchemaVersion >= CameraSchemaVersion;
             var hasLogoProfile = document.SchemaVersion >= LogoSchemaVersion;
-            var hasPlaybackChoice = document.SchemaVersion >= CurrentSchemaVersion;
+            var hasPlaybackChoice = document.SchemaVersion >= PlaybackSchemaVersion;
             var outputFolder = latest
                 ? document.OutputFolder
                 : SettingsPreviewState.DefaultOutputFolder;
@@ -282,14 +284,20 @@ public sealed class ProductSettingsStore
                 ? (CameraBorderTone)(document.CameraBorder ?? -1) : CameraBorderTone.White;
             var width = hasCameraProfile ? document.CameraWidthFraction ?? float.NaN : .235f;
             var margin = hasCameraProfile ? document.CameraMarginFraction ?? float.NaN : .035f;
-            var radius = hasCameraProfile ? document.CameraRadiusFraction ?? float.NaN : .15f;
+            // Preserve custom legacy radius; upgrade only the original
+            // untouched 15% default to visibly rounded modern 72%.
+            var radius = hasCameraProfile
+                ? document.CameraRadiusFraction ?? float.NaN : .72f;
+            if (document.SchemaVersion < CurrentSchemaVersion &&
+                Math.Abs(radius - .15f) < .0001f)
+                radius = .72f;
             var border = hasCameraProfile ? document.CameraBorderWidthPx ?? float.NaN : 2f;
             var opacity = hasCameraProfile ? document.CameraOpacity ?? float.NaN : 1f;
             var mirror = hasCameraProfile && document.CameraMirror == true;
             if (!Enum.IsDefined(shape) || !Enum.IsDefined(tone) ||
                 !float.IsFinite(width) || width is < .15f or > .40f ||
                 !float.IsFinite(margin) || margin is < 0f or > .15f ||
-                !float.IsFinite(radius) || radius is < 0f or > .5f ||
+                !float.IsFinite(radius) || radius is < 0f or > 1f ||
                 !float.IsFinite(border) || border is < 0f or > 32f ||
                 !float.IsFinite(opacity) || opacity is < 0f or > 1f)
                 throw new InvalidDataException("Invalid Camera PIP profile.");
@@ -419,7 +427,7 @@ public sealed class ProductSettingsStore
                 !float.IsFinite(settings.CameraMarginFraction) ||
                 settings.CameraMarginFraction is < 0f or > .15f ||
                 !float.IsFinite(settings.CameraRadiusFraction) ||
-                settings.CameraRadiusFraction is < 0f or > .5f ||
+                settings.CameraRadiusFraction is < 0f or > 1f ||
                 !float.IsFinite(settings.CameraBorderWidthPx) ||
                 settings.CameraBorderWidthPx is < 0f or > 32f ||
                 !float.IsFinite(settings.CameraOpacity) ||

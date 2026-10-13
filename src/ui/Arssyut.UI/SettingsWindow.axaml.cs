@@ -1019,8 +1019,11 @@ public sealed partial class SettingsWindow : Window
         const double stageW = 448.0, stageH = 252.0;
         var mask = _preview.CameraMask;
         var margin = _preview.CameraMarginFraction;
-        var w = _preview.CameraWidthFraction * stageW;
-        var h = mask == CameraPipMask.Circle ? w : w * _cameraSourceAspect;
+        // Same normalized rule as native: height remains consistent
+        // when switching Circle, rounded rectangle, and diagonal masks.
+        var h = _preview.CameraWidthFraction * stageW;
+        var w = mask == CameraPipMask.Circle
+            ? h : h / _cameraSourceAspect;
         var fit = Math.Min(1.0, Math.Min(
             (1.0 - 2.0 * margin) * stageW / w,
             (1.0 - 2.0 * margin) * stageH / h));

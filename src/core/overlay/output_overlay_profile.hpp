@@ -26,7 +26,7 @@ struct CameraOverlayProfile {
     CameraMask mask = CameraMask::RoundedRectangle;
     float width_fraction = 0.235f;
     float margin_fraction = 0.035f;
-    float corner_radius_fraction = 0.15f;
+    float corner_radius_fraction = 0.72f;
     float border_width_px = 2.0f;
     float border_r = 0.96f;
     float border_g = 0.96f;
@@ -59,7 +59,7 @@ inline bool valid(const CameraOverlayProfile &x) noexcept {
         std::isfinite(x.margin_fraction) &&
         x.margin_fraction >= 0.f && x.margin_fraction <= .15f &&
         std::isfinite(x.corner_radius_fraction) &&
-        x.corner_radius_fraction >= 0.f && x.corner_radius_fraction <= .5f &&
+        x.corner_radius_fraction >= 0.f && x.corner_radius_fraction <= 1.f &&
         std::isfinite(x.border_width_px) &&
         x.border_width_px >= 0.f && x.border_width_px <= 32.f &&
         std::isfinite(x.border_r) && x.border_r >= 0.f && x.border_r <= 1.f &&

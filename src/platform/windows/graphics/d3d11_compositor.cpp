@@ -2255,10 +2255,14 @@ Status D3D11Compositor::render_retained(
         const float margin = camera_overlay_.margin_fraction;
         const bool circle = camera_overlay_.mask ==
             arssyut::core::overlay::CameraMask::Circle;
-        float w = camera_overlay_.width_fraction;
-        float h = w * static_cast<float>(output_size.width) /
-            static_cast<float>(output_size.height) *
-            (circle ? 1.0f : source_aspect);
+        // PIP size denotes physical output height. Changing mask never
+        // shrinks the camera vertically; rectangles expand sideways to
+        // preserve camera aspect while Circle remains isotropic.
+        float h = camera_overlay_.width_fraction *
+            static_cast<float>(output_size.width) /
+            static_cast<float>(output_size.height);
+        float w = circle ? camera_overlay_.width_fraction :
+            camera_overlay_.width_fraction / source_aspect;
         const float fit = std::min({1.0f, (1.0f - 2.0f * margin) / w,
                                     (1.0f - 2.0f * margin) / h});
         w *= fit;

@@ -238,7 +238,7 @@ public sealed class SettingsPreviewState
         CameraBorderTone.White;
     public float CameraWidthFraction { get; private set; } = 0.235f;
     public float CameraMarginFraction { get; private set; } = 0.035f;
-    public float CameraRadiusFraction { get; private set; } = 0.15f;
+    public float CameraRadiusFraction { get; private set; } = 0.72f;
     public float CameraBorderWidthPx { get; private set; } = 2f;
     public float CameraOpacity { get; private set; } = 1f;
     public bool CameraMirror { get; private set; }
@@ -250,7 +250,7 @@ public sealed class SettingsPreviewState
         if (!Enum.IsDefined(mask) || !Enum.IsDefined(border) ||
             !float.IsFinite(width) || width is < .15f or > .40f ||
             !float.IsFinite(margin) || margin is < 0f or > .15f ||
-            !float.IsFinite(radius) || radius is < 0f or > .5f ||
+            !float.IsFinite(radius) || radius is < 0f or > 1f ||
             !float.IsFinite(borderWidth) || borderWidth is < 0f or > 32f ||
             !float.IsFinite(opacity) || opacity is < 0f or > 1f)
             return false;
@@ -614,7 +614,7 @@ public sealed class SettingsPreviewState
             !float.IsFinite(snapshot.CameraMarginFraction) ||
             snapshot.CameraMarginFraction is < 0f or > .15f ||
             !float.IsFinite(snapshot.CameraRadiusFraction) ||
-            snapshot.CameraRadiusFraction is < 0f or > .5f ||
+            snapshot.CameraRadiusFraction is < 0f or > 1f ||
             !float.IsFinite(snapshot.CameraBorderWidthPx) ||
             snapshot.CameraBorderWidthPx is < 0f or > 32f ||
             !float.IsFinite(snapshot.CameraOpacity) ||
@@ -817,7 +817,7 @@ public sealed class SettingsPreviewState
         CameraBorder = CameraBorderTone.White;
         CameraWidthFraction = .235f;
         CameraMarginFraction = .035f;
-        CameraRadiusFraction = .15f;
+        CameraRadiusFraction = .72f;
         CameraBorderWidthPx = 2f;
         CameraOpacity = 1f;
         CameraMirror = false;

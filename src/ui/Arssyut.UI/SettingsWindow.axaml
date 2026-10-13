@@ -498,7 +498,7 @@
                       <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Edge margin" /><TextBlock x:Name="CameraMarginText" Grid.Column="1" Text="3.5%" /></Grid>
                       <Slider x:Name="CameraMarginSlider" Minimum="0" Maximum="15" Value="3.5" TickFrequency=".5" PropertyChanged="CameraSlider_OnChange" />
                       <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Corner radius" /><TextBlock x:Name="CameraRadiusText" Grid.Column="1" Text="15%" /></Grid>
-                      <Slider x:Name="CameraRadiusSlider" Minimum="0" Maximum="50" Value="15" PropertyChanged="CameraSlider_OnChange" />
+                      <Slider x:Name="CameraRadiusSlider" Minimum="0" Maximum="100" Value="72" PropertyChanged="CameraSlider_OnChange" />
                       <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Border thickness" /><TextBlock x:Name="CameraBorderText" Grid.Column="1" Text="2 px" /></Grid>
                       <Slider x:Name="CameraBorderSlider" Minimum="0" Maximum="12" Value="2" PropertyChanged="CameraSlider_OnChange" />
                       <TextBlock Text="Border color" FontWeight="Medium" />
