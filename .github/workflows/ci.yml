@@ -234,18 +234,17 @@ jobs:
              Webcam: choose the real camera and switch ON to see its preview
              BEFORE starting the recording.
           4. Select a microphone from the detected real Windows device list.
-             System audio uses the default Windows eConsole playback endpoint.
+             System Audio can pin a specific Windows render endpoint (Realtek, HDMI or USB).
           5. Record a short display video, stop, and PLAY the resulting MP4.
           6. Check audible audio, A/V sync, Stop completion and any error.
           7. Repeat for Mic-only, System-only, and dual source. Report the
              session diagnostics and reproducible device configuration.
 
-          CAUTION: This opt-in package has not passed real-device audio
-          acceptance yet. Do not replace the stable video-only release.
-          The dedicated INTERNAL executable enables A/V plus webcam QA
-          within its process. Public builds do not. Do NOT publish camera
-          until physical MP4/preview hardware acceptance.
-          FFmpeg linkage and redistribution require licensing review.
+          CAUTION: This ZIP is an internal CI test artifact, not a public
+          Installer/Portable EXE. Physical A/V + webcam acceptance was
+          recorded 2026-10-13. Public packages MUST be built from exact-main
+          audio-enabled CI by Windows Release Candidate EXEs workflow.
+          Preserve GPL and FFmpeg third-party redistribution notices.
           '@ | Set-Content (Join-Path $package "README_AUDIO_ACCEPTANCE.txt")
 
       - name: Integrated A/V GUI interaction-state regression (reuse audio-enabled build)
