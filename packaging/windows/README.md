@@ -29,8 +29,8 @@ Inno Setup 6. Output artifacts: `Arssyut.UI.exe` portable folder and
 
 The installer deliberately installs per-user (no UAC), uses the EXE's
 embedded icon for Start/Desktop shortcuts, and the same canonical ICO for
-the Setup executable. The internal hardware-audio preview artifact remains
-separate and **must not** be presented as the public stable installer.
+the Setup executable. The internal audio-enabled CI artifact is a verified input to the dedicated
+release packaging workflow; it is not itself the public Installer.
 
 ## Release gate
 
@@ -46,4 +46,4 @@ The [Windows Release Candidate EXEs](../../.github/workflows/windows-release-exe
 - `Arssyut-Setup-0.1.0-rc.1-win-x64.exe` — Inno installer.
 - `Arssyut-0.1.0-rc.1-portable-win-x64.exe` — direct standalone GUI, no ZIP.
 
-It also produces SHA256SUMS. The preview **v0.1.0-rc.1 was published on 2026-10-10**, with both EXEs and checksums. It remains labeled prerelease, not stable. System audio and microphone are implemented and user-confirmed; **webcam is not implemented**. Before future stable promotion, verify the installed GUI, portable EXE, real MP4 and checksums and capture specific evidence rather than retaining obsolete claims that audio still needs implementation. The download website must only link to assets on actual GitHub Releases.
+It also produces SHA256SUMS. Legacy preview RC1/RC2 are historical. Integrated A/V and native webcam underwent physical recording acceptance on 2026-10-13. The guarded release workflow now supports stable semantic versions only when sourced from successful exact-main audio-enabled CI; Installer and Portable must pass hash/launch/install/uninstall smoke. Before future stable promotion, verify the installed GUI, portable EXE, real MP4 and checksums and capture specific evidence rather than retaining obsolete claims that audio still needs implementation. The download website must only link to assets on actual GitHub Releases.
