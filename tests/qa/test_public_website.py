@@ -117,6 +117,21 @@ class PublicSiteContracts(unittest.TestCase):
         self.assertIn("publish_stable:", candidate)
         self.assertIn("inputs.publish_stable", candidate)
         self.assertIn("ARSSYUT_AUDIO_HARDWARE_ACCEPTED", candidate)
+        # The verification block previously ended at an unterminated
+        # version regex; make exact-main/flag checks an enforced contract.
+        self.assertIn("$validVersion = [regex]::IsMatch(", candidate)
+        self.assertIn("$validRunId = [regex]::IsMatch(", candidate)
+        self.assertIn("$env:GITHUB_REF -ne 'refs/heads/main'", candidate)
+        self.assertIn("Stable release requires x.y.z and prerelease=false", candidate)
+        self.assertIn("Source is not successful exact-head main CI", candidate)
+        self.assertIn("Could not query source CI run", candidate)
+        ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("Verify stable release PowerShell syntax", ci)
+        self.assertIn("verify_release_powershell.ps1", ci)
+        parser = (ROOT / "tests/qa/verify_release_powershell.ps1").read_text(
+            encoding="utf-8")
+        self.assertIn("Language.Parser]::ParseInput(", parser)
+        self.assertIn("Release PowerShell AST syntax invalid", parser)
         self.assertIn("gh @arguments", candidate)
         self.assertIn("'release', 'create', $tag", candidate)
         self.assertIn("workflow_dispatch:", candidate)
