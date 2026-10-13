@@ -1,6 +1,6 @@
 <p align="center"><img src="assets/favicon/web-app-manifest-192x192.png" alt="Arssyut product logo" width="80" height="80"></p>
 
-**Current engineering handoff (Pause → Webcam):** [2026-10-11 canonical status / exact SHA / CI / next milestones](docs/HANDOFF_2026-10-11_PAUSE_WEBCAM.md). Microphone live mute is merged; PR #115 Pause/Resume remains unmerged Draft pending seam-by-seam Windows acceptance. Webcam recording/preview is still unimplemented (Issue #116). Avoid historic RC1/RC2 audio packages.
+**Current release source (13 October 2026):** Windows A/V + native webcam PIP, adjustable masks and logo overlay. Historical RC1/RC2 were older preview builds. See [PR #127](https://github.com/masarray/arssyut/pull/127).
 
 <h1 align="center">Arssyut</h1>
 <p align="center"><strong>Enhanced Screen Recorder for Windows</strong></p>
@@ -12,7 +12,7 @@
 Arssyut is a focused Windows screen recorder for tutorials, software demos, walkthroughs, and everyday captures. Choose what to record, start capturing, and save an MP4—without a crowded workspace.
 
 > [!IMPORTANT]
-> **Release readiness:** Real Windows recordings from the latest integrated A/V engine pass offline quality checks for **System Audio-only (30 seconds)** and **System Audio + Microphone (52 seconds)**; the user reports the latest dual-audio recording sounds good. Earlier published RC1/RC2 binaries are **not** accepted. [See the measured A/V acceptance record](docs/AV_RELEASE_ACCEPTANCE_2026-10-11.md). Microphone-only, repeated Start/Stop and the new packaged Windows Installer/Portable still need validation before verified public downloads or stable. System audio and microphone recording are implemented; **webcam is not implemented**.
+> **Hardware recording evidence:** The 13 October 2026 real 1080p60 H.264/AAC MP4 decoded successfully with webcam plus both System Audio and Microphone (2,675 packets each), two Pause/Resume operations, no encoder errors, zero webcam GPU copy failures and one skipped frame. This acceptance covers the tested PC setup, not every device or multi-hour session. Public Installer and Portable must come from the same checked Windows release.
 
 ## What can Arssyut do?
 
@@ -24,9 +24,9 @@ Arssyut is a focused Windows screen recorder for tutorials, software demos, walk
 | Mouse click highlighting and shortcut visualization | Available |
 | Zoom/presentation controls | Available, subject to capture mode |
 | Remember user preferences | Available |
-| System audio and microphone recording | Implemented in the audio-enabled Windows preview |
+| System audio and microphone recording | Available, with Windows playback endpoint selection |
 | Audio mixer, volume, mute and stereo level meters | Implemented |
-| Webcam recording and preview | **Not implemented yet** |
+| Webcam recording and preview | Available, with live Camera PIP |
 | Game capture | Not yet available as a finished feature |
 
 The application you launch is **Arssyut.UI.exe**, the compact Windows GUI. It does not require opening a Command Prompt.
@@ -44,7 +44,7 @@ The Download page selects the **newest complete** published audio-accepted Windo
 
 **System audio and microphone recording are implemented.** The Windows audio-enabled recorder supports source toggles, recorded gain/mute controls, stereo input meters, and device selection. The earlier video-only CI artifact is only a regression/reference build; **do not distribute it as the audio-capable public application**.
 
-**Webcam recording and its live preview have not been implemented.** The webcam panel may appear in the GUI as a placeholder, but it is not a finished recording feature.
+**Webcam recording and live preview are implemented.** Camera PIP supports Circle, Rounded Rectangle, two diagonal masks, Mask Width with Square preset, and GPU-composited PNG logo overlay.
 
 ## Questions and support
 
@@ -80,4 +80,4 @@ The official product identity lives in [assets/favicon/](assets/favicon). The Wi
 
 ### License and redistribution
 
-This repository currently does not contain a root software license file. Public access to source does not by itself grant reuse or redistribution rights. Third-party components have separate licenses and notices. A software license should be explicitly selected before positioning the repository as an open-source release.
+Arssyut is licensed under **GPL-2.0-or-later** (see [LICENSE](LICENSE)). Windows distributions include third-party notices, including FFmpeg. Redistribution must respect the license terms of all included dependencies.
