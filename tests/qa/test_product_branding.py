@@ -82,6 +82,19 @@ class ProductBrandingTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn(f"web-app-manifest-192x192.png?v={VERSION_TOKEN}", readme)
 
+    def test_brand_patch_release_is_exact_sha_and_non_destructive(self):
+        release = (ROOT / ".github/workflows/stable-v011-brand-once.yml").read_text()
+        self.assertIn("v0.1.1", release)
+        self.assertIn('version="0.1.1"', release)
+        self.assertIn('publish_stable="true"', release)
+        self.assertIn("CI_SHA", release)
+        self.assertIn("main_sha", release)
+        self.assertIn("source_conclusion", release)
+        self.assertIn("gh workflow run windows-release-exes.yml", release)
+        self.assertIn("cancel-in-progress: false", release)
+        self.assertNotIn("gh release create", release)
+        self.assertNotIn("gh release upload", release)
+
     def test_windows_exe_gui_and_setup_use_identical_brand_source(self):
         proj = (ROOT / "src/ui/Arssyut.UI/Arssyut.UI.csproj").read_text()
         for item in ("ApplicationIcon", "assets\\favicon\\favicon.ico",
