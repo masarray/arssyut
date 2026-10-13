@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "0.1.0-preview"
+  #define AppVersion "0.1.1-preview"
 #endif
 #ifndef AppPublishDir
   #error AppPublishDir must be defined as the ABSOLUTE path to the verified portable publish folder.
@@ -20,6 +20,8 @@ AppSupportURL=https://github.com/masarray/arssyut/issues
 DefaultDirName={localappdata}\Programs\Arssyut
 DefaultGroupName=Arssyut
 PrivilegesRequired=lowest
+; The same exact ICO is embedded as the Avalonia PE icon, window icon,
+; and native Win32 recorder icon. Uninstall and shortcuts inherit the GUI PE.
 SetupIconFile={#SourcePath}..\..\assets\favicon\favicon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 OutputDir={#SourcePath}..\..\dist\installer
