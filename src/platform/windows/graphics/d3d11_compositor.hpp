@@ -3,12 +3,15 @@
 #ifdef _WIN32
 
 #include "core/diagnostics/latency_histogram.hpp"
+#include "core/overlay/output_overlay_profile.hpp"
 #include "core/result/result.hpp"
 #include "core/result/status.hpp"
 #include "core/time/monotonic_clock.hpp"
 #include "core/video/frame_geometry.hpp"
 #include "presentation/presentation_state.hpp"
 #include "visual/arvisual_grade.hpp"
+#include "platform/windows/graphics/webcam_nv12_surface.hpp"
+#include "platform/windows/graphics/logo_overlay_texture.hpp"
 #include "visual/arvisual_scene_analysis.hpp"
 
 #include <d3d11.h>
@@ -17,6 +20,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string>
 
 namespace arssyut::windows {
 
@@ -35,6 +39,27 @@ public:
     [[nodiscard]] arssyut::core::Status update_source(
         ID3D11DeviceContext *context,
         ID3D11Texture2D *source) noexcept;
+
+    // Optional output-space face-cam source, updated only on a *new* GPU
+    // camera frame by the one existing video worker. Never opens devices.
+    [[nodiscard]] arssyut::core::Status update_webcam(
+        ID3D11DeviceContext *context,
+        ID3D11Texture2D *sample,
+        std::uint32_t subresource) noexcept;
+    void clear_webcam() noexcept { webcam_.clear(); }
+
+    bool set_camera_overlay_profile(
+        const arssyut::core::overlay::CameraOverlayProfile &profile) noexcept {
+        if (!arssyut::core::overlay::valid(profile)) return false;
+        camera_overlay_ = profile;
+        return true;
+    }
+
+    // Decode/upload logo once during Preparing; invalid PNG only disables
+    // optional logo and does not change the existing A/V pipeline.
+    [[nodiscard]] arssyut::core::Status set_logo_overlay_profile(
+        const arssyut::core::overlay::LogoOverlayProfile &profile,
+        const std::wstring &png_path) noexcept;
 
     [[nodiscard]] arssyut::core::Status submit_scene_analysis(
         ID3D11DeviceContext *context,
@@ -161,6 +186,10 @@ private:
     std::uint32_t keyboard_content_width_ = 1;
     std::uint32_t keyboard_content_height_ = 1;
 
+    WebcamNv12Surface webcam_;
+    arssyut::core::overlay::CameraOverlayProfile camera_overlay_{};
+    arssyut::core::overlay::LogoOverlayProfile logo_overlay_{};
+    LogoOverlayTexture logo_{};
     Microsoft::WRL::ComPtr<ID3D11Texture2D> input_copy_;
     Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> input_srv_;
     D3D11_TEXTURE2D_DESC input_desc_{};

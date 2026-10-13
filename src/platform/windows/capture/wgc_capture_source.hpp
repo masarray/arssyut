@@ -59,6 +59,12 @@ public:
         return running_.load(std::memory_order_acquire);
     }
 
+    // 1=COM,2=D3D wrapper,3=CaptureItem,4=Size,5=FramePool,
+    // 6=FrameArrived,7=Session,8=Cursor,9=StartCapture,0=running.
+    [[nodiscard]] std::uint32_t startup_failure_step() const noexcept {
+        return startup_failure_step_.load(std::memory_order_acquire);
+    }
+
     [[nodiscard]] bool source_closed() const noexcept
     {
         return source_closed_.load(std::memory_order_acquire);
@@ -105,6 +111,7 @@ private:
 
     std::atomic<bool> running_{false};
     std::atomic<bool> source_closed_{false};
+    std::atomic<std::uint32_t> startup_failure_step_{0};
     std::atomic<std::uint64_t> sequence_{0};
 
     LatestFrameSlot *frame_slot_ = nullptr;

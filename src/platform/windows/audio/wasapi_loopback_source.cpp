@@ -17,6 +17,11 @@ core::Status WasapiLoopbackSource::start(
         options);
 }
 
+void WasapiLoopbackSource::quiesce() noexcept
+{
+    source_.quiesce();
+}
+
 void WasapiLoopbackSource::stop() noexcept
 {
     source_.stop();

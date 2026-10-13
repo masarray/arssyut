@@ -137,6 +137,87 @@ enumerate_microphones()
 }
 
 std::vector<DeviceChoice>
+enumerate_playback_endpoints()
+{
+    ScopedCom com;
+    std::vector<DeviceChoice> result;
+
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    if (FAILED(CoCreateInstance(
+            __uuidof(MMDeviceEnumerator),
+            nullptr,
+            CLSCTX_ALL,
+            IID_PPV_ARGS(
+                &enumerator)))) {
+        return result;
+    }
+
+    ComPtr<IMMDeviceCollection> devices;
+    if (FAILED(enumerator->EnumAudioEndpoints(
+            eRender,
+            DEVICE_STATE_ACTIVE,
+            &devices))) {
+        return result;
+    }
+
+    UINT count = 0;
+    if (FAILED(devices->GetCount(&count)))
+        return result;
+
+    result.reserve(count);
+
+    for (UINT index = 0;
+         index < count;
+         ++index) {
+        ComPtr<IMMDevice> device;
+        if (FAILED(devices->Item(
+                index,
+                &device))) {
+            continue;
+        }
+
+        LPWSTR id = nullptr;
+        if (FAILED(device->GetId(&id)) ||
+            !id) {
+            continue;
+        }
+
+        ComPtr<IPropertyStore> properties;
+        PROPVARIANT name_value{};
+        PropVariantInit(&name_value);
+
+        std::wstring name =
+            L"Playback device";
+
+        if (SUCCEEDED(
+                device->OpenPropertyStore(
+                    STGM_READ,
+                    &properties)) &&
+            SUCCEEDED(
+                properties->GetValue(
+                    kDeviceFriendlyName,
+                    &name_value)) &&
+            name_value.vt == VT_LPWSTR &&
+            name_value.pwszVal) {
+            name =
+                name_value.pwszVal;
+        }
+
+        DeviceChoice choice;
+        choice.id = id;
+        choice.name = std::move(name);
+        result.push_back(
+            std::move(choice));
+
+        PropVariantClear(
+            &name_value);
+        CoTaskMemFree(id);
+    }
+
+    return result;
+}
+
+std::vector<DeviceChoice>
 enumerate_cameras()
 {
     ScopedCom com;

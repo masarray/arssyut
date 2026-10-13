@@ -1,5 +1,9 @@
 # ADR-010 — Native webcam face-cam overlay: one recorder, one GPU compositor
 
+
+> **Historical P8W0 ADR / capture probe choice, not final implementation authority.** For the now hardware-verified Media Foundation NV12 webcam, single-source ownership, preview→record→preview, true output-space Camera/Logo Settings and F1 audio stop blocker, follow [ADR-011 (2026-10-12)](ADR-011-webcam-source-continuity-and-output-overlays.md) and [F1–F5 execution plan](../P8W_F1_F5_EXECUTION_PLAN_2026-10-12.md). Old statements saying capture is provisional or product camera is missing describe the original 2026-10-11 audit point, not today's working PIP MP4.
+
+
 Status: **P8W0 source audit complete; capture API selection is PROVISIONAL until Windows device/adapter probe.**  
 Date: 2026-10-11  
 Audit source: `main@f9833f0493ce46e13e2a5ca5990e94a04ec15b57` (documentation-only successor of accepted microphone-mute baseline `1d5ed67bcb47466c6cd210145d5f8fd80e90e526`)  

@@ -12,6 +12,27 @@ public enum CameraPlacement
     BottomRight
 }
 
+public enum CameraPipMask
+{
+    Circle = 0,
+    RoundedRectangle = 1,
+    DiagonalTopLeftBottomRight = 2,
+    DiagonalTopRightBottomLeft = 3
+}
+
+public enum CameraBorderTone
+{
+    White = 0,
+    Dark = 1,
+    Red = 2
+}
+
+public enum LogoPlacement
+{
+    TopLeft = 0, TopRight = 1, BottomLeft = 2,
+    BottomRight = 3, Center = 4
+}
+
 public enum RecordingVisualStyle
 {
     PixelAccurate,
@@ -76,6 +97,18 @@ public sealed class SettingsPreviewState
     // generations are always refreshed on launch.
     public string CaptureMode { get; private set; } = "Display";
     public string CaptureSourceId { get; private set; } = string.Empty;
+    public const string DefaultPlaybackDevice = "Windows default playback";
+    public string SystemAudioDevice { get; private set; } = DefaultPlaybackDevice;
+
+    public void SetSystemAudioDevice(string device)
+    {
+        if (string.IsNullOrWhiteSpace(device) || device.Length > 512 ||
+            device == SystemAudioDevice) return;
+        SystemAudioDevice = device;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     public bool SystemAudioEnabled { get; private set; }
     public bool MicrophoneEnabled { get; private set; }
 
@@ -197,7 +230,87 @@ public sealed class SettingsPreviewState
             HotkeyActionIds.FreezeCamera);
 
     public CameraPlacement CameraPlacement { get; private set; } =
-        CameraPlacement.BottomRight;
+        CameraPlacement.TopRight;
+
+    public CameraPipMask CameraMask { get; private set; } =
+        CameraPipMask.RoundedRectangle;
+    public CameraBorderTone CameraBorder { get; private set; } =
+        CameraBorderTone.White;
+    // 1x keeps the webcam's natural width. This only adjusts non-circle
+    // mask aperture width; PIP vertical size remains unchanged.
+    public float CameraMaskWidthScale { get; private set; } = 1f;
+    public float CameraWidthFraction { get; private set; } = 0.235f;
+    public float CameraMarginFraction { get; private set; } = 0.035f;
+    public float CameraRadiusFraction { get; private set; } = 0.72f;
+    public float CameraBorderWidthPx { get; private set; } = 2f;
+    public float CameraOpacity { get; private set; } = 1f;
+    public bool CameraMirror { get; private set; }
+
+    public bool TrySetCameraOverlay(CameraPipMask mask,
+        CameraBorderTone border, float width, float margin,
+        float radius, float borderWidth, float opacity, bool mirror,
+        float maskWidthScale = 1f)
+    {
+        if (!Enum.IsDefined(mask) || !Enum.IsDefined(border) ||
+            !float.IsFinite(width) || width is < .15f or > .40f ||
+            !float.IsFinite(margin) || margin is < 0f or > .15f ||
+            !float.IsFinite(radius) || radius is < 0f or > 1f ||
+            !float.IsFinite(maskWidthScale) || maskWidthScale is < .4f or > 2.2f ||
+            !float.IsFinite(borderWidth) || borderWidth is < 0f or > 32f ||
+            !float.IsFinite(opacity) || opacity is < 0f or > 1f)
+            return false;
+        if (CameraMask == mask && CameraBorder == border &&
+            CameraWidthFraction == width && CameraMaskWidthScale == maskWidthScale &&
+            CameraMarginFraction == margin &&
+            CameraRadiusFraction == radius && CameraBorderWidthPx == borderWidth &&
+            CameraOpacity == opacity && CameraMirror == mirror)
+            return true;
+        CameraMask = mask;
+        CameraBorder = border;
+        CameraWidthFraction = width;
+        CameraMaskWidthScale = maskWidthScale;
+        CameraMarginFraction = margin;
+        CameraRadiusFraction = radius;
+        CameraBorderWidthPx = borderWidth;
+        CameraOpacity = opacity;
+        CameraMirror = mirror;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public bool LogoEnabled { get; private set; }
+    public string LogoImagePath { get; private set; } = string.Empty;
+    public LogoPlacement LogoPlacement { get; private set; } =
+        LogoPlacement.BottomRight;
+    public float LogoWidthFraction { get; private set; } = .12f;
+    public float LogoMarginFraction { get; private set; } = .025f;
+    public float LogoOpacity { get; private set; } = 1f;
+
+    public bool TrySetLogoOverlay(bool enabled, string path,
+        LogoPlacement placement, float width, float margin, float opacity)
+    {
+        if (!Enum.IsDefined(placement) || path.Length > 511 ||
+            (enabled && (string.IsNullOrWhiteSpace(path) ||
+                         !System.IO.Path.IsPathFullyQualified(path))) ||
+            !float.IsFinite(width) || width is < .02f or > .50f ||
+            !float.IsFinite(margin) || margin is < 0f or > .15f ||
+            !float.IsFinite(opacity) || opacity is < 0f or > 1f)
+            return false;
+        if (LogoEnabled == enabled && LogoImagePath == path &&
+            LogoPlacement == placement && LogoWidthFraction == width &&
+            LogoMarginFraction == margin && LogoOpacity == opacity)
+            return true;
+        LogoEnabled = enabled;
+        LogoImagePath = path;
+        LogoPlacement = placement;
+        LogoWidthFraction = width;
+        LogoMarginFraction = margin;
+        LogoOpacity = opacity;
+        PersistentSettingsChanged?.Invoke(this, EventArgs.Empty);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
 
     private string _microphoneDevice =
         "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
@@ -490,7 +603,31 @@ public sealed class SettingsPreviewState
             snapshot.CaptureSourceId.Length > 1024 ||
             string.IsNullOrWhiteSpace(snapshot.MicrophoneDevice) ||
             snapshot.MicrophoneDevice.Length > 512 ||
+            string.IsNullOrWhiteSpace(snapshot.SystemAudioDevice) ||
+            snapshot.SystemAudioDevice.Length > 512 ||
             !Enum.IsDefined(snapshot.CameraPlacement) ||
+            !Enum.IsDefined(snapshot.LogoPlacement) ||
+            snapshot.LogoImagePath.Length > 511 ||
+            !float.IsFinite(snapshot.LogoWidthFraction) ||
+            snapshot.LogoWidthFraction is < .02f or > .50f ||
+            !float.IsFinite(snapshot.LogoMarginFraction) ||
+            snapshot.LogoMarginFraction is < 0f or > .15f ||
+            !float.IsFinite(snapshot.LogoOpacity) ||
+            snapshot.LogoOpacity is < 0f or > 1f ||
+            !Enum.IsDefined(snapshot.CameraMask) ||
+            !Enum.IsDefined(snapshot.CameraBorder) ||
+            !float.IsFinite(snapshot.CameraMaskWidthScale) ||
+            snapshot.CameraMaskWidthScale is < .4f or > 2.2f ||
+            !float.IsFinite(snapshot.CameraWidthFraction) ||
+            snapshot.CameraWidthFraction is < .15f or > .40f ||
+            !float.IsFinite(snapshot.CameraMarginFraction) ||
+            snapshot.CameraMarginFraction is < 0f or > .15f ||
+            !float.IsFinite(snapshot.CameraRadiusFraction) ||
+            snapshot.CameraRadiusFraction is < 0f or > 1f ||
+            !float.IsFinite(snapshot.CameraBorderWidthPx) ||
+            snapshot.CameraBorderWidthPx is < 0f or > 32f ||
+            !float.IsFinite(snapshot.CameraOpacity) ||
+            snapshot.CameraOpacity is < 0f or > 1f ||
             string.IsNullOrWhiteSpace(snapshot.CameraDevice) ||
             snapshot.CameraDevice.Length > 512 ||
             snapshot.SystemMixPercent is < 0 or > 100 ||
@@ -532,6 +669,7 @@ public sealed class SettingsPreviewState
         CaptureMode = snapshot.CaptureMode;
         CaptureSourceId = snapshot.CaptureSourceId;
         SystemAudioEnabled = snapshot.SystemAudioEnabled;
+        SystemAudioDevice = snapshot.SystemAudioDevice;
         MicrophoneEnabled = snapshot.MicrophoneEnabled;
         SystemMixPercent = snapshot.SystemMixPercent;
         MicrophoneMixPercent = snapshot.MicrophoneMixPercent;
@@ -539,6 +677,21 @@ public sealed class SettingsPreviewState
         MicrophoneMixMuted = snapshot.MicrophoneMixMuted;
         _microphoneDevice = snapshot.MicrophoneDevice;
         CameraPlacement = snapshot.CameraPlacement;
+        CameraMask = snapshot.CameraMask;
+        CameraBorder = snapshot.CameraBorder;
+        CameraWidthFraction = snapshot.CameraWidthFraction;
+        CameraMaskWidthScale = snapshot.CameraMaskWidthScale;
+        CameraMarginFraction = snapshot.CameraMarginFraction;
+        CameraRadiusFraction = snapshot.CameraRadiusFraction;
+        CameraBorderWidthPx = snapshot.CameraBorderWidthPx;
+        CameraOpacity = snapshot.CameraOpacity;
+        CameraMirror = snapshot.CameraMirror;
+        LogoEnabled = snapshot.LogoEnabled;
+        LogoImagePath = snapshot.LogoImagePath;
+        LogoPlacement = snapshot.LogoPlacement;
+        LogoWidthFraction = snapshot.LogoWidthFraction;
+        LogoMarginFraction = snapshot.LogoMarginFraction;
+        LogoOpacity = snapshot.LogoOpacity;
         _cameraDevice = snapshot.CameraDevice;
         return true;
     }
@@ -632,6 +785,7 @@ public sealed class SettingsPreviewState
         CaptureMode = "Display";
         CaptureSourceId = string.Empty;
         SystemAudioEnabled = false;
+        SystemAudioDevice = DefaultPlaybackDevice;
         MicrophoneEnabled = false;
         SystemMixPercent = 100;
         MicrophoneMixPercent = 100;
@@ -668,8 +822,22 @@ public sealed class SettingsPreviewState
                 pair.Value;
         }
 
-        CameraPlacement =
-            CameraPlacement.BottomRight;
+        CameraPlacement = CameraPlacement.TopRight;
+        CameraMask = CameraPipMask.RoundedRectangle;
+        CameraBorder = CameraBorderTone.White;
+        CameraWidthFraction = .235f;
+        CameraMaskWidthScale = 1f;
+        CameraMarginFraction = .035f;
+        CameraRadiusFraction = .72f;
+        CameraBorderWidthPx = 2f;
+        CameraOpacity = 1f;
+        CameraMirror = false;
+        LogoEnabled = false;
+        LogoImagePath = string.Empty;
+        LogoPlacement = LogoPlacement.BottomRight;
+        LogoWidthFraction = .12f;
+        LogoMarginFraction = .025f;
+        LogoOpacity = 1f;
         _microphoneDevice =
             "Hi-Fi Cable Output (VB-Audio Virtual Cable)";
         _cameraDevice =

@@ -280,14 +280,13 @@
                                 OnContent="" OffContent=""
                                 ToolTip.Tip="System audio recording is unavailable in this build." />
                 </Grid>
-                <Border x:Name="SystemAudioDeviceComboMain" Grid.Row="1" Grid.Column="0"
-                        Padding="8,7" CornerRadius="7"
-                        Background="{DynamicResource ArBrush.Surface3}"
-                        ToolTip.Tip="Captures the Windows default playback endpoint.">
-                  <TextBlock Text="Windows default playback" FontSize="10.5"
-                             TextTrimming="CharacterEllipsis"
-                             Foreground="{DynamicResource ArBrush.TextSecondary}"/>
-                </Border>
+                <ComboBox x:Name="SystemAudioDeviceComboMain"
+                          Grid.Row="1" Grid.Column="0" Classes="context-device"
+                          IsEnabled="False"
+                          AutomationProperties.Name="System audio playback device"
+                          ToolTip.Tip="Choose Windows default or a specific playback endpoint for loopback recording.">
+                  <ComboBoxItem Content="Windows default playback" />
+                </ComboBox>
                 <StackPanel Grid.Column="1" Grid.RowSpan="2"
                             Orientation="Horizontal" Spacing="5"
                             HorizontalAlignment="Right" VerticalAlignment="Center"
@@ -374,15 +373,16 @@
                               Grid.Column="1" Classes="context-toggle ar-toggle"
                               IsChecked="False" IsEnabled="False"
                               OnContent="" OffContent=""
-                              ToolTip.Tip="Live webcam preview is unavailable until the camera backend is implemented." />
+                              Click="CameraToggle_OnClick"
+                              ToolTip.Tip="Turn camera preview on or off." />
               </Grid>
-              <!-- Honest 16:9 preview: a centered camera glyph while OFF or
-                   backend unavailable, not a simulated image or fake feed. -->
+              <!-- Real 16:9 native GPU camera thumbnail. OFF shows placeholder.
+                   The image never simulates an active device. -->
               <Border x:Name="CameraPreviewFrame"
                       Grid.Row="1" Classes="camera-preview"
                       Width="148" Height="83.25"
                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                      ToolTip.Tip="Webcam preview is unavailable in this build.">
+                      ToolTip.Tip="Camera preview starts when Webcam is enabled.">
                 <Grid>
                   <Image x:Name="CameraPreviewImage" IsVisible="False"
                          Stretch="UniformToFill" />
@@ -391,7 +391,8 @@
               </Border>
               <ComboBox x:Name="CameraDeviceComboMain" Grid.Row="2"
                         Classes="context-device" SelectedIndex="0" IsEnabled="False"
-                        ToolTip.Tip="Camera selection will be available with the webcam backend.">
+                        SelectionChanged="CameraDevice_OnSelectionChanged"
+                        ToolTip.Tip="Choose which native USB/web camera to capture.">
                 <ComboBoxItem Content="No camera detected" />
               </ComboBox>
             </Grid>

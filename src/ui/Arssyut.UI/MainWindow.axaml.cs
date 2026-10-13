@@ -1,4 +1,7 @@
 using System;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
+using System.Threading;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -11,6 +14,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using Arssyut.UI.Design;
 using Arssyut.UI.Interop;
@@ -30,7 +35,29 @@ public sealed partial class MainWindow : Window
     private readonly bool _stressLongNames;
     private readonly bool _allowInteractionPreview;
     private readonly bool _audioHardwarePreview;
+    private readonly bool _webcamHardwarePreview;
     private readonly DispatcherTimer _hotkeyTimer;
+    private readonly DispatcherTimer _webcamPreviewTimer;
+    private readonly byte[] _webcamPreviewPixels =
+        new byte[NativeBridgeClient.WebcamPreviewByteCount];
+    private WriteableBitmap? _webcamPreviewBitmap;
+    private ulong _webcamPreviewSequence;
+    private long _webcamPreviewFreshAt;
+    private bool _webcamStartupRecoveryUsed;
+    private bool _webcamStartupRecoveryInFlight;
+    private bool _webcamFailureReported;
+    private bool _webcamResumeAfterRecording;
+    private bool _webcamResumeInFlight;
+    private bool _webcamResumeProbeDone;
+    private bool _webcamResumeRecoveryUsed;
+    private bool _webcamResumeRecoveryInFlight;
+    private long _webcamRecorderStoppedAt;
+    private int _webcamIntentVersion;
+    private bool _loadingCameraDevices;
+    private readonly SemaphoreSlim _webcamLifecycle = new(1, 1);
+    private bool _webcamStartTransition;
+    private bool _webcamShuttingDown;
+    private bool _webcamCloseFinished;
     private readonly IBrush _recordBrush;
     private readonly IBrush _recordHoverBrush;
     private readonly IBrush _recordSoftBrush;
@@ -51,6 +78,8 @@ public sealed partial class MainWindow : Window
     private string _cameraDevice =
         "Camera";
     private ulong _microphoneDeviceToken;
+    private ulong _systemAudioDeviceToken;
+    private bool _playbackSelectionValid = true;
     private ulong _cameraDeviceToken;
     private bool _systemAudioEnabled;
     private NativeRecorderSnapshot? _lastNativeSnapshot;
@@ -85,6 +114,13 @@ public sealed partial class MainWindow : Window
                 Environment.GetEnvironmentVariable("ARSSYUT_AUDIO_PREVIEW"),
                 "1", StringComparison.Ordinal);
 
+        _webcamHardwarePreview =
+            nativeBridge is not null &&
+            !allowInteractionPreview &&
+            string.Equals(
+                Environment.GetEnvironmentVariable("ARSSYUT_WEBCAM_PREVIEW"),
+                "1", StringComparison.Ordinal);
+
         _microphoneDevice = _settings.MicrophoneDevice;
         _cameraDevice = _settings.CameraDevice;
         if (Enum.TryParse<PreviewCaptureMode>(
@@ -103,6 +139,26 @@ public sealed partial class MainWindow : Window
         ModeDisplay.IsChecked = _captureMode == PreviewCaptureMode.Display;
         ModeWindow.IsChecked = _captureMode == PreviewCaptureMode.Window;
         ModeRegion.IsChecked = _captureMode == PreviewCaptureMode.Region;
+
+        SystemAudioDeviceComboMain.SelectionChanged += (_, _) =>
+        {
+            if (!_mainUiReady || _loadingCameraDevices ||
+                !_audioHardwarePreview ||
+                SystemAudioDeviceComboMain.SelectedItem is not ComboBoxItem item)
+                return;
+            if (_lastNativeSnapshot?.State is NativeRecorderState.Recording or
+                NativeRecorderState.Paused or NativeRecorderState.Preparing or
+                NativeRecorderState.Armed or NativeRecorderState.Stopping or
+                NativeRecorderState.Finalizing) return;
+            var choice = item.Tag as NativeDeviceItem;
+            _systemAudioDeviceToken = choice?.Token ?? 0;
+            _playbackSelectionValid = true;
+            _settings.SetSystemAudioDevice(choice?.Name ??
+                SettingsPreviewState.DefaultPlaybackDevice);
+            if (_nativeBridge is not null)
+                _ = _nativeBridge.SetSystemAudioEndpoint(_systemAudioDeviceToken);
+            RefreshInputLabels();
+        };
 
         MicrophoneDeviceComboMain.SelectionChanged += (_, _) =>
         {
@@ -171,6 +227,10 @@ public sealed partial class MainWindow : Window
                 Interval = TimeSpan.FromMilliseconds(75)
             };
         _hotkeyTimer.Tick += GlobalHotkeyTimer_OnTick;
+        _webcamPreviewTimer = new DispatcherTimer {
+            Interval = TimeSpan.FromMilliseconds(100)
+        };
+        _webcamPreviewTimer.Tick += WebcamPreviewTimer_OnTick;
         _mainUiReady = true;
 
         if (_nativeBridge is null &&
@@ -199,6 +259,8 @@ public sealed partial class MainWindow : Window
                 ApplySessionState();
                 SyncGlobalHotkeys();
                 _hotkeyTimer.Start();
+                if (_webcamHardwarePreview)
+                    _webcamPreviewTimer.Start();
 
                 if (autoStartRecording &&
                     _allowInteractionPreview)
@@ -207,12 +269,41 @@ public sealed partial class MainWindow : Window
                 }
             };
 
+        // The camera driver can take time to shut down. Closing must not
+        // synchronously join a device worker on Avalonia's UI dispatcher.
+        Closing += async (_, eventArgs) =>
+        {
+            if (_nativeBridge is null || _webcamCloseFinished)
+                return;
+            eventArgs.Cancel = true;
+            if (_webcamShuttingDown) return;
+            _webcamShuttingDown = true;
+            ++_webcamIntentVersion;
+            _webcamPreviewTimer.Stop();
+            await _webcamLifecycle.WaitAsync();
+            try {
+                await Task.Run(() => _nativeBridge.StopWebcamPreview());
+            } catch (Exception) {
+                // Recorder app's native bridge owns ultimate cleanup.
+            } finally {
+                _webcamLifecycle.Release();
+            }
+            _webcamCloseFinished = true;
+            Close();
+        };
+
         Closed +=
             (_, _) =>
             {
                 _settings.Changed -=
                     Settings_OnChanged;
                 _hotkeyTimer.Stop();
+                _webcamPreviewTimer.Stop();
+                _webcamIntentVersion++;
+                // Native preview shutdown is handled asynchronously by
+                // Closing and ultimately owned by the bridge's destructor.
+                _webcamPreviewBitmap?.Dispose();
+                _webcamPreviewBitmap = null;
                 _countdown?.Close();
                 _countdown = null;
                 SuspendGlobalHotkeys();
@@ -314,7 +405,7 @@ public sealed partial class MainWindow : Window
                     _nativeBridge,
                     audioSessionLocked: _lastNativeSnapshot?.State is
                         NativeRecorderState.Preparing or NativeRecorderState.Armed or
-                        NativeRecorderState.Recording or NativeRecorderState.Stopping or
+                        NativeRecorderState.Recording or NativeRecorderState.Paused or NativeRecorderState.Stopping or
                         NativeRecorderState.Finalizing)
                 {
                     WindowStartupLocation =
@@ -325,6 +416,7 @@ public sealed partial class MainWindow : Window
             // Rebind persisted choice by CURRENT token generation after
             // dialog; it must not refresh devices or create stale tokens.
             RebindSettingsMicrophone();
+            RebindSettingsPlayback();
         }
         finally
         {
@@ -755,15 +847,21 @@ public sealed partial class MainWindow : Window
         catch (Exception) { /* Keep the last verified device. */ }
     }
 
-    private void RefreshNativeDevices()
+    private async void RefreshNativeDevices()
     {
-        if (_nativeBridge is null)
+        if (_nativeBridge is null || _loadingCameraDevices)
             return;
 
+        _loadingCameraDevices = true;
+        // Device enumeration is serialized with native camera Stop/Open and
+        // window closing; no device API runs while the bridge is disposed.
+        await _webcamLifecycle.WaitAsync();
         try
         {
-            var devices =
-                _nativeBridge.RefreshDevices();
+            var devices = await Task.Run(
+                () => _nativeBridge.RefreshDevices());
+            if (_webcamShuttingDown || _webcamCloseFinished)
+                return;
 
             ApplyNativeDeviceButtons(
                 _microphoneOptions,
@@ -772,6 +870,44 @@ public sealed partial class MainWindow : Window
             ApplyNativeDeviceButtons(
                 _cameraOptions,
                 devices.Cameras);
+
+            SystemAudioDeviceComboMain.Items.Clear();
+            SystemAudioDeviceComboMain.Items.Add(new ComboBoxItem {
+                Content = SettingsPreviewState.DefaultPlaybackDevice
+            });
+            foreach (var device in devices.Playbacks)
+                SystemAudioDeviceComboMain.Items.Add(new ComboBoxItem {
+                    Content = device.Name, Tag = device
+                });
+            // Persist user intent but never silently map a missing/ambiguous
+            // selected render endpoint to the Windows default.
+            var wantedPlayback = _settings.SystemAudioDevice;
+            var found = wantedPlayback ==
+                SettingsPreviewState.DefaultPlaybackDevice
+                ? -1 : devices.Playbacks
+                    .Select((device,index) => (device,index))
+                    .Where(x => string.Equals(x.device.Name, wantedPlayback,
+                                              StringComparison.Ordinal))
+                    .ToArray().Length == 1
+                    ? devices.Playbacks
+                        .Select((device,index) => (device,index))
+                        .Single(x => string.Equals(x.device.Name, wantedPlayback,
+                                                  StringComparison.Ordinal)).index
+                    : -2;
+            _playbackSelectionValid = found != -2;
+            _systemAudioDeviceToken = found >= 0
+                ? devices.Playbacks[found].Token : 0;
+            if (_playbackSelectionValid)
+                _ = _nativeBridge.SetSystemAudioEndpoint(_systemAudioDeviceToken);
+            if (found == -2) {
+                SystemAudioDeviceComboMain.Items.Add(new ComboBoxItem {
+                    Content = $"Unavailable: {wantedPlayback}",
+                    IsEnabled = false
+                });
+                SystemAudioDeviceComboMain.SelectedIndex =
+                    SystemAudioDeviceComboMain.Items.Count - 1;
+            } else
+                SystemAudioDeviceComboMain.SelectedIndex = found + 1;
 
             // Preserve the user's selection across an MMDevice refresh.
             // Tokens have a new generation after refresh, so pin the new
@@ -822,12 +958,56 @@ public sealed partial class MainWindow : Window
                 _cameraDevice = devices.Cameras[cameraIndex].Name;
                 _cameraDeviceToken = devices.Cameras[cameraIndex].Token;
             }
+            else {
+                _cameraDeviceToken = 0;
+            }
         }
         catch (Exception)
         {
-            // Device snapshots are read-only in P6UI.4A. Keep the UI alive if
-            // device enumeration is temporarily unavailable.
+            // Fail closed on device enumeration, never start with a token
+            // from an older generation after a device change.
+            _cameraDeviceToken = 0;
+            _microphoneDeviceToken = 0;
+            _playbackSelectionValid = false;
+            _systemAudioDeviceToken = 0;
         }
+        finally {
+            _loadingCameraDevices = false;
+            _webcamLifecycle.Release();
+        }
+        if (!_webcamShuttingDown && !_webcamCloseFinished) {
+            // Device enumeration completes asynchronously. The initial
+            // OnOpened capability surface ran before tokens were populated,
+            // so update both Camera selector and accepted A/V mic controls.
+            RefreshInputLabels();
+            ApplyProductCapabilitySurface();
+        }
+    }
+
+    private void RebindSettingsPlayback()
+    {
+        if (!_audioHardwarePreview || _loadingCameraDevices) return;
+        var wanted = _settings.SystemAudioDevice;
+        for (var i = 0; i < SystemAudioDeviceComboMain.Items.Count; ++i)
+        {
+            if (SystemAudioDeviceComboMain.Items[i] is not ComboBoxItem item ||
+                !item.IsEnabled) continue;
+            var device = item.Tag as NativeDeviceItem;
+            var label = device?.Name ?? SettingsPreviewState.DefaultPlaybackDevice;
+            if (string.Equals(wanted, label, StringComparison.Ordinal))
+            {
+                SystemAudioDeviceComboMain.SelectedIndex = i;
+                _systemAudioDeviceToken = device?.Token ?? 0;
+                _playbackSelectionValid = true;
+                if (_nativeBridge is not null)
+                    _ = _nativeBridge.SetSystemAudioEndpoint(_systemAudioDeviceToken);
+                return;
+            }
+        }
+        _playbackSelectionValid = false;
+        // A disconnected persisted selection is never silently defaulted.
+        ToolTip.SetTip(SystemAudioDeviceComboMain,
+            "Previously selected playback endpoint is unavailable.");
     }
 
     private static void ApplyReadOnlyDeviceCombo(
@@ -1018,13 +1198,373 @@ public sealed partial class MainWindow : Window
         UpdateReadyDetail();
     }
 
-    private void CameraToggle_OnClick(
+    // Select the real MF symbolic-link token; do not bind by display label.
+    // The main ComboBox (not the old hidden prototype buttons) is the actual
+    // webcam selector. A device switch stops the previous preview first.
+    private async void CameraDevice_OnSelectionChanged(
+        object? sender, SelectionChangedEventArgs e)
+    {
+        // Avalonia may raise SelectionChanged while InitializeComponent()
+        // is *still creating* CameraDeviceComboMain. In an async void event,
+        // touching the not-yet-created named field throws on the dispatcher
+        // and terminates the entire WinExe (0xE0434352). Always use sender
+        // and the existing _mainUiReady construction barrier.
+        if (!_mainUiReady ||
+            _loadingCameraDevices ||
+            !_webcamHardwarePreview ||
+            _nativeBridge is null ||
+            _webcamStartTransition || _webcamShuttingDown ||
+            sender is not ComboBox combo ||
+            combo.SelectedItem is not ComboBoxItem item ||
+            item.Tag is not NativeDeviceItem device)
+            return;
+
+        if (_lastNativeSnapshot?.State is NativeRecorderState.Recording or
+            NativeRecorderState.Paused or NativeRecorderState.Armed or
+            NativeRecorderState.Preparing or NativeRecorderState.Stopping or
+            NativeRecorderState.Finalizing) {
+            ShowCommandFeedback("Camera in use",
+                "Camera device can be changed after Stop.");
+            return;
+        }
+        _cameraDevice = device.Name;
+        _cameraDeviceToken = device.Token;
+        if (_session.CameraEnabled) {
+            _webcamStartupRecoveryUsed = false;
+            _webcamFailureReported = false;
+            var version = ++_webcamIntentVersion;
+            HideWebcamPreview();
+            await ApplyWebcamPreviewIntentAsync(
+                version, _cameraDeviceToken, true);
+        }
+        RefreshInputLabels();
+    }
+
+    // Serializes source close/open across rapid UI toggles, device changes,
+    // recorder handoff and window closing. Native calls are never executed
+    // on the Avalonia dispatcher; obsolete requests cannot reopen hardware.
+    private async Task ApplyWebcamPreviewIntentAsync(
+        int version, ulong token, bool enabled)
+    {
+        var bridge = _nativeBridge;
+        if (bridge is null) return;
+        await _webcamLifecycle.WaitAsync();
+        try {
+            await Task.Run(() => bridge.StopWebcamPreview());
+            if (!enabled || version != _webcamIntentVersion ||
+                !_session.CameraEnabled ||
+                _webcamStartTransition || _webcamShuttingDown)
+                return;
+            var status = await Task.Run(
+                () => bridge.StartWebcamPreview(token));
+            if (version == _webcamIntentVersion &&
+                !_webcamShuttingDown && status != NativeBridgeStatus.Ok)
+                ReportWebcamPreviewProblem(
+                    $"Camera could not start ({status}).");
+        } catch (Exception ex) {
+            if (version == _webcamIntentVersion &&
+                !_webcamShuttingDown)
+                ReportWebcamPreviewProblem(ex.Message);
+        } finally {
+            _webcamLifecycle.Release();
+        }
+    }
+
+    private void HideWebcamPreview()
+    {
+        CameraPreviewImage.IsVisible = false;
+        CameraPreviewPlaceholder.IsVisible = true;
+        _webcamPreviewSequence = 0;
+    }
+
+    // Actual camera state must NOT overwrite the user's ON intent.
+    // A cold-start MF failure is recoverable without toggling the switch.
+    private void ReportWebcamPreviewProblem(string why)
+    {
+        HideWebcamPreview();
+        ToolTip.SetTip(CameraPreviewFrame, why);
+        if (_webcamFailureReported) return;
+        _webcamFailureReported = true;
+        ShowCommandFeedback("Webcam unavailable", why);
+    }
+
+    private void DisableWebcamPreview(string why)
+    {
+        ++_webcamIntentVersion;
+        _session.CameraEnabled = false;
+        CameraToggle.IsChecked = false;
+        ReportWebcamPreviewProblem(why);
+        RefreshInputLabels();
+    }
+
+    private string WebcamNativeFailure()
+    {
+        try {
+            if (_nativeBridge?.ReadWebcamPreviewFailure(
+                    out var stage, out var hresult) == NativeBridgeStatus.Ok)
+                return $"Native webcam stage {stage}, HRESULT 0x{hresult:X8}.";
+        } catch (Exception) {
+            // The bridge can already be shutting down.
+        }
+        return "Native camera worker stopped unexpectedly.";
+    }
+
+    // At most one cold-start source reinitialization per explicit ON.
+    // Always stop/join the previous worker before opening a replacement.
+    // Unlike an uncontrolled retry loop, a second failure is surfaced with
+    // the exact native stage/HRESULT and the requested ON state is retained.
+    private async Task RecoverInitialWebcamAsync(
+        int version, ulong token)
+    {
+        if (_webcamStartupRecoveryInFlight ||
+            _webcamStartupRecoveryUsed || !_session.CameraEnabled)
+            return;
+        _webcamStartupRecoveryUsed = true;
+        _webcamStartupRecoveryInFlight = true;
+        try {
+            HideWebcamPreview();
+            await ApplyWebcamPreviewIntentAsync(version, token, true);
+        } finally {
+            _webcamStartupRecoveryInFlight = false;
+        }
+    }
+
+    private async Task RestoreWebcamAfterRecordingAsync()
+    {
+        if (_webcamResumeInFlight || _webcamResumeProbeDone ||
+            !_webcamResumeAfterRecording ||
+            _webcamStartTransition || !_session.CameraEnabled ||
+            _cameraDeviceToken == 0 || _webcamShuttingDown)
+            return;
+        var bridge = _nativeBridge;
+        if (bridge is null) return;
+        _webcamResumeInFlight = true;
+        try {
+            await _webcamLifecycle.WaitAsync();
+            try {
+                if (!_webcamResumeAfterRecording ||
+                    !_session.CameraEnabled || _webcamShuttingDown)
+                    return;
+                var status = await Task.Run(
+                    () => bridge.StartWebcamPreview(_cameraDeviceToken));
+                if (status == NativeBridgeStatus.Ok) {
+                    // Bridge OK means the session exists, NOT that the
+                    // post-Stop GPU worker has published a new frame.
+                    _webcamResumeProbeDone = true;
+                } else if (status != NativeBridgeStatus.Busy) {
+                    _webcamResumeAfterRecording = false;
+                    ReportWebcamPreviewProblem(
+                        $"Camera restart failed ({status}).");
+                }
+            } finally {
+                _webcamLifecycle.Release();
+            }
+        } catch (Exception ex) {
+            _webcamResumeAfterRecording = false;
+            ReportWebcamPreviewProblem(ex.Message);
+        } finally {
+            _webcamResumeInFlight = false;
+        }
+    }
+
+    private async Task RecoverStalledPostStopWebcamAsync()
+    {
+        if (_webcamResumeRecoveryInFlight || _webcamShuttingDown ||
+            !_webcamResumeAfterRecording || !_session.CameraEnabled)
+            return;
+        _webcamResumeRecoveryInFlight = true;
+        // Exactly one cold recovery permitted only AFTER the recorder
+        // worker finished. Healthy Stop never closes/reopens MF hardware.
+        _webcamResumeRecoveryUsed = true;
+        _webcamResumeProbeDone = false;
+        _webcamRecorderStoppedAt = Stopwatch.GetTimestamp();
+        var version = ++_webcamIntentVersion;
+        try {
+            HideWebcamPreview();
+            await ApplyWebcamPreviewIntentAsync(
+                version, _cameraDeviceToken, true);
+        } finally {
+            _webcamResumeRecoveryInFlight = false;
+        }
+    }
+
+    private void WebcamPreviewTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (!_webcamHardwarePreview || !_session.CameraEnabled ||
+            _nativeBridge is null ||
+            _webcamStartTransition || _webcamShuttingDown)
+            return;
+
+        // F2B: the shared physical source remains live while recording.
+        // Only restart/restore after the recorder releases its GPU consumer.
+        if (_webcamResumeAfterRecording) {
+            try {
+                var snapshot = _nativeBridge.Snapshot();
+                if (snapshot.WorkerFinished &&
+                    snapshot.State is NativeRecorderState.Ready or
+                        NativeRecorderState.Failed or NativeRecorderState.Idle) {
+                    if (_webcamRecorderStoppedAt == 0)
+                        _webcamRecorderStoppedAt = Stopwatch.GetTimestamp();
+                    var waited = Stopwatch.GetElapsedTime(_webcamRecorderStoppedAt);
+                    if (waited > TimeSpan.FromSeconds(10)) {
+                        _webcamResumeAfterRecording = false;
+                        ReportWebcamPreviewProblem(
+                            "Webcam did not produce a fresh frame after Stop. Toggle Camera to retry.");
+                    } else if (waited > TimeSpan.FromSeconds(3.5) &&
+                               !_webcamResumeRecoveryUsed &&
+                               !_webcamResumeRecoveryInFlight) {
+                        _ = RecoverStalledPostStopWebcamAsync();
+                    } else if (!_webcamResumeProbeDone &&
+                               !_webcamResumeRecoveryInFlight) {
+                        _ = RestoreWebcamAfterRecordingAsync();
+                    }
+                }
+                else if (snapshot.State is not (NativeRecorderState.Recording or
+                    NativeRecorderState.Paused or NativeRecorderState.Armed or
+                    NativeRecorderState.Preparing)) {
+                    return; // Stop/finalization has not released GPU yet.
+                }
+            } catch (Exception) {
+                // Native recorder teardown is asynchronous.
+                return;
+            }
+        }
+
+        if (_webcamStartupRecoveryInFlight) return;
+        try {
+            var status = _nativeBridge.ReadWebcamPreview(
+                _webcamPreviewPixels, out var sequence, out var state);
+            if (status != NativeBridgeStatus.Ok) {
+                ReportWebcamPreviewProblem($"Preview read failed ({status}).");
+                return;
+            }
+            if (state == 3) {
+                if (!_webcamStartupRecoveryUsed &&
+                    _webcamPreviewSequence == 0) {
+                    _ = RecoverInitialWebcamAsync(
+                        _webcamIntentVersion, _cameraDeviceToken);
+                    return;
+                }
+                ReportWebcamPreviewProblem(WebcamNativeFailure());
+                return;
+            }
+            if (state == 1) {
+                CameraPreviewImage.IsVisible = false;
+                CameraPreviewPlaceholder.IsVisible = true;
+                ToolTip.SetTip(CameraPreviewFrame, "Opening webcam...");
+                return;
+            }
+            if (state == 0) {
+                CameraPreviewImage.IsVisible = false;
+                CameraPreviewPlaceholder.IsVisible = true;
+                ToolTip.SetTip(CameraPreviewFrame,
+                    "Webcam is not yet publishing preview frames.");
+                return;
+            }
+            if ((state != 2 && state != 4) || sequence == 0) return;
+            if (sequence == _webcamPreviewSequence) {
+                // Do not display a frozen bitmap as though it is a live feed.
+                if (_webcamPreviewFreshAt != 0 &&
+                    Stopwatch.GetElapsedTime(_webcamPreviewFreshAt) >
+                        TimeSpan.FromMilliseconds(1500)) {
+                    // Preserve last seen sequence, but never show its
+                    // stale bitmap as a "live" frame after capture stalls.
+                    CameraPreviewImage.IsVisible = false;
+                    CameraPreviewPlaceholder.IsVisible = true;
+                    ToolTip.SetTip(CameraPreviewFrame,
+                        "Waiting for a fresh camera frame.");
+                }
+                return;
+            }
+            _webcamPreviewBitmap ??= new WriteableBitmap(
+                new PixelSize(NativeBridgeClient.WebcamPreviewWidth,
+                              NativeBridgeClient.WebcamPreviewHeight),
+                new Vector(96,96),
+                PixelFormat.Bgra8888, AlphaFormat.Opaque);
+
+            using (var framebuffer = _webcamPreviewBitmap.Lock()) {
+                var packedStride = NativeBridgeClient.WebcamPreviewWidth * 4;
+                if (framebuffer.RowBytes == packedStride) {
+                    Marshal.Copy(_webcamPreviewPixels, 0,
+                                 framebuffer.Address,
+                                 _webcamPreviewPixels.Length);
+                } else {
+                    for (var row = 0;
+                         row < NativeBridgeClient.WebcamPreviewHeight; ++row)
+                        Marshal.Copy(_webcamPreviewPixels,
+                            row * packedStride,
+                            IntPtr.Add(framebuffer.Address,
+                                       row * framebuffer.RowBytes),
+                            packedStride);
+                }
+            }
+            CameraPreviewImage.Source = _webcamPreviewBitmap;
+            // Reusing the SAME retained WriteableBitmap must still
+            // invalidate the Avalonia visual after its pixels change.
+            CameraPreviewImage.InvalidateVisual();
+            CameraPreviewImage.IsVisible = true;
+            CameraPreviewPlaceholder.IsVisible = false;
+            _webcamPreviewSequence = sequence;
+            _webcamPreviewFreshAt = Stopwatch.GetTimestamp();
+            if (_webcamResumeAfterRecording &&
+                _webcamRecorderStoppedAt != 0 &&
+                state == 2) {
+                // Only a genuinely new post-record frame acknowledges
+                // successful ownership return; never Start() status alone.
+                _webcamResumeAfterRecording = false;
+                _webcamResumeProbeDone = false;
+                _webcamRecorderStoppedAt = 0;
+                _webcamStartupRecoveryUsed = false;
+            }
+            _webcamFailureReported = false;
+            // Clear only an earlier CAMERA startup warning; never erase an
+            // actual failed recording's separate audio/encoder diagnosis.
+            if (StatusText.Text == "Webcam unavailable" &&
+                _lastNativeSnapshot?.State is null or NativeRecorderState.Idle)
+                ApplyNativeReadyState();
+            ToolTip.SetTip(CameraPreviewFrame, state == 4
+                ? "Live webcam — same GPU source as MP4 recording"
+                : "Live native GPU webcam preview");
+        } catch (Exception ex) {
+            ReportWebcamPreviewProblem(ex.Message);
+        }
+    }
+
+    private async void CameraToggle_OnClick(
         object? sender,
         RoutedEventArgs e)
     {
-        _session.CameraEnabled =
-            CameraToggle.IsChecked == true;
+        if (!_webcamHardwarePreview || _nativeBridge is null ||
+            _webcamStartTransition || _webcamShuttingDown)
+            return;
+        // F2B does not yet support changing capture hardware while writer
+        // is active. Reject the control honestly rather than interrupt the
+        // one MF source and corrupt the MP4 or privacy-light state.
+        if (_lastNativeSnapshot?.State is NativeRecorderState.Recording or
+            NativeRecorderState.Paused or NativeRecorderState.Armed or
+            NativeRecorderState.Preparing or NativeRecorderState.Stopping or
+            NativeRecorderState.Finalizing) {
+            CameraToggle.IsChecked = _session.CameraEnabled;
+            ShowCommandFeedback("Camera in use",
+                "Stop recording before switching the camera.");
+            return;
+        }
+        var enabled = CameraToggle.IsChecked == true;
+        var version = ++_webcamIntentVersion;
+        _webcamStartupRecoveryUsed = false;
+        _webcamFailureReported = false;
+        _webcamPreviewFreshAt = Stopwatch.GetTimestamp();
+        if (!enabled) _webcamResumeAfterRecording = false;
+        _session.CameraEnabled = enabled;
+        HideWebcamPreview();
         RefreshInputLabels();
+
+        if (enabled && _cameraDeviceToken == 0) {
+            DisableWebcamPreview("No connected webcam is selected.");
+            return;
+        }
+        await ApplyWebcamPreviewIntentAsync(
+            version, _cameraDeviceToken, enabled);
     }
 
     private static void SelectDeviceOption(
@@ -1041,6 +1581,14 @@ public sealed partial class MainWindow : Window
 
     private void RefreshInputLabels()
     {
+        // A hardware-source switch during native capture is not supported.
+        // Disable these controls instead of allowing a misleading GUI state
+        // that disagrees with the one retained MF camera owner.
+        var cameraBusy = _webcamStartTransition ||
+            _lastNativeSnapshot?.State is NativeRecorderState.Preparing or
+                NativeRecorderState.Armed or NativeRecorderState.Recording or
+                NativeRecorderState.Paused or NativeRecorderState.Stopping or
+                NativeRecorderState.Finalizing;
         if (!_allowInteractionPreview && !_audioHardwarePreview)
         {
             SystemAudioToggle.IsChecked =
@@ -1059,16 +1607,19 @@ public sealed partial class MainWindow : Window
                     ? "Engine unavailable"
                     : "Video-only build";
 
-            CameraToggle.IsChecked =
-                false;
-            CameraToggle.IsEnabled =
-                false;
-            CameraDeviceButton.IsEnabled =
-                false;
+            CameraToggle.IsChecked = _webcamHardwarePreview &&
+                _session.CameraEnabled;
+            CameraToggle.IsEnabled = _webcamHardwarePreview &&
+                _cameraDeviceToken != 0 && !cameraBusy;
+            CameraDeviceComboMain.IsEnabled = _webcamHardwarePreview &&
+                _cameraDeviceToken != 0 && !cameraBusy;
+            CameraDeviceButton.IsEnabled = false;
             CameraDeviceText.Text =
-                _nativeBridge is null
-                    ? "Engine unavailable"
-                    : "Backend pending";
+                _webcamHardwarePreview
+                    ? (_session.CameraEnabled ? _cameraDevice
+                        : $"Off · {_cameraDevice}")
+                    : _nativeBridge is null
+                        ? "Engine unavailable" : "Backend pending";
             return;
         }
 
@@ -1077,11 +1628,20 @@ public sealed partial class MainWindow : Window
                 ? _microphoneDevice
                 : $"Off · {_microphoneDevice}";
 
+        // Internal P8W2 camera may run without enabling experimental
+        // audio. Tokens come only from the refreshed native device catalog.
+        CameraToggle.IsEnabled = !cameraBusy && (_allowInteractionPreview ||
+            (_webcamHardwarePreview && _cameraDeviceToken != 0));
+        CameraDeviceButton.IsEnabled = false;
+        CameraDeviceComboMain.IsEnabled = !cameraBusy && (_allowInteractionPreview ||
+            (_webcamHardwarePreview && _cameraDeviceToken != 0));
         CameraDeviceText.Text =
             _session.CameraEnabled
                 ? _cameraDevice
                 : $"Off · {_cameraDevice}";
 
+        SystemAudioDeviceComboMain.IsEnabled = _audioHardwarePreview &&
+            !cameraBusy;
         SystemAudioToggle.IsChecked =
             _systemAudioEnabled;
         MicToggle.IsChecked =
@@ -1091,6 +1651,9 @@ public sealed partial class MainWindow : Window
         // ComboBox truncation is intentional in the compact audio card.
         // The full native device name must remain accessible on hover.
         ToolTip.SetTip(MicrophoneDeviceComboMain, _microphoneDevice);
+        ToolTip.SetTip(SystemAudioDeviceComboMain, _playbackSelectionValid
+            ? _settings.SystemAudioDevice
+            : "Selected playback device unavailable; choose another endpoint.");
     }
 
     private void RefreshSettingsSurface()
@@ -1170,6 +1733,9 @@ public sealed partial class MainWindow : Window
                  NativeHotkeyEvents.ToggleMicrophone) != 0) {
                 HandleGlobalMicrophoneHotkey();
             }
+            if ((events & NativeHotkeyEvents.TogglePause) != 0) {
+                HandleGlobalPauseHotkey();
+            }
         }
         catch (Exception)
         {
@@ -1196,7 +1762,8 @@ public sealed partial class MainWindow : Window
         if (snapshot.State is
             NativeRecorderState.Preparing or
             NativeRecorderState.Armed or
-            NativeRecorderState.Recording)
+            NativeRecorderState.Recording or
+            NativeRecorderState.Paused)
         {
             _nativeBridge.StopRecording();
             return;
@@ -1208,6 +1775,19 @@ public sealed partial class MainWindow : Window
             return;
 
         StartNativeRecording();
+    }
+
+    private void HandleGlobalPauseHotkey()
+    {
+        if (_nativeBridge is null) return;
+        try
+        {
+            _nativeBridge.TogglePause();
+        }
+        catch (Exception)
+        {
+            // A closing session may reject a late shortcut safely.
+        }
     }
 
     private void HandleGlobalMicrophoneHotkey()
@@ -1246,6 +1826,10 @@ public sealed partial class MainWindow : Window
             desired,
             NativeHotkeyAction.ToggleMicrophone,
             HotkeyActionIds.Microphone);
+        AddHotkeyIfAssigned(
+            desired,
+            NativeHotkeyAction.TogglePause,
+            HotkeyActionIds.Pause);
         AddHotkeyIfAssigned(
             desired,
             NativeHotkeyAction.ToggleZoom,
@@ -1441,7 +2025,8 @@ public sealed partial class MainWindow : Window
 
     private async void StartNativeRecording()
     {
-        if (_startSequenceActive)
+        if (_startSequenceActive || _webcamStartTransition ||
+            _webcamShuttingDown || _loadingCameraDevices)
             return;
 
         var bridge =
@@ -1471,6 +2056,11 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (_systemAudioEnabled && !_playbackSelectionValid) {
+            ShowCommandFeedback("Playback device unavailable",
+                "The selected audio endpoint is disconnected or ambiguous. Choose a valid device or Windows default.");
+            return;
+        }
         var flags =
             NativeStartFlags.ArmedStart;
 
@@ -1506,10 +2096,22 @@ public sealed partial class MainWindow : Window
                 NativeStartFlags.Camera;
 
         NativeBridgeStatus status;
-
-        try
-        {
-            status =
+        _webcamStartTransition = true;
+        ++_webcamIntentVersion;
+        _webcamResumeAfterRecording = _session.CameraEnabled;
+        _webcamResumeProbeDone = false;
+        _webcamResumeRecoveryUsed = false;
+        _webcamRecorderStoppedAt = 0;
+        HideWebcamPreview();
+        ToolTip.SetTip(CameraPreviewFrame,
+            "Camera GPU renderer is transferring to recorder; capture stays open.");
+        try {
+            // Single MF source remains open; the native bridge waits for
+            // a bounded GPU-consumer handoff. Never STOP preview hardware
+            // or create a second physical source for a recording.
+            await _webcamLifecycle.WaitAsync();
+            try {
+                status = await Task.Run(() =>
                 bridge.StartRecording(
                     new NativeStartRequest(
                         _captureMode,
@@ -1539,19 +2141,60 @@ public sealed partial class MainWindow : Window
                         _settings.SystemMixPercent / 100.0f,
                         _settings.MicrophoneMixPercent / 100.0f,
                         _settings.SystemMixMuted,
-                        _settings.MicrophoneMixMuted));
+                        _settings.MicrophoneMixMuted,
+                        new NativeCameraOverlay(
+                            Placement: (uint)_settings.CameraPlacement,
+                            Mask: (uint)_settings.CameraMask,
+                            Width: _settings.CameraWidthFraction,
+                            MaskWidthScale: _settings.CameraMaskWidthScale,
+                            Margin: _settings.CameraMarginFraction,
+                            Radius: _settings.CameraRadiusFraction,
+                            BorderWidth: _settings.CameraBorderWidthPx,
+                            Opacity: _settings.CameraOpacity,
+                            Mirror: _settings.CameraMirror,
+                            Red: _settings.CameraBorder switch {
+                                CameraBorderTone.Dark => .12f,
+                                CameraBorderTone.Red => 1f,
+                                _ => .96f
+                            },
+                            Green: _settings.CameraBorder switch {
+                                CameraBorderTone.Dark => .16f,
+                                CameraBorderTone.Red => .27f,
+                                _ => .96f
+                            },
+                            Blue: _settings.CameraBorder switch {
+                                CameraBorderTone.Dark => .22f,
+                                CameraBorderTone.Red => .36f,
+                                _ => .96f
+                            }),
+                        new NativeLogoOverlay(
+                            Enabled: _settings.LogoEnabled,
+                            ImagePath: _settings.LogoImagePath,
+                            Placement: (uint)_settings.LogoPlacement,
+                            Width: _settings.LogoWidthFraction,
+                            Margin: _settings.LogoMarginFraction,
+                            Opacity: _settings.LogoOpacity),
+                        SystemAudioDeviceToken: _systemAudioDeviceToken)));
+            } finally {
+                _webcamLifecycle.Release();
+            }
         }
         catch (Exception)
         {
+            _webcamResumeAfterRecording = false;
             ShowCommandFeedback(
                 "Native bridge error",
                 "Recorder command bridge became unavailable.");
             return;
         }
+        finally {
+            _webcamStartTransition = false;
+        }
 
         if (status !=
             NativeBridgeStatus.Ok)
         {
+            _webcamResumeAfterRecording = false;
             HandleNativeStartFailure(
                 status);
             return;
@@ -2076,6 +2719,15 @@ public sealed partial class MainWindow : Window
                     false;
                 break;
 
+            case NativeRecorderState.Paused:
+                StatusDot.Fill = _warningBrush;
+                StatusText.Foreground = _warningBrush;
+                StatusText.Text = "Paused";
+                StatusDetail.Text =
+                    $"Recording paused · {FormatNativeElapsed(snapshot.ElapsedTicks)}";
+                SavedActions.IsVisible = false;
+                break;
+
             case NativeRecorderState.Recording:
                 StatusDot.Fill =
                     _recordBrush;
@@ -2159,8 +2811,14 @@ public sealed partial class MainWindow : Window
                     _recordHoverBrush;
                 StatusText.Text =
                     "Recording failed";
+                // PlatformFailure(4) + StageFull(8) is a real incomplete
+                // audio program, even when the recovered MP4 can be opened.
                 StatusDetail.Text =
-                    $"Native error {snapshot.ErrorCode} · detail 0x{snapshot.ErrorDetail:X8}";
+                    snapshot.ErrorCode == 4 && snapshot.ErrorDetail == 8
+                        ? "Audio buffer overflow during recording/finalizing. " +
+                          "MP4 may be recoverable; see audio_failure_phase " +
+                          "in the diagnostics JSON."
+                        : $"Native error {snapshot.ErrorCode} · detail 0x{snapshot.ErrorDetail:X8}";
                 // The native finalizer can recover a valid playable MP4 even
                 // when a capture source failed. Never hide Open/Folder if the
                 // recovered recording actually exists on disk.
@@ -2242,7 +2900,7 @@ public sealed partial class MainWindow : Window
         if (_audioHardwarePreview)
         {
             ToolTip.SetTip(SystemAudioToggle,
-                "Record sound from the Windows default playback device.");
+                "Record playback from the selected Windows audio endpoint.");
             ToolTip.SetTip(MicToggle,
                 "Record audio from the selected microphone.");
             ToolTip.SetTip(MicrophoneDeviceComboMain,
@@ -2281,14 +2939,14 @@ public sealed partial class MainWindow : Window
             // Once chosen, preserve these flags until the user changes them
             // (never rewrite them on Ready/Saved UI refresh).
             RefreshInputLabels();
-            SystemAudioDeviceComboMain.IsEnabled = false;
-            CameraToggle.IsChecked = false;
-            CameraToggle.IsEnabled = false;
-            CameraDeviceButton.IsEnabled = false;
-            CameraDeviceComboMain.IsEnabled = false;
+            SystemAudioDeviceComboMain.IsEnabled = true; // permit user to repair stale playback choice
+            // Audio and camera are independent optional capabilities.
+            CameraToggle.IsEnabled = _webcamHardwarePreview &&
+                _cameraDeviceToken != 0;
+            CameraDeviceComboMain.IsEnabled = _webcamHardwarePreview &&
+                _cameraDeviceToken != 0;
+            CameraDeviceButton.IsEnabled = false; // legacy hidden buttons
             CameraDeviceChevron.IsVisible = false;
-            foreach (var option in _cameraOptions)
-                option.IsVisible = false;
             UpdateRecordAvailability();
             return;
         }
@@ -2297,8 +2955,10 @@ public sealed partial class MainWindow : Window
             false;
         _session.MicrophoneEnabled =
             false;
-        _session.CameraEnabled =
-            false;
+        // Keep the explicitly selected real camera in internal webcam
+        // builds even when this GUI is intentionally VIDEO ONLY.
+        if (!_webcamHardwarePreview)
+            _session.CameraEnabled = false;
 
         SystemAudioToggle.IsChecked =
             false;
@@ -2318,18 +2978,19 @@ public sealed partial class MainWindow : Window
                 ? "Engine unavailable"
                 : "Video-only build";
 
-        CameraDeviceButton.IsEnabled =
-            false;
-        CameraDeviceChevron.IsVisible =
-            false;
-        CameraToggle.IsChecked =
-            false;
-        CameraToggle.IsEnabled =
-            false;
-        CameraDeviceText.Text =
-            _nativeBridge is null
-                ? "Engine unavailable"
-                : "Backend pending";
+        CameraDeviceButton.IsEnabled = false;
+        CameraDeviceChevron.IsVisible = false;
+        CameraToggle.IsChecked = _webcamHardwarePreview &&
+            _session.CameraEnabled;
+        CameraToggle.IsEnabled = _webcamHardwarePreview &&
+            _cameraDeviceToken != 0;
+        CameraDeviceComboMain.IsEnabled = _webcamHardwarePreview &&
+            _cameraDeviceToken != 0;
+        CameraDeviceText.Text = _webcamHardwarePreview
+            ? (_session.CameraEnabled
+                ? _cameraDevice : $"Off · {_cameraDevice}")
+            : _nativeBridge is null
+                ? "Engine unavailable" : "Backend pending";
 
         foreach (var option in
                  _microphoneOptions)
@@ -2356,6 +3017,7 @@ public sealed partial class MainWindow : Window
                 NativeRecorderState.Preparing or
                 NativeRecorderState.Armed or
                 NativeRecorderState.Recording or
+                NativeRecorderState.Paused or
                 NativeRecorderState.Stopping or
                 NativeRecorderState.Finalizing or
                 NativeRecorderState.Ready or

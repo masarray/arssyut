@@ -1,4 +1,5 @@
 #include "bridge/native_bridge.h"
+#include "platform/windows/capture/webcam_preview_session.hpp"
 
 #ifdef _WIN32
 
@@ -50,9 +51,18 @@ struct NativeBridgeContext final {
     std::mutex mutex;
     std::vector<RecorderTarget> sources;
     std::vector<DeviceChoice> microphones;
+    std::vector<DeviceChoice> playbacks;
+    std::wstring selected_playback_id;
     std::vector<DeviceChoice> cameras;
     std::uint32_t source_generation = 0;
     std::uint32_t device_generation = 0;
+    // Independent tiny-preview owner; camera is never opened unless the
+    // internal UI asks, and is stopped before RecorderSession opens it.
+    std::mutex webcam_preview_mutex;
+    std::shared_ptr<arssyut::windows::WebcamPreviewSession> webcam_preview;
+    arssyut::core::overlay::CameraOverlayProfile camera_overlay{};
+    arssyut::core::overlay::LogoOverlayProfile logo_overlay{};
+    std::wstring logo_png_path;
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     // Preview only: never owns or supplies RecorderSession audio.
     std::mutex preview_mutex;
@@ -92,6 +102,16 @@ struct NativeBridgeContext final {
     std::atomic<std::uint32_t> pending_hotkey_events{0};
 };
 
+void stop_webcam_preview(NativeBridgeContext &context) noexcept
+{
+    std::shared_ptr<arssyut::windows::WebcamPreviewSession> old;
+    {
+        std::lock_guard guard(context.webcam_preview_mutex);
+        old = std::move(context.webcam_preview);
+    }
+    if (old) old->stop(); // camera driver join outside bridge mutex
+}
+
 [[nodiscard]] NativeBridgeContext *
 as_context(
     ArssyutBridgeHandle handle) noexcept
@@ -107,6 +127,7 @@ as_context(
         state == RecorderState::Preparing ||
         state == RecorderState::Armed ||
         state == RecorderState::Recording ||
+        state == RecorderState::Paused ||
         state == RecorderState::Stopping ||
         state == RecorderState::Finalizing;
 }
@@ -234,6 +255,8 @@ to_bridge_state(
         return ARSSYUT_BRIDGE_RECORDER_ARMED;
     case RecorderState::Recording:
         return ARSSYUT_BRIDGE_RECORDER_RECORDING;
+    case RecorderState::Paused:
+        return ARSSYUT_BRIDGE_RECORDER_PAUSED;
     case RecorderState::Stopping:
         return ARSSYUT_BRIDGE_RECORDER_STOPPING;
     case RecorderState::Finalizing:
@@ -258,6 +281,8 @@ device_vector(
         return &context.microphones;
     case ARSSYUT_BRIDGE_DEVICE_CAMERA:
         return &context.cameras;
+    case ARSSYUT_BRIDGE_DEVICE_PLAYBACK:
+        return &context.playbacks;
     default:
         return nullptr;
     }
@@ -1019,6 +1044,45 @@ void commit_region_edit_locked(
             true);
 }
 
+// One atomic, validated profile transaction for both ABI generations.
+[[nodiscard]] std::int32_t store_camera_overlay(
+    NativeBridgeContext *context,
+    const ArssyutBridgeCameraOverlayV1 *profile,
+    float mask_width_scale) noexcept
+{
+    if (!context || !profile ||
+        profile->struct_size != sizeof(*profile))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    arssyut::core::overlay::CameraOverlayProfile chosen{};
+    chosen.version = profile->version;
+    chosen.placement = static_cast<arssyut::core::overlay::Corner>(
+        profile->placement);
+    chosen.mask = static_cast<arssyut::core::overlay::CameraMask>(
+        profile->mask);
+    chosen.width_fraction = profile->width_fraction;
+    chosen.mask_width_scale = mask_width_scale;
+    chosen.margin_fraction = profile->margin_fraction;
+    chosen.corner_radius_fraction = profile->corner_radius_fraction;
+    chosen.border_width_px = profile->border_width_px;
+    chosen.border_r = profile->border_r;
+    chosen.border_g = profile->border_g;
+    chosen.border_b = profile->border_b;
+    chosen.opacity = profile->opacity;
+    if (profile->mirror > 1U || profile->enabled > 1U ||
+        !arssyut::core::overlay::valid(chosen))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    chosen.mirror = profile->mirror != 0;
+    chosen.enabled = profile->enabled != 0;
+    std::lock_guard lock(context->mutex);
+    if (context->recorder) {
+        const auto state = context->recorder->snapshot();
+        if (active_state(state.state) || !state.worker_finished)
+            return ARSSYUT_BRIDGE_BUSY;
+    }
+    context->camera_overlay = chosen; // next recording only
+    return ARSSYUT_BRIDGE_OK;
+}
+
 } // namespace
 
 extern "C" {
@@ -1067,6 +1131,13 @@ arssyut_bridge_destroy(
         return;
     }
 
+    // Recorder must retire every shared D3D11/IMFSample lease before the
+    // persistent camera source is closed (including app close mid-Record).
+    if (context->recorder) {
+        context->recorder->request_stop();
+        context->recorder->wait();
+    }
+    stop_webcam_preview(*context);
     shutdown_overlay_context(
         *context);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
@@ -1497,6 +1568,16 @@ arssyut_bridge_refresh_devices(
     if (!context)
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
 
+    // Device refresh cannot tear down an active recorder's shared source.
+    { std::lock_guard guard(context->mutex);
+      if (context->recorder) {
+          const auto snap = context->recorder->snapshot();
+          if (active_state(snap.state) || !snap.worker_finished)
+              return ARSSYUT_BRIDGE_BUSY;
+      }
+    }
+    // A refresh invalidates all generation-scoped device tokens.
+    stop_webcam_preview(*context);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     // All device tokens change generation on refresh.
     { std::lock_guard lock(context->preview_mutex);
@@ -1509,6 +1590,7 @@ arssyut_bridge_refresh_devices(
         auto cameras =
             arssyut::app::
                 enumerate_cameras();
+        auto playbacks = arssyut::app::enumerate_playback_endpoints();
 
         std::scoped_lock lock(
             context->mutex);
@@ -1517,6 +1599,8 @@ arssyut_bridge_refresh_devices(
             std::move(microphones);
         context->cameras =
             std::move(cameras);
+        context->playbacks = std::move(playbacks);
+        context->selected_playback_id.clear(); // refresh tokens are generation-bound
 
         ++context->device_generation;
         if (context->device_generation == 0)
@@ -1606,6 +1690,219 @@ arssyut_bridge_device_at(
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_start(
+    ArssyutBridgeHandle handle,
+    std::uint64_t camera_device_token) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    wchar_t enabled[2]{};
+    if (GetEnvironmentVariableW(
+            L"ARSSYUT_WEBCAM_PREVIEW", enabled, 2) != 1 ||
+        enabled[0] != L'1')
+        return ARSSYUT_BRIDGE_UNSUPPORTED;
+    try {
+        std::wstring id;
+        {
+            std::lock_guard guard(context->mutex);
+            std::uint32_t generation=0, index=0;
+            if (!decode_token(camera_device_token, generation, index) ||
+                generation != context->device_generation ||
+                index >= context->cameras.size())
+                return ARSSYUT_BRIDGE_STALE_TOKEN;
+            if (context->recorder) {
+                const auto snapshot = context->recorder->snapshot();
+                if (active_state(snapshot.state) || !snapshot.worker_finished)
+                    return ARSSYUT_BRIDGE_BUSY;
+            }
+            id = context->cameras[index].id;
+        }
+        if (id.empty()) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+        {
+            std::lock_guard guard(context->webcam_preview_mutex);
+            // Recorder returned GPU consumption to the SAME physical MF
+            // source after Stop. Starting preview again must be idempotent.
+            if (context->webcam_preview &&
+                context->webcam_preview->symbolic_link() == id &&
+                context->webcam_preview->failure_stage() == 0)
+                return ARSSYUT_BRIDGE_OK;
+        }
+        stop_webcam_preview(*context);
+        auto preview =
+            std::make_shared<arssyut::windows::WebcamPreviewSession>();
+        if (!preview->start(std::move(id)))
+            return ARSSYUT_BRIDGE_START_FAILED;
+        {
+            std::lock_guard guard(context->webcam_preview_mutex);
+            context->webcam_preview = std::move(preview);
+        }
+        return ARSSYUT_BRIDGE_OK;
+    } catch (...) {
+        return ARSSYUT_BRIDGE_INTERNAL_ERROR;
+    }
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_stop(ArssyutBridgeHandle handle) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    { std::lock_guard guard(context->mutex);
+      if (context->recorder) {
+          const auto snap = context->recorder->snapshot();
+          if (active_state(snap.state) || !snap.worker_finished)
+              return ARSSYUT_BRIDGE_BUSY;
+      }
+    }
+    stop_webcam_preview(*context);
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_frame(
+    ArssyutBridgeHandle handle,
+    std::uint8_t *bgra,
+    std::uint32_t capacity,
+    std::uint64_t *sequence,
+    std::uint32_t *state) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !bgra || !sequence || !state ||
+        capacity < arssyut::windows::WebcamPreviewSession::bytes)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard guard(context->webcam_preview_mutex);
+    if (!context->webcam_preview) {
+        *state = 0;
+        *sequence = 0;
+        return ARSSYUT_BRIDGE_OK;
+    }
+    if (!context->webcam_preview->copy_frame(
+        bgra, capacity, *sequence, *state))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_dimensions(
+    ArssyutBridgeHandle handle,
+    std::uint32_t *source_width, std::uint32_t *source_height) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !source_width || !source_height)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard lock(context->webcam_preview_mutex);
+    *source_width = 0;
+    *source_height = 0;
+    if (context->webcam_preview) {
+        const auto format = context->webcam_preview->capture_snapshot().format;
+        *source_width = format.width;
+        *source_height = format.height;
+    }
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_failure(
+    ArssyutBridgeHandle handle, std::uint32_t *stage,
+    std::uint32_t *hresult) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !stage || !hresult)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard guard(context->webcam_preview_mutex);
+    *stage = context->webcam_preview
+        ? context->webcam_preview->failure_stage() : 0U;
+    *hresult = context->webcam_preview
+        ? context->webcam_preview->failure_detail() : 0U;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_system_audio_endpoint(
+    ArssyutBridgeHandle handle,
+    std::uint64_t playback_device_token) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard lock(context->mutex);
+    if (context->recorder) {
+        const auto state = context->recorder->snapshot();
+        if (active_state(state.state) || !state.worker_finished)
+            return ARSSYUT_BRIDGE_BUSY;
+    }
+    std::wstring endpoint_id;
+    if (playback_device_token != 0) {
+        std::uint32_t generation = 0, index = 0;
+        if (!decode_token(playback_device_token, generation, index) ||
+            generation != context->device_generation ||
+            index >= context->playbacks.size())
+            return ARSSYUT_BRIDGE_STALE_TOKEN;
+        endpoint_id = context->playbacks[index].id;
+        if (endpoint_id.empty()) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    }
+    context->selected_playback_id = std::move(endpoint_id);
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_logo_overlay(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeLogoOverlayV1 *profile) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context || !profile || profile->struct_size != sizeof(*profile))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    arssyut::core::overlay::LogoOverlayProfile chosen{};
+    chosen.version = profile->version;
+    chosen.enabled = profile->enabled != 0;
+    chosen.placement = static_cast<arssyut::core::overlay::Corner>(profile->placement);
+    chosen.width_fraction = profile->width_fraction;
+    chosen.margin_fraction = profile->margin_fraction;
+    chosen.opacity = profile->opacity;
+    if (profile->enabled > 1U || !arssyut::core::overlay::valid(chosen))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    const auto *end = std::find(std::begin(profile->png_path),
+        std::end(profile->png_path), L'\0');
+    if (end == std::end(profile->png_path))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::wstring path(profile->png_path, end);
+    if (chosen.enabled &&
+        (path.empty() || !std::filesystem::path(path).is_absolute()))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::lock_guard lock(context->mutex);
+    if (context->recorder) {
+        const auto state = context->recorder->snapshot();
+        if (active_state(state.state) || !state.worker_finished)
+            return ARSSYUT_BRIDGE_BUSY;
+    }
+    context->logo_overlay = chosen;
+    context->logo_png_path = std::move(path);
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_camera_overlay(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeCameraOverlayV1 *profile) noexcept
+{
+    // The legacy ABI always retains natural rectangle aspect.
+    return store_camera_overlay(as_context(handle), profile, 1.0f);
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_camera_overlay_v2(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeCameraOverlayV2 *profile) noexcept
+{
+    if (!profile || profile->struct_size != sizeof(*profile) ||
+        profile->version != 2U)
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    return store_camera_overlay(
+        as_context(handle), &profile->camera,
+        profile->mask_width_scale);
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_start(
     ArssyutBridgeHandle handle,
     const ArssyutBridgeStartRequestV1 *request) noexcept
@@ -1675,9 +1972,13 @@ arssyut_bridge_recorder_start(
         return ARSSYUT_BRIDGE_UNSUPPORTED;
     }
 
-    // Only an explicitly marked INTERNAL product-on build permits real
-    // hardware audio acceptance. Public/default video-only builds still
-    // reject Mic/System requests and Camera is never silently accepted.
+    // Webcam is internal opt-in only until real recorded MP4 acceptance.
+    // No public release automatically enables camera or its privacy light.
+    wchar_t camera_value[2]{};
+    const bool camera_preview_allowed =
+        GetEnvironmentVariableW(
+            L"ARSSYUT_WEBCAM_PREVIEW", camera_value, 2) == 1 &&
+        camera_value[0] == L'1';
     constexpr std::uint32_t audio_flags =
         ARSSYUT_BRIDGE_START_SYSTEM_AUDIO |
         ARSSYUT_BRIDGE_START_MICROPHONE;
@@ -1688,18 +1989,22 @@ arssyut_bridge_recorder_start(
             L"ARSSYUT_AUDIO_PREVIEW", preview_value, 2) == 1 &&
         preview_value[0] == L'1';
     const std::uint32_t unsupported_input_flags =
-        ARSSYUT_BRIDGE_START_CAMERA |
+        (camera_preview_allowed ? 0U : ARSSYUT_BRIDGE_START_CAMERA) |
         (audio_preview_allowed ? 0U : audio_flags);
 #else
-    constexpr std::uint32_t unsupported_input_flags =
-        ARSSYUT_BRIDGE_START_CAMERA | audio_flags;
+    const std::uint32_t unsupported_input_flags =
+        (camera_preview_allowed ? 0U : ARSSYUT_BRIDGE_START_CAMERA) |
+        audio_flags;
 #endif
     if ((request->flags & unsupported_input_flags) != 0)
         return ARSSYUT_BRIDGE_UNSUPPORTED;
 
+    // F2B retains one physical camera source. Do not close it here:
+    // ownership of the GPU consumer changes after a bounded barrier.
     try {
         std::unique_ptr<RecorderSession> previous;
         RecorderTarget target;
+        std::wstring camera_id;
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
         std::wstring microphone_id;
 #endif
@@ -1724,8 +2029,19 @@ arssyut_bridge_recorder_start(
                 return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
             }
 
-            target =
-                *resolved;
+            target = *resolved;
+
+            if ((request->flags & ARSSYUT_BRIDGE_START_CAMERA) != 0) {
+                std::uint32_t generation = 0, index = 0;
+                if (!decode_token(request->camera_device_token,
+                                  generation, index) ||
+                    generation != context->device_generation ||
+                    index >= context->cameras.size())
+                    return ARSSYUT_BRIDGE_STALE_TOKEN;
+                camera_id = context->cameras[index].id;
+                if (camera_id.empty())
+                    return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+            }
 
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
             if ((request->flags & ARSSYUT_BRIDGE_START_MICROPHONE) != 0 &&
@@ -1788,8 +2104,16 @@ arssyut_bridge_recorder_start(
             previous->wait();
 
         RecorderConfig config;
-        config.target =
-            std::move(target);
+        {
+            std::lock_guard lock(context->mutex);
+            config.camera_overlay = context->camera_overlay;
+            config.logo_overlay = context->logo_overlay;
+            config.logo_png_path = context->logo_png_path;
+            config.audio_system_id = context->selected_playback_id;
+        }
+        config.target = std::move(target);
+        config.webcam_enabled = !camera_id.empty();
+        config.webcam_symbolic_link = std::move(camera_id);
         config.output_path =
             build_output_path(
                 *request);
@@ -1831,8 +2155,8 @@ arssyut_bridge_recorder_start(
         config.audio_microphone_gain = request->microphone_gain;
         config.audio_system_muted = request->system_muted != 0;
         config.audio_microphone_muted = request->microphone_muted != 0;
-        // The eConsole render endpoint is pinned once during Preparing.
-        // Current bridge V1 intentionally has no render-device token field.
+        // Preparing pins this explicit render IMMDevice ID or the Windows
+        // eConsole default. Never fall back after an explicit endpoint fails.
 #endif
 
         config.presentation.smart_zoom =
@@ -1892,16 +2216,42 @@ arssyut_bridge_recorder_start(
         { std::lock_guard lock(context->preview_mutex);
           context->preview_mic.stop(); context->preview_token = 0; }
 #endif
-        auto recorder =
-            std::make_unique<
-                RecorderSession>();
+        // Physical camera stays open and uses the EXACT same D3D11Device
+        // across Preview -> Recording -> Preview. Never attempt another
+        // source open while a matching preview source exists.
+        std::shared_ptr<arssyut::windows::WebcamPreviewSession> camera;
+        if (config.webcam_enabled) {
+            {
+                std::lock_guard guard(context->webcam_preview_mutex);
+                camera = context->webcam_preview;
+            }
+            if (camera && camera->symbolic_link() ==
+                    config.webcam_symbolic_link) {
+                if (!camera->begin_recording())
+                    return ARSSYUT_BRIDGE_START_FAILED;
+                config.shared_webcam = camera;
+            } else if (camera) {
+                // A stale preview owner is retired before the fallback
+                // recorder can open a different selected physical camera.
+                stop_webcam_preview(*context);
+            }
+        } else {
+            stop_webcam_preview(*context);
+        }
 
-        const auto status =
-            recorder->start(
-                config);
-
-        if (!status.ok())
+        std::unique_ptr<RecorderSession> recorder;
+        try {
+            recorder = std::make_unique<RecorderSession>();
+        } catch (...) {
+            if (camera && config.shared_webcam)
+                camera->end_recording();
+            throw;
+        }
+        const auto status = recorder->start(config);
+        if (!status.ok()) {
+            if (config.shared_webcam) config.shared_webcam->end_recording();
             return ARSSYUT_BRIDGE_START_FAILED;
+        }
 
         const auto diagnostics =
             recorder->
@@ -2040,6 +2390,19 @@ arssyut_bridge_recorder_toggle_microphone_mute(
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_toggle_pause(
+    ArssyutBridgeHandle handle) noexcept
+{
+    auto *context = as_context(handle);
+    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    std::scoped_lock lock(context->mutex);
+    if (!context->recorder ||
+        !context->recorder->request_toggle_pause())
+        return ARSSYUT_BRIDGE_INVALID_STATE;
+    return ARSSYUT_BRIDGE_OK;
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_snapshot(
     ArssyutBridgeHandle handle,
     ArssyutBridgeRecorderSnapshotV1 *snapshot) noexcept
@@ -2125,6 +2488,9 @@ arssyut_bridge_audio_meter(
     // Render endpoint peak API remains authoritative for System Audio:
     // unlike many eCapture virtual endpoints, this works before recording.
     if ((flags & ARSSYUT_BRIDGE_METER_SYSTEM) != 0) {
+        std::wstring pinned_playback_id;
+        { std::lock_guard lock(context->mutex);
+          pinned_playback_id = context->selected_playback_id; }
         HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         if (SUCCEEDED(hr) || hr == RPC_E_CHANGED_MODE) {
             struct ComGuard {
@@ -2137,8 +2503,12 @@ arssyut_bridge_audio_meter(
                     __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
                     IID_PPV_ARGS(en.GetAddressOf())))) {
                 ComPtr<IMMDevice> device;
-                if (SUCCEEDED(en->GetDefaultAudioEndpoint(
-                        eRender, eConsole, device.GetAddressOf()))) {
+                const HRESULT endpoint_hr = pinned_playback_id.empty()
+                    ? en->GetDefaultAudioEndpoint(
+                        eRender, eConsole, device.GetAddressOf())
+                    : en->GetDevice(
+                        pinned_playback_id.c_str(), device.GetAddressOf());
+                if (SUCCEEDED(endpoint_hr)) {
                     (void)read_endpoint_peak(device.Get(),
                         meter->system_channels,
                         meter->system_left, meter->system_right);

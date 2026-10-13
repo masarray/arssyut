@@ -24,6 +24,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 
 namespace arssyut::core::audio {
@@ -64,6 +65,7 @@ public:
         have_next_ = false;
         marked_discontinuity_ = false;
         seam_ramp_remaining_ = 0;
+        post_resume_qpc_floor_ = 0;
         if (recorder_qpc_zero_100ns <= 0 ||
             !format.valid() || format.channels > kMaxNativeChannels ||
             format.sample_rate < 8'000 ||
@@ -79,10 +81,30 @@ public:
         return ready_;
     }
 
+    // Re-anchor source-local SRC after a deliberate recorder Pause. AAC and
+    // the canonical 1024-frame PROGRAM clock continue without reset. Packages
+    // older than the Resume cutoff are discarded, never marked as new media.
+    void reanchor_after_pause(
+        std::int64_t completed_pause_100ns,
+        std::int64_t resume_qpc_100ns) noexcept
+    {
+        mapper_.set_excluded_pause_ticks(completed_pause_100ns);
+        post_resume_qpc_floor_ = resume_qpc_100ns;
+        if (resampler_) resampler_->reset();
+        drift_.reset();
+        drift_controller_.reset_for_discontinuity();
+        next_frame_ = 0;
+        have_next_ = false;
+        marked_discontinuity_ = true;
+        seam_ramp_remaining_ = kSeamRampFrames;
+    }
+
     [[nodiscard]] PacketIngressResult process_packet(
         const AudioSourcePacket &packet,
         std::span<const std::byte> payload,
-        CanonicalProgramAssembler &assembler) noexcept
+        CanonicalProgramAssembler &assembler,
+        std::int64_t stop_frame_exclusive =
+            (std::numeric_limits<std::int64_t>::max)()) noexcept
     {
         PacketIngressResult result;
         if (!ready_ || packet.source != source_ ||
@@ -203,6 +225,19 @@ public:
             return result;
         }
         const std::int64_t first = next_frame_ + negative_trim;
+        // The physical Stop is projected once into the canonical 48k
+        // program domain. SRC may consume a packet spanning Stop, but PCM
+        // outside that media interval must NEVER occupy bounded staging.
+        // Advance the SRC cursor exactly once even when all its output is
+        // beyond Stop; never replay a partially consumed native packet.
+        if (first >= stop_frame_exclusive) {
+            next_frame_ += produced;
+            result.status = PacketIngressStatus::NoOutput;
+            return result;
+        }
+        const auto admitted = static_cast<std::uint32_t>(
+            (std::min)(static_cast<std::int64_t>(emitted),
+                       stop_frame_exclusive - first));
         result.first_canonical_frame = first;
         result.discontinuity = marked_discontinuity_;
         // De-click only the discontinuity island. Preserve the exact sample
@@ -211,7 +246,7 @@ public:
         // after a successful bounded-stage offer.
         auto next_ramp = seam_ramp_remaining_;
         if (next_ramp != 0) {
-            const auto count = (std::min)(emitted, next_ramp);
+            const auto count = (std::min)(admitted, next_ramp);
             for (std::uint32_t i = 0; i < count; ++i) {
                 const float gain = static_cast<float>(
                     kSeamRampFrames - next_ramp + i + 1U) /
@@ -227,15 +262,15 @@ public:
             source_, first,
             std::span<const float>(
                 canonical_.data() + static_cast<std::size_t>(negative_trim)*2,
-                static_cast<std::size_t>(emitted)*2),
-            emitted, marked_discontinuity_);
+                static_cast<std::size_t>(admitted)*2),
+            admitted, marked_discontinuity_);
         switch (offer) {
         case CanonicalProgramOfferStatus::Applied:
             next_frame_ += produced;
             seam_ramp_remaining_ = next_ramp;
             marked_discontinuity_ = false;
             result.status = PacketIngressStatus::Applied;
-            result.canonical_frames_emitted = emitted;
+            result.canonical_frames_emitted = admitted;
             break;
         case CanonicalProgramOfferStatus::Overflow:
             result.status = PacketIngressStatus::StageFull;
@@ -262,7 +297,9 @@ public:
     // One bounded stop-drain step on the same owner. Caller must run it before
     // closing the canonical output interval, never after MF Finalize.
     [[nodiscard]] PacketIngressResult drain_one(
-        CanonicalProgramAssembler &assembler) noexcept
+        CanonicalProgramAssembler &assembler,
+        std::int64_t stop_frame_exclusive =
+            (std::numeric_limits<std::int64_t>::max)()) noexcept
     {
         PacketIngressResult result;
         if (!ready_ || !have_next_)
@@ -282,7 +319,15 @@ public:
             ready_ = false;
             return result;
         }
-        const auto count = drained.output_frames_produced;
+        const auto produced = drained.output_frames_produced;
+        if (next_frame_ >= stop_frame_exclusive) {
+            next_frame_ += produced;
+            result.status = PacketIngressStatus::NoOutput;
+            return result;
+        }
+        const auto count = static_cast<std::uint32_t>(
+            (std::min)(static_cast<std::int64_t>(produced),
+                       stop_frame_exclusive - next_frame_));
         result.first_canonical_frame = next_frame_;
         result.discontinuity = marked_discontinuity_;
         const auto offer = assembler.offer(
@@ -296,7 +341,7 @@ public:
                 : PacketIngressStatus::StageGap;
             return result;
         }
-        next_frame_ += count;
+        next_frame_ += produced;
         marked_discontinuity_ = false;
         result.status = PacketIngressStatus::Applied;
         result.canonical_frames_emitted = count;
@@ -311,7 +356,9 @@ public:
     // truncated, and the payload is released on *every* exit path.
     [[nodiscard]] PacketIngressResult process_lease(
         windows::WasapiPacketLease &lease,
-        CanonicalProgramAssembler &assembler) noexcept
+        CanonicalProgramAssembler &assembler,
+        std::int64_t stop_frame_exclusive =
+            (std::numeric_limits<std::int64_t>::max)()) noexcept
     {
         PacketIngressResult aggregate{};
         if (!lease.valid())
@@ -319,6 +366,16 @@ public:
 
         const auto &original = lease.packet();
         const auto payload = lease.payload();
+        if (post_resume_qpc_floor_ > 0 &&
+            original.timing.packet_start_qpc_100ns < post_resume_qpc_floor_) {
+            PacketIngressResult old{};
+            old.status = PacketIngressStatus::BeforeMediaZero;
+            if (!lease.release()) {
+                ready_ = false;
+                old.status = PacketIngressStatus::Invalid;
+            }
+            return old;
+        }
         constexpr std::uint32_t kMaxChunksPerLease = 8;
         if (!ready_ || !original.metadata_valid() ||
             original.native_format.sample_rate == 0 ||
@@ -390,7 +447,8 @@ public:
                 part.payload_bytes = 0;
             }
 
-            const auto attempt = process_packet(part, bytes, assembler);
+            const auto attempt = process_packet(
+                part, bytes, assembler, stop_frame_exclusive);
             if (attempt.status != PacketIngressStatus::Applied &&
                 attempt.status != PacketIngressStatus::NoOutput &&
                 attempt.status != PacketIngressStatus::BeforeMediaZero) {
@@ -437,7 +495,9 @@ public:
     [[nodiscard]] SourcePumpResult pump_available(
         WasapiSource &source,
         CanonicalProgramAssembler &assembler,
-        std::uint32_t max_packets = 2) noexcept
+        std::uint32_t max_packets = 2,
+        std::int64_t stop_frame_exclusive =
+            (std::numeric_limits<std::int64_t>::max)()) noexcept
     {
         SourcePumpResult result;
         if (!ready_ || max_packets == 0 || max_packets > 4) {
@@ -451,7 +511,8 @@ public:
                 break;
             }
             ++result.packets_popped;
-            const auto one = process_lease(lease, assembler);
+            const auto one = process_lease(
+                lease, assembler, stop_frame_exclusive);
             if (one.status != PacketIngressStatus::Applied &&
                 one.status != PacketIngressStatus::BeforeMediaZero &&
                 one.status != PacketIngressStatus::NoOutput) {
@@ -466,6 +527,17 @@ public:
     }
 #endif
 
+    // Canonical source frontier: the first frame not yet emitted to the
+    // assembler, authoritative only once initial SRC output was positioned.
+    // It is not a second media clock or a predictor of future samples.
+    [[nodiscard]] std::int64_t canonical_next_frame() const noexcept
+    {
+        return have_next_ ? next_frame_ : 0;
+    }
+    [[nodiscard]] bool has_canonical_cursor() const noexcept
+    {
+        return have_next_;
+    }
     [[nodiscard]] bool ready() const noexcept { return ready_; }
     [[nodiscard]] AudioDriftControllerSnapshot drift() const noexcept
     {
@@ -501,6 +573,7 @@ private:
     std::int64_t next_frame_ = 0;
     bool have_next_ = false;
     bool marked_discontinuity_ = false;
+    std::int64_t post_resume_qpc_floor_ = 0;
     bool ready_ = false;
 };
 

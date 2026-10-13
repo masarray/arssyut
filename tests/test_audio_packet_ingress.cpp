@@ -187,6 +187,50 @@ void test_mic48_ingress_to_mix(Test &t) {
             "drained SRC filter tail is not lost or time shifted");
 }
 
+void test_resumed_wasapi_keeps_program_without_second_media_zero(Test &t) {
+    auto assembler=std::make_unique<CanonicalProgramAssembler>();
+    auto input=std::make_unique<CanonicalPacketIngress>();
+    FakeResampler src;
+    assembler->reset(kZero,true,false);
+    t.check(input->configure(AudioSourceId::Microphone,kFloatStereo,kZero,src),
+        "Initial ingress owns the sole RecorderSession origin");
+    std::array<float,1024*2> samples{};
+    samples.fill(0.25F);
+    auto first=packet(AudioSourceId::Microphone,kFloatStereo,1024,kZero);
+    t.check(input->process_packet(first,bytes(samples),*assembler).status==
+        PacketIngressStatus::Applied,"First mic block accepted");
+    // Simulate one second of virtual program progress without packet backlog:
+    // 46*1024=47104 frames, one second is 48000 frames. The source resumes
+    // at virtual 48000, within the next bounded canonical staging window.
+    for(int i=0;i<46;++i){
+        const auto deadline=kZero+static_cast<std::int64_t>(
+            frames_to_ticks_floor(static_cast<std::uint64_t>(i+1)*1024,48000));
+        t.check(assembler->close_one_due(deadline),
+            "AAC program advances on already-authoritative 48k ticks");
+        AudioProgramBlock out{};
+        std::uint64_t n=0;
+        t.check(assembler->try_take(out,n),
+            "Writer takes one closed block before Pause");
+    }
+    const auto due_before=assembler->next_due_100ns();
+    assembler->discard_sources_after_pause();
+    constexpr std::int64_t kPauseFiveSeconds=50'000'000;
+    const auto physical_resume=kZero+10'000'000+kPauseFiveSeconds;
+    input->reanchor_after_pause(kPauseFiveSeconds,physical_resume);
+    t.check(src.resets==1,"Only microphone SRC resets, not AAC writer");
+    auto resumed=packet(AudioSourceId::Microphone,kFloatStereo,1024,
+        physical_resume);
+    const auto out=input->process_packet(resumed,bytes(samples),*assembler);
+    t.check(out.status==PacketIngressStatus::Applied &&
+        out.first_canonical_frame==48'000 &&
+        out.discontinuity &&
+        assembler->next_due_100ns()==due_before,
+        "After five physical paused seconds, mic resumes at one second of virtual program time without advancing AAC clock");
+    t.check(assembler->stats().staging_gaps==0 &&
+        assembler->stats().dropped_program_blocks==0,
+        "Resumed PCM stays in bounded staging without lost program blocks");
+}
+
 void test_pcm16_mono_44100(Test &t) {
     auto assembler=std::make_unique<CanonicalProgramAssembler>();
     auto input=std::make_unique<CanonicalPacketIngress>();
@@ -520,11 +564,112 @@ void test_real_wasapi_lease_pipeline(Test &t)
 }
 #endif
 
+// Reproduce a physical Pause -> Resume -> Stop with a queued 1024-frame
+// microphone lease straddling the compressed media Stop. Future WASAPI
+// packets must be consumed exactly once but MUST NOT fill the 16k PCM stage.
+// This is the hardware-reported F1.2 failure class (mic StageFull at Stop).
+void test_pause_resume_stop_canonical_admission_bound(Test &t) {
+    auto assembler = std::make_unique<CanonicalProgramAssembler>();
+    auto input = std::make_unique<CanonicalPacketIngress>();
+    FakeResampler src;
+    assembler->reset(kZero, true, false);
+    t.check(input->configure(AudioSourceId::Microphone,
+                             kFloatStereo, kZero, src),
+        "Pause Stop fixture configures canonical microphone SRC");
+
+    std::array<float, 1024 * 2> samples{};
+    samples.fill(0.25F);
+    auto first = packet(AudioSourceId::Microphone,
+        kFloatStereo, 1024, kZero);
+    t.check(input->process_packet(first, bytes(samples), *assembler).status ==
+        PacketIngressStatus::Applied, "Pre-Pause PCM enters stage");
+    const auto first_due = kZero + static_cast<std::int64_t>(
+        frames_to_ticks_floor(1024, 48'000) + 1);
+    t.check(assembler->close_one_due(first_due),
+        "One pre-Pause AAC program block closes");
+    AudioProgramBlock block{};
+    std::uint64_t block_first = 99;
+    t.check(assembler->try_take(block, block_first) && block_first == 0,
+        "Pre-Pause program block is consumed exactly once");
+
+    constexpr std::int64_t pause_ticks = 50'000'000;
+    const auto physical_resume = first_due + pause_ticks;
+    assembler->discard_sources_after_pause();
+    input->reanchor_after_pause(pause_ticks, physical_resume);
+    constexpr std::int64_t stop_frame_exclusive = 1024 + 600;
+    auto resumed = packet(AudioSourceId::Microphone, kFloatStereo,
+                          1024, physical_resume, 1024);
+    const auto boundary = input->process_packet(
+        resumed, bytes(samples), *assembler, stop_frame_exclusive);
+    t.check(boundary.status == PacketIngressStatus::Applied &&
+            boundary.first_canonical_frame == 1024 &&
+            boundary.canonical_frames_emitted == 600 &&
+            input->canonical_next_frame() == 2048,
+        "Resume source advances full SRC cursor, stages only 600 in-Stop frames");
+
+    for (int i = 1; i <= 40; ++i) {
+        auto after_stop = packet(AudioSourceId::Microphone, kFloatStereo,
+            1024, physical_resume + static_cast<std::int64_t>(
+                frames_to_ticks_floor(
+                    static_cast<std::uint64_t>(i) * 1024, 48'000)),
+            1024ULL * static_cast<std::uint64_t>(i + 1));
+        const auto skipped = input->process_packet(
+            after_stop, bytes(samples), *assembler, stop_frame_exclusive);
+        t.check(skipped.status == PacketIngressStatus::NoOutput,
+            "Post-Stop microphone packets consume SRC but not staging");
+    }
+    src.drain_frames = 200;
+    const auto tail = input->drain_one(*assembler, stop_frame_exclusive);
+    t.check(tail.status == PacketIngressStatus::NoOutput &&
+            input->canonical_next_frame() == 1024 + 41*1024 + 200,
+        "Post-Stop SRC tail is consumed without staging or replay");
+    t.check(assembler->source_stage_frames(AudioSourceId::Microphone) == 600 &&
+            assembler->source_stage_peak(AudioSourceId::Microphone) == 600 &&
+            assembler->stats().staging_overflows == 0,
+        "40 queued post-Stop packets cannot trigger StageFull");
+    t.check(assembler->close_one_due(
+        kZero + static_cast<std::int64_t>(
+            frames_to_ticks_floor(2048, 48'000) + 1)) &&
+            assembler->try_take(block, block_first) &&
+            block_first == 1024 &&
+            block.audio.source_presence_mask == 1 &&
+            std::abs(block.audio.samples[599*2] - 0.25F) < 0.001F &&
+            block.audio.samples[600*2] == 0.0F,
+        "Final program contains pre-Stop microphone PCM and no after-Stop PCM");
+
+    // A separate uncapped fixture proves the old failure class is real:
+    // feed the same post-Stop backlog without an admission bound.
+    auto old_stage = std::make_unique<CanonicalProgramAssembler>();
+    auto old_ingress = std::make_unique<CanonicalPacketIngress>();
+    FakeResampler old_src;
+    old_stage->reset(kZero, true, false);
+    t.check(old_ingress->configure(AudioSourceId::Microphone,
+        kFloatStereo, kZero, old_src), "Baseline StageFull fixture configured");
+    bool overflowed = false;
+    for (int i = 0; i < 32; ++i) {
+        auto future = packet(AudioSourceId::Microphone, kFloatStereo,
+            1024, kZero + static_cast<std::int64_t>(
+                frames_to_ticks_floor(
+                    static_cast<std::uint64_t>(i) * 1024, 48'000)),
+            static_cast<std::uint64_t>(i) * 1024);
+        if (old_ingress->process_packet(
+                future, bytes(samples), *old_stage).status ==
+                PacketIngressStatus::StageFull) {
+            overflowed = true;
+            break;
+        }
+    }
+    t.check(overflowed && old_stage->stats().staging_overflows == 1,
+        "Unbounded post-Stop admission reproduces the old StageFull");
+}
+
 } // namespace
 
 int main() {
     Test t;
     test_mic48_ingress_to_mix(t);
+    test_resumed_wasapi_keeps_program_without_second_media_zero(t);
+    test_pause_resume_stop_canonical_admission_bound(t);
     test_pcm16_mono_44100(t);
     test_invalid_and_pre_zero(t);
     test_detect_trusted_qpc_gap(t);

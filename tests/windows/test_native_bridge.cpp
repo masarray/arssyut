@@ -630,6 +630,10 @@ int main()
         arssyut_bridge_recorder_toggle_microphone_mute(bridge) ==
             ARSSYUT_BRIDGE_INVALID_STATE,
         "Live mic toggle must reject inactive session");
+    require(
+        arssyut_bridge_recorder_toggle_pause(bridge) ==
+            ARSSYUT_BRIDGE_INVALID_STATE,
+        "Pause must reject inactive recorder without creating a file");
 
     ArssyutBridgeAudioMeterV1 meter{};
     meter.struct_size = sizeof(meter);

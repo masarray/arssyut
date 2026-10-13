@@ -31,6 +31,7 @@ public:
         std::wstring endpoint_id,
         WasapiLoopbackOptions options = {});
 
+    void quiesce() noexcept;
     void stop() noexcept;
 
     [[nodiscard]] bool try_pop(

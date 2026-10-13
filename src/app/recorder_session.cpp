@@ -1,4 +1,5 @@
 #include "app/recorder_session.hpp"
+#include "app/recording_pause_clock.hpp"
 
 #ifdef _WIN32
 
@@ -8,6 +9,8 @@
 
 #include "core/result/status.hpp"
 #include "platform/windows/capture/latest_frame_slot.hpp"
+#include "platform/windows/capture/webcam_capture_source.hpp"
+#include "platform/windows/capture/webcam_gpu_frame_slot.hpp"
 #include "platform/windows/graphics/d3d11_device.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "platform/windows/input/presentation_input_worker.hpp"
@@ -272,6 +275,12 @@ Status RecorderSession::start(
             config.visual_mode);
 
     config_ = std::move(config);
+    pause_requested_.store(false, std::memory_order_release);
+    pause_began_at_ticks_.store(0, std::memory_order_release);
+    pause_excluded_ticks_.store(0, std::memory_order_release);
+    pause_count_.store(0, std::memory_order_release);
+    pause_resume_events_ = 0;
+    pause_resume_seams_.fill(0);
     microphone_mute_requested_.store(
         config_.audio_microphone_muted, std::memory_order_release);
     microphone_mute_applied_.store(
@@ -396,14 +405,33 @@ void RecorderSession::request_stop() noexcept
 
 bool RecorderSession::request_toggle_microphone_mute() noexcept
 {
+    const auto state = state_.load(std::memory_order_acquire);
     if (!config_.audio_microphone ||
-        state_.load(std::memory_order_acquire) != RecorderState::Recording ||
+        (state != RecorderState::Recording &&
+         state != RecorderState::Paused) ||
         stop_requested_.load(std::memory_order_acquire))
         return false;
+    // A toggle while Paused is retained as intent. The sole writer worker
+    // applies it to the existing canonical mixer on the next Resume; it
+    // neither opens a WASAPI source nor advances the paused media clock.
 
     bool current = microphone_mute_requested_.load(std::memory_order_acquire);
     while (!microphone_mute_requested_.compare_exchange_weak(
         current, !current, std::memory_order_acq_rel,
+        std::memory_order_acquire)) {}
+    return true;
+}
+
+bool RecorderSession::request_toggle_pause() noexcept
+{
+    const auto state = state_.load(std::memory_order_acquire);
+    if ((state != RecorderState::Recording &&
+         state != RecorderState::Paused) ||
+        stop_requested_.load(std::memory_order_acquire))
+        return false;
+    bool value = pause_requested_.load(std::memory_order_acquire);
+    while (!pause_requested_.compare_exchange_weak(
+        value, !value, std::memory_order_acq_rel,
         std::memory_order_acquire)) {}
     return true;
 }
@@ -495,13 +523,16 @@ RecorderSnapshot RecorderSession::snapshot() const noexcept
 
     if (started > 0) {
         if (stopped <= 0) {
-            stopped =
-                MonotonicClock::now().ticks_100ns;
+            stopped = MonotonicClock::now().ticks_100ns;
+            const auto pause_start = pause_began_at_ticks_.load(
+                std::memory_order_acquire);
+            if (pause_start > 0)
+                stopped = (std::min)(stopped, pause_start);
+            stopped -= pause_excluded_ticks_.load(std::memory_order_acquire);
         }
+        // Completed recording uses already-translated media stop QPC.
         result.elapsed_ticks =
-            std::max<std::int64_t>(
-                0,
-                stopped - started);
+            std::max<std::int64_t>(0, stopped - started);
     }
 
     result.capture_received =
@@ -623,6 +654,16 @@ void RecorderSession::worker_main() noexcept
         }
     } finish_guard{worker_finished_};
 
+    // This guard is constructed BEFORE all GPU/video locals. It transfers
+    // consumer ownership back to the preview worker only AFTER compositor,
+    // WGC, MF writer and recorder-owned device references are destroyed.
+    struct SharedCameraReturn {
+        std::shared_ptr<arssyut::windows::WebcamPreviewSession> camera;
+        ~SharedCameraReturn() noexcept {
+            if (camera) camera->end_recording();
+        }
+    } camera_return{config_.shared_webcam};
+
     std::error_code file_ec;
     std::filesystem::create_directories(
         config_.output_path.parent_path(),
@@ -648,22 +689,30 @@ void RecorderSession::worker_main() noexcept
         memory_start,
         std::memory_order_release);
 
-    auto device_result =
-        D3D11Device::create(
-            D3D11DevicePreference::HardwareOnly,
-            false);
-    if (!device_result) {
-        fail(device_result.status());
+    // Reuse the EXACT physical-camera D3D11 device, not just its adapter
+    // LUID. Recorder is now the sole GPU immediate-context consumer.
+    std::shared_ptr<D3D11Device> device;
+    if (config_.shared_webcam) {
+        device = config_.shared_webcam->recording_device();
+    } else {
+        auto created = D3D11Device::create(
+            D3D11DevicePreference::HardwareOnly, false);
+        if (created)
+            device = std::move(created).value();
+    }
+    if (!device) {
+        fail(Status::failure(StatusCode::PlatformFailure));
         state_.store(
             RecorderState::Failed,
             std::memory_order_release);
         return;
     }
 
-    auto device =
-        std::move(device_result).value();
-
     LatestFrameSlot frame_slot;
+    // Mailbox and camera lifetime both belong to this one recorder session;
+    // destruct camera first so the callback never sees a freed slot/device.
+    arssyut::windows::WebcamGpuFrameSlot webcam_slot;
+    arssyut::windows::WebcamCaptureSource webcam_source;
 
     auto pipeline_result =
         NativeVideoPipeline::create(
@@ -671,6 +720,7 @@ void RecorderSession::worker_main() noexcept
             frame_slot,
             diagnostics_);
     if (!pipeline_result) {
+        startup_failure_stage_.store(1, std::memory_order_release);
         fail(pipeline_result.status());
         state_.store(
             RecorderState::Failed,
@@ -680,6 +730,18 @@ void RecorderSession::worker_main() noexcept
 
     auto pipeline =
         std::move(pipeline_result).value();
+    // Immutable profile resolved before writer Start; never mutate GPU state
+    // from the settings dispatcher or allocate per composited frame.
+    if (!pipeline->compositor().set_camera_overlay_profile(config_.camera_overlay)) {
+        startup_failure_stage_.store(2, std::memory_order_release);
+        fail(Status::failure(StatusCode::InvalidArgument));
+        state_.store(RecorderState::Failed, std::memory_order_release);
+        return;
+    }
+    // Optional PNG overlay: a corrupt/missing image may disable the logo,
+    // NEVER abort microphone, desktop capture or the single MP4 writer.
+    (void)pipeline->compositor().set_logo_overlay_profile(
+        config_.logo_overlay, config_.logo_png_path);
 
     visual_analysis_available_.store(
         pipeline->compositor().
@@ -714,6 +776,7 @@ void RecorderSession::worker_main() noexcept
         };
         const auto preflight = audio_runtime->prepare(request);
         if (!preflight.ok()) {
+            startup_failure_stage_.store(3, std::memory_order_release);
             fail(preflight);
             state_.store(RecorderState::Failed, std::memory_order_release);
             return;
@@ -735,6 +798,7 @@ void RecorderSession::worker_main() noexcept
 #endif
     );
     if (!status.ok()) {
+        startup_failure_stage_.store(4, std::memory_order_release);
         encoder_failure_stage_.store(
             writer.failure_stage(),
             std::memory_order_release);
@@ -785,6 +849,7 @@ void RecorderSession::worker_main() noexcept
             writer.audio_enabled(), std::memory_order_relaxed);
         status = audio_runtime->writer_opened();
         if (!status.ok()) {
+            startup_failure_stage_.store(5, std::memory_order_release);
             fail(status);
             (void)writer.finalize();
             state_.store(RecorderState::Failed, std::memory_order_release);
@@ -820,7 +885,30 @@ void RecorderSession::worker_main() noexcept
             capture_options);
     }
 
+    // A valid monitor may transiently reject WinRT frame-pool/session
+    // startup as the shared camera GPU consumer changes. Retry ONCE only
+    // after the old WGC worker has joined, only for E_INVALIDARG at a
+    // frame-pool-or-later step, and only while the same HMONITOR is valid.
+    // Never retry stale source handles, audio failures, or writer errors.
+    if (!status.ok() &&
+        config_.target.kind == arssyut::windows::CaptureTargetKind::Monitor &&
+        status.code == StatusCode::PlatformFailure &&
+        status.detail == static_cast<std::uint32_t>(E_INVALIDARG) &&
+        capture.startup_failure_step() >= 5 &&
+        capture.startup_failure_step() <= 9) {
+        MONITORINFO info{sizeof(info)};
+        if (GetMonitorInfoW(config_.target.monitor, &info) != FALSE) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            status = capture.start_monitor(
+                device->device(), config_.target.monitor,
+                frame_slot, diagnostics_, capture_options);
+        }
+    }
+
     if (!status.ok()) {
+        startup_failure_stage_.store(6, std::memory_order_release);
+        wgc_startup_failure_step_.store(
+            capture.startup_failure_step(), std::memory_order_release);
         fail(status);
         (void)writer.finalize();
 
@@ -863,6 +951,23 @@ void RecorderSession::worker_main() noexcept
         return;
     }
 
+    const auto camera_before = config_.shared_webcam
+        ? config_.shared_webcam->capture_snapshot()
+        : arssyut::windows::WebcamCaptureSnapshot{};
+    if (config_.webcam_enabled) {
+        if (config_.shared_webcam) {
+            pipeline->set_webcam_source(&config_.shared_webcam->frames());
+            pipeline->set_webcam_preview_sink(config_.shared_webcam.get());
+        } else {
+            const auto camera_status = webcam_source.start(
+                device->device(), config_.webcam_symbolic_link, webcam_slot);
+            if (camera_status.ok())
+                pipeline->set_webcam_source(&webcam_slot);
+        }
+        // The no-preview fallback keeps the established optional camera
+        // behavior. A shared coordinator never creates a second MF source.
+    }
+
     PresentationInputWorker presentation_input;
     PresentationController presentation_controller;
     presentation_controller.reset();
@@ -872,6 +977,7 @@ void RecorderSession::worker_main() noexcept
     if (presentation_enabled) {
         status = presentation_input.start();
         if (!status.ok()) {
+            startup_failure_stage_.store(7, std::memory_order_release);
             fail(status);
             capture.stop();
             (void)writer.finalize();
@@ -1025,6 +1131,9 @@ void RecorderSession::worker_main() noexcept
             if (audio_runtime)
                 audio_runtime->discard_preroll();
 #endif
+            // Countdown freezes the MEDIA clock, not the camera's
+            // physical preview. Keep a fresh UI thumbnail on one GPU owner.
+            pipeline->preview_while_paused(device->immediate_context());
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(1));
         }
@@ -1085,6 +1194,7 @@ void RecorderSession::worker_main() noexcept
             config_.audio_system_gain, config_.audio_system_muted);
 #endif
     if (!status.ok()) {
+        startup_failure_stage_.store(8, std::memory_order_release);
         fail(status);
         presentation_input.stop();
         capture.stop();
@@ -1129,6 +1239,8 @@ void RecorderSession::worker_main() noexcept
         return;
     }
 
+    arssyut::app::RecordingPauseClock pause_clock;
+    pause_clock.reset(start.ticks_100ns);
     started_at_ticks_.store(
         start.ticks_100ns,
         std::memory_order_release);
@@ -1183,10 +1295,72 @@ void RecorderSession::worker_main() noexcept
         overview_gate;
 
     bool failed = false;
+    std::int64_t last_resume_physical_qpc = start.ticks_100ns;
     std::uint32_t consecutive_video_backpressure = 0;
 
     while (!stop_requested_.load(
         std::memory_order_acquire)) {
+        const TimePoint physical_now = MonotonicClock::now();
+        const bool want_pause = pause_requested_.load(std::memory_order_acquire);
+        if (want_pause && !pause_clock.paused()) {
+            if (!pause_clock.pause(physical_now.ticks_100ns)) {
+                fail(Status::failure(StatusCode::InvalidStateTransition));
+                failed = true;
+                break;
+            }
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->pause();
+#endif
+            pause_began_at_ticks_.store(
+                physical_now.ticks_100ns, std::memory_order_release);
+            pause_count_.fetch_add(1, std::memory_order_release);
+            state_.store(RecorderState::Paused, std::memory_order_release);
+        } else if (!want_pause && pause_clock.paused()) {
+            if (!pause_clock.resume(physical_now.ticks_100ns)) {
+                fail(Status::failure(StatusCode::InvalidStateTransition));
+                failed = true;
+                break;
+            }
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->resume(
+                pause_clock.committed_excluded_ticks(),
+                physical_now.ticks_100ns);
+#endif
+            pause_excluded_ticks_.store(
+                pause_clock.committed_excluded_ticks(), std::memory_order_release);
+            pause_began_at_ticks_.store(0, std::memory_order_release);
+            // Exact seek locations for post-capture per-seam waveform and
+            // packet-PTS audit. Recorder worker owns these; no heap/locks.
+            if (pause_resume_events_ < kMaxPauseResumeSeams)
+                pause_resume_seams_[static_cast<std::size_t>(
+                    pause_resume_events_)] =
+                    pause_clock.elapsed(physical_now.ticks_100ns);
+            ++pause_resume_events_;
+            last_resume_physical_qpc = physical_now.ticks_100ns;
+            previous_presentation = physical_now;
+            next_presentation = physical_now;
+            state_.store(RecorderState::Recording, std::memory_order_release);
+        }
+        if (pause_clock.paused()) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+            if (audio_runtime) audio_runtime->discard_while_paused();
+#endif
+            // Input during excluded time must never replay as post-resume
+            // clicks/keycap sounds or build an unbounded semantic backlog.
+            arssyut::windows::MouseClickEvent ignored_click{};
+            arssyut::windows::ShortcutEvent ignored_shortcut{};
+            for (int n=0; n<16 && presentation_input.try_pop_click(ignored_click); ++n) {}
+            for (int n=0; n<16 && presentation_input.try_pop_shortcut(ignored_shortcut); ++n) {}
+            // Physical camera keeps publishing a tiny preview without
+            // encoding frames or advancing the compressed A/V timeline.
+            pipeline->preview_while_paused(device->immediate_context());
+            // Existing producer threads remain live but their bounded queues
+            // cannot grow; the one writer and A/V media clock stay frozen.
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+        const TimePoint media_now{
+            pause_clock.media_now(physical_now.ticks_100ns)};
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
         if (audio_runtime && config_.audio_microphone) {
             const bool desired = microphone_mute_requested_.load(
@@ -1204,7 +1378,7 @@ void RecorderSession::worker_main() noexcept
         // existing due-work and timing path unchanged.
         if (audio_runtime) {
             const auto audio_status =
-                audio_runtime->service(MonotonicClock::now(), writer);
+                audio_runtime->service(media_now, writer);
             if (!audio_status.ok()) {
                 fail(audio_status);
                 failed = true;
@@ -1212,8 +1386,7 @@ void RecorderSession::worker_main() noexcept
             }
         }
 #endif
-        const TimePoint now =
-            MonotonicClock::now();
+        const TimePoint now = physical_now;
 
         if (presentation_enabled &&
             !(now < next_target_rect_refresh)) {
@@ -1307,9 +1480,12 @@ void RecorderSession::worker_main() noexcept
                         click_y,
                         click_event.time);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
-                    if (audio_runtime && config_.presentation.click_visual)
+                    if (audio_runtime && config_.presentation.click_visual &&
+                        click_event.time.ticks_100ns >= last_resume_physical_qpc)
                         audio_runtime->record_click(
-                            click_event.kind, click_event.time.ticks_100ns);
+                            click_event.kind,
+                            click_event.time.ticks_100ns -
+                                pause_clock.committed_excluded_ticks());
 #endif
                 }
             }
@@ -1321,9 +1497,11 @@ void RecorderSession::worker_main() noexcept
                     shortcut_event.chord,
                     shortcut_event.time);
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
-                if (audio_runtime && config_.presentation.shortcut_keys)
+                if (audio_runtime && config_.presentation.shortcut_keys &&
+                    shortcut_event.time.ticks_100ns >= last_resume_physical_qpc)
                     audio_runtime->record_keycap(
-                        shortcut_event.time.ticks_100ns);
+                        shortcut_event.time.ticks_100ns -
+                            pause_clock.committed_excluded_ticks());
 #endif
             }
 
@@ -1382,7 +1560,7 @@ void RecorderSession::worker_main() noexcept
         auto frame_result =
             pipeline->process_due(
                 device->immediate_context(),
-                now,
+                media_now,
                 config_.crop,
                 config_.output_size,
                 presentation_enabled
@@ -1539,8 +1717,14 @@ void RecorderSession::worker_main() noexcept
 
     // Recording duration ends with the render/write loop, not after MP4
     // finalization. This keeps the user-visible duration aligned with media.
-    const TimePoint recording_stopped =
-        MonotonicClock::now();
+    const TimePoint physical_stop = MonotonicClock::now();
+    const bool stopped_during_pause = pause_clock.paused();
+    const TimePoint recording_stopped{
+        pause_clock.media_now(physical_stop.ticks_100ns)};
+    pause_began_at_ticks_.store(0, std::memory_order_release);
+    pause_excluded_ticks_.store(
+        pause_clock.excluded_ticks(physical_stop.ticks_100ns),
+        std::memory_order_release);
     stopped_at_ticks_.store(
         recording_stopped.ticks_100ns,
         std::memory_order_release);
@@ -1574,12 +1758,34 @@ void RecorderSession::worker_main() noexcept
         std::memory_order_relaxed);
 
     presentation_input.stop();
+    // Take a real source snapshot BEFORE stop() overwrites its state,
+    // allowing user MP4 diagnostics to prove camera was actually captured.
+    const auto webcam_health = config_.shared_webcam
+        ? config_.shared_webcam->capture_snapshot()
+        : webcam_source.snapshot();
+    webcam_received_.store(webcam_health.received -
+        (std::min)(webcam_health.received, camera_before.received));
+    webcam_published_.store(webcam_health.published -
+        (std::min)(webcam_health.published, camera_before.published));
+    webcam_ticks_startup_.store(webcam_health.stream_ticks_startup);
+    webcam_ticks_streaming_.store(webcam_health.stream_ticks_streaming);
+    webcam_adapter_mismatch_.store(webcam_health.adapter_mismatch);
+    webcam_foreign_device_.store(
+        webcam_health.frames_other_device_same_adapter);
+    webcam_hresult_.store(webcam_health.last_hresult);
+    webcam_new_gpu_frames_.store(pipeline->webcam_new_gpu_frames());
+    webcam_rendered_slots_.store(pipeline->webcam_rendered_slots());
+    webcam_copy_failures_.store(pipeline->webcam_gpu_copy_failures());
+    pipeline->set_webcam_source(nullptr);
+    pipeline->set_webcam_preview_sink(nullptr);
+    if (!config_.shared_webcam) webcam_source.stop();
     capture.stop();
 
 #if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
     if (audio_runtime) {
         const auto audio_status =
-            audio_runtime->finish(recording_stopped, writer);
+            audio_runtime->finish(recording_stopped, writer,
+                stopped_during_pause);
         audio_health_ = audio_runtime->health_snapshot();
         if (!audio_status.ok() && !failed) {
             fail(audio_status);
@@ -1649,6 +1855,15 @@ void RecorderSession::worker_main() noexcept
         writer.finalize();
 
     if (!finalize_status.ok() && !failed) {
+#if defined(ARSSYUT_ENABLE_PRODUCT_AUDIO)
+        // Distinguish MF finalization from audio ingress errors in
+        // the optional product-A/V build, without breaking video-only CI.
+        if (audio_runtime && audio_health_.failure_phase == 0) {
+            audio_health_.failure_phase = 6;
+            audio_health_.failure_source = 3;
+            audio_health_.failure_native_hresult = finalize_status.detail;
+        }
+#endif
         encoder_failure_stage_.store(
             writer.failure_stage(),
             std::memory_order_release);
@@ -1794,6 +2009,12 @@ void RecorderSession::write_diagnostics(
             << "  \"audio_frames_submitted\": "
             << audio_frames_submitted_.load(std::memory_order_relaxed)
             << ",\n"
+            << "  \"audio_system_endpoint_mode\": \""
+            << (config_.audio_system_id.empty() ? "windows_default" : "explicit")
+            << "\",\n"
+            << "  \"audio_system_zero_packets_warning\": "
+            << (config_.audio_system && audio_health_.system.captured == 0
+                ? "true" : "false") << ",\n"
             << "  \"audio_system_packets_captured\": " << audio_health_.system.captured << ",\n"
             << "  \"audio_system_packets_published\": " << audio_health_.system.published << ",\n"
             << "  \"audio_system_packets_silent\": " << audio_health_.system.silent << ",\n"
@@ -1817,6 +2038,15 @@ void RecorderSession::write_diagnostics(
             << "  \"audio_staging_gaps\": " << audio_health_.staging_gaps << ",\n"
             << "  \"audio_staging_overflows\": " << audio_health_.staging_overflows << ",\n"
             << "  \"audio_dropped_program_blocks\": " << audio_health_.dropped_program_blocks << ",\n"
+            << "  \"audio_failure_phase\": " << audio_health_.failure_phase << ",\n"
+            << "  \"audio_failure_source\": " << audio_health_.failure_source << ",\n"
+            << "  \"audio_failure_packet_ingress_status\": " << audio_health_.failure_packet_ingress_status << ",\n"
+            << "  \"audio_failure_native_hresult\": " << audio_health_.failure_native_hresult << ",\n"
+            << "  \"audio_stage_mic_frames\": " << audio_health_.mic_stage_frames << ",\n"
+            << "  \"audio_stage_system_frames\": " << audio_health_.system_stage_frames << ",\n"
+            << "  \"audio_stage_mic_peak\": " << audio_health_.mic_stage_peak << ",\n"
+            << "  \"audio_stage_system_peak\": " << audio_health_.system_stage_peak << ",\n"
+            << "  \"audio_pending_program_blocks\": " << audio_health_.pending_audio_program_blocks << ",\n"
             << "  \"encoder_h264_profile\": \""
             << arssyut::windows::mf_h264_profile_name(
                    encoder_profile)
@@ -1990,6 +2220,24 @@ void RecorderSession::write_diagnostics(
             << snapshot_value.visual_analysis_map_failures << ",\n"
             << "  \"elapsed_ticks_100ns\": "
             << snapshot_value.elapsed_ticks << ",\n"
+            << "  \"pause_count\": "
+            << pause_count_.load(std::memory_order_relaxed) << ",\n"
+            << "  \"pause_excluded_ticks_100ns\": "
+            << pause_excluded_ticks_.load(std::memory_order_relaxed) << ",\n"
+            << "  \"pause_resume_events\": "
+            << pause_resume_events_ << ",\n"
+            << "  \"pause_resume_seam_overflow\": "
+            << (pause_resume_events_ > kMaxPauseResumeSeams
+                    ? pause_resume_events_ - kMaxPauseResumeSeams : 0)
+            << ",\n"
+            << "  \"pause_resume_media_ticks_100ns\": [";
+        for (std::size_t i = 0;
+             i < (std::min)(static_cast<std::size_t>(pause_resume_events_),
+                              kMaxPauseResumeSeams); ++i) {
+            if (i != 0) out << ", ";
+            out << pause_resume_seams_[i];
+        }
+        out << "],\n"
             << "  \"prepare_latency_ms\": "
             << ([&]() -> std::int64_t {
                    const auto requested =
@@ -2038,6 +2286,28 @@ void RecorderSession::write_diagnostics(
             << capture_preroll_received_.load(
                    std::memory_order_relaxed)
             << ",\n"
+            << "  \"webcam_requested\": "
+            << (config_.webcam_enabled ? "true" : "false") << ",\n"
+            << "  \"webcam_received\": "
+            << webcam_received_.load() << ",\n"
+            << "  \"webcam_published\": "
+            << webcam_published_.load() << ",\n"
+            << "  \"webcam_ticks_startup\": "
+            << webcam_ticks_startup_.load() << ",\n"
+            << "  \"webcam_ticks_streaming\": "
+            << webcam_ticks_streaming_.load() << ",\n"
+            << "  \"webcam_adapter_mismatch\": "
+            << webcam_adapter_mismatch_.load() << ",\n"
+            << "  \"webcam_foreign_device\": "
+            << webcam_foreign_device_.load() << ",\n"
+            << "  \"webcam_new_gpu_frames\": "
+            << webcam_new_gpu_frames_.load() << ",\n"
+            << "  \"webcam_rendered_slots\": "
+            << webcam_rendered_slots_.load() << ",\n"
+            << "  \"webcam_copy_failures\": "
+            << webcam_copy_failures_.load() << ",\n"
+            << "  \"webcam_hresult\": "
+            << webcam_hresult_.load() << ",\n"
             << "  \"capture_received\": "
             << snapshot_value.capture_received << ",\n"
             << "  \"capture_replaced\": "
@@ -2079,6 +2349,12 @@ void RecorderSession::write_diagnostics(
             << snapshot_value.memory_private_max_bytes << ",\n"
             << "  \"resource_generation\": "
             << resource_generation << ",\n"
+            << "  \"startup_failure_stage\": "
+            << startup_failure_stage_.load(std::memory_order_relaxed)
+            << ",\n"
+            << "  \"wgc_startup_failure_step\": "
+            << wgc_startup_failure_step_.load(std::memory_order_relaxed)
+            << ",\n"
             << "  \"status_code\": "
             << static_cast<std::uint32_t>(
                    snapshot_value.last_error.code)

@@ -16,6 +16,8 @@ struct DeviceChoice {
 std::vector<DeviceChoice>
 enumerate_microphones();
 
+std::vector<DeviceChoice> enumerate_playback_endpoints();
+
 [[nodiscard]]
 std::vector<DeviceChoice>
 enumerate_cameras();

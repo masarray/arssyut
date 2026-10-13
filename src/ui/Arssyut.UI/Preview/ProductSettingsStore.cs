@@ -27,12 +27,28 @@ public sealed record ProductSettingsSnapshot(
     bool SystemAudioEnabled = false,
     bool MicrophoneEnabled = false,
     string MicrophoneDevice = "Hi-Fi Cable Output (VB-Audio Virtual Cable)",
-    CameraPlacement CameraPlacement = CameraPlacement.BottomRight,
+    CameraPlacement CameraPlacement = CameraPlacement.TopRight,
     string CameraDevice = "USB2.0 HD UVC Webcam",
     int SystemMixPercent = 100,
     int MicrophoneMixPercent = 100,
     bool SystemMixMuted = false,
-    bool MicrophoneMixMuted = false);
+    bool MicrophoneMixMuted = false,
+    CameraPipMask CameraMask = CameraPipMask.RoundedRectangle,
+    CameraBorderTone CameraBorder = CameraBorderTone.White,
+    float CameraWidthFraction = .235f,
+    float CameraMaskWidthScale = 1f,
+    float CameraMarginFraction = .035f,
+    float CameraRadiusFraction = .72f,
+    float CameraBorderWidthPx = 2f,
+    float CameraOpacity = 1f,
+    bool CameraMirror = false,
+    bool LogoEnabled = false,
+    string LogoImagePath = "",
+    LogoPlacement LogoPlacement = LogoPlacement.BottomRight,
+    float LogoWidthFraction = .12f,
+    float LogoMarginFraction = .025f,
+    float LogoOpacity = 1f,
+    string SystemAudioDevice = SettingsPreviewState.DefaultPlaybackDevice);
 
 public sealed class ProductSettingsStore
 {
@@ -41,7 +57,12 @@ public sealed class ProductSettingsStore
     private const int FreezeHotkeySchemaVersion = 3;
     private const int SpotlightSchemaVersion = 4;
     private const int ProductSchemaVersion = 5;
-    private const int CurrentSchemaVersion = 6;
+    private const int MixerSchemaVersion = 6;
+    private const int CameraSchemaVersion = 7;
+    private const int LogoSchemaVersion = 8;
+    private const int PlaybackSchemaVersion = 9;
+    private const int PipHeightSchemaVersion = 10;
+    private const int CurrentSchemaVersion = 11;
 
     private readonly string _path;
 
@@ -122,8 +143,12 @@ public sealed class ProductSettingsStore
                      SpotlightSchemaVersion &&
                  document.SchemaVersion !=
                      ProductSchemaVersion &&
-                 document.SchemaVersion !=
-                     CurrentSchemaVersion))
+                 document.SchemaVersion != MixerSchemaVersion &&
+                 document.SchemaVersion != CameraSchemaVersion &&
+                 document.SchemaVersion != LogoSchemaVersion &&
+                 document.SchemaVersion != PlaybackSchemaVersion &&
+                 document.SchemaVersion != PipHeightSchemaVersion &&
+                 document.SchemaVersion != CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
                     "Unsupported or incomplete settings schema.");
@@ -209,7 +234,10 @@ public sealed class ProductSettingsStore
             var latest =
                 document.SchemaVersion >= ProductSchemaVersion;
             var hasMixer =
-                document.SchemaVersion >= CurrentSchemaVersion;
+                document.SchemaVersion >= MixerSchemaVersion;
+            var hasCameraProfile = document.SchemaVersion >= CameraSchemaVersion;
+            var hasLogoProfile = document.SchemaVersion >= LogoSchemaVersion;
+            var hasPlaybackChoice = document.SchemaVersion >= PlaybackSchemaVersion;
             var outputFolder = latest
                 ? document.OutputFolder
                 : SettingsPreviewState.DefaultOutputFolder;
@@ -237,9 +265,11 @@ public sealed class ProductSettingsStore
                  document.MicrophoneEnabled is null))
                 throw new InvalidDataException("Invalid recording preferences.");
 
-            var cameraPlacement = latest && document.CameraPlacement is not null
+            // Old BottomRight preference was an inert placeholder; migrate
+            // deterministically to the actual upper-right recorded default.
+            var cameraPlacement = hasCameraProfile && document.CameraPlacement is not null
                 ? (CameraPlacement)document.CameraPlacement.Value
-                : CameraPlacement.BottomRight;
+                : CameraPlacement.TopRight;
             var cameraDevice = latest && !string.IsNullOrWhiteSpace(document.CameraDevice)
                 ? document.CameraDevice! : "USB2.0 HD UVC Webcam";
             if (!Enum.IsDefined(cameraPlacement) ||
@@ -251,6 +281,53 @@ public sealed class ProductSettingsStore
                   document.MicrophoneMixMuted is null)))
                 throw new InvalidDataException("Invalid camera preferences.");
 
+            var shape = hasCameraProfile
+                ? (CameraPipMask)(document.CameraMask ?? -1) : CameraPipMask.RoundedRectangle;
+            var tone = hasCameraProfile
+                ? (CameraBorderTone)(document.CameraBorder ?? -1) : CameraBorderTone.White;
+            var width = hasCameraProfile ? document.CameraWidthFraction ?? float.NaN : .235f;
+            var maskWidthScale = document.SchemaVersion >= CurrentSchemaVersion
+                ? document.CameraMaskWidthScale ?? float.NaN : 1f;
+            var margin = hasCameraProfile ? document.CameraMarginFraction ?? float.NaN : .035f;
+            // Preserve custom legacy radius; upgrade only the original
+            // untouched 15% default to visibly rounded modern 72%.
+            var radius = hasCameraProfile
+                ? document.CameraRadiusFraction ?? float.NaN : .72f;
+            if (document.SchemaVersion < PipHeightSchemaVersion &&
+                Math.Abs(radius - .15f) < .0001f)
+                radius = .72f;
+            var border = hasCameraProfile ? document.CameraBorderWidthPx ?? float.NaN : 2f;
+            var opacity = hasCameraProfile ? document.CameraOpacity ?? float.NaN : 1f;
+            var mirror = hasCameraProfile && document.CameraMirror == true;
+            if (!Enum.IsDefined(shape) || !Enum.IsDefined(tone) ||
+                !float.IsFinite(maskWidthScale) || maskWidthScale is < .4f or > 2.2f ||
+                !float.IsFinite(width) || width is < .15f or > .40f ||
+                !float.IsFinite(margin) || margin is < 0f or > .15f ||
+                !float.IsFinite(radius) || radius is < 0f or > 1f ||
+                !float.IsFinite(border) || border is < 0f or > 32f ||
+                !float.IsFinite(opacity) || opacity is < 0f or > 1f)
+                throw new InvalidDataException("Invalid Camera PIP profile.");
+
+            var logoEnabled = hasLogoProfile && document.LogoEnabled == true;
+            var logoPath = hasLogoProfile ? document.LogoImagePath ?? "" : "";
+            var logoPlacement = hasLogoProfile
+                ? (LogoPlacement)(document.LogoPlacement ?? -1)
+                : LogoPlacement.BottomRight;
+            var logoWidth = hasLogoProfile ? document.LogoWidthFraction ?? float.NaN : .12f;
+            var logoMargin = hasLogoProfile ? document.LogoMarginFraction ?? float.NaN : .025f;
+            var logoOpacity = hasLogoProfile ? document.LogoOpacity ?? float.NaN : 1f;
+            if (!Enum.IsDefined(logoPlacement) || logoPath.Length > 511 ||
+                !float.IsFinite(logoWidth) || logoWidth is < .02f or > .50f ||
+                !float.IsFinite(logoMargin) || logoMargin is < 0f or > .15f ||
+                !float.IsFinite(logoOpacity) || logoOpacity is < 0f or > 1f)
+                throw new InvalidDataException("Invalid logo preferences.");
+
+            var playbackChoice = hasPlaybackChoice
+                ? document.SystemAudioDevice
+                : SettingsPreviewState.DefaultPlaybackDevice;
+            if (string.IsNullOrWhiteSpace(playbackChoice) ||
+                playbackChoice.Length > 512)
+                throw new InvalidDataException("Invalid playback endpoint selection.");
             settings =
                 new ProductSettingsSnapshot(
                     loaded,
@@ -276,7 +353,10 @@ public sealed class ProductSettingsStore
                     hasMixer ? document.SystemMixPercent ?? 100 : 100,
                     hasMixer ? document.MicrophoneMixPercent ?? 100 : 100,
                     hasMixer && document.SystemMixMuted == true,
-                    hasMixer && document.MicrophoneMixMuted == true);
+                    hasMixer && document.MicrophoneMixMuted == true,
+                    shape, tone, width, maskWidthScale, margin, radius, border, opacity, mirror,
+                    logoEnabled, logoPath, logoPlacement, logoWidth, logoMargin,
+                    logoOpacity, playbackChoice);
             return true;
         }
         catch (Exception exception)
@@ -342,8 +422,32 @@ public sealed class ProductSettingsStore
                 settings.CaptureMode is not ("Display" or "Window" or "Region") ||
                 settings.CaptureSourceId.Length > 1024 ||
                 settings.MicrophoneDevice.Length > 512 ||
+                string.IsNullOrWhiteSpace(settings.SystemAudioDevice) ||
+                settings.SystemAudioDevice.Length > 512 ||
                 settings.SystemMixPercent is < 0 or > 100 ||
-                settings.MicrophoneMixPercent is < 0 or > 100)
+                settings.MicrophoneMixPercent is < 0 or > 100 ||
+                !Enum.IsDefined(settings.CameraMask) ||
+                !Enum.IsDefined(settings.CameraBorder) ||
+                !float.IsFinite(settings.CameraMaskWidthScale) ||
+                settings.CameraMaskWidthScale is < .4f or > 2.2f ||
+                !float.IsFinite(settings.CameraWidthFraction) ||
+                settings.CameraWidthFraction is < .15f or > .40f ||
+                !float.IsFinite(settings.CameraMarginFraction) ||
+                settings.CameraMarginFraction is < 0f or > .15f ||
+                !float.IsFinite(settings.CameraRadiusFraction) ||
+                settings.CameraRadiusFraction is < 0f or > 1f ||
+                !float.IsFinite(settings.CameraBorderWidthPx) ||
+                settings.CameraBorderWidthPx is < 0f or > 32f ||
+                !float.IsFinite(settings.CameraOpacity) ||
+                settings.CameraOpacity is < 0f or > 1f ||
+                !Enum.IsDefined(settings.LogoPlacement) ||
+                settings.LogoImagePath.Length > 511 ||
+                !float.IsFinite(settings.LogoWidthFraction) ||
+                settings.LogoWidthFraction is < .02f or > .5f ||
+                !float.IsFinite(settings.LogoMarginFraction) ||
+                settings.LogoMarginFraction is < 0f or > .15f ||
+                !float.IsFinite(settings.LogoOpacity) ||
+                settings.LogoOpacity is < 0f or > 1f)
                 throw new InvalidDataException("Invalid recording preferences.");
 
             var document =
@@ -368,6 +472,22 @@ public sealed class ProductSettingsStore
                     MicrophoneMixMuted = settings.MicrophoneMixMuted,
                     CameraPlacement = (int)settings.CameraPlacement,
                     CameraDevice = settings.CameraDevice,
+                    SystemAudioDevice = settings.SystemAudioDevice,
+                    CameraMask = (int)settings.CameraMask,
+                    CameraBorder = (int)settings.CameraBorder,
+                    CameraWidthFraction = settings.CameraWidthFraction,
+                    CameraMaskWidthScale = settings.CameraMaskWidthScale,
+                    CameraMarginFraction = settings.CameraMarginFraction,
+                    CameraRadiusFraction = settings.CameraRadiusFraction,
+                    CameraBorderWidthPx = settings.CameraBorderWidthPx,
+                    CameraOpacity = settings.CameraOpacity,
+                    CameraMirror = settings.CameraMirror,
+                    LogoEnabled = settings.LogoEnabled,
+                    LogoImagePath = settings.LogoImagePath,
+                    LogoPlacement = (int)settings.LogoPlacement,
+                    LogoWidthFraction = settings.LogoWidthFraction,
+                    LogoMarginFraction = settings.LogoMarginFraction,
+                    LogoOpacity = settings.LogoOpacity,
                     PresenterZoom =
                         settings.PresenterZoom,
                     SpotlightEnabled =
@@ -589,12 +709,28 @@ public sealed class ProductSettingsStore
         public bool? SystemAudioEnabled { get; set; }
         public bool? MicrophoneEnabled { get; set; }
         public string? MicrophoneDevice { get; set; }
+        public string? SystemAudioDevice { get; set; }
         public int? SystemMixPercent { get; set; }
         public int? MicrophoneMixPercent { get; set; }
         public bool? SystemMixMuted { get; set; }
         public bool? MicrophoneMixMuted { get; set; }
         public int? CameraPlacement { get; set; }
         public string? CameraDevice { get; set; }
+        public int? CameraMask { get; set; }
+        public int? CameraBorder { get; set; }
+        public float? CameraWidthFraction { get; set; }
+        public float? CameraMaskWidthScale { get; set; }
+        public float? CameraMarginFraction { get; set; }
+        public float? CameraRadiusFraction { get; set; }
+        public float? CameraBorderWidthPx { get; set; }
+        public float? CameraOpacity { get; set; }
+        public bool? CameraMirror { get; set; }
+        public bool? LogoEnabled { get; set; }
+        public string? LogoImagePath { get; set; }
+        public int? LogoPlacement { get; set; }
+        public float? LogoWidthFraction { get; set; }
+        public float? LogoMarginFraction { get; set; }
+        public float? LogoOpacity { get; set; }
 
         public float? PresenterZoom { get; set; }
 

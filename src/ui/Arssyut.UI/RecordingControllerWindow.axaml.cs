@@ -85,10 +85,9 @@ public sealed partial class RecordingControllerWindow : Window
         }
         else
         {
-            PauseButton.IsEnabled =
-                false;
-            // Pause remains disabled until the single-clock native pause
-            // milestone. Mic mute is now supported by the native session.
+            PauseButton.IsEnabled = true;
+            // Both controls now invoke authoritative native session commands.
+            // Camera remains unavailable until its compositor integration.
             MicButton.IsEnabled =
                 _nativeMicrophoneIntent;
             CameraButton.IsEnabled =
@@ -96,7 +95,7 @@ public sealed partial class RecordingControllerWindow : Window
 
             ToolTip.SetTip(
                 PauseButton,
-                "Native pause/resume binds after the explicit paused-state milestone.");
+                $"Pause / Resume recording ({_settings.PauseHotkey})");
             ToolTip.SetTip(
                 MicButton,
                 _nativeMicrophoneIntent
@@ -104,7 +103,9 @@ public sealed partial class RecordingControllerWindow : Window
                     : "No microphone selected for this recording.");
             ToolTip.SetTip(
                 CameraButton,
-                "Camera compositor backend is not wired yet.");
+                _nativeCameraIntent
+                    ? "Camera selected for this MP4 (mid-recording toggle not enabled)."
+                    : "Camera was not selected for this recording.");
         }
 
         Opened +=
@@ -284,10 +285,20 @@ public sealed partial class RecordingControllerWindow : Window
         RoutedEventArgs e)
     {
         if (_nativeBridge is not null)
+        {
+            try
+            {
+                if (_nativeBridge.TogglePause() == NativeBridgeStatus.Ok)
+                    RefreshState();
+            }
+            catch (Exception)
+            {
+                // Writer teardown may be underway; no speculative UI state.
+            }
             return;
+        }
 
-        _previewSession?.
-            TogglePause();
+        _previewSession?.TogglePause();
         RefreshState();
     }
 
@@ -387,6 +398,8 @@ public sealed partial class RecordingControllerWindow : Window
                     "ARMED",
                 NativeRecorderState.Recording =>
                     "REC",
+                NativeRecorderState.Paused =>
+                    "PAUSED",
                 NativeRecorderState.Stopping =>
                     "STOP",
                 NativeRecorderState.Finalizing =>
@@ -406,7 +419,8 @@ public sealed partial class RecordingControllerWindow : Window
                     NativeRecorderState.Failed =>
                         "#FF6671",
                     NativeRecorderState.Stopping or
-                    NativeRecorderState.Finalizing =>
+                    NativeRecorderState.Finalizing or
+                    NativeRecorderState.Paused =>
                         "#F1B85B",
                     NativeRecorderState.Ready =>
                         "#49D49D",
@@ -414,13 +428,15 @@ public sealed partial class RecordingControllerWindow : Window
                         "#FF5360"
                 });
 
-        PauseIcon.Kind =
-            LucideIconKind.Pause;
-
+        PauseButton.IsEnabled =
+            snapshot.State is NativeRecorderState.Recording or
+                NativeRecorderState.Paused;
+        PauseIcon.Kind = snapshot.State == NativeRecorderState.Paused
+            ? LucideIconKind.Play : LucideIconKind.Pause;
         PauseButton.SetValue(
-            AutomationProperties.
-                NameProperty,
-            "Pause unavailable in current native milestone");
+            AutomationProperties.NameProperty,
+            snapshot.State == NativeRecorderState.Paused
+                ? "Resume recording" : "Pause recording");
 
         TimerText.Text =
             FormatElapsed(
@@ -431,7 +447,8 @@ public sealed partial class RecordingControllerWindow : Window
 
         MicButton.IsEnabled =
             snapshot.MicrophoneEnabled &&
-            snapshot.State == NativeRecorderState.Recording;
+            snapshot.State is
+                (NativeRecorderState.Recording or NativeRecorderState.Paused);
         MicIcon.Kind = snapshot.MicrophoneMuted
             ? LucideIconKind.MicOff
             : LucideIconKind.Mic;
@@ -524,6 +541,7 @@ public sealed partial class RecordingControllerWindow : Window
             NativeRecorderState.Preparing or
             NativeRecorderState.Armed or
             NativeRecorderState.Recording or
+            NativeRecorderState.Paused or
             NativeRecorderState.Stopping or
             NativeRecorderState.Finalizing;
 

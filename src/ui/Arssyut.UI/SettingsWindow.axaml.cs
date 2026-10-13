@@ -7,6 +7,11 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using System.IO;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Arssyut.UI.Design;
@@ -20,6 +25,14 @@ public sealed partial class SettingsWindow : Window
     private readonly SettingsPreviewState _preview;
     private readonly NativeBridgeClient? _nativeBridge;
     private readonly bool _stressLayout;
+    private Bitmap? _logoPreviewBitmap;
+    private readonly DispatcherTimer _cameraPreviewTimer;
+    private WriteableBitmap? _cameraSettingsBitmap;
+    private readonly byte[] _cameraSettingsPixels =
+        new byte[NativeBridgeClient.WebcamPreviewByteCount];
+    private ulong _cameraSettingsSequence;
+    private double _cameraSourceAspect = 9.0 / 16.0;
+    private bool _cameraActivePicture;
     private readonly Button[] _navButtons;
     private readonly Control[] _pages;
     private readonly Button[] _cameraAnchorButtons;
@@ -31,6 +44,7 @@ public sealed partial class SettingsWindow : Window
 
     private string? _capturingHotkeyAction;
     private ulong _settingsMicrophoneToken;
+    private bool _loadingPlaybackDevices;
     private readonly bool _audioSessionLocked;
     private bool _audioReady;
     private bool _uiReady;
@@ -88,6 +102,7 @@ public sealed partial class SettingsWindow : Window
             NavOutput,
             NavAudio,
             NavCamera,
+            NavLogo,
             NavMouse,
             NavHotkeys,
             NavAdvanced
@@ -100,6 +115,7 @@ public sealed partial class SettingsWindow : Window
             PageOutput,
             PageAudio,
             PageCamera,
+            PageLogo,
             PageMouse,
             PageHotkeys,
             PageAdvanced
@@ -137,6 +153,10 @@ public sealed partial class SettingsWindow : Window
 
         _audioPreviewTimer.Tick +=
             AudioPreviewTimer_OnTick;
+        _cameraPreviewTimer = new DispatcherTimer {
+            Interval = TimeSpan.FromMilliseconds(120)
+        };
+        _cameraPreviewTimer.Tick += CameraSettingsPreview_OnTick;
 
         Opened +=
             (_, _) =>
@@ -148,8 +168,12 @@ public sealed partial class SettingsWindow : Window
             };
 
         Closed +=
-            (_, _) =>
+            (_, _) => {
                 _audioPreviewTimer.Stop();
+                _cameraPreviewTimer.Stop();
+                _cameraSettingsBitmap?.Dispose();
+                _logoPreviewBitmap?.Dispose();
+            };
 
         if (stressLayout)
         {
@@ -295,9 +319,10 @@ public sealed partial class SettingsWindow : Window
                 "Output" => 2,
                 "Audio" => 3,
                 "Camera" => 4,
-                "Mouse" => 5,
-                "Hotkeys" => 6,
-                "Advanced" => 7,
+                "Logo" => 5,
+                "Mouse" => 6,
+                "Hotkeys" => 7,
+                "Advanced" => 8,
                 _ => 1
             };
 
@@ -326,6 +351,11 @@ public sealed partial class SettingsWindow : Window
 
         SettingsFooterHint.IsVisible = tag != "Audio";
         _audioPreviewTimer.Stop();
+        _cameraPreviewTimer.Stop();
+        if (tag == "Camera" && _nativeBridge is not null && !_stressLayout) {
+            _cameraPreviewTimer.Start();
+            CameraSettingsPreview_OnTick(this, EventArgs.Empty);
+        }
         if (tag == "Audio" && _audioReady)
         {
             _audioPreviewTimer.Start();
@@ -344,7 +374,9 @@ public sealed partial class SettingsWindow : Window
                 "Audio" =>
                     "Input levels and recording mix.",
                 "Camera" =>
-                    "Native camera compositor capability status.",
+                    "GPU picture-in-picture position, size and shape.",
+                "Logo" =>
+                    "Independent PNG logo compositing on recorded MP4.",
                 "Mouse" =>
                     "Pointer, click, and keyboard visualization.",
                 "Hotkeys" =>
@@ -647,6 +679,7 @@ public sealed partial class SettingsWindow : Window
         if (!_audioReady || _nativeBridge is null)
         {
             MicrophoneDeviceCombo.IsEnabled = false;
+            SystemPlaybackCombo.IsEnabled = false;
             return;
         }
         try
@@ -683,6 +716,30 @@ public sealed partial class SettingsWindow : Window
 
                 MicrophoneDeviceCombo.IsEnabled =
                     devices.Microphones.Count > 0;
+                SystemPlaybackCombo.Items.Clear();
+                SystemPlaybackCombo.Items.Add(new ComboBoxItem {
+                    Content = SettingsPreviewState.DefaultPlaybackDevice
+                });
+                foreach (var device in devices.Playbacks)
+                    SystemPlaybackCombo.Items.Add(new ComboBoxItem {
+                        Content = device.Name, Tag = device
+                    });
+                var desired = _preview.SystemAudioDevice;
+                var matched = devices.Playbacks
+                    .Select((device, index) => (device,index))
+                    .Where(x => string.Equals(x.device.Name, desired,
+                                              StringComparison.Ordinal)).ToArray();
+                if (desired == SettingsPreviewState.DefaultPlaybackDevice)
+                    SystemPlaybackCombo.SelectedIndex = 0;
+                else if (matched.Length == 1)
+                    SystemPlaybackCombo.SelectedIndex = matched[0].index + 1;
+                else {
+                    SystemPlaybackCombo.Items.Add(new ComboBoxItem {
+                        Content = $"Unavailable: {desired}", IsEnabled = false
+                    });
+                    SystemPlaybackCombo.SelectedIndex = SystemPlaybackCombo.Items.Count - 1;
+                }
+                SystemPlaybackCombo.IsEnabled = !_audioSessionLocked;
             }
             finally { _syncingPreviewControls = false; }
         }
@@ -691,6 +748,21 @@ public sealed partial class SettingsWindow : Window
             _settingsMicrophoneToken = 0;
             MicrophoneDeviceCombo.IsEnabled = false;
         }
+    }
+
+    private void SystemPlayback_OnSelectionChanged(
+        object? sender, SelectionChangedEventArgs e)
+    {
+        if (!_uiReady || _syncingPreviewControls || _audioSessionLocked ||
+            sender is not ComboBox combo ||
+            combo.SelectedItem is not ComboBoxItem item || !item.IsEnabled)
+            return;
+        var selected = item.Tag as NativeDeviceItem;
+        _preview.SetSystemAudioDevice(selected?.Name ??
+            SettingsPreviewState.DefaultPlaybackDevice);
+        if (_nativeBridge is not null)
+            _ = _nativeBridge.SetSystemAudioEndpoint(selected?.Token ?? 0);
+        MarkPreviewChanged("Playback endpoint saved for next recording");
     }
 
     private static string? SelectedItemText(
@@ -704,6 +776,160 @@ public sealed partial class SettingsWindow : Window
             _ =>
                 selected.ToString()
         };
+
+    private void CameraAppearance_OnChange(object? sender, RoutedEventArgs e)
+    {
+        ApplyCameraAppearance();
+    }
+
+    private void CameraSlider_OnChange(object? sender,
+        AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == Slider.ValueProperty)
+            ApplyCameraAppearance();
+    }
+
+    private void ApplyCameraAppearance()
+    {
+        if (!_uiReady || _syncingPreviewControls ||
+            CameraMaskCombo is null || CameraSizeSlider is null ||
+            CameraMaskWidthSlider is null)
+            return;
+        var mask = (CameraPipMask)Math.Max(0, CameraMaskCombo.SelectedIndex);
+        var tone = (CameraBorderTone)Math.Max(0, CameraBorderCombo.SelectedIndex);
+        if (!_preview.TrySetCameraOverlay(mask, tone,
+            (float)(CameraSizeSlider.Value / 100.0),
+            (float)(CameraMarginSlider.Value / 100.0),
+            (float)(CameraRadiusSlider.Value / 100.0),
+            (float)CameraBorderSlider.Value,
+            (float)(CameraOpacitySlider.Value / 100.0),
+            CameraMirrorCheck.IsChecked == true,
+            (float)(CameraMaskWidthSlider.Value / 100.0)))
+            return;
+        CameraSizeText.Text = $"{CameraSizeSlider.Value:0.#}%";
+        UpdateCameraMaskWidthUI();
+        CameraMarginText.Text = $"{CameraMarginSlider.Value:0.#}%";
+        CameraRadiusText.Text = $"{CameraRadiusSlider.Value:0}%";
+        CameraBorderText.Text = $"{CameraBorderSlider.Value:0.#} px";
+        CameraOpacityText.Text = $"{CameraOpacitySlider.Value:0}%";
+        RenderCameraPreviewGeometry();
+        MarkPreviewChanged("Camera PIP settings saved for next recording");
+    }
+
+    private void CameraMaskSquare_OnClick(object? sender, RoutedEventArgs e)
+    {
+        // Physical square means width == height in *output pixels*,
+        // regardless of webcam sensor ratio or the selected output size.
+        // WidthScale = camera source height / width.
+        CameraMaskWidthSlider.Value = Math.Clamp(
+            _cameraSourceAspect * 100.0, 40.0, 220.0);
+        ApplyCameraAppearance();
+    }
+
+    private void UpdateCameraMaskWidthUI()
+    {
+        if (CameraMaskWidthSlider is null || CameraMaskCombo is null) return;
+        var isRectangle = (CameraPipMask)Math.Max(0, CameraMaskCombo.SelectedIndex)
+            != CameraPipMask.Circle;
+        CameraMaskWidthRow.IsVisible = isRectangle;
+        CameraMaskWidthSlider.IsVisible = isRectangle;
+        if (isRectangle)
+        {
+            var aspect = CameraMaskWidthSlider.Value / 100.0 /
+                Math.Max(_cameraSourceAspect, 0.0001);
+            CameraMaskWidthText.Text = $"{CameraMaskWidthSlider.Value:0}% · {aspect:0.00}:1";
+        }
+    }
+
+    private void LogoAppearance_OnChange(object? sender,
+        RoutedEventArgs e) => ApplyLogoAppearance();
+
+    private void LogoSlider_OnChange(object? sender,
+        AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == Slider.ValueProperty) ApplyLogoAppearance();
+    }
+
+    private async void ChooseLogo_OnClick(object? sender, RoutedEventArgs e)
+    {
+        if (!StorageProvider.CanOpen) {
+            LogoValidationText.Text = "PNG file picker unavailable.";
+            return;
+        }
+        var options = new FilePickerOpenOptions {
+            Title = "Choose transparent logo PNG",
+            AllowMultiple = false,
+            FileTypeFilter = new[] {
+                new FilePickerFileType("PNG image") {
+                    Patterns = new[] {"*.png"}
+                }
+            }
+        };
+        var choice = (await StorageProvider.OpenFilePickerAsync(options))
+            .FirstOrDefault();
+        if (choice is null) return;
+        var path = choice.Path.LocalPath;
+        if (!TryLogoPreview(path, out var reason)) {
+            LogoValidationText.Text = reason;
+            return;
+        }
+        if (!_preview.TrySetLogoOverlay(
+            LogoEnabledCheck.IsChecked == true, path,
+            (LogoPlacement)Math.Max(0, LogoPlacementCombo.SelectedIndex),
+            (float)(LogoSizeSlider.Value / 100),
+            (float)(LogoMarginSlider.Value / 100),
+            (float)(LogoOpacitySlider.Value / 100))) {
+            LogoValidationText.Text = "Logo settings are invalid.";
+            return;
+        }
+        LogoPathText.Text = Path.GetFileName(path);
+        LogoValidationText.Text = "PNG accepted; composited on next recording.";
+        MarkPreviewChanged("Logo overlay settings saved");
+    }
+
+    private bool TryLogoPreview(string path, out string message)
+    {
+        message = "Invalid logo image.";
+        try {
+            var file = new FileInfo(path);
+            if (!file.Exists || file.Length is <= 0 or > 16777216 ||
+                !path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+                return false;
+            var image = new Bitmap(path);
+            if (image.PixelSize.Width is < 1 or > 4096 ||
+                image.PixelSize.Height is < 1 or > 4096 ||
+                (long)image.PixelSize.Width * image.PixelSize.Height > 8388608) {
+                image.Dispose();
+                return false;
+            }
+            var old = _logoPreviewBitmap;
+            _logoPreviewBitmap = image;
+            LogoPreviewImage.Source = image;
+            old?.Dispose();
+            message = "";
+            return true;
+        } catch (Exception) { return false; }
+    }
+
+    private void ApplyLogoAppearance()
+    {
+        if (!_uiReady || _syncingPreviewControls || LogoSizeSlider is null)
+            return;
+        var enabled = LogoEnabledCheck.IsChecked == true;
+        if (!_preview.TrySetLogoOverlay(enabled, _preview.LogoImagePath,
+                (LogoPlacement)Math.Max(0, LogoPlacementCombo.SelectedIndex),
+                (float)(LogoSizeSlider.Value / 100),
+                (float)(LogoMarginSlider.Value / 100),
+                (float)(LogoOpacitySlider.Value / 100))) {
+            if (enabled) LogoEnabledCheck.IsChecked = false;
+            LogoValidationText.Text = "Choose a valid PNG before enabling logo.";
+            return;
+        }
+        LogoSizeText.Text = $"{LogoSizeSlider.Value:0.#}%";
+        LogoMarginText.Text = $"{LogoMarginSlider.Value:0.#}%";
+        LogoOpacityText.Text = $"{LogoOpacitySlider.Value:0}%";
+        MarkPreviewChanged("Logo overlay settings saved for next recording");
+    }
 
     private void CameraPlacement_OnClick(
         object? sender,
@@ -747,19 +973,141 @@ public sealed partial class SettingsWindow : Window
         selected.Classes.Add(
             "selected");
 
-        CameraPreviewBadge.HorizontalAlignment =
-            _preview.CameraPlacement is
-                CameraPlacement.TopLeft or
-                CameraPlacement.BottomLeft
-                ? HorizontalAlignment.Left
-                : HorizontalAlignment.Right;
+        RenderCameraPreviewGeometry();
+    }
 
-        CameraPreviewBadge.VerticalAlignment =
-            _preview.CameraPlacement is
-                CameraPlacement.TopLeft or
-                CameraPlacement.TopRight
-                ? VerticalAlignment.Top
-                : VerticalAlignment.Bottom;
+    private void CameraSettingsPreview_OnTick(object? sender, EventArgs e)
+    {
+        if (_nativeBridge is null || _stressLayout) return;
+        try {
+            var (width, height) = _nativeBridge.WebcamSourceDimensions();
+            if (width >= 320 && height >= 240) {
+                var aspect = (double)height / width;
+                if (Math.Abs(aspect - _cameraSourceAspect) > .001) {
+                    _cameraSourceAspect = aspect;
+                    RenderCameraPreviewGeometry();
+                    UpdateCameraMaskWidthUI();
+                }
+            }
+            var result = _nativeBridge.ReadWebcamPreview(
+                _cameraSettingsPixels, out var seq, out var state);
+            if (result != NativeBridgeStatus.Ok) return;
+            if ((state != 2 && state != 4) || seq == 0) {
+                _cameraActivePicture = false;
+                CameraSettingsLiveFrame.IsVisible = false;
+                CameraSettingsIdle.IsVisible = true;
+                CameraSettingsIdle.Text = state == 1 ?
+                    "Opening camera…" : "Waiting for camera…";
+                if (state == 0) _cameraSettingsSequence = 0;
+                UpdateCameraPreviewSourceInfo();
+                return;
+            }
+            if (seq != _cameraSettingsSequence) {
+                _cameraSettingsBitmap ??= new WriteableBitmap(
+                    new PixelSize(NativeBridgeClient.WebcamPreviewWidth,
+                                  NativeBridgeClient.WebcamPreviewHeight),
+                    new Vector(96,96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
+                using (var fb = _cameraSettingsBitmap.Lock()) {
+                    var rowLength = NativeBridgeClient.WebcamPreviewWidth * 4;
+                    for (var y = 0; y < NativeBridgeClient.WebcamPreviewHeight; ++y)
+                        Marshal.Copy(_cameraSettingsPixels, y * rowLength,
+                            IntPtr.Add(fb.Address, y * fb.RowBytes), rowLength);
+                }
+                CameraSettingsLiveFrame.Source = _cameraSettingsBitmap;
+                CameraSettingsLiveFrame.InvalidateVisual();
+                _cameraSettingsSequence = seq;
+            }
+            _cameraActivePicture = true;
+            CameraSettingsLiveFrame.IsVisible = true;
+            CameraSettingsIdle.IsVisible = false;
+            UpdateCameraPreviewSourceInfo();
+        } catch (Exception) {
+            _cameraActivePicture = false;
+            CameraSettingsLiveFrame.IsVisible = false;
+            CameraSettingsIdle.IsVisible = true;
+            CameraSettingsIdle.Text = "Preview unavailable";
+            UpdateCameraPreviewSourceInfo();
+        }
+    }
+
+    private void UpdateCameraPreviewSourceInfo()
+    {
+        if (CameraPreviewSourceInfo is null) return;
+        CameraPreviewSourceInfo.Text = _cameraActivePicture
+            ? "Live webcam · output layout 1920 × 1080"
+            : "Waiting for a fresh camera frame · preview geometry remains accurate";
+    }
+
+    // Exact compositor geometry: output-space width/margins, camera-source
+    // aspect for noncircle, isotropic circle diameter for Circle.
+    // A 16:9 stage represents the actual 1920x1080 encoded output.
+    private void RenderCameraPreviewGeometry()
+    {
+        if (CameraOutputStage is null || CameraOverlaySurface is null)
+            return;
+        const double stageW = 448.0, stageH = 252.0;
+        var mask = _preview.CameraMask;
+        var margin = _preview.CameraMarginFraction;
+        // Same normalized rule as native: height remains consistent
+        // when switching Circle, rounded rectangle, and diagonal masks.
+        var h = _preview.CameraWidthFraction * stageW;
+        var w = mask == CameraPipMask.Circle
+            ? h : h / _cameraSourceAspect * _preview.CameraMaskWidthScale;
+        var heightFit = Math.Min(1.0, (1.0 - 2.0 * margin) * stageH / h);
+        h *= heightFit;
+        w *= heightFit;
+        // Width is bounded independently, so extra-wide masks do not
+        // accidentally reduce height or resize the Circle.
+        w = Math.Min(w, (1.0 - 2.0 * margin) * stageW);
+        var place = _preview.CameraPlacement;
+        var right = place is CameraPlacement.TopRight or CameraPlacement.BottomRight;
+        var bottom = place is CameraPlacement.BottomLeft or CameraPlacement.BottomRight;
+        var x = right ? stageW * (1 - margin) - w : stageW * margin;
+        var y = bottom ? stageH * (1 - margin) - h : stageH * margin;
+        CameraOverlaySurface.Width = w;
+        CameraOverlaySurface.Height = h;
+        Canvas.SetLeft(CameraOverlaySurface, x);
+        Canvas.SetTop(CameraOverlaySurface, y);
+
+        var r = Math.Min(w, h) * _preview.CameraRadiusFraction / 2.0;
+        var tl = mask == CameraPipMask.RoundedRectangle ||
+                 mask == CameraPipMask.DiagonalTopLeftBottomRight ? r : 0;
+        var tr = mask == CameraPipMask.RoundedRectangle ||
+                 mask == CameraPipMask.DiagonalTopRightBottomLeft ? r : 0;
+        var br = tl;
+        var bl = tr;
+        string n(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
+        string path;
+        if (mask == CameraPipMask.Circle) {
+            var half = w / 2.0;
+            path = $"M{n(w)},{n(half)} A{n(half)},{n(half)} 0 1 1 0,{n(half)} " +
+                   $"A{n(half)},{n(half)} 0 1 1 {n(w)},{n(half)} Z";
+        } else {
+            path = $"M{n(tl)},0 L{n(w-tr)},0 " +
+                   (tr > 0 ? $"Q{n(w)},0 {n(w)},{n(tr)} " : $"L{n(w)},0 ") +
+                   $"L{n(w)},{n(h-br)} " +
+                   (br > 0 ? $"Q{n(w)},{n(h)} {n(w-br)},{n(h)} " : $"L{n(w)},{n(h)} ") +
+                   $"L{n(bl)},{n(h)} " +
+                   (bl > 0 ? $"Q0,{n(h)} 0,{n(h-bl)} " : $"L0,{n(h)} ") +
+                   $"L0,{n(tl)} " +
+                   (tl > 0 ? $"Q0,0 {n(tl)},0 " : "L0,0 ") + "Z";
+        }
+        var geometry = Geometry.Parse(path);
+        CameraOverlaySurface.Clip = geometry;
+        CameraPreviewOutline.Data = geometry;
+        CameraPreviewOutline.StrokeThickness =
+            _preview.CameraBorderWidthPx <= 0 ? 0 :
+                Math.Max(.75, _preview.CameraBorderWidthPx * stageW / 1920.0);
+        CameraPreviewOutline.Stroke = _preview.CameraBorder switch {
+            CameraBorderTone.Dark => Brushes.DarkSlateGray,
+            CameraBorderTone.Red => Brushes.IndianRed,
+            _ => Brushes.White
+        };
+        CameraOverlaySurface.Opacity = _preview.CameraOpacity;
+        CameraSettingsLiveFrame.RenderTransform =
+            new ScaleTransform(_preview.CameraMirror ? -1 : 1, 1);
+        CameraSettingsLiveFrame.RenderTransformOrigin =
+            new RelativePoint(.5,.5,RelativeUnit.Relative);
     }
 
     private static bool TryNativeHotkeyAction(
@@ -771,6 +1119,7 @@ public sealed partial class SettingsWindow : Window
             {
                 "Record" => NativeHotkeyAction.ToggleRecord,
                 "Microphone" => NativeHotkeyAction.ToggleMicrophone,
+                "Pause" => NativeHotkeyAction.TogglePause,
                 "ToggleZoom" => NativeHotkeyAction.ToggleZoom,
                 "ZoomIn" => NativeHotkeyAction.ZoomIn,
                 "ZoomOut" => NativeHotkeyAction.ZoomOut,
@@ -782,6 +1131,7 @@ public sealed partial class SettingsWindow : Window
         return action is
             "Record" or
             "Microphone" or
+            "Pause" or
             "ToggleZoom" or
             "ZoomIn" or
             "ZoomOut" or
@@ -1131,7 +1481,29 @@ public sealed partial class SettingsWindow : Window
                 (int)_preview.SpotlightMotion;
 
             RefreshHotkeyLabels();
+            CameraMaskCombo.SelectedIndex = (int)_preview.CameraMask;
+            CameraBorderCombo.SelectedIndex = (int)_preview.CameraBorder;
+            CameraSizeSlider.Value = _preview.CameraWidthFraction * 100;
+            CameraMaskWidthSlider.Value = _preview.CameraMaskWidthScale * 100;
+            CameraMarginSlider.Value = _preview.CameraMarginFraction * 100;
+            CameraRadiusSlider.Value = _preview.CameraRadiusFraction * 100;
+            CameraBorderSlider.Value = _preview.CameraBorderWidthPx;
+            CameraOpacitySlider.Value = _preview.CameraOpacity * 100;
+            CameraMirrorCheck.IsChecked = _preview.CameraMirror;
+            LogoEnabledCheck.IsChecked = _preview.LogoEnabled;
+            LogoPlacementCombo.SelectedIndex = (int)_preview.LogoPlacement;
+            LogoSizeSlider.Value = _preview.LogoWidthFraction * 100;
+            LogoMarginSlider.Value = _preview.LogoMarginFraction * 100;
+            LogoOpacitySlider.Value = _preview.LogoOpacity * 100;
+            LogoPathText.Text = string.IsNullOrEmpty(_preview.LogoImagePath)
+                ? "No PNG selected" : Path.GetFileName(_preview.LogoImagePath);
+            if (!string.IsNullOrEmpty(_preview.LogoImagePath) &&
+                !TryLogoPreview(_preview.LogoImagePath, out var reason))
+                LogoValidationText.Text = reason;
             UpdateCameraPlacementVisual();
+            RenderCameraPreviewGeometry();
+            UpdateCameraMaskWidthUI();
+            UpdateCameraPreviewSourceInfo();
         }
         finally
         {

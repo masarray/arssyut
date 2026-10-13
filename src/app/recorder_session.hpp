@@ -9,6 +9,8 @@
 #include "core/video/frame_geometry.hpp"
 #include "core/video/frame_scheduler.hpp"
 #include "platform/windows/capture/wgc_capture_source.hpp"
+#include "platform/windows/capture/webcam_preview_session.hpp"
+#include "core/overlay/output_overlay_profile.hpp"
 #include "platform/windows/media/mf_h264_mp4_writer.hpp"
 #include "presentation/presentation_controller.hpp"
 #include "visual/arvisual_grade.hpp"
@@ -17,9 +19,11 @@
 
 #include <Windows.h>
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -34,6 +38,7 @@ enum class RecorderState : std::uint8_t {
     Finalizing,
     Ready,
     Failed,
+    Paused,  // append: never renumber stable Bridge state codes
 };
 
 enum class PresenterCommand : std::uint8_t {
@@ -85,6 +90,15 @@ struct RecorderConfig {
     // Product audio is opt-in and fail-closed. Explicit endpoint IDs must be
     // concrete Windows MMDevice IDs, never GUI display names or stale tokens.
     // The existing bridge still rejects audio until real-device MP4 acceptance.
+    // Internal P8W2 opt-in uses ONE established writer and frame clock.
+    arssyut::core::overlay::CameraOverlayProfile camera_overlay{};
+    arssyut::core::overlay::LogoOverlayProfile logo_overlay{};
+    std::wstring logo_png_path;
+    bool webcam_enabled = false;
+    std::wstring webcam_symbolic_link;
+    // Live single-source camera handed over by native bridge; remains owned
+    // by the preview coordinator across recording and finalization.
+    std::shared_ptr<arssyut::windows::WebcamPreviewSession> shared_webcam;
     bool audio_microphone = false;
     bool audio_system = false;
     std::wstring audio_microphone_id;
@@ -161,6 +175,7 @@ public:
     // Only this session owns mute state. GUI button and native hotkey reach
     // the same lock-free request and existing worker; no second audio clock.
     [[nodiscard]] bool request_toggle_microphone_mute() noexcept;
+    [[nodiscard]] bool request_toggle_pause() noexcept;
 
     // One-shot Armed -> Recording gate. Returns false outside Armed or after a
     // prior commit. The worker owns the actual media-clock timestamp.
@@ -224,17 +239,46 @@ private:
     std::atomic<bool> start_commit_requested_{false};
     std::atomic<bool> microphone_mute_requested_{false};
     std::atomic<bool> microphone_mute_applied_{false};
+    std::atomic<bool> pause_requested_{false};
+    std::atomic<std::int64_t> pause_began_at_ticks_{0};
+    std::atomic<std::int64_t> pause_excluded_ticks_{0};
+    std::atomic<std::uint64_t> pause_count_{0};
+
+    // Instrumentation only. Worker-owned, fixed capacity, zero allocation.
+    // One 100ns timestamp in the COMPRESSED output-media timeline per
+    // successful Resume; old diagnostics fields remain unchanged.
+    static constexpr std::size_t kMaxPauseResumeSeams = 64;
+    std::array<std::int64_t, kMaxPauseResumeSeams> pause_resume_seams_{};
+    std::uint64_t pause_resume_events_ = 0;
 
     std::atomic<std::int64_t> start_requested_at_ticks_{0};
     std::atomic<std::int64_t> armed_at_ticks_{0};
     std::atomic<std::int64_t> first_frame_submitted_at_ticks_{0};
     std::atomic<std::uint64_t> capture_preroll_received_{0};
+    // Per-session real webcam evidence. Never silently represent an
+    // unrendered camera as accepted just because desktop MP4 succeeded.
+    std::atomic<std::uint64_t> webcam_received_{0};
+    std::atomic<std::uint64_t> webcam_published_{0};
+    std::atomic<std::uint64_t> webcam_ticks_startup_{0};
+    std::atomic<std::uint64_t> webcam_ticks_streaming_{0};
+    std::atomic<std::uint64_t> webcam_adapter_mismatch_{0};
+    std::atomic<std::uint64_t> webcam_foreign_device_{0};
+    std::atomic<std::uint64_t> webcam_new_gpu_frames_{0};
+    std::atomic<std::uint64_t> webcam_rendered_slots_{0};
+    std::atomic<std::uint64_t> webcam_copy_failures_{0};
+    std::atomic<std::uint32_t> webcam_hresult_{0};
     std::atomic<bool> audio_writer_enabled_{false};
     std::atomic<std::uint64_t> audio_samples_submitted_{0};
     std::atomic<std::uint64_t> audio_frames_submitted_{0};
     RecordingAudioHealth audio_health_{}; // only recorder worker reads/writes
     std::atomic<std::int64_t> started_at_ticks_{0};
     std::atomic<std::int64_t> stopped_at_ticks_{0};
+
+    // Recorder Preparing diagnostics: 1=GPU pipeline, 2=Camera profile,
+    // 3=audio source preflight, 4=writer.open, 5=writer readiness,
+    // 6=WGC capture startup, 7=presentation input, 8=media timeline.
+    std::atomic<std::uint32_t> startup_failure_stage_{0};
+    std::atomic<std::uint32_t> wgc_startup_failure_step_{0};
 
     std::atomic<std::uint32_t> error_code_{0};
     std::atomic<std::uint32_t> error_detail_{0};

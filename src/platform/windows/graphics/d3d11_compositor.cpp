@@ -48,10 +48,19 @@ cbuffer PresentationConstants : register(b0)
     float4 spotlight0;
     float4 spotlight1;
     float4 spotlight2;
+    float4 webcam_rect;    // output-normalized, LTRB, not desktop UV
+    float4 webcam_params;  // enabled, mask, corner_fraction, opacity
+    float4 webcam_border;  // border RGB, width px
+    float4 webcam_style;   // mirror, source aspect, reserved x2
+    float4 logo_rect;      // output-normalized
+    float4 logo_params;    // enabled, opacity, reserved, reserved
 };
 
 Texture2D source_texture : register(t0);
 Texture2D keyboard_texture : register(t1);
+Texture2D webcam_luma : register(t2);
+Texture2D webcam_chroma : register(t3);
+Texture2D logo_texture : register(t4);
 SamplerState source_sampler : register(s0);
 
 struct VertexOutput
@@ -1120,6 +1129,80 @@ float4 ps_main(VertexOutput input) : SV_Target
             lerp(color.rgb, overlay.rgb, alpha);
     }
 
+    // Face-cam lives in output space: unaffected by desktop pan/zoom,
+    // ArVisual grading, source crop or the WGC frame rate.
+    if (webcam_params.x > 0.5 &&
+        input.uv.x >= webcam_rect.x - 0.002 &&
+        input.uv.x <= webcam_rect.z + 0.002 &&
+        input.uv.y >= webcam_rect.y - 0.002 &&
+        input.uv.y <= webcam_rect.w + 0.002) {
+        const float2 extent = max(webcam_rect.zw - webcam_rect.xy, 0.0001);
+        const float2 pixel_extent = extent * output_info.xy;
+        const float2 centered_px = (input.uv - 0.5 * (webcam_rect.xy + webcam_rect.zw)) * output_info.xy;
+        const float2 box_half_px = pixel_extent * 0.5;
+        const int mask = (int)(webcam_params.y + 0.5);
+        float signed_dist = 0.0;
+        if (mask == 0) {  // physically round, never elliptical
+            signed_dist = length(centered_px) - min(box_half_px.x, box_half_px.y);
+        } else {
+            const bool left = centered_px.x < 0.0;
+            const bool top = centered_px.y < 0.0;
+            const bool rounded = (mask == 1) ||
+                (mask == 2 && (left == top)) ||
+                (mask == 3 && (left != top));
+            const float r = rounded ? min(box_half_px.x, box_half_px.y) *
+                                             webcam_params.z : 0.0;
+            const float2 d = abs(centered_px) - (box_half_px - r);
+            signed_dist = length(max(d, 0.0)) +
+                min(max(d.x, d.y), 0.0) - r;
+        }
+        float2 camera_uv = (input.uv - webcam_rect.xy) / extent;
+        // "UniformToFill" for ALL mask apertures. Maintain face/camera
+        // geometry when user changes width: centered crop, never stretch.
+        const float source_ratio = 1.0 / max(webcam_style.y, 0.0001);
+        const float target_ratio = pixel_extent.x /
+            max(pixel_extent.y, 0.0001);
+        if (target_ratio < source_ratio)
+            camera_uv.x = 0.5 + (camera_uv.x - 0.5) *
+                (target_ratio / source_ratio);
+        else
+            camera_uv.y = 0.5 + (camera_uv.y - 0.5) *
+                (source_ratio / target_ratio);
+        if (webcam_style.x > 0.5) camera_uv.x = 1.0 - camera_uv.x;
+        const float edge_alpha = 1.0 - smoothstep(-1.25, 1.25, signed_dist);
+        if (edge_alpha > 0.001) {
+            // NV12 limited-range Rec.709, matching native HD webcam profile.
+            // Camera is not processed through the desktop ArVisual grade.
+            const float y = webcam_luma.Sample(source_sampler, saturate(camera_uv)).r;
+            const float2 chroma = webcam_chroma.Sample(source_sampler, saturate(camera_uv)).rg;
+            const float Y = max(0.0, (y - 16.0 / 255.0) * (255.0 / 219.0));
+            const float U = (chroma.x - 128.0 / 255.0) * (255.0 / 224.0);
+            const float V = (chroma.y - 128.0 / 255.0) * (255.0 / 224.0);
+            const float3 rgb = saturate(float3(
+                Y + 1.5748 * V,
+                Y - 0.1873 * U - 0.4681 * V,
+                Y + 1.8556 * U));
+            const float b = max(webcam_border.w, 0.0);
+            const float border = b > 0.0 ?
+                smoothstep(-b - 1.0, -b + 1.0, signed_dist) : 0.0;
+            const float3 bordered = lerp(rgb, webcam_border.rgb, border);
+            color.rgb = lerp(color.rgb, bordered,
+                             edge_alpha * saturate(webcam_params.w));
+        }
+    }
+    // Logo is an independent cached PBGRA layer, after screen grading and
+    // webcam. PNG alpha was premultiplied only once by WIC, not per frame.
+    if (logo_params.x > 0.5 &&
+        all(input.uv >= logo_rect.xy) &&
+        all(input.uv <= logo_rect.zw)) {
+        const float2 logo_uv = saturate(
+            (input.uv - logo_rect.xy) /
+            max(logo_rect.zw - logo_rect.xy, 0.0001));
+        const float4 pixel = logo_texture.Sample(source_sampler, logo_uv);
+        const float opacity = saturate(logo_params.y);
+        color.rgb = color.rgb * (1.0 - pixel.a * opacity) +
+                    pixel.rgb * opacity;
+    }
     return color;
 }
 )";
@@ -1196,6 +1279,30 @@ struct PresentationConstants {
     float spotlight_dim_mix = 0.0f;
     float spotlight_corner_radius_px = 0.0f;
     float spotlight_reserved = 0.0f;
+    float webcam_left = 0.0f;
+    float webcam_top = 0.0f;
+    float webcam_right = 0.0f;
+    float webcam_bottom = 0.0f;
+    float webcam_active = 0.0f;
+    float webcam_reserved0 = 0.0f;
+    float webcam_reserved1 = 0.0f;
+    float webcam_reserved2 = 0.0f;
+    float webcam_border_r = 0.96f;
+    float webcam_border_g = 0.96f;
+    float webcam_border_b = 0.96f;
+    float webcam_border_width = 2.0f;
+    float webcam_mirror = 0.0f;
+    float webcam_source_aspect = 1.0f;
+    float webcam_style_reserved2 = 0.0f;
+    float webcam_style_reserved3 = 0.0f;
+    float logo_left = 0.0f;
+    float logo_top = 0.0f;
+    float logo_right = 0.0f;
+    float logo_bottom = 0.0f;
+    float logo_active = 0.0f;
+    float logo_opacity = 1.0f;
+    float logo_reserved2 = 0.0f;
+    float logo_reserved3 = 0.0f;
 };
 
 constexpr UINT kKeyboardWidth = 768;
@@ -2071,6 +2178,28 @@ Status D3D11Compositor::update_source(
     return Status::success();
 }
 
+Status D3D11Compositor::update_webcam(
+    ID3D11DeviceContext *context,
+    ID3D11Texture2D *source,
+    std::uint32_t subresource) noexcept
+{
+    return webcam_.update(device_.Get(), context, source, subresource);
+}
+
+Status D3D11Compositor::set_logo_overlay_profile(
+    const arssyut::core::overlay::LogoOverlayProfile &profile,
+    const std::wstring &png_path) noexcept
+{
+    if (!arssyut::core::overlay::valid(profile))
+        return Status::failure(StatusCode::InvalidArgument);
+    logo_overlay_ = profile;
+    logo_.clear();
+    if (!profile.enabled) return Status::success();
+    // Failure is reported as optional configuration error; caller retains
+    // healthy WGC/System/Mic recording and compositor retains no logo SRV.
+    return logo_.load(device_.Get(), png_path);
+}
+
 Status D3D11Compositor::render_retained(
     ID3D11DeviceContext *context,
     CropRect crop,
@@ -2125,6 +2254,75 @@ Status D3D11Compositor::render_retained(
         return keyboard_status;
 
     PresentationConstants constants{};
+    if (camera_overlay_.enabled && webcam_.ready() &&
+        output_size.width && output_size.height) {
+        const float source_aspect = static_cast<float>(webcam_.height()) /
+            static_cast<float>(webcam_.width());
+        const float margin = camera_overlay_.margin_fraction;
+        const bool circle = camera_overlay_.mask ==
+            arssyut::core::overlay::CameraMask::Circle;
+        // PIP size denotes physical output height. Changing mask never
+        // shrinks the camera vertically; rectangles expand sideways to
+        // preserve camera aspect while Circle remains isotropic.
+        float h = camera_overlay_.width_fraction *
+            static_cast<float>(output_size.width) /
+            static_cast<float>(output_size.height);
+        float w = circle ? camera_overlay_.width_fraction :
+            camera_overlay_.width_fraction / source_aspect *
+            camera_overlay_.mask_width_scale;
+        const float vertical_fit = std::min(
+            1.0f, (1.0f - 2.0f * margin) / h);
+        w *= vertical_fit;
+        h *= vertical_fit;
+        // Limit width independently to available output space. This
+        // retains physical PIP height at every width-slider position.
+        w = std::min(w, 1.0f - 2.0f * margin);
+        const auto placement = camera_overlay_.placement;
+        const bool right = placement == arssyut::core::overlay::Corner::TopRight ||
+                           placement == arssyut::core::overlay::Corner::BottomRight;
+        const bool bottom = placement == arssyut::core::overlay::Corner::BottomLeft ||
+                            placement == arssyut::core::overlay::Corner::BottomRight;
+        constants.webcam_left = right ? 1.0f - margin - w : margin;
+        constants.webcam_top = bottom ? 1.0f - margin - h : margin;
+        constants.webcam_right = constants.webcam_left + w;
+        constants.webcam_bottom = constants.webcam_top + h;
+        constants.webcam_active = 1.0f;
+        constants.webcam_reserved0 =
+            static_cast<float>(static_cast<std::uint8_t>(camera_overlay_.mask));
+        constants.webcam_reserved1 = camera_overlay_.corner_radius_fraction;
+        constants.webcam_reserved2 = camera_overlay_.opacity;
+        constants.webcam_border_r = camera_overlay_.border_r;
+        constants.webcam_border_g = camera_overlay_.border_g;
+        constants.webcam_border_b = camera_overlay_.border_b;
+        constants.webcam_border_width = camera_overlay_.border_width_px;
+        constants.webcam_mirror = camera_overlay_.mirror ? 1.0f : 0.0f;
+        constants.webcam_source_aspect = source_aspect;
+    }
+    if (logo_overlay_.enabled && logo_.ready() &&
+        output_size.width && output_size.height) {
+        const float margin = logo_overlay_.margin_fraction;
+        float w = logo_overlay_.width_fraction;
+        float h = w * static_cast<float>(output_size.width) /
+            static_cast<float>(output_size.height) *
+            static_cast<float>(logo_.height()) / static_cast<float>(logo_.width());
+        const float fit = std::min({1.0f, (1.0f - 2.0f*margin)/w,
+            (1.0f - 2.0f*margin)/h});
+        w *= fit; h *= fit;
+        const auto where = logo_overlay_.placement;
+        const bool right = where == arssyut::core::overlay::Corner::TopRight ||
+                           where == arssyut::core::overlay::Corner::BottomRight;
+        const bool bottom = where == arssyut::core::overlay::Corner::BottomRight ||
+                            where == arssyut::core::overlay::Corner::BottomLeft;
+        const bool center = where == arssyut::core::overlay::Corner::Center;
+        constants.logo_left = center ? (1.0f-w)*.5f :
+            right ? 1.0f-margin-w : margin;
+        constants.logo_top = center ? (1.0f-h)*.5f :
+            bottom ? 1.0f-margin-h : margin;
+        constants.logo_right = constants.logo_left + w;
+        constants.logo_bottom = constants.logo_top + h;
+        constants.logo_active = 1.0f;
+        constants.logo_opacity = logo_overlay_.opacity;
+    }
     constants.uv_left =
         static_cast<float>(crop.left) /
         static_cast<float>(source_size.width);
@@ -2493,19 +2691,18 @@ Status D3D11Compositor::render_retained(
     ID3D11SamplerState *sampler = sampler_.Get();
     context->PSSetSamplers(0, 1, &sampler);
 
-    ID3D11ShaderResourceView *srvs[2] = {
-        input_srv_.Get(),
-        keyboard_srv_.Get()
+    ID3D11ShaderResourceView *srvs[5] = {
+        input_srv_.Get(), keyboard_srv_.Get(),
+        webcam_.y(), webcam_.uv(), logo_.srv()
     };
-    context->PSSetShaderResources(0, 2, srvs);
+    context->PSSetShaderResources(0, 5, srvs);
 
     context->Draw(3, 0);
 
-    ID3D11ShaderResourceView *null_srvs[2] = {
-        nullptr,
-        nullptr
+    ID3D11ShaderResourceView *null_srvs[5] = {
+        nullptr, nullptr, nullptr, nullptr, nullptr
     };
-    context->PSSetShaderResources(0, 2, null_srvs);
+    context->PSSetShaderResources(0, 5, null_srvs);
 
     ID3D11RenderTargetView *null_rtv = nullptr;
     context->OMSetRenderTargets(1, &null_rtv, nullptr);

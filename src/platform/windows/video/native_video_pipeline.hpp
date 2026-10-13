@@ -8,6 +8,8 @@
 #include "core/video/frame_geometry.hpp"
 #include "core/video/frame_scheduler.hpp"
 #include "platform/windows/capture/latest_frame_slot.hpp"
+#include "platform/windows/capture/webcam_gpu_frame_slot.hpp"
+#include "platform/windows/capture/webcam_preview_session.hpp"
 #include "platform/windows/graphics/d3d11_compositor.hpp"
 #include "presentation/presentation_state.hpp"
 #include "visual/arvisual_grade.hpp"
@@ -58,6 +60,31 @@ public:
         const arssyut::presentation::PresentationFrameState *presentation = nullptr,
         const arssyut::visual::ArVisualGradeSettings *visual = nullptr) noexcept;
 
+    // Null means unchanged desktop-only recorder. Optional GPU source is
+    // sampled on the existing CFR frame scheduler, never owns MP4 PTS.
+    void set_webcam_source(WebcamGpuFrameSlot *slot) noexcept {
+        webcam_slot_ = slot;
+        if (!slot && compositor_) compositor_->clear_webcam();
+    }
+
+
+    // Recorder worker remains the ONLY SPSC GPU consumer while recording.
+    // The same consumer also publishes a tiny nonblocking GUI preview.
+    void set_webcam_preview_sink(WebcamPreviewSession *sink) noexcept {
+        webcam_preview_sink_ = sink;
+    }
+    void preview_while_paused(ID3D11DeviceContext *context) noexcept;
+
+    [[nodiscard]] std::uint64_t webcam_new_gpu_frames() const noexcept {
+        return webcam_new_gpu_frames_;
+    }
+    [[nodiscard]] std::uint64_t webcam_rendered_slots() const noexcept {
+        return webcam_rendered_slots_;
+    }
+    [[nodiscard]] std::uint64_t webcam_gpu_copy_failures() const noexcept {
+        return webcam_gpu_copy_failures_;
+    }
+
     [[nodiscard]] ID3D11Texture2D *output_texture() const noexcept
     {
         return compositor_->output_texture();
@@ -72,6 +99,12 @@ private:
     NativeVideoPipeline() = default;
 
     LatestFrameSlot *frame_slot_ = nullptr;
+    WebcamGpuFrameSlot *webcam_slot_ = nullptr;
+    WebcamPreviewSession *webcam_preview_sink_ = nullptr;
+    std::int64_t last_webcam_at_ = 0;
+    std::uint64_t webcam_new_gpu_frames_ = 0;
+    std::uint64_t webcam_rendered_slots_ = 0;
+    std::uint64_t webcam_gpu_copy_failures_ = 0;
     arssyut::core::Diagnostics *diagnostics_ = nullptr;
     arssyut::core::FrameScheduler scheduler_;
     std::unique_ptr<D3D11Compositor> compositor_;

@@ -202,6 +202,7 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:DebugType=None -p:DebugSymbols=false `
             -p:InternalAudioPreview=true `
+            -p:InternalWebcamPreview=true `
             -o $package
           if ($LASTEXITCODE -ne 0) {
             throw "Internal FFmpeg-enabled UI publish failed."
@@ -227,20 +228,23 @@ jobs:
           INTERNAL WINDOWS HARDWARE AUDIO ACCEPTANCE — NOT A PUBLIC RELEASE
 
           1. Unzip the complete artifact on Windows 10/11 x64.
-          2. Double-click Arssyut.UI.exe directly. NO CMD or console.
+          2. Double-click Arssyut.UI.exe directly. NO CMD, PowerShell,
+             environment variables, or separate diagnostic executables.
           3. In the Audio panel, enable Microphone, System audio, or both.
+             Webcam: choose the real camera and switch ON to see its preview
+             BEFORE starting the recording.
           4. Select a microphone from the detected real Windows device list.
-             System audio uses the default Windows eConsole playback endpoint.
+             System Audio can pin a specific Windows render endpoint (Realtek, HDMI or USB).
           5. Record a short display video, stop, and PLAY the resulting MP4.
           6. Check audible audio, A/V sync, Stop completion and any error.
           7. Repeat for Mic-only, System-only, and dual source. Report the
              session diagnostics and reproducible device configuration.
 
-          CAUTION: This opt-in package has not passed real-device audio
-          acceptance yet. Do not replace the stable video-only release.
-          The dedicated INTERNAL executable enables its acceptance mode
-          within its process. Public builds do not. Camera is unsupported.
-          FFmpeg linkage and redistribution require licensing review.
+          CAUTION: This ZIP is an internal CI test artifact, not a public
+          Installer/Portable EXE. Physical A/V + webcam acceptance was
+          recorded 2026-10-13. Public packages MUST be built from exact-main
+          audio-enabled CI by Windows Release Candidate EXEs workflow.
+          Preserve GPL and FFmpeg third-party redistribution notices.
           '@ | Set-Content (Join-Path $package "README_AUDIO_ACCEPTANCE.txt")
 
       - name: Integrated A/V GUI interaction-state regression (reuse audio-enabled build)
@@ -276,16 +280,44 @@ jobs:
         run: |
           # Acceptance symbol in the single-file EXE enables audio itself.
           $exe = Join-Path $PWD "dist/arssyut-audio-acceptance/Arssyut.UI.exe"
+          $startedAt = Get-Date
           $process = Start-Process -FilePath $exe -ArgumentList "--bridge-required" -PassThru
           try {
             Start-Sleep -Seconds 4
+            $process.Refresh()
             if ($process.HasExited) {
-              throw "Experimental audio UI exited early: $($process.ExitCode)"
+              # This is a real Windows GUI process, not a CLI app: failed
+              # startup exceptions go to Windows Event Log, not stdout.
+              # A fatal .NET Runtime event 1026 includes the exception and
+              # stack; print it before treating an EXE exit as a regression.
+              $events = Get-WinEvent -FilterHashtable @{
+                LogName = 'Application'
+                StartTime = $startedAt
+                Id = 1026
+              } -ErrorAction SilentlyContinue |
+                Where-Object { $_.Message -match 'Arssyut.UI.exe' } |
+                Select-Object -First 2
+              foreach ($event in $events) {
+                Write-Host "--- Native A/V GUI startup crash evidence ---"
+                Write-Host $event.Message
+              }
+              throw "Integrated A/V + webcam UI exited early: $($process.ExitCode)"
             }
           } finally {
             if (-not $process.HasExited) {
               Stop-Process -Id $process.Id -Force
             }
+          }
+
+      - name: Check webcam double-click packaging contract
+        shell: pwsh
+        run: |
+          $source = Get-Content "src/ui/Arssyut.UI/Program.cs" -Raw
+          $project = Get-Content "src/ui/Arssyut.UI/Arssyut.UI.csproj" -Raw
+          if ($source -notmatch "ARSSYUT_INTERNAL_WEBCAM_PREVIEW" -or
+              $source -notmatch "ARSSYUT_WEBCAM_PREVIEW" -or
+              $project -notmatch "InternalWebcamPreview") {
+            throw "Missing self-contained webcam QA launch contract."
           }
 
       - name: Upload INTERNAL audio hardware acceptance package

@@ -21,7 +21,8 @@ public enum NativeBridgeAvailability
 public enum NativeDeviceKind : uint
 {
     Microphone = 0,
-    Camera = 1
+    Camera = 1,
+    Playback = 2
 }
 
 public enum NativeBridgeStatus
@@ -46,7 +47,8 @@ public enum NativeRecorderState : uint
     Stopping = 4,
     Finalizing = 5,
     Ready = 6,
-    Failed = 7
+    Failed = 7,
+    Paused = 8
 }
 
 public readonly record struct NativeHotkeyChord(
@@ -145,7 +147,8 @@ public sealed record NativeDeviceItem(
 
 public sealed record NativeDeviceSnapshot(
     IReadOnlyList<NativeDeviceItem> Microphones,
-    IReadOnlyList<NativeDeviceItem> Cameras);
+    IReadOnlyList<NativeDeviceItem> Cameras,
+    IReadOnlyList<NativeDeviceItem> Playbacks);
 
 public sealed record NativeRecorderSnapshot(
     NativeRecorderState State,
@@ -194,7 +197,21 @@ public sealed record NativeStartRequest(
     float SystemGain = 1.0f,
     float MicrophoneGain = 1.0f,
     bool SystemMuted = false,
-    bool MicrophoneMuted = false);
+    bool MicrophoneMuted = false,
+    NativeCameraOverlay? CameraOverlay = null,
+    NativeLogoOverlay? LogoOverlay = null,
+    ulong SystemAudioDeviceToken = 0);
+
+public sealed record NativeCameraOverlay(
+    uint Placement = 1, uint Mask = 1, float Width = .235f,
+    float MaskWidthScale = 1f,
+    float Margin = .035f, float Radius = .72f, float BorderWidth = 2f,
+    float Opacity = 1f, bool Mirror = false, float Red = .96f,
+    float Green = .96f, float Blue = .96f);
+
+public sealed record NativeLogoOverlay(
+    bool Enabled = false, string ImagePath = "", uint Placement = 3,
+    float Width = .12f, float Margin = .025f, float Opacity = 1f);
 
 public sealed class NativeBridgeClient : IDisposable
 {
@@ -712,7 +729,8 @@ public sealed class NativeBridgeClient : IDisposable
         ThrowIfDisposed();
         return new NativeDeviceSnapshot(
             ReadDevices(NativeDeviceKind.Microphone),
-            ReadDevices(NativeDeviceKind.Camera));
+            ReadDevices(NativeDeviceKind.Camera),
+            ReadDevices(NativeDeviceKind.Playback));
     }
 
     public NativeDeviceSnapshot RefreshDevices()
@@ -727,7 +745,8 @@ public sealed class NativeBridgeClient : IDisposable
             ReadDevices(
                 NativeDeviceKind.Microphone),
             ReadDevices(
-                NativeDeviceKind.Camera));
+                NativeDeviceKind.Camera),
+            ReadDevices(NativeDeviceKind.Playback));
     }
 
     private IReadOnlyList<NativeDeviceItem> ReadDevices(
@@ -830,6 +849,13 @@ public sealed class NativeBridgeClient : IDisposable
             meter.MicrophoneLeft, meter.MicrophoneRight);
     }
 
+    public NativeBridgeStatus SetSystemAudioEndpoint(ulong token)
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)NativeMethods.RecorderSetSystemAudioEndpoint(
+            _handle, token);
+    }
+
     public NativeBridgeStatus StartRecording(
         NativeStartRequest request)
     {
@@ -889,10 +915,46 @@ public sealed class NativeBridgeClient : IDisposable
                 MicrophoneMuted = request.MicrophoneMuted ? 1U : 0U
             };
 
+        // Additive bridge call; keep StartRequestV1 binary layout unchanged.
+        // If the internal native library is not the matching build, fail
+        // honestly instead of silently recording hard-coded PIP geometry.
+        var camera = request.CameraOverlay ?? new NativeCameraOverlay();
+        var profile = new NativeCameraOverlayV1
+        {
+            StructSize = (uint)Marshal.SizeOf<NativeCameraOverlayV1>(),
+            Version = 1, Placement = camera.Placement, Mask = camera.Mask,
+            Width = camera.Width, Margin = camera.Margin,
+            Radius = camera.Radius, BorderWidth = camera.BorderWidth,
+            Opacity = camera.Opacity, Red = camera.Red,
+            Green = camera.Green, Blue = camera.Blue,
+            Mirror = camera.Mirror ? 1U : 0U, Enabled = 1U
+        };
+        var profileV2 = new NativeCameraOverlayV2 {
+            StructSize = (uint)Marshal.SizeOf<NativeCameraOverlayV2>(),
+            Version = 2, Camera = profile,
+            MaskWidthScale = camera.MaskWidthScale
+        };
+        var endpointStatus = SetSystemAudioEndpoint(
+            (request.Flags & NativeStartFlags.SystemAudio) != 0
+                ? request.SystemAudioDeviceToken : 0);
+        if (endpointStatus != NativeBridgeStatus.Ok) return endpointStatus;
+        var overlayStatus = (NativeBridgeStatus)
+            NativeMethods.RecorderSetCameraOverlayV2(_handle, ref profileV2);
+        if (overlayStatus != NativeBridgeStatus.Ok) return overlayStatus;
+        var logo = request.LogoOverlay ?? new NativeLogoOverlay();
+        var logoProfile = new NativeLogoOverlayV1
+        {
+            StructSize = (uint)Marshal.SizeOf<NativeLogoOverlayV1>(),
+            Version = 1, Enabled = logo.Enabled ? 1U : 0U,
+            Placement = logo.Placement, Width = logo.Width,
+            Margin = logo.Margin, Opacity = logo.Opacity,
+            ImagePath = logo.ImagePath
+        };
+        var logoStatus = (NativeBridgeStatus)
+            NativeMethods.RecorderSetLogoOverlay(_handle, ref logoProfile);
+        if (logoStatus != NativeBridgeStatus.Ok) return logoStatus;
         return (NativeBridgeStatus)
-            NativeMethods.RecorderStart(
-                _handle,
-                ref native);
+            NativeMethods.RecorderStart(_handle, ref native);
     }
 
     public NativeBridgeStatus PresenterCommand(
@@ -929,6 +991,13 @@ public sealed class NativeBridgeClient : IDisposable
         ThrowIfDisposed();
         return (NativeBridgeStatus)
             NativeMethods.RecorderToggleMicrophoneMute(_handle);
+    }
+
+    public NativeBridgeStatus TogglePause()
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)
+            NativeMethods.RecorderTogglePause(_handle);
     }
 
     public NativeRecorderResult Result()
@@ -978,6 +1047,51 @@ public sealed class NativeBridgeClient : IDisposable
             NativeMethods.Destroy(
                 _handle);
         }
+    }
+
+    // P8W2 real 192x108 GPU-downscaled camera preview. Both device
+    // selection and recording use the same generation-checked native token.
+    public const int WebcamPreviewWidth = 192;
+    public const int WebcamPreviewHeight = 108;
+    public const int WebcamPreviewByteCount = 192 * 108 * 4;
+
+    public (uint Width, uint Height) WebcamSourceDimensions()
+    {
+        ThrowIfDisposed();
+        EnsureOk(NativeMethods.WebcamPreviewDimensions(
+            _handle, out var width, out var height));
+        return (width, height);
+    }
+
+    public NativeBridgeStatus StartWebcamPreview(ulong cameraToken)
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)NativeMethods.WebcamPreviewStart(
+            _handle, cameraToken);
+    }
+
+    public NativeBridgeStatus StopWebcamPreview()
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)NativeMethods.WebcamPreviewStop(_handle);
+    }
+
+    public NativeBridgeStatus ReadWebcamPreview(byte[] bgra,
+        out ulong sequence, out uint state)
+    {
+        ThrowIfDisposed();
+        if (bgra.Length < WebcamPreviewByteCount)
+            throw new ArgumentOutOfRangeException(nameof(bgra));
+        return (NativeBridgeStatus)NativeMethods.WebcamPreviewFrame(
+            _handle, bgra, (uint)bgra.Length, out sequence, out state);
+    }
+
+    public NativeBridgeStatus ReadWebcamPreviewFailure(
+        out uint stage, out uint hresult)
+    {
+        ThrowIfDisposed();
+        return (NativeBridgeStatus)NativeMethods.WebcamPreviewFailure(
+            _handle, out stage, out hresult);
     }
 
     private void ThrowIfDisposed()
@@ -1088,6 +1202,49 @@ public sealed class NativeBridgeClient : IDisposable
     [StructLayout(
         LayoutKind.Sequential,
         CharSet = CharSet.Unicode)]
+    private struct NativeLogoOverlayV1
+    {
+        public uint StructSize;
+        public uint Version;
+        public uint Enabled;
+        public uint Placement;
+        public float Width;
+        public float Margin;
+        public float Opacity;
+        public float Reserved;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 512)]
+        public string ImagePath;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct NativeCameraOverlayV1
+    {
+        public uint StructSize;
+        public uint Version;
+        public uint Placement;
+        public uint Mask;
+        public float Width;
+        public float Margin;
+        public float Radius;
+        public float BorderWidth;
+        public float Opacity;
+        public float Red;
+        public float Green;
+        public float Blue;
+        public uint Mirror;
+        public uint Enabled;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeCameraOverlayV2
+    {
+        public uint StructSize;
+        public uint Version;
+        public NativeCameraOverlayV1 Camera;
+        public float MaskWidthScale;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NativeStartRequestV1
     {
         public uint StructSize;
@@ -1142,6 +1299,36 @@ public sealed class NativeBridgeClient : IDisposable
 
     private static class NativeMethods
     {
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_start",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewStart(IntPtr handle,
+            ulong cameraDeviceToken);
+
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_stop",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewStop(IntPtr handle);
+
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_dimensions",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewDimensions(
+            IntPtr handle, out uint width, out uint height);
+
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_failure",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewFailure(
+            IntPtr handle, out uint stage, out uint hresult);
+
+        [DllImport(LibraryName,
+            EntryPoint = "arssyut_bridge_webcam_preview_frame",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int WebcamPreviewFrame(IntPtr handle,
+            [Out] byte[] pixels, uint capacity,
+            out ulong sequence, out uint state);
+
         [DllImport(
             LibraryName,
             EntryPoint = "arssyut_bridge_abi_version",
@@ -1275,6 +1462,35 @@ public sealed class NativeBridgeClient : IDisposable
 
         [DllImport(
             LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_set_system_audio_endpoint",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderSetSystemAudioEndpoint(
+            IntPtr handle, ulong playbackDeviceToken);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_set_logo_overlay",
+            CallingConvention = CallingConvention.Cdecl,
+            CharSet = CharSet.Unicode)]
+        public static extern int RecorderSetLogoOverlay(
+            IntPtr handle, ref NativeLogoOverlayV1 profile);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_set_camera_overlay",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderSetCameraOverlay(
+            IntPtr handle, ref NativeCameraOverlayV1 profile);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_set_camera_overlay_v2",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderSetCameraOverlayV2(
+            IntPtr handle, ref NativeCameraOverlayV2 profile);
+
+        [DllImport(
+            LibraryName,
             EntryPoint = "arssyut_bridge_recorder_start",
             CallingConvention = CallingConvention.Cdecl,
             CharSet = CharSet.Unicode)]
@@ -1310,6 +1526,12 @@ public sealed class NativeBridgeClient : IDisposable
             CallingConvention = CallingConvention.Cdecl)]
         public static extern int RecorderToggleMicrophoneMute(
             IntPtr handle);
+
+        [DllImport(
+            LibraryName,
+            EntryPoint = "arssyut_bridge_recorder_toggle_pause",
+            CallingConvention = CallingConvention.Cdecl)]
+        public static extern int RecorderTogglePause(IntPtr handle);
 
         [DllImport(
             LibraryName,

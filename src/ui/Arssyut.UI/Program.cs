@@ -17,6 +17,14 @@ internal static class Program
             "ARSSYUT_AUDIO_PREVIEW", "1",
             EnvironmentVariableTarget.Process);
 #endif
+#if ARSSYUT_INTERNAL_WEBCAM_PREVIEW
+        // Internal A/V + webcam acceptance is self-contained and launched
+        // by double-click, just like the accepted audio artifact.
+        // No PowerShell environment setup, no system-wide setting.
+        Environment.SetEnvironmentVariable(
+            "ARSSYUT_WEBCAM_PREVIEW", "1",
+            EnvironmentVariableTarget.Process);
+#endif
         BuildAvaloniaApp()
             .StartWithClassicDesktopLifetime(args);
     }

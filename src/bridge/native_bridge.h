@@ -39,6 +39,7 @@ enum ArssyutBridgeSourceKind : std::uint32_t {
 enum ArssyutBridgeDeviceKind : std::uint32_t {
     ARSSYUT_BRIDGE_DEVICE_MICROPHONE = 0,
     ARSSYUT_BRIDGE_DEVICE_CAMERA = 1,
+    ARSSYUT_BRIDGE_DEVICE_PLAYBACK = 2,
 };
 
 enum ArssyutBridgeCaptureMode : std::uint32_t {
@@ -122,6 +123,7 @@ enum ArssyutBridgeRecorderState : std::uint32_t {
     ARSSYUT_BRIDGE_RECORDER_FINALIZING = 5,
     ARSSYUT_BRIDGE_RECORDER_READY = 6,
     ARSSYUT_BRIDGE_RECORDER_FAILED = 7,
+    ARSSYUT_BRIDGE_RECORDER_PAUSED = 8, // stable v1 enum append
 };
 
 struct ArssyutBridgeRectV1 {
@@ -193,6 +195,46 @@ struct ArssyutBridgeStartRequestV1 {
     float microphone_gain;
     std::uint32_t system_muted;
     std::uint32_t microphone_muted;
+};
+
+// Additive ABI v12 profile endpoint. The existing StartRequestV1 layout,
+// audio and recorder entrypoint remain untouched.
+struct ArssyutBridgeCameraOverlayV1 {
+    std::uint32_t struct_size;
+    std::uint32_t version;
+    std::uint32_t placement;  // TL=0, TR=1, BL=2, BR=3
+    std::uint32_t mask;       // circle=0, rounded=1, TL/BR=2, TR/BL=3
+    float width_fraction;
+    float margin_fraction;
+    float corner_radius_fraction;
+    float border_width_px;
+    float opacity;
+    float border_r;
+    float border_g;
+    float border_b;
+    std::uint32_t mirror;
+    std::uint32_t enabled;
+};
+
+// Additive camera V2 ABI. V1 remains binary-compatible, with default
+// natural aspect width. V2 carries one extra independent mask-width scale.
+struct ArssyutBridgeCameraOverlayV2 {
+    std::uint32_t struct_size;
+    std::uint32_t version; // 2
+    ArssyutBridgeCameraOverlayV1 camera;
+    float mask_width_scale;
+};
+
+struct ArssyutBridgeLogoOverlayV1 {
+    std::uint32_t struct_size;
+    std::uint32_t version;
+    std::uint32_t enabled;
+    std::uint32_t placement; // TL, TR, BL, BR, Center
+    float width_fraction;
+    float margin_fraction;
+    float opacity;
+    float reserved;
+    wchar_t png_path[ARSSYUT_BRIDGE_PATH_CAPACITY];
 };
 
 // Additive ABI v10 endpoint-level peak monitor. Read-only; never records,
@@ -331,6 +373,71 @@ arssyut_bridge_device_at(
     std::uint32_t index,
     ArssyutBridgeDeviceV1 *device) noexcept;
 
+// Internal GPU webcam thumbnail preview, NOT a second recorder.
+// Every valid device token is generation scoped to refresh_devices. The
+// returned BGRA buffer is 192x108 tightly packed; only a small thumbnail
+// crosses to Avalonia. The preview source is closed before recording starts.
+// These exports are additive to V11; existing ABI structs remain unchanged.
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_start(
+    ArssyutBridgeHandle handle,
+    std::uint64_t camera_device_token) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_stop(
+    ArssyutBridgeHandle handle) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_frame(
+    ArssyutBridgeHandle handle,
+    std::uint8_t *bgra,
+    std::uint32_t capacity,
+    std::uint64_t *sequence,
+    std::uint32_t *state) noexcept;
+
+// Additive ABI; does not alter recorder snapshot or an existing bridge struct.
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_dimensions(
+    ArssyutBridgeHandle handle,
+    std::uint32_t *source_width,
+    std::uint32_t *source_height) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_webcam_preview_failure(
+    ArssyutBridgeHandle handle, std::uint32_t *stage,
+    std::uint32_t *hresult) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_system_audio_endpoint(
+    ArssyutBridgeHandle handle,
+    std::uint64_t playback_device_token) noexcept;
+
+// The StartRequestV1 ABI stays unchanged; this is the per-next-recording
+// render endpoint pin, not an extra audio stream or a device-volume change.
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_logo_overlay(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeLogoOverlayV1 *profile) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_camera_overlay(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeCameraOverlayV1 *profile) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_camera_overlay_v2(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeCameraOverlayV2 *profile) noexcept;
+
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_start(
@@ -358,6 +465,13 @@ arssyut_bridge_recorder_stop(
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_toggle_microphone_mute(
+    ArssyutBridgeHandle handle) noexcept;
+
+// Toggles the authoritative RecorderSession Pause/Resume intent; the sole
+// worker owns the QPC transition. No writer close or second output file.
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_toggle_pause(
     ArssyutBridgeHandle handle) noexcept;
 
 ARSSYUT_BRIDGE_API

@@ -110,6 +110,33 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
             crop);
     }
 
+    // The face-cam has no independent scheduler. Consume only the newest
+    // MF/DXGI sample, copy to one retained GPU resource and release its
+    // short-lived lease. Expire stale imagery for privacy/device-loss.
+    if (webcam_slot_) {
+        auto camera = webcam_slot_->try_acquire_latest();
+        if (camera) {
+            const Status camera_update = compositor_->update_webcam(
+                context, camera->texture.Get(), camera->subresource);
+            if (camera_update.ok()) {
+                if (webcam_preview_sink_)
+                    webcam_preview_sink_->publish_from_recorder(
+                        context, camera.get());
+                last_webcam_at_ = camera->captured_at.ticks_100ns;
+                ++webcam_new_gpu_frames_;
+            } else {
+                ++webcam_gpu_copy_failures_;
+                compositor_->clear_webcam();
+                last_webcam_at_ = 0;
+            }
+        }
+        if (last_webcam_at_ > 0 &&
+            now.ticks_100ns - last_webcam_at_ > 5'000'000LL) {
+            compositor_->clear_webcam();
+            last_webcam_at_ = 0;
+        }
+    }
+
     VideoSlotResult result;
     result.frame_index = scheduled.frame_index;
     result.pts = scheduled.pts;
@@ -139,6 +166,8 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
             render_status);
     }
 
+    if (webcam_slot_ && last_webcam_at_ > 0)
+        ++webcam_rendered_slots_;
     diagnostics_->increment(
         DiagnosticMetric::VideoFramesRendered);
 
@@ -153,6 +182,18 @@ Result<VideoSlotResult> NativeVideoPipeline::process_due(
     }
 
     return Result<VideoSlotResult>::success(result);
+}
+
+// The media clock is frozen during Pause, but physical camera preview must
+// continue to move. Consume camera frames on the SAME video worker/context;
+// never advance the output scheduler, draw a full scene, or write MP4.
+void NativeVideoPipeline::preview_while_paused(
+    ID3D11DeviceContext *context) noexcept
+{
+    if (!context || !webcam_slot_ || !webcam_preview_sink_) return;
+    auto frame = webcam_slot_->try_acquire_latest();
+    if (frame)
+        webcam_preview_sink_->publish_from_recorder(context, frame.get());
 }
 
 } // namespace arssyut::windows
