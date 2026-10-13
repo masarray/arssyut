@@ -25,6 +25,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify stable release PowerShell syntax
+        shell: pwsh
+        run: ./tests/qa/verify_release_powershell.ps1
+
       - name: Configure
         run: cmake --preset windows-x64
 
