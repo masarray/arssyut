@@ -40,13 +40,34 @@ jobs:
           PUBLISH_STABLE: ${{ inputs.publish_stable }}
           PUBLISH_PRERELEASE: ${{ inputs.publish_prerelease }}
         run: |
+          # Reject wrong branch, invalid release version, and mismatched flags
+          # BEFORE downloading or publishing any public binary.
+          $validVersion = [regex]::IsMatch(
+            $env:VERSION, '\A0\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?\z')
+          $validRunId = [regex]::IsMatch($env:RUN_ID, '\A[0-9]+\z')
           if ($env:GITHUB_REF -ne 'refs/heads/main' -or
-              $env:VERSION -notmatch '^0[.]\d+[.]\d+(?:-rc[.]\d+)?
+              -not $validVersion -or -not $validRunId) {
+            throw 'Invalid release branch, version or source run ID'
+          }
+          $isRc = $env:VERSION.Contains('-rc.')
+          $stable = $env:PUBLISH_STABLE -eq 'true'
+          $preview = $env:PUBLISH_PRERELEASE -eq 'true'
+          if ($stable -and ($isRc -or $preview)) {
+            throw 'Stable release requires x.y.z and prerelease=false'
+          }
+          if ($preview -and -not $isRc) {
+            throw 'Preview release requires -rc.N version'
+          }
           $source = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $null -eq $source) {
+            throw 'Could not query source CI run'
+          }
           if ($source.head_sha -ne $env:GITHUB_SHA -or
               $source.conclusion -ne 'success' -or
               $source.head_branch -ne 'main' -or
-              $source.name -ne 'CI') { throw 'Source is not successful exact-head main CI' }
+              $source.name -ne 'CI') {
+            throw 'Source is not successful exact-head main CI'
+          }
       - name: Download verified audio-capable portable
         shell: pwsh
         env:
