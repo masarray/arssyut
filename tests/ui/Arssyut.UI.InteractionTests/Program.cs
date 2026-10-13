@@ -235,6 +235,11 @@ try
     saved.SetMixMuted(true, true);
     saved.SetCameraPlacement(CameraPlacement.TopRight);
     saved.CameraDevice = "USB UVC Camera";
+    Expect(saved.TrySetCameraOverlay(
+        CameraPipMask.DiagonalTopRightBottomLeft,
+        CameraBorderTone.White, .235f, .035f, .72f, 2f, 1f,
+        false, 1.35f),
+        "mask width is adjustable independently of height and radius");
 
     saved.SetSpotlightEnabled(
         true);
@@ -314,6 +319,8 @@ try
         !loadedSettings.SystemMixMuted && loadedSettings.MicrophoneMixMuted &&
         loadedSettings.CameraPlacement == CameraPlacement.TopRight &&
         loadedSettings.CameraDevice == "USB UVC Camera" &&
+        loadedSettings.CameraMask == CameraPipMask.DiagonalTopRightBottomLeft &&
+        Math.Abs(loadedSettings.CameraMaskWidthScale - 1.35f) < .0001f &&
         loadedSettings.SpotlightEnabled &&
         !loadedSettings.SpotlightLinkToZoom &&
         loadedSettings.SpotlightSize ==
@@ -357,6 +364,7 @@ try
         !restored.SystemMixMuted && restored.MicrophoneMixMuted &&
         restored.CameraPlacement == CameraPlacement.TopRight &&
         restored.CameraDevice == "USB UVC Camera" &&
+        Math.Abs(restored.CameraMaskWidthScale - 1.35f) < .0001f &&
         restored.SpotlightEnabled &&
         !restored.SpotlightLinkToZoom &&
         restored.SpotlightSize ==
@@ -368,9 +376,24 @@ try
             0.46f) < 0.0005f,
         "restored startup state preserves canonical presenter and Spotlight settings");
 
-    var schemaV10Lines =
-        File.ReadAllLines(
-            persistencePath);
+    var schemaV11Lines =
+        File.ReadAllLines(persistencePath);
+    var schemaV10Lines = schemaV11Lines
+        .Where(line => !line.Contains(
+            "\"CameraMaskWidthScale\"", StringComparison.Ordinal))
+        .Select(line => line.Replace(
+            "\"SchemaVersion\": 11", "\"SchemaVersion\": 10",
+            StringComparison.Ordinal))
+        .ToArray();
+    var v10Path = Path.Combine(persistenceRoot, "settings-v10.json");
+    File.WriteAllLines(v10Path, schemaV10Lines);
+    Expect(new ProductSettingsStore(v10Path).TryLoad(
+            out var previousSettings, out _) &&
+        Math.Abs(previousSettings.CameraMaskWidthScale - 1f) < .0001f &&
+        previousSettings.SystemAudioEnabled &&
+        previousSettings.MicrophoneEnabled &&
+        previousSettings.CameraMask == CameraPipMask.DiagonalTopRightBottomLeft,
+        "v10 legacy camera profile migrates to natural mask width without losing A/V");
 
     // Schema v3 predates Spotlight product settings. Migration must keep all
     // existing hotkeys/zoom and introduce inert Spotlight defaults.
