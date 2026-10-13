@@ -968,7 +968,7 @@ public sealed partial class SettingsWindow : Window
                 CameraSettingsLiveFrame.IsVisible = false;
                 CameraSettingsIdle.IsVisible = true;
                 CameraSettingsIdle.Text = state == 1 ?
-                    "Opening…" : "Camera OFF";
+                    "Opening camera…" : "Waiting for camera…";
                 if (state == 0) _cameraSettingsSequence = 0;
                 UpdateCameraPreviewSourceInfo();
                 return;
@@ -1006,7 +1006,7 @@ public sealed partial class SettingsWindow : Window
         if (CameraPreviewSourceInfo is null) return;
         CameraPreviewSourceInfo.Text = _cameraActivePicture
             ? "Live webcam · output layout 1920 × 1080"
-            : "Camera not live · shape and position represent output geometry";
+            : "Waiting for a fresh camera frame · preview geometry remains accurate";
     }
 
     // Exact compositor geometry: output-space width/margins, camera-source
