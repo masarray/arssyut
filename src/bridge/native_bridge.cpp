@@ -1044,6 +1044,45 @@ void commit_region_edit_locked(
             true);
 }
 
+// One atomic, validated profile transaction for both ABI generations.
+[[nodiscard]] std::int32_t store_camera_overlay(
+    NativeBridgeContext *context,
+    const ArssyutBridgeCameraOverlayV1 *profile,
+    float mask_width_scale) noexcept
+{
+    if (!context || !profile ||
+        profile->struct_size != sizeof(*profile))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    arssyut::core::overlay::CameraOverlayProfile chosen{};
+    chosen.version = profile->version;
+    chosen.placement = static_cast<arssyut::core::overlay::Corner>(
+        profile->placement);
+    chosen.mask = static_cast<arssyut::core::overlay::CameraMask>(
+        profile->mask);
+    chosen.width_fraction = profile->width_fraction;
+    chosen.mask_width_scale = mask_width_scale;
+    chosen.margin_fraction = profile->margin_fraction;
+    chosen.corner_radius_fraction = profile->corner_radius_fraction;
+    chosen.border_width_px = profile->border_width_px;
+    chosen.border_r = profile->border_r;
+    chosen.border_g = profile->border_g;
+    chosen.border_b = profile->border_b;
+    chosen.opacity = profile->opacity;
+    if (profile->mirror > 1U || profile->enabled > 1U ||
+        !arssyut::core::overlay::valid(chosen))
+        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
+    chosen.mirror = profile->mirror != 0;
+    chosen.enabled = profile->enabled != 0;
+    std::lock_guard lock(context->mutex);
+    if (context->recorder) {
+        const auto state = context->recorder->snapshot();
+        if (active_state(state.state) || !state.worker_finished)
+            return ARSSYUT_BRIDGE_BUSY;
+    }
+    context->camera_overlay = chosen; // next recording only
+    return ARSSYUT_BRIDGE_OK;
+}
+
 } // namespace
 
 extern "C" {
@@ -1846,35 +1885,21 @@ arssyut_bridge_recorder_set_camera_overlay(
     ArssyutBridgeHandle handle,
     const ArssyutBridgeCameraOverlayV1 *profile) noexcept
 {
-    if (!profile || profile->struct_size != sizeof(*profile))
+    // The legacy ABI always retains natural rectangle aspect.
+    return store_camera_overlay(as_context(handle), profile, 1.0f);
+}
+
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_camera_overlay_v2(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeCameraOverlayV2 *profile) noexcept
+{
+    if (!profile || profile->struct_size != sizeof(*profile) ||
+        profile->version != 2U)
         return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
-    auto *context = as_context(handle);
-    if (!context) return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
-    arssyut::core::overlay::CameraOverlayProfile proposed{};
-    proposed.version = profile->version;
-    proposed.placement = static_cast<arssyut::core::overlay::Corner>(profile->placement);
-    proposed.mask = static_cast<arssyut::core::overlay::CameraMask>(profile->mask);
-    proposed.width_fraction = profile->width_fraction;
-    proposed.margin_fraction = profile->margin_fraction;
-    proposed.corner_radius_fraction = profile->corner_radius_fraction;
-    proposed.border_width_px = profile->border_width_px;
-    proposed.border_r = profile->border_r;
-    proposed.border_g = profile->border_g;
-    proposed.border_b = profile->border_b;
-    proposed.opacity = profile->opacity;
-    if (profile->mirror > 1U || profile->enabled > 1U ||
-        !arssyut::core::overlay::valid(proposed))
-        return ARSSYUT_BRIDGE_INVALID_ARGUMENT;
-    proposed.mirror = profile->mirror != 0;
-    proposed.enabled = profile->enabled != 0;
-    std::lock_guard lock(context->mutex);
-    if (context->recorder) {
-        const auto state = context->recorder->snapshot();
-        if (active_state(state.state) || !state.worker_finished)
-            return ARSSYUT_BRIDGE_BUSY;
-    }
-    context->camera_overlay = proposed;  // NEXT recording only.
-    return ARSSYUT_BRIDGE_OK;
+    return store_camera_overlay(
+        as_context(handle), &profile->camera,
+        profile->mask_width_scale);
 }
 
 std::int32_t ARSSYUT_BRIDGE_CALL
