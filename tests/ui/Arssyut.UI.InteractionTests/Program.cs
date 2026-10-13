@@ -368,14 +368,14 @@ try
             0.46f) < 0.0005f,
         "restored startup state preserves canonical presenter and Spotlight settings");
 
-    var schemaV9Lines =
+    var schemaV10Lines =
         File.ReadAllLines(
             persistencePath);
 
     // Schema v3 predates Spotlight product settings. Migration must keep all
     // existing hotkeys/zoom and introduce inert Spotlight defaults.
     var schemaV3Lines =
-        schemaV9Lines
+        schemaV10Lines
             .Where(
                 line =>
                     !line.Contains(
@@ -396,7 +396,7 @@ try
             .Select(
                 line =>
                     line.Replace(
-                        "\"SchemaVersion\": 9",
+                        "\"SchemaVersion\": 10",
                         "\"SchemaVersion\": 3",
                         StringComparison.Ordinal))
             .ToArray();
