@@ -25,6 +25,7 @@ struct CameraOverlayProfile {
     Corner placement = Corner::TopRight;
     CameraMask mask = CameraMask::RoundedRectangle;
     float width_fraction = 0.235f;
+    float mask_width_scale = 1.0f; // aperture width only; Circle ignores
     float margin_fraction = 0.035f;
     float corner_radius_fraction = 0.72f;
     float border_width_px = 2.0f;
@@ -56,6 +57,8 @@ inline bool valid(const CameraOverlayProfile &x) noexcept {
     return x.version == 1 && valid_corner(x.placement, false) &&
         valid_camera_mask(x.mask) && std::isfinite(x.width_fraction) &&
         x.width_fraction >= .15f && x.width_fraction <= .40f &&
+        std::isfinite(x.mask_width_scale) &&
+        x.mask_width_scale >= .4f && x.mask_width_scale <= 2.2f &&
         std::isfinite(x.margin_fraction) &&
         x.margin_fraction >= 0.f && x.margin_fraction <= .15f &&
         std::isfinite(x.corner_radius_fraction) &&
