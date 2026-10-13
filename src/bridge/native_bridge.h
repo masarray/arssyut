@@ -216,6 +216,15 @@ struct ArssyutBridgeCameraOverlayV1 {
     std::uint32_t enabled;
 };
 
+// Additive camera V2 ABI. V1 remains binary-compatible, with default
+// natural aspect width. V2 carries one extra independent mask-width scale.
+struct ArssyutBridgeCameraOverlayV2 {
+    std::uint32_t struct_size;
+    std::uint32_t version; // 2
+    ArssyutBridgeCameraOverlayV1 camera;
+    float mask_width_scale;
+};
+
 struct ArssyutBridgeLogoOverlayV1 {
     std::uint32_t struct_size;
     std::uint32_t version;
@@ -422,6 +431,12 @@ std::int32_t ARSSYUT_BRIDGE_CALL
 arssyut_bridge_recorder_set_camera_overlay(
     ArssyutBridgeHandle handle,
     const ArssyutBridgeCameraOverlayV1 *profile) noexcept;
+
+ARSSYUT_BRIDGE_API
+std::int32_t ARSSYUT_BRIDGE_CALL
+arssyut_bridge_recorder_set_camera_overlay_v2(
+    ArssyutBridgeHandle handle,
+    const ArssyutBridgeCameraOverlayV2 *profile) noexcept;
 
 ARSSYUT_BRIDGE_API
 std::int32_t ARSSYUT_BRIDGE_CALL
