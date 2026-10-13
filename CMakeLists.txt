@@ -191,8 +191,17 @@ if(WIN32)
         )
     endif()
 
+    # An absolute configured ICO path avoids rc.exe resolving it against
+    # unpredictable CI/Visual Studio working directories.
+    string(REPLACE "\\\\" "/" ARSSYUT_BRAND_ICON_PATH
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/favicon/favicon.ico")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/app/arssyut_app_icon.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/arssyut_app_icon.rc"
+        @ONLY
+    )
     add_executable(arssyut WIN32
-        src/app/arssyut_app_icon.rc
+        "${CMAKE_CURRENT_BINARY_DIR}/arssyut_app_icon.rc"
         src/app/device_catalog.cpp
         src/app/lucide_icons.cpp
         src/app/region_geometry.cpp
