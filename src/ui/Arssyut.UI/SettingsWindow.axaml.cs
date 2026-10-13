@@ -792,7 +792,8 @@ public sealed partial class SettingsWindow : Window
     private void ApplyCameraAppearance()
     {
         if (!_uiReady || _syncingPreviewControls ||
-            CameraMaskCombo is null || CameraSizeSlider is null)
+            CameraMaskCombo is null || CameraSizeSlider is null ||
+            CameraMaskWidthSlider is null)
             return;
         var mask = (CameraPipMask)Math.Max(0, CameraMaskCombo.SelectedIndex);
         var tone = (CameraBorderTone)Math.Max(0, CameraBorderCombo.SelectedIndex);
@@ -802,15 +803,42 @@ public sealed partial class SettingsWindow : Window
             (float)(CameraRadiusSlider.Value / 100.0),
             (float)CameraBorderSlider.Value,
             (float)(CameraOpacitySlider.Value / 100.0),
-            CameraMirrorCheck.IsChecked == true))
+            CameraMirrorCheck.IsChecked == true,
+            (float)(CameraMaskWidthSlider.Value / 100.0)))
             return;
         CameraSizeText.Text = $"{CameraSizeSlider.Value:0.#}%";
+        UpdateCameraMaskWidthUI();
         CameraMarginText.Text = $"{CameraMarginSlider.Value:0.#}%";
         CameraRadiusText.Text = $"{CameraRadiusSlider.Value:0}%";
         CameraBorderText.Text = $"{CameraBorderSlider.Value:0.#} px";
         CameraOpacityText.Text = $"{CameraOpacitySlider.Value:0}%";
         RenderCameraPreviewGeometry();
         MarkPreviewChanged("Camera PIP settings saved for next recording");
+    }
+
+    private void CameraMaskSquare_OnClick(object? sender, RoutedEventArgs e)
+    {
+        // Physical square means width == height in *output pixels*,
+        // regardless of webcam sensor ratio or the selected output size.
+        // WidthScale = camera source height / width.
+        CameraMaskWidthSlider.Value = Math.Clamp(
+            _cameraSourceAspect * 100.0, 40.0, 220.0);
+        ApplyCameraAppearance();
+    }
+
+    private void UpdateCameraMaskWidthUI()
+    {
+        if (CameraMaskWidthSlider is null || CameraMaskCombo is null) return;
+        var isRectangle = (CameraPipMask)Math.Max(0, CameraMaskCombo.SelectedIndex)
+            != CameraPipMask.Circle;
+        CameraMaskWidthRow.IsVisible = isRectangle;
+        CameraMaskWidthSlider.IsVisible = isRectangle;
+        if (isRectangle)
+        {
+            var aspect = CameraMaskWidthSlider.Value / 100.0 /
+                Math.Max(_cameraSourceAspect, 0.0001);
+            CameraMaskWidthText.Text = $"{CameraMaskWidthSlider.Value:0}% · {aspect:0.00}:1";
+        }
     }
 
     private void LogoAppearance_OnChange(object? sender,
@@ -958,6 +986,7 @@ public sealed partial class SettingsWindow : Window
                 if (Math.Abs(aspect - _cameraSourceAspect) > .001) {
                     _cameraSourceAspect = aspect;
                     RenderCameraPreviewGeometry();
+                    UpdateCameraMaskWidthUI();
                 }
             }
             var result = _nativeBridge.ReadWebcamPreview(
@@ -1023,12 +1052,13 @@ public sealed partial class SettingsWindow : Window
         // when switching Circle, rounded rectangle, and diagonal masks.
         var h = _preview.CameraWidthFraction * stageW;
         var w = mask == CameraPipMask.Circle
-            ? h : h / _cameraSourceAspect;
-        var fit = Math.Min(1.0, Math.Min(
-            (1.0 - 2.0 * margin) * stageW / w,
-            (1.0 - 2.0 * margin) * stageH / h));
-        w *= fit;
-        h *= fit;
+            ? h : h / _cameraSourceAspect * _preview.CameraMaskWidthScale;
+        var heightFit = Math.Min(1.0, (1.0 - 2.0 * margin) * stageH / h);
+        h *= heightFit;
+        w *= heightFit;
+        // Width is bounded independently, so extra-wide masks do not
+        // accidentally reduce height or resize the Circle.
+        w = Math.Min(w, (1.0 - 2.0 * margin) * stageW);
         var place = _preview.CameraPlacement;
         var right = place is CameraPlacement.TopRight or CameraPlacement.BottomRight;
         var bottom = place is CameraPlacement.BottomLeft or CameraPlacement.BottomRight;
@@ -1454,6 +1484,7 @@ public sealed partial class SettingsWindow : Window
             CameraMaskCombo.SelectedIndex = (int)_preview.CameraMask;
             CameraBorderCombo.SelectedIndex = (int)_preview.CameraBorder;
             CameraSizeSlider.Value = _preview.CameraWidthFraction * 100;
+            CameraMaskWidthSlider.Value = _preview.CameraMaskWidthScale * 100;
             CameraMarginSlider.Value = _preview.CameraMarginFraction * 100;
             CameraRadiusSlider.Value = _preview.CameraRadiusFraction * 100;
             CameraBorderSlider.Value = _preview.CameraBorderWidthPx;
@@ -1471,6 +1502,7 @@ public sealed partial class SettingsWindow : Window
                 LogoValidationText.Text = reason;
             UpdateCameraPlacementVisual();
             RenderCameraPreviewGeometry();
+            UpdateCameraMaskWidthUI();
             UpdateCameraPreviewSourceInfo();
         }
         finally
