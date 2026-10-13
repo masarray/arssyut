@@ -298,24 +298,29 @@ public:
                      ? AUDCLNT_STREAMFLAGS_LOOPBACK
                      : 0U);
 
+            event_driven_ = true;
             hr = audio_client_->Initialize(
-                AUDCLNT_SHAREMODE_SHARED,
-                stream_flags,
-                0,
-                0,
-                mix_format.get(),
-                nullptr);
+                AUDCLNT_SHAREMODE_SHARED, stream_flags, 0, 0,
+                mix_format.get(), nullptr);
+            // Certain active eRender endpoints reject event-based LOOPBACK
+            // with E_INVALIDARG. Retry ONCE on this exact endpoint with
+            // the supported timer-driven loopback mode. Not a new audio
+            // source, not a new thread, and never a fallback to another card.
+            if (mode == WasapiCaptureMode::Loopback && hr == E_INVALIDARG) {
+                hr = audio_client_->Initialize(
+                    AUDCLNT_SHAREMODE_SHARED,
+                    AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_NOPERSIST,
+                    0, 0, mix_format.get(), nullptr);
+                if (SUCCEEDED(hr)) event_driven_ = false;
+            }
             if (FAILED(hr))
-                return status_from_hresult(
-                    StatusCode::PlatformFailure,
-                    hr);
+                return status_from_hresult(StatusCode::PlatformFailure, hr);
 
-            hr = audio_client_->SetEventHandle(
-                audio_event_);
-            if (FAILED(hr))
-                return status_from_hresult(
-                    StatusCode::PlatformFailure,
-                    hr);
+            if (event_driven_) {
+                hr = audio_client_->SetEventHandle(audio_event_);
+                if (FAILED(hr))
+                    return status_from_hresult(StatusCode::PlatformFailure, hr);
+            }
 
             hr = audio_client_->GetBufferSize(
                 &buffer_frames_);
@@ -388,12 +393,19 @@ public:
             stop_event,
             audio_event_};
 
-        const DWORD wait_result =
-            WaitForMultipleObjects(
-                2,
-                waits,
-                FALSE,
-                INFINITE);
+        // The timer fallback wakes at most 100 times/sec, waits on the
+        // same native stop_event and never spins when no packets are ready.
+        const DWORD wait_result = event_driven_
+            ? WaitForMultipleObjects(2, waits, FALSE, INFINITE)
+            : WaitForSingleObject(stop_event, 10U);
+        if (!event_driven_) {
+            if (wait_result == WAIT_OBJECT_0)
+                return WasapiCaptureWaitResult::StopRequested;
+            if (wait_result == WAIT_TIMEOUT)
+                return WasapiCaptureWaitResult::PacketReady;
+            failure_hr = HRESULT_FROM_WIN32(GetLastError());
+            return WasapiCaptureWaitResult::Failed;
+        }
 
         if (wait_result == WAIT_OBJECT_0)
             return WasapiCaptureWaitResult::StopRequested;
@@ -486,6 +498,7 @@ private:
     core::audio::AudioFormat format_{};
     std::uint32_t buffer_frames_ = 0;
     bool started_ = false;
+    bool event_driven_ = true;
 };
 
 } // namespace
