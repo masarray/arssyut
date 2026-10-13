@@ -114,6 +114,9 @@ class PublicSiteContracts(unittest.TestCase):
         self.assertIn("unins000.exe", candidate)
         self.assertIn("Remove-Item dist/publish/README_AUDIO_ACCEPTANCE.txt", candidate)
         self.assertIn("publish_prerelease:", candidate)
+        self.assertIn("publish_stable:", candidate)
+        self.assertIn("inputs.publish_stable", candidate)
+        self.assertIn("ARSSYUT_AUDIO_HARDWARE_ACCEPTED", candidate)
         self.assertIn("gh release create", candidate)
         self.assertIn("workflow_dispatch:", candidate)
         self.assertNotIn("workflow_run:", candidate)
@@ -132,7 +135,7 @@ class PublicSiteContracts(unittest.TestCase):
         home = HOME.read_text(encoding="utf-8")
         download = DOWNLOAD.read_text(encoding="utf-8")
         self.assertIn("Capture system audio and microphone input", home)
-        self.assertIn("Webcam recording is not implemented yet", download)
+        self.assertIn("Webcam PIP recording and live preview are supported.", download)
         self.assertIn("audio and microphone recording are implemented", readme.lower())
         self.assertIn("Portable EXE", download)
         self.assertIn("Setup EXE", download)
@@ -143,7 +146,7 @@ class PublicSiteContracts(unittest.TestCase):
         self.assertIn("newest complete", readme.lower())
         self.assertIn("src=\"assets/favicon/web-app-manifest-192x192.png\"", readme)
         self.assertIn("Arssyut.UI.exe", download)
-        self.assertIn("webcam recording and its live preview have not been implemented", readme.lower())
+        self.assertIn("webcam recording and live preview are implemented", readme.lower())
 
     def test_mobile_accessibility_and_static_pages_deployment(self):
         css = CSS.read_text(encoding="utf-8")
