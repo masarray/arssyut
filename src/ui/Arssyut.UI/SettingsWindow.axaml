@@ -495,6 +495,19 @@
                       </ComboBox>
                       <Grid ColumnDefinitions="*,Auto"><TextBlock Text="PIP size" /><TextBlock x:Name="CameraSizeText" Grid.Column="1" Text="23.5%" /></Grid>
                       <Slider x:Name="CameraSizeSlider" Minimum="15" Maximum="40" Value="23.5" TickFrequency=".5" PropertyChanged="CameraSlider_OnChange" />
+                      <Grid x:Name="CameraMaskWidthRow" ColumnDefinitions="*,Auto" IsVisible="True">
+                        <TextBlock Text="Mask width" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                          <TextBlock x:Name="CameraMaskWidthText" Text="100% · natural" VerticalAlignment="Center" />
+                          <Button x:Name="CameraMaskSquareButton" Content="Square"
+                                  Click="CameraMaskSquare_OnClick"
+                                  AutomationProperties.Name="Make camera mask square" />
+                        </StackPanel>
+                      </Grid>
+                      <Slider x:Name="CameraMaskWidthSlider" Minimum="40" Maximum="220"
+                              Value="100" TickFrequency="5" IsVisible="True"
+                              AutomationProperties.Name="Camera mask width"
+                              PropertyChanged="CameraSlider_OnChange" />
                       <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Edge margin" /><TextBlock x:Name="CameraMarginText" Grid.Column="1" Text="3.5%" /></Grid>
                       <Slider x:Name="CameraMarginSlider" Minimum="0" Maximum="15" Value="3.5" TickFrequency=".5" PropertyChanged="CameraSlider_OnChange" />
                       <Grid ColumnDefinitions="*,Auto"><TextBlock Text="Corner radius" /><TextBlock x:Name="CameraRadiusText" Grid.Column="1" Text="15%" /></Grid>
