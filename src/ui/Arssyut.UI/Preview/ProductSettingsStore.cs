@@ -36,6 +36,7 @@ public sealed record ProductSettingsSnapshot(
     CameraPipMask CameraMask = CameraPipMask.RoundedRectangle,
     CameraBorderTone CameraBorder = CameraBorderTone.White,
     float CameraWidthFraction = .235f,
+    float CameraMaskWidthScale = 1f,
     float CameraMarginFraction = .035f,
     float CameraRadiusFraction = .72f,
     float CameraBorderWidthPx = 2f,
@@ -60,7 +61,8 @@ public sealed class ProductSettingsStore
     private const int CameraSchemaVersion = 7;
     private const int LogoSchemaVersion = 8;
     private const int PlaybackSchemaVersion = 9;
-    private const int CurrentSchemaVersion = 10;
+    private const int PipHeightSchemaVersion = 10;
+    private const int CurrentSchemaVersion = 11;
 
     private readonly string _path;
 
@@ -145,6 +147,7 @@ public sealed class ProductSettingsStore
                  document.SchemaVersion != CameraSchemaVersion &&
                  document.SchemaVersion != LogoSchemaVersion &&
                  document.SchemaVersion != PlaybackSchemaVersion &&
+                 document.SchemaVersion != PipHeightSchemaVersion &&
                  document.SchemaVersion != CurrentSchemaVersion))
             {
                 throw new InvalidDataException(
@@ -283,18 +286,21 @@ public sealed class ProductSettingsStore
             var tone = hasCameraProfile
                 ? (CameraBorderTone)(document.CameraBorder ?? -1) : CameraBorderTone.White;
             var width = hasCameraProfile ? document.CameraWidthFraction ?? float.NaN : .235f;
+            var maskWidthScale = document.SchemaVersion >= CurrentSchemaVersion
+                ? document.CameraMaskWidthScale ?? float.NaN : 1f;
             var margin = hasCameraProfile ? document.CameraMarginFraction ?? float.NaN : .035f;
             // Preserve custom legacy radius; upgrade only the original
             // untouched 15% default to visibly rounded modern 72%.
             var radius = hasCameraProfile
                 ? document.CameraRadiusFraction ?? float.NaN : .72f;
-            if (document.SchemaVersion < CurrentSchemaVersion &&
+            if (document.SchemaVersion < PipHeightSchemaVersion &&
                 Math.Abs(radius - .15f) < .0001f)
                 radius = .72f;
             var border = hasCameraProfile ? document.CameraBorderWidthPx ?? float.NaN : 2f;
             var opacity = hasCameraProfile ? document.CameraOpacity ?? float.NaN : 1f;
             var mirror = hasCameraProfile && document.CameraMirror == true;
             if (!Enum.IsDefined(shape) || !Enum.IsDefined(tone) ||
+                !float.IsFinite(maskWidthScale) || maskWidthScale is < .4f or > 2.2f ||
                 !float.IsFinite(width) || width is < .15f or > .40f ||
                 !float.IsFinite(margin) || margin is < 0f or > .15f ||
                 !float.IsFinite(radius) || radius is < 0f or > 1f ||
@@ -348,7 +354,7 @@ public sealed class ProductSettingsStore
                     hasMixer ? document.MicrophoneMixPercent ?? 100 : 100,
                     hasMixer && document.SystemMixMuted == true,
                     hasMixer && document.MicrophoneMixMuted == true,
-                    shape, tone, width, margin, radius, border, opacity, mirror,
+                    shape, tone, width, maskWidthScale, margin, radius, border, opacity, mirror,
                     logoEnabled, logoPath, logoPlacement, logoWidth, logoMargin,
                     logoOpacity, playbackChoice);
             return true;
@@ -422,6 +428,8 @@ public sealed class ProductSettingsStore
                 settings.MicrophoneMixPercent is < 0 or > 100 ||
                 !Enum.IsDefined(settings.CameraMask) ||
                 !Enum.IsDefined(settings.CameraBorder) ||
+                !float.IsFinite(settings.CameraMaskWidthScale) ||
+                settings.CameraMaskWidthScale is < .4f or > 2.2f ||
                 !float.IsFinite(settings.CameraWidthFraction) ||
                 settings.CameraWidthFraction is < .15f or > .40f ||
                 !float.IsFinite(settings.CameraMarginFraction) ||
@@ -468,6 +476,7 @@ public sealed class ProductSettingsStore
                     CameraMask = (int)settings.CameraMask,
                     CameraBorder = (int)settings.CameraBorder,
                     CameraWidthFraction = settings.CameraWidthFraction,
+                    CameraMaskWidthScale = settings.CameraMaskWidthScale,
                     CameraMarginFraction = settings.CameraMarginFraction,
                     CameraRadiusFraction = settings.CameraRadiusFraction,
                     CameraBorderWidthPx = settings.CameraBorderWidthPx,
@@ -710,6 +719,7 @@ public sealed class ProductSettingsStore
         public int? CameraMask { get; set; }
         public int? CameraBorder { get; set; }
         public float? CameraWidthFraction { get; set; }
+        public float? CameraMaskWidthScale { get; set; }
         public float? CameraMarginFraction { get; set; }
         public float? CameraRadiusFraction { get; set; }
         public float? CameraBorderWidthPx { get; set; }
