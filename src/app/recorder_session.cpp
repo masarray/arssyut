@@ -885,6 +885,26 @@ void RecorderSession::worker_main() noexcept
             capture_options);
     }
 
+    // A valid monitor may transiently reject WinRT frame-pool/session
+    // startup as the shared camera GPU consumer changes. Retry ONCE only
+    // after the old WGC worker has joined, only for E_INVALIDARG at a
+    // frame-pool-or-later step, and only while the same HMONITOR is valid.
+    // Never retry stale source handles, audio failures, or writer errors.
+    if (!status.ok() &&
+        config_.target.kind == arssyut::windows::CaptureTargetKind::Monitor &&
+        status.code == StatusCode::PlatformFailure &&
+        status.detail == static_cast<std::uint32_t>(E_INVALIDARG) &&
+        capture.startup_failure_step() >= 5 &&
+        capture.startup_failure_step() <= 9) {
+        MONITORINFO info{sizeof(info)};
+        if (GetMonitorInfoW(config_.target.monitor, &info) != FALSE) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            status = capture.start_monitor(
+                device->device(), config_.target.monitor,
+                frame_slot, diagnostics_, capture_options);
+        }
+    }
+
     if (!status.ok()) {
         startup_failure_stage_.store(6, std::memory_order_release);
         wgc_startup_failure_step_.store(
