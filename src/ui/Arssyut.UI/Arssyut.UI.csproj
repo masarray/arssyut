@@ -10,6 +10,11 @@
     <PublishTrimmed>false</PublishTrimmed>
     <InvariantGlobalization>false</InvariantGlobalization>
     <AssemblyName>Arssyut.UI</AssemblyName>
+    <Version>0.1.1</Version>
+    <FileVersion>0.1.1.0</FileVersion>
+    <AssemblyVersion>0.1.1.0</AssemblyVersion>
+    <Product>Arssyut</Product>
+    <Description>Arssyut Enhanced Screen Recorder</Description>
     <!-- One canonical icon source, identical for normal portable and internal audio builds. -->
     <ApplicationIcon>..\..\..\assets\favicon\favicon.ico</ApplicationIcon>
     <RootNamespace>Arssyut.UI</RootNamespace>
