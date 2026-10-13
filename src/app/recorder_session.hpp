@@ -274,6 +274,12 @@ private:
     std::atomic<std::int64_t> started_at_ticks_{0};
     std::atomic<std::int64_t> stopped_at_ticks_{0};
 
+    // Recorder Preparing diagnostics: 1=GPU pipeline, 2=Camera profile,
+    // 3=audio source preflight, 4=writer.open, 5=writer readiness,
+    // 6=WGC capture startup, 7=presentation input, 8=media timeline.
+    std::atomic<std::uint32_t> startup_failure_stage_{0};
+    std::atomic<std::uint32_t> wgc_startup_failure_step_{0};
+
     std::atomic<std::uint32_t> error_code_{0};
     std::atomic<std::uint32_t> error_detail_{0};
     std::atomic<arssyut::windows::MfWriterStage>
