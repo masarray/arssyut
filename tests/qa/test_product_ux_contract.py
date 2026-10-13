@@ -38,7 +38,7 @@ class UXContract(unittest.TestCase):
         self.assertIn('Icon="avares://Arssyut.UI/Assets/favicon.ico"',
                       (UI / "SettingsWindow.axaml").read_text(encoding="utf-8"))
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn('src="assets/favicon/web-app-manifest-192x192.png"', readme)
+        self.assertIn('src="assets/favicon/web-app-manifest-192x192.png?v=c8f49853"', readme)
         landing = (ROOT / "index.html").read_text(encoding="utf-8")
         for url in ("assets/favicon/favicon.ico",
                     "assets/favicon/favicon-96x96.png",

@@ -161,7 +161,7 @@ class PublicSiteContracts(unittest.TestCase):
         self.assertNotIn("Portable ZIP", download)
         self.assertNotIn("test builds", download.lower())
         self.assertIn("newest complete", readme.lower())
-        self.assertIn("src=\"assets/favicon/web-app-manifest-192x192.png\"", readme)
+        self.assertIn("src=\"assets/favicon/web-app-manifest-192x192.png?v=c8f49853\"", readme)
         self.assertIn("Arssyut.UI.exe", download)
         self.assertIn("webcam recording and live preview are implemented", readme.lower())
 

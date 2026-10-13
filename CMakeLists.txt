@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 4.2)
 
 project(
     arssyut
-    VERSION 0.1.0
+    VERSION 0.1.1
     DESCRIPTION "Lightweight native Windows presentation recorder"
     LANGUAGES CXX
 )
@@ -62,6 +62,10 @@ else()
 endif()
 
 if(WIN32)
+    # Compile the same official favicon.ico into the legacy native Win32 app.
+    # Avalonia and Inno consume this ICO directly through their build files.
+    enable_language(RC)
+
     add_library(arssyut_windows STATIC
         src/platform/windows/audio/wasapi_capture_source.cpp
         src/platform/windows/audio/wasapi_microphone_source.cpp
@@ -187,7 +191,17 @@ if(WIN32)
         )
     endif()
 
+    # An absolute configured ICO path avoids rc.exe resolving it against
+    # unpredictable CI/Visual Studio working directories.
+    set(ARSSYUT_BRAND_ICON_PATH
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/favicon/favicon.ico")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/app/arssyut_app_icon.rc.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/arssyut_app_icon.rc"
+        @ONLY
+    )
     add_executable(arssyut WIN32
+        "${CMAKE_CURRENT_BINARY_DIR}/arssyut_app_icon.rc"
         src/app/device_catalog.cpp
         src/app/lucide_icons.cpp
         src/app/region_geometry.cpp

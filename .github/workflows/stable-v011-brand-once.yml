@@ -1,0 +1,72 @@
+# Brand-only patch from an exact-main CI to the existing Windows
+# release packaging workflow. GitHub Actions created with GITHUB_TOKEN may
+# dispatch workflow_dispatch; this does NOT bypass package/smoke gates.
+# After stable v0.1.1 exists this worker becomes permanently inert.
+name: Stable v0.1.1 brand-update one-shot dispatch
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: arssyut-stable-v0.1.1-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch exact-main audio-enabled stable package
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify exact-main source and dispatch only once
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+          CI_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # workflow_run is privileged. Never use code/artifacts from a PR,
+          # fork, old main commit or a CI run lacking the complete success gate.
+          main_sha="$(gh api "repos/$GH_REPO/commits/main" --jq '.sha')"
+          if [[ "$CI_SHA" != "$main_sha" ]]; then
+            echo "Skip: CI SHA is no longer current main"
+            exit 0
+          fi
+          source_name="$(gh api "repos/$GH_REPO/actions/runs/$CI_RUN_ID" --jq '.name')"
+          source_conclusion="$(gh api "repos/$GH_REPO/actions/runs/$CI_RUN_ID" --jq '.conclusion')"
+          source_event="$(gh api "repos/$GH_REPO/actions/runs/$CI_RUN_ID" --jq '.event')"
+          if [[ "$source_name" != "CI" || "$source_conclusion" != "success" || "$source_event" != "push" ]]; then
+            echo "Skip: source was not a successful main push CI"
+            exit 0
+          fi
+          if gh api "repos/$GH_REPO/git/ref/tags/v0.1.1" --silent > /dev/null 2>&1; then
+            echo "Already published or reserved: v0.1.1 exists; no dispatch"
+            exit 0
+          fi
+          # Prevent duplicate dispatches when the same main CI is rerun.
+          prior="$(gh api "repos/$GH_REPO/actions/runs?per_page=100" --jq             ".workflow_runs | map(select(.name == \"Windows Release Candidate EXEs\" and .head_sha == \"$CI_SHA\" and .event == \"workflow_dispatch\" and .conclusion != \"failure\" and .conclusion != \"cancelled\")) | length")"
+          if [[ "$prior" != "0" ]]; then
+            echo "Stable release packaging already queued/running/succeeded for this SHA"
+            exit 0
+          fi
+          echo "Dispatching v0.1.1 stable packaging for exact main SHA $CI_SHA via CI $CI_RUN_ID"
+          gh workflow run windows-release-exes.yml --repo "$GH_REPO" --ref main \
+            -f source_run_id="$CI_RUN_ID" \
+            -f version="0.1.1" \
+            -f publish_prerelease="false" \
+            -f publish_stable="true"
+          echo "The existing Windows packaging workflow now owns EXE, hash, install/uninstall and publication checks."
