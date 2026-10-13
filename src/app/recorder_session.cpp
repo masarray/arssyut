@@ -720,6 +720,7 @@ void RecorderSession::worker_main() noexcept
             frame_slot,
             diagnostics_);
     if (!pipeline_result) {
+        startup_failure_stage_.store(1, std::memory_order_release);
         fail(pipeline_result.status());
         state_.store(
             RecorderState::Failed,
@@ -732,6 +733,7 @@ void RecorderSession::worker_main() noexcept
     // Immutable profile resolved before writer Start; never mutate GPU state
     // from the settings dispatcher or allocate per composited frame.
     if (!pipeline->compositor().set_camera_overlay_profile(config_.camera_overlay)) {
+        startup_failure_stage_.store(2, std::memory_order_release);
         fail(Status::failure(StatusCode::InvalidArgument));
         state_.store(RecorderState::Failed, std::memory_order_release);
         return;
@@ -774,6 +776,7 @@ void RecorderSession::worker_main() noexcept
         };
         const auto preflight = audio_runtime->prepare(request);
         if (!preflight.ok()) {
+            startup_failure_stage_.store(3, std::memory_order_release);
             fail(preflight);
             state_.store(RecorderState::Failed, std::memory_order_release);
             return;
@@ -795,6 +798,7 @@ void RecorderSession::worker_main() noexcept
 #endif
     );
     if (!status.ok()) {
+        startup_failure_stage_.store(4, std::memory_order_release);
         encoder_failure_stage_.store(
             writer.failure_stage(),
             std::memory_order_release);
@@ -845,6 +849,7 @@ void RecorderSession::worker_main() noexcept
             writer.audio_enabled(), std::memory_order_relaxed);
         status = audio_runtime->writer_opened();
         if (!status.ok()) {
+            startup_failure_stage_.store(5, std::memory_order_release);
             fail(status);
             (void)writer.finalize();
             state_.store(RecorderState::Failed, std::memory_order_release);
@@ -881,6 +886,9 @@ void RecorderSession::worker_main() noexcept
     }
 
     if (!status.ok()) {
+        startup_failure_stage_.store(6, std::memory_order_release);
+        wgc_startup_failure_step_.store(
+            capture.startup_failure_step(), std::memory_order_release);
         fail(status);
         (void)writer.finalize();
 
@@ -949,6 +957,7 @@ void RecorderSession::worker_main() noexcept
     if (presentation_enabled) {
         status = presentation_input.start();
         if (!status.ok()) {
+            startup_failure_stage_.store(7, std::memory_order_release);
             fail(status);
             capture.stop();
             (void)writer.finalize();
@@ -1165,6 +1174,7 @@ void RecorderSession::worker_main() noexcept
             config_.audio_system_gain, config_.audio_system_muted);
 #endif
     if (!status.ok()) {
+        startup_failure_stage_.store(8, std::memory_order_release);
         fail(status);
         presentation_input.stop();
         capture.stop();
@@ -2319,6 +2329,12 @@ void RecorderSession::write_diagnostics(
             << snapshot_value.memory_private_max_bytes << ",\n"
             << "  \"resource_generation\": "
             << resource_generation << ",\n"
+            << "  \"startup_failure_stage\": "
+            << startup_failure_stage_.load(std::memory_order_relaxed)
+            << ",\n"
+            << "  \"wgc_startup_failure_step\": "
+            << wgc_startup_failure_step_.load(std::memory_order_relaxed)
+            << ",\n"
             << "  \"status_code\": "
             << static_cast<std::uint32_t>(
                    snapshot_value.last_error.code)
