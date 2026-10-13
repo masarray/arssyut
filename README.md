@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/favicon/web-app-manifest-192x192.png" alt="Arssyut product logo" width="80" height="80"></p>
+<p align="center"><img src="assets/favicon/web-app-manifest-192x192.png?v=c8f49853" alt="Arssyut product logo" width="80" height="80"></p>
 
 **Current release source (13 October 2026):** Windows A/V + native webcam PIP, adjustable masks and logo overlay. Historical RC1/RC2 were older preview builds. See [PR #127](https://github.com/masarray/arssyut/pull/127).
 
@@ -76,7 +76,7 @@ The video-only CI package remains a regression reference, **not** the public aud
 
 ### Branding
 
-The official product identity lives in [assets/favicon/](assets/favicon). The Windows executable, installer icon, website favicon, and product image reuse that source.
+The official brand identity is the updated [assets/favicon/](assets/favicon) set (source commit `c8f49853`). The landing page, Downloads, GitHub README, Avalonia window/app logo, native Windows EXEs, Inno Setup, Start menu shortcuts and uninstall entry all consume this same branded icon set. Previously published v0.1.0 binaries retain their original embedded icon; a new version must be built to refresh executable resources.
 
 ### License and redistribution
 
