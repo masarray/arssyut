@@ -193,7 +193,7 @@ if(WIN32)
 
     # An absolute configured ICO path avoids rc.exe resolving it against
     # unpredictable CI/Visual Studio working directories.
-    string(REPLACE "\\\\" "/" ARSSYUT_BRAND_ICON_PATH
+    set(ARSSYUT_BRAND_ICON_PATH
         "${CMAKE_CURRENT_SOURCE_DIR}/assets/favicon/favicon.ico")
     configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/src/app/arssyut_app_icon.rc.in"
