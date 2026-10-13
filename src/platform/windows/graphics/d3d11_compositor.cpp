@@ -1157,11 +1157,17 @@ float4 ps_main(VertexOutput input) : SV_Target
                 min(max(d.x, d.y), 0.0) - r;
         }
         float2 camera_uv = (input.uv - webcam_rect.xy) / extent;
-        // Circle crops the 16:9/4:3 source to cover a square aperture.
-        if (mask == 0) {
-            const float source_ratio = max(webcam_style.y, 0.0001);
-            camera_uv.x = 0.5 + (camera_uv.x - 0.5) * source_ratio;
-        }
+        // "UniformToFill" for ALL mask apertures. Maintain face/camera
+        // geometry when user changes width: centered crop, never stretch.
+        const float source_ratio = 1.0 / max(webcam_style.y, 0.0001);
+        const float target_ratio = pixel_extent.x /
+            max(pixel_extent.y, 0.0001);
+        if (target_ratio < source_ratio)
+            camera_uv.x = 0.5 + (camera_uv.x - 0.5) *
+                (target_ratio / source_ratio);
+        else
+            camera_uv.y = 0.5 + (camera_uv.y - 0.5) *
+                (source_ratio / target_ratio);
         if (webcam_style.x > 0.5) camera_uv.x = 1.0 - camera_uv.x;
         const float edge_alpha = 1.0 - smoothstep(-1.25, 1.25, signed_dist);
         if (edge_alpha > 0.001) {
@@ -2262,11 +2268,15 @@ Status D3D11Compositor::render_retained(
             static_cast<float>(output_size.width) /
             static_cast<float>(output_size.height);
         float w = circle ? camera_overlay_.width_fraction :
-            camera_overlay_.width_fraction / source_aspect;
-        const float fit = std::min({1.0f, (1.0f - 2.0f * margin) / w,
-                                    (1.0f - 2.0f * margin) / h});
-        w *= fit;
-        h *= fit;
+            camera_overlay_.width_fraction / source_aspect *
+            camera_overlay_.mask_width_scale;
+        const float vertical_fit = std::min(
+            1.0f, (1.0f - 2.0f * margin) / h);
+        w *= vertical_fit;
+        h *= vertical_fit;
+        // Limit width independently to available output space. This
+        // retains physical PIP height at every width-slider position.
+        w = std::min(w, 1.0f - 2.0f * margin);
         const auto placement = camera_overlay_.placement;
         const bool right = placement == arssyut::core::overlay::Corner::TopRight ||
                            placement == arssyut::core::overlay::Corner::BottomRight;
