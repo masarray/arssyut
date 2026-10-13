@@ -2146,6 +2146,7 @@ public sealed partial class MainWindow : Window
                             Placement: (uint)_settings.CameraPlacement,
                             Mask: (uint)_settings.CameraMask,
                             Width: _settings.CameraWidthFraction,
+                            MaskWidthScale: _settings.CameraMaskWidthScale,
                             Margin: _settings.CameraMarginFraction,
                             Radius: _settings.CameraRadiusFraction,
                             BorderWidth: _settings.CameraBorderWidthPx,
