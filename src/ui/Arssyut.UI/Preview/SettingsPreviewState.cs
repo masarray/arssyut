@@ -236,6 +236,9 @@ public sealed class SettingsPreviewState
         CameraPipMask.RoundedRectangle;
     public CameraBorderTone CameraBorder { get; private set; } =
         CameraBorderTone.White;
+    // 1x keeps the webcam's natural width. This only adjusts non-circle
+    // mask aperture width; PIP vertical size remains unchanged.
+    public float CameraMaskWidthScale { get; private set; } = 1f;
     public float CameraWidthFraction { get; private set; } = 0.235f;
     public float CameraMarginFraction { get; private set; } = 0.035f;
     public float CameraRadiusFraction { get; private set; } = 0.72f;
@@ -245,23 +248,27 @@ public sealed class SettingsPreviewState
 
     public bool TrySetCameraOverlay(CameraPipMask mask,
         CameraBorderTone border, float width, float margin,
-        float radius, float borderWidth, float opacity, bool mirror)
+        float radius, float borderWidth, float opacity, bool mirror,
+        float maskWidthScale = 1f)
     {
         if (!Enum.IsDefined(mask) || !Enum.IsDefined(border) ||
             !float.IsFinite(width) || width is < .15f or > .40f ||
             !float.IsFinite(margin) || margin is < 0f or > .15f ||
             !float.IsFinite(radius) || radius is < 0f or > 1f ||
+            !float.IsFinite(maskWidthScale) || maskWidthScale is < .4f or > 2.2f ||
             !float.IsFinite(borderWidth) || borderWidth is < 0f or > 32f ||
             !float.IsFinite(opacity) || opacity is < 0f or > 1f)
             return false;
         if (CameraMask == mask && CameraBorder == border &&
-            CameraWidthFraction == width && CameraMarginFraction == margin &&
+            CameraWidthFraction == width && CameraMaskWidthScale == maskWidthScale &&
+            CameraMarginFraction == margin &&
             CameraRadiusFraction == radius && CameraBorderWidthPx == borderWidth &&
             CameraOpacity == opacity && CameraMirror == mirror)
             return true;
         CameraMask = mask;
         CameraBorder = border;
         CameraWidthFraction = width;
+        CameraMaskWidthScale = maskWidthScale;
         CameraMarginFraction = margin;
         CameraRadiusFraction = radius;
         CameraBorderWidthPx = borderWidth;
@@ -609,6 +616,8 @@ public sealed class SettingsPreviewState
             snapshot.LogoOpacity is < 0f or > 1f ||
             !Enum.IsDefined(snapshot.CameraMask) ||
             !Enum.IsDefined(snapshot.CameraBorder) ||
+            !float.IsFinite(snapshot.CameraMaskWidthScale) ||
+            snapshot.CameraMaskWidthScale is < .4f or > 2.2f ||
             !float.IsFinite(snapshot.CameraWidthFraction) ||
             snapshot.CameraWidthFraction is < .15f or > .40f ||
             !float.IsFinite(snapshot.CameraMarginFraction) ||
@@ -671,6 +680,7 @@ public sealed class SettingsPreviewState
         CameraMask = snapshot.CameraMask;
         CameraBorder = snapshot.CameraBorder;
         CameraWidthFraction = snapshot.CameraWidthFraction;
+        CameraMaskWidthScale = snapshot.CameraMaskWidthScale;
         CameraMarginFraction = snapshot.CameraMarginFraction;
         CameraRadiusFraction = snapshot.CameraRadiusFraction;
         CameraBorderWidthPx = snapshot.CameraBorderWidthPx;
@@ -816,6 +826,7 @@ public sealed class SettingsPreviewState
         CameraMask = CameraPipMask.RoundedRectangle;
         CameraBorder = CameraBorderTone.White;
         CameraWidthFraction = .235f;
+        CameraMaskWidthScale = 1f;
         CameraMarginFraction = .035f;
         CameraRadiusFraction = .72f;
         CameraBorderWidthPx = 2f;
