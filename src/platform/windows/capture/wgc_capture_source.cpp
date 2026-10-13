@@ -220,6 +220,7 @@ Status WgcCaptureSource::start(
     running_.store(false, std::memory_order_release);
     source_closed_.store(false, std::memory_order_release);
     sequence_.store(0, std::memory_order_release);
+    startup_failure_step_.store(0, std::memory_order_release);
 
     {
         std::lock_guard startup_lock(startup_mutex_);
@@ -305,6 +306,7 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
     bool startup_signaled = false;
 
     try {
+        startup_failure_step_.store(1, std::memory_order_release);
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
         if (!GraphicsCaptureSession::IsSupported()) {
@@ -314,6 +316,7 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
             return;
         }
 
+        startup_failure_step_.store(2, std::memory_order_release);
         IDirect3DDevice winrt_device{nullptr};
         const Status device_status =
             create_winrt_device(request.device.Get(), winrt_device);
@@ -324,6 +327,7 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
             return;
         }
 
+        startup_failure_step_.store(3, std::memory_order_release);
         GraphicsCaptureItem item{nullptr};
         const Status item_status =
             create_capture_item(
@@ -338,6 +342,7 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
             return;
         }
 
+        startup_failure_step_.store(4, std::memory_order_release);
         auto current_size = item.Size();
         if (current_size.Width <= 0 || current_size.Height <= 0) {
             signal_startup(Status::failure(StatusCode::InvalidArgument));
@@ -346,6 +351,7 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
             return;
         }
 
+        startup_failure_step_.store(5, std::memory_order_release);
         auto frame_pool =
             Direct3D11CaptureFramePool::CreateFreeThreaded(
                 winrt_device,
@@ -356,6 +362,7 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
         std::atomic<std::int32_t> current_width{current_size.Width};
         std::atomic<std::int32_t> current_height{current_size.Height};
 
+        startup_failure_step_.store(6, std::memory_order_release);
         auto frame_revoker = frame_pool.FrameArrived(
             winrt::auto_revoke,
             [this,
@@ -499,11 +506,15 @@ void WgcCaptureSource::owner_thread(StartRequest request) noexcept
                 request_owner_stop();
             });
 
+        startup_failure_step_.store(7, std::memory_order_release);
         auto session = frame_pool.CreateCaptureSession(item);
+        startup_failure_step_.store(8, std::memory_order_release);
         session.IsCursorCaptureEnabled(
             request.options.capture_cursor);
+        startup_failure_step_.store(9, std::memory_order_release);
         session.StartCapture();
 
+        startup_failure_step_.store(0, std::memory_order_release);
         running_.store(true, std::memory_order_release);
         signal_startup(Status::success());
         startup_signaled = true;
