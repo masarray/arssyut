@@ -3,6 +3,7 @@
 #include "core/audio/audio_format.hpp"
 #include "core/audio/audio_mix.hpp"
 #include "core/audio/audio_packet.hpp"
+#include "core/audio/audio_program.hpp"
 #include "core/audio/audio_resampler.hpp"
 #include "core/audio/audio_time.hpp"
 
@@ -271,6 +272,273 @@ void test_rational_time(TestContext &test)
         ticks_to_frames_floor(one_hour_ticks, 48'000) ==
             one_hour_frames,
         "100 ns to frame conversion round-trips exact hour boundary");
+}
+
+void test_program_clock_and_alignment(TestContext &test)
+{
+    using namespace arssyut::core::audio;
+
+    AudioProgramClock clock{250'000};
+
+    CanonicalAudioBlock block_zero;
+    CanonicalAudioBlock block_one;
+    CanonicalAudioBlock block_many;
+
+    test.expect(
+        clock.begin_block(
+            0,
+            block_zero) &&
+        block_zero.media_start_100ns ==
+            250'000 &&
+        block_zero.frame_count == 1'024,
+        "Program clock starts block zero exactly at RecorderSession media zero");
+
+    test.expect(
+        clock.begin_block(
+            1,
+            block_one),
+        "Program clock emits block one");
+
+    const auto expected_block_one =
+        250'000 +
+        static_cast<std::int64_t>(
+            frames_to_ticks_floor(
+                1'024,
+                48'000));
+
+    test.expect(
+        block_one.media_start_100ns ==
+            expected_block_one,
+        "Program block timestamp derives from exact canonical frame offset");
+
+    constexpr std::uint64_t kLongBlockIndex =
+        46'875;
+    test.expect(
+        clock.begin_block(
+            kLongBlockIndex,
+            block_many),
+        "Program clock handles long block index");
+
+    const auto expected_long =
+        250'000 +
+        static_cast<std::int64_t>(
+            frames_to_ticks_floor(
+                kLongBlockIndex *
+                    1'024ull,
+                48'000));
+
+    test.expect(
+        block_many.media_start_100ns ==
+            expected_long,
+        "Program clock does not accumulate block-by-block rounding drift");
+
+    std::array<float, 512 * 2> late_samples{};
+    late_samples.fill(0.25F);
+
+    AudioSourceMixTelemetry late_telemetry{};
+    const CanonicalSourceSpan late_span{
+        .source = AudioSourceId::Microphone,
+        .media_start_100ns =
+            block_one.media_start_100ns -
+            static_cast<std::int64_t>(
+                frames_to_ticks_floor(
+                    512,
+                    48'000)),
+        .frame_count = 512,
+        .discontinuity = false,
+        .samples = late_samples,
+    };
+
+    test.expect(
+        mix_canonical_source_span(
+            block_one,
+            late_span,
+            {},
+            &late_telemetry),
+        "Entirely stale source span is handled without time-shifting");
+
+    test.expect(
+        late_telemetry.stale_frames == 512 &&
+        late_telemetry.mixed_frames == 0,
+        "Closed-interval media is counted stale and never mixed into the future");
+
+    bool still_silent = true;
+    for (float sample : block_one.interleaved())
+        still_silent =
+            still_silent &&
+            sample == 0.0F;
+
+    test.expect(
+        still_silent,
+        "Missing source interval remains deterministic silence");
+
+    CanonicalAudioBlock aligned;
+    test.expect(
+        clock.begin_block(
+            2,
+            aligned),
+        "Program clock emits aligned fixture block");
+
+    std::array<float, 400 * 2> source_samples{};
+    for (std::size_t frame = 0;
+         frame < 400;
+         ++frame) {
+        source_samples[frame * 2] = 0.5F;
+        source_samples[frame * 2 + 1] = -0.25F;
+    }
+
+    const auto offset_ticks =
+        static_cast<std::int64_t>(
+            frames_to_ticks_floor(
+                256,
+                48'000));
+
+    AudioSourceMixTelemetry aligned_telemetry{};
+    const CanonicalSourceSpan aligned_span{
+        .source = AudioSourceId::SystemAudio,
+        .media_start_100ns =
+            aligned.media_start_100ns +
+            offset_ticks,
+        .frame_count = 400,
+        .discontinuity = true,
+        .samples = source_samples,
+    };
+
+    test.expect(
+        mix_canonical_source_span(
+            aligned,
+            aligned_span,
+            {.gain = 0.5F},
+            &aligned_telemetry),
+        "Canonical source span mixes into its master-clock interval");
+
+    test.expect(
+        aligned_telemetry.mixed_frames == 400 &&
+        aligned_telemetry.stale_frames == 0 &&
+        aligned_telemetry.deferred_frames == 0,
+        "Aligned source span preserves exact frame ownership");
+
+    test.expect(
+        aligned.samples[255 * 2] == 0.0F &&
+        aligned.samples[256 * 2] == 0.25F &&
+        aligned.samples[256 * 2 + 1] == -0.125F,
+        "Leading gap stays silent and gain applies only to overlapping media");
+
+    test.expect(
+        (aligned.source_presence_mask &
+         source_presence_bit(
+             AudioSourceId::SystemAudio)) != 0 &&
+        (aligned.discontinuity_mask &
+         source_presence_bit(
+             AudioSourceId::SystemAudio)) != 0,
+        "Program block records source presence and discontinuity evidence");
+
+    test.expect(
+        std::fabs(
+            aligned_telemetry.peak_absolute -
+            0.25F) < 0.0001F &&
+        aligned_telemetry.rms > 0.0,
+        "Mixer telemetry is derived from samples already touched by the mixer");
+
+    CanonicalAudioBlock muted;
+    test.expect(
+        clock.begin_block(
+            3,
+            muted),
+        "Program clock emits mute fixture block");
+
+    AudioSourceMixTelemetry muted_telemetry{};
+    const CanonicalSourceSpan muted_span{
+        .source = AudioSourceId::Microphone,
+        .media_start_100ns =
+            muted.media_start_100ns,
+        .frame_count = 400,
+        .samples = source_samples,
+    };
+
+    test.expect(
+        mix_canonical_source_span(
+            muted,
+            muted_span,
+            {
+                .gain = 1.0F,
+                .muted = true,
+            },
+            &muted_telemetry),
+        "Mute is applied in the mixer without restarting source capture");
+
+    test.expect(
+        muted_telemetry.muted_frames == 400 &&
+        muted_telemetry.mixed_frames == 400,
+        "Muted source still advances through the same timeline interval");
+
+    bool muted_is_silent = true;
+    for (float sample : muted.interleaved())
+        muted_is_silent =
+            muted_is_silent &&
+            sample == 0.0F;
+
+    test.expect(
+        muted_is_silent,
+        "Mute preserves timeline while contributing exact silence");
+
+    CanonicalAudioBlock clipping;
+    test.expect(
+        clock.begin_block(
+            4,
+            clipping),
+        "Program clock emits clipping fixture block");
+
+    std::array<float, 16 * 2> loud_samples{};
+    loud_samples.fill(0.8F);
+
+    const CanonicalSourceSpan loud_microphone{
+        .source = AudioSourceId::Microphone,
+        .media_start_100ns =
+            clipping.media_start_100ns,
+        .frame_count = 16,
+        .samples = loud_samples,
+    };
+    const CanonicalSourceSpan loud_system{
+        .source = AudioSourceId::SystemAudio,
+        .media_start_100ns =
+            clipping.media_start_100ns,
+        .frame_count = 16,
+        .samples = loud_samples,
+    };
+
+    test.expect(
+        mix_canonical_source_span(
+            clipping,
+            loud_microphone,
+            {}) &&
+        mix_canonical_source_span(
+            clipping,
+            loud_system,
+            {}),
+        "Dual sources accumulate before final program limiting");
+
+    const auto finalized =
+        finalize_program_block(
+            clipping);
+
+    test.expect(
+        finalized.clipped_samples == 32 &&
+        finalized.peak_before_clip > 1.0F,
+        "Final clipping policy is explicit and observable");
+
+    bool bounded = true;
+    for (std::size_t index = 0;
+         index < 32;
+         ++index) {
+        bounded =
+            bounded &&
+            clipping.samples[index] == 1.0F;
+    }
+
+    test.expect(
+        bounded,
+        "Finalized program samples are hard-bounded to PCM-safe full scale");
 }
 
 void test_bounded_queue(TestContext &test)
@@ -628,6 +896,7 @@ int main()
 
     test_format_profile(test);
     test_rational_time(test);
+    test_program_clock_and_alignment(test);
     test_bounded_queue(test);
     test_packet_pool(test);
     test_packet_contract(test);
@@ -642,6 +911,6 @@ int main()
     }
 
     std::cout << "PASS: " << test.checks
-              << " P7A1 deterministic audio checks\n";
+              << " P7A/P7A5 deterministic audio checks\n";
     return 0;
 }
